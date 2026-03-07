@@ -1,0 +1,56 @@
+# BoutShop - Docker Compose for local development / VPS deployment
+# Usage: docker-compose up -d
+# Backend: http://localhost:5000
+# Frontend: http://localhost:3000
+# MongoDB: local (or set MONGODB_URI to external)
+
+version: '3.8'
+
+services:
+  mongodb:
+    image: mongo:7
+    restart: unless-stopped
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongodb_data:/data/db
+    environment:
+      MONGO_INITDB_DATABASE: boutshop
+
+  backend:
+    build:
+      context: ./boutshop-backend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    ports:
+      - "5000:5000"
+    environment:
+      NODE_ENV: production
+      PORT: 5000
+      MONGODB_URI: mongodb://mongodb:27017/boutshop
+      JWT_SECRET: ${JWT_SECRET:-change-me-in-production}
+      FRONTEND_URL: ${FRONTEND_URL:-http://localhost:3000}
+      STORAGE_DRIVER: local
+      UPLOAD_PATH: /app/uploads
+    depends_on:
+      - mongodb
+    volumes:
+      - backend_uploads:/app/uploads
+
+  frontend:
+    build:
+      context: ./boutshop-frontend
+      dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:5000}
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      NODE_ENV: production
+    depends_on:
+      - backend
+
+volumes:
+  mongodb_data:
+  backend_uploads:

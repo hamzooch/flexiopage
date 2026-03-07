@@ -1,0 +1,854 @@
+'use client';
+
+import { useEffect, useState } from 'react';
+import { useParams, useRouter } from 'next/navigation';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { storesApi } from '@/lib/api';
+import { STORE_THEME_TEMPLATES, type StoreThemeTemplate } from '@/data/store-themes';
+import { ThemePreviewGrid } from '@/components/dashboard/theme-preview-card';
+import { Check } from 'lucide-react';
+
+interface DeliveryIntegration {
+  provider?: 'mogadelivery' | 'manual' | 'other';
+  enabled?: boolean;
+  apiKey?: string;
+  baseUrl?: string;
+  webhookSecret?: string;
+  autoDispatch?: boolean;
+  pickupAddress?: {
+    contactName?: string;
+    contactPhone?: string;
+    line1?: string;
+    line2?: string;
+    city?: string;
+    state?: string;
+    postalCode?: string;
+    country?: string;
+  };
+}
+
+interface CodFormSettings {
+  headline?: string;
+  submitLabel?: string;
+  showEmail?: boolean;
+  requireEmail?: boolean;
+  showPostalCode?: boolean;
+  showState?: boolean;
+  showNotes?: boolean;
+  showQuantity?: boolean;
+  reassurance?: string;
+}
+
+interface StorefrontSettings {
+  showHero?: boolean;
+  heroTitle?: string;
+  heroSubtitle?: string;
+  heroImage?: string;
+  showProductsGrid?: boolean;
+  productsGridTitle?: string;
+  showFeatures?: boolean;
+  showFooter?: boolean;
+  footerNote?: string;
+}
+
+interface StoreType {
+  _id: string;
+  name: string;
+  slug: string;
+  subdomain: string;
+  description?: string;
+  customDomain?: string;
+  isPublished?: boolean;
+  storeType?: 'physical' | 'digital';
+  theme?: Record<string, unknown>;
+  settings?: {
+    currency?: string;
+    language?: string;
+    country?: string;
+    direction?: 'ltr' | 'rtl';
+    seoTitle?: string;
+    seoDescription?: string;
+    codForm?: CodFormSettings;
+    storefront?: StorefrontSettings;
+  };
+  integrations?: { delivery?: DeliveryIntegration };
+}
+
+const RTL_LANGS = new Set(['ar', 'fa', 'he', 'ur']);
+const directionOf = (lang?: string): 'ltr' | 'rtl' =>
+  lang ? (RTL_LANGS.has(lang.split('-')[0]) ? 'rtl' : 'ltr') : 'ltr';
+
+const SETTINGS_LANGUAGES = [
+  { code: '',   label: '— Aucune —' },
+  { code: 'fr', label: 'Français' },
+  { code: 'ar', label: 'العربية' },
+  { code: 'en', label: 'English' },
+  { code: 'es', label: 'Español' },
+  { code: 'de', label: 'Deutsch' },
+  { code: 'it', label: 'Italiano' },
+  { code: 'pt', label: 'Português' },
+];
+
+type SettingsGroup = 'arab' | 'africa' | 'other';
+
+const SETTINGS_COUNTRIES: { code: string; label: string; currency: string; arab: boolean; group: SettingsGroup }[] = [
+  { code: '',   label: '— Aucun —',              currency: '',    arab: false, group: 'other' },
+  // Monde arabe
+  { code: 'SA', label: 'Saudi Arabia',           currency: 'SAR', arab: true,  group: 'arab' },
+  { code: 'AE', label: 'UAE',                    currency: 'AED', arab: true,  group: 'arab' },
+  { code: 'EG', label: 'Egypt',                  currency: 'EGP', arab: true,  group: 'arab' },
+  { code: 'MA', label: 'Morocco',                currency: 'MAD', arab: true,  group: 'arab' },
+  { code: 'TN', label: 'Tunisia',                currency: 'TND', arab: true,  group: 'arab' },
+  { code: 'DZ', label: 'Algeria',                currency: 'DZD', arab: true,  group: 'arab' },
+  { code: 'QA', label: 'Qatar',                  currency: 'QAR', arab: true,  group: 'arab' },
+  { code: 'KW', label: 'Kuwait',                 currency: 'KWD', arab: true,  group: 'arab' },
+  { code: 'BH', label: 'Bahrain',                currency: 'BHD', arab: true,  group: 'arab' },
+  { code: 'OM', label: 'Oman',                   currency: 'OMR', arab: true,  group: 'arab' },
+  { code: 'IQ', label: 'Iraq',                   currency: 'IQD', arab: true,  group: 'arab' },
+  { code: 'JO', label: 'Jordan',                 currency: 'JOD', arab: true,  group: 'arab' },
+  { code: 'LB', label: 'Lebanon',                currency: 'LBP', arab: true,  group: 'arab' },
+  // Afrique sub-saharienne
+  { code: 'NG', label: 'Nigeria',                currency: 'NGN', arab: false, group: 'africa' },
+  { code: 'KE', label: 'Kenya',                  currency: 'KES', arab: false, group: 'africa' },
+  { code: 'ZA', label: 'South Africa',           currency: 'ZAR', arab: false, group: 'africa' },
+  { code: 'GH', label: 'Ghana',                  currency: 'GHS', arab: false, group: 'africa' },
+  { code: 'SN', label: 'Senegal',                currency: 'XOF', arab: false, group: 'africa' },
+  { code: 'CI', label: 'Côte d\'Ivoire',         currency: 'XOF', arab: false, group: 'africa' },
+  { code: 'CM', label: 'Cameroon',               currency: 'XAF', arab: false, group: 'africa' },
+  { code: 'ET', label: 'Ethiopia',               currency: 'ETB', arab: false, group: 'africa' },
+  { code: 'TZ', label: 'Tanzania',               currency: 'TZS', arab: false, group: 'africa' },
+  { code: 'UG', label: 'Uganda',                 currency: 'UGX', arab: false, group: 'africa' },
+  { code: 'RW', label: 'Rwanda',                 currency: 'RWF', arab: false, group: 'africa' },
+  { code: 'BJ', label: 'Benin',                  currency: 'XOF', arab: false, group: 'africa' },
+  { code: 'TG', label: 'Togo',                   currency: 'XOF', arab: false, group: 'africa' },
+  { code: 'BF', label: 'Burkina Faso',           currency: 'XOF', arab: false, group: 'africa' },
+  { code: 'ML', label: 'Mali',                   currency: 'XOF', arab: false, group: 'africa' },
+  { code: 'NE', label: 'Niger',                  currency: 'XOF', arab: false, group: 'africa' },
+  { code: 'GN', label: 'Guinea',                 currency: 'GNF', arab: false, group: 'africa' },
+  { code: 'GA', label: 'Gabon',                  currency: 'XAF', arab: false, group: 'africa' },
+  { code: 'CG', label: 'Congo (Brazzaville)',    currency: 'XAF', arab: false, group: 'africa' },
+  { code: 'CD', label: 'DR Congo',               currency: 'CDF', arab: false, group: 'africa' },
+  { code: 'AO', label: 'Angola',                 currency: 'AOA', arab: false, group: 'africa' },
+  { code: 'ZW', label: 'Zimbabwe',               currency: 'ZWL', arab: false, group: 'africa' },
+  { code: 'ZM', label: 'Zambia',                 currency: 'ZMW', arab: false, group: 'africa' },
+  { code: 'MZ', label: 'Mozambique',             currency: 'MZN', arab: false, group: 'africa' },
+  { code: 'MG', label: 'Madagascar',             currency: 'MGA', arab: false, group: 'africa' },
+  { code: 'MU', label: 'Mauritius',              currency: 'MUR', arab: false, group: 'africa' },
+  { code: 'BW', label: 'Botswana',               currency: 'BWP', arab: false, group: 'africa' },
+  { code: 'NA', label: 'Namibia',                currency: 'NAD', arab: false, group: 'africa' },
+  { code: 'MW', label: 'Malawi',                 currency: 'MWK', arab: false, group: 'africa' },
+  // Autre
+  { code: 'FR', label: 'France',                 currency: 'EUR', arab: false, group: 'other' },
+  { code: 'BE', label: 'Belgium',                currency: 'EUR', arab: false, group: 'other' },
+  { code: 'CH', label: 'Switzerland',            currency: 'CHF', arab: false, group: 'other' },
+  { code: 'CA', label: 'Canada',                 currency: 'CAD', arab: false, group: 'other' },
+  { code: 'US', label: 'United States',          currency: 'USD', arab: false, group: 'other' },
+  { code: 'GB', label: 'United Kingdom',         currency: 'GBP', arab: false, group: 'other' },
+  { code: 'DE', label: 'Germany',                currency: 'EUR', arab: false, group: 'other' },
+  { code: 'ES', label: 'Spain',                  currency: 'EUR', arab: false, group: 'other' },
+  { code: 'IT', label: 'Italy',                  currency: 'EUR', arab: false, group: 'other' },
+  { code: 'TR', label: 'Turkey',                 currency: 'TRY', arab: false, group: 'other' },
+];
+
+const SETTINGS_CURRENCIES = [
+  // Arabe
+  'SAR', 'AED', 'EGP', 'MAD', 'TND', 'DZD', 'QAR', 'KWD', 'BHD', 'OMR', 'JOD', 'LBP',
+  // Afrique
+  'NGN', 'KES', 'ZAR', 'GHS', 'XOF', 'XAF', 'ETB', 'TZS', 'UGX', 'RWF', 'GNF',
+  'CDF', 'AOA', 'ZMW', 'ZWL', 'MZN', 'MGA', 'MUR', 'BWP', 'NAD', 'MWK',
+  // Autre
+  'EUR', 'GBP', 'CHF', 'TRY', 'USD', 'CAD', 'AUD',
+];
+
+export default function StoreSettingsPage() {
+  const params = useParams();
+  const router = useRouter();
+  const storeId = params.storeId as string;
+  const [store, setStore] = useState<StoreType | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [name, setName] = useState('');
+  const [description, setDescription] = useState('');
+  const [customDomain, setCustomDomain] = useState('');
+  const [isPublished, setIsPublished] = useState(false);
+  const [selectedTheme, setSelectedTheme] = useState<StoreThemeTemplate | null>(null);
+  // Locale settings — used as defaults for AI landing pages
+  const [country, setCountry] = useState('');
+  const [language, setLanguage] = useState('');
+  const [currency, setCurrency] = useState('USD');
+  // Delivery integration (mogadelivery)
+  const [delivery, setDelivery] = useState<DeliveryIntegration>({
+    provider: 'mogadelivery',
+    enabled: false,
+    autoDispatch: true,
+  });
+  // Editable COD form fields shown on the public product page
+  const [codForm, setCodForm] = useState<CodFormSettings>({
+    showEmail: true,
+    requireEmail: false,
+    showPostalCode: false,
+    showState: false,
+    showNotes: true,
+    showQuantity: true,
+  });
+  // Storefront sections visibility / copy
+  const [storefront, setStorefront] = useState<StorefrontSettings>({
+    showHero: true,
+    showProductsGrid: true,
+    showFeatures: true,
+    showFooter: true,
+  });
+
+  useEffect(() => {
+    if (!storeId) return;
+    storesApi
+      .get(storeId)
+      .then((res) => {
+        const s = (res.data as { store: StoreType }).store;
+        setStore(s);
+        setName(s.name);
+        setDescription(s.description || '');
+        setCustomDomain(s.customDomain || '');
+        setIsPublished(!!s.isPublished);
+        setCountry(s.settings?.country || '');
+        setLanguage(s.settings?.language || '');
+        setCurrency(s.settings?.currency || 'USD');
+        if (s.integrations?.delivery) {
+          setDelivery({
+            provider: s.integrations.delivery.provider || 'mogadelivery',
+            enabled: !!s.integrations.delivery.enabled,
+            apiKey: s.integrations.delivery.apiKey || '',
+            baseUrl: s.integrations.delivery.baseUrl || '',
+            webhookSecret: s.integrations.delivery.webhookSecret || '',
+            autoDispatch: s.integrations.delivery.autoDispatch !== false,
+            pickupAddress: s.integrations.delivery.pickupAddress || {},
+          });
+        }
+        if (s.settings?.codForm) setCodForm({ ...codForm, ...s.settings.codForm });
+        if (s.settings?.storefront) setStorefront({ ...storefront, ...s.settings.storefront });
+        const themeId = (s.theme as { templateId?: string })?.templateId;
+        if (themeId) {
+          const t = STORE_THEME_TEMPLATES.find((x) => x.id === themeId);
+          if (t) setSelectedTheme(t);
+        }
+      })
+      .catch(() => setStore(null))
+      .finally(() => setLoading(false));
+  }, [storeId]);
+
+  async function handleSave(e: React.FormEvent) {
+    e.preventDefault();
+    if (!storeId) return;
+    setSaving(true);
+    try {
+      const newSettings = {
+        ...(store?.settings || {}),
+        currency: currency || 'USD',
+        language: language || undefined,
+        country: country || undefined,
+        direction: directionOf(language),
+        codForm,
+        storefront,
+      };
+      const newIntegrations = {
+        ...(store?.integrations || {}),
+        delivery: { ...delivery },
+      };
+      await storesApi.update(storeId, {
+        name,
+        description: description || undefined,
+        customDomain: customDomain || undefined,
+        isPublished,
+        theme: selectedTheme ? (selectedTheme.theme as unknown as Record<string, unknown>) : undefined,
+        settings: newSettings,
+        integrations: newIntegrations,
+      });
+      setStore((prev) =>
+        prev
+          ? {
+              ...prev,
+              name,
+              description,
+              customDomain,
+              isPublished,
+              theme: selectedTheme ? (selectedTheme.theme as unknown as Record<string, unknown>) : undefined,
+              settings: newSettings,
+            }
+          : null
+      );
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  if (loading || !store) {
+    return <p className="text-muted-foreground">Loading...</p>;
+  }
+
+  return (
+    <div className="space-y-8">
+      <div className="flex items-center gap-4">
+        <Button variant="ghost" size="sm" onClick={() => router.push('/dashboard/stores')}>
+          ← Back
+        </Button>
+        <div>
+          <h1 className="text-3xl font-bold">Store settings</h1>
+          <p className="text-muted-foreground">{store.name}</p>
+        </div>
+      </div>
+
+      <form onSubmit={handleSave}>
+        <Card>
+          <CardHeader>
+            <CardTitle>Informations générales</CardTitle>
+            <CardDescription>Le nom, la description et le domaine de ta boutique.</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="space-y-1.5">
+              <Label htmlFor="name">Nom de la boutique *</Label>
+              <Input
+                id="name"
+                placeholder="Ex: Caftans Marrakech, Gadgets Tech, Artisanat Sahel"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                required
+              />
+              <p className="text-[11px] text-muted-foreground">Visible par tes clients en haut de la boutique.</p>
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="description">Description courte</Label>
+              <textarea
+                id="description"
+                placeholder="Ex: Vente de bijoux artisanaux livrés en 48h en Afrique de l'Ouest"
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                className="flex min-h-[80px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+              />
+              <p className="text-[11px] text-muted-foreground">1-2 phrases qui résument ton activité (SEO + sous-titre du hero).</p>
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="domain">Domaine personnalisé (optionnel)</Label>
+              <Input
+                id="domain"
+                placeholder="Ex: www.maboutique.com"
+                value={customDomain}
+                onChange={(e) => setCustomDomain(e.target.value)}
+              />
+              <p className="text-[11px] text-muted-foreground">Configure un CNAME chez ton registrar vers `cname.boutshop.app`.</p>
+            </div>
+            <label htmlFor="published" className="flex items-center gap-2 cursor-pointer">
+              <input
+                type="checkbox"
+                id="published"
+                checked={isPublished}
+                onChange={(e) => setIsPublished(e.target.checked)}
+                className="h-4 w-4 rounded border-input"
+              />
+              <span>
+                <span className="text-sm font-medium">Boutique publiée (visible par les clients)</span>
+                <span className="block text-[11px] text-muted-foreground">Décoche pour mettre la boutique hors-ligne.</span>
+              </span>
+            </label>
+          </CardContent>
+          <CardContent>
+            <Button type="submit" disabled={saving}>
+              {saving ? 'Saving...' : 'Save changes'}
+            </Button>
+          </CardContent>
+        </Card>
+
+        <Card className="mt-6">
+          <CardHeader>
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <CardTitle>Marché &amp; langue</CardTitle>
+                <CardDescription>
+                  Pré-remplit la génération AI des landing pages de tous les produits de ce store.
+                </CardDescription>
+              </div>
+              {language && directionOf(language) === 'rtl' && (
+                <span className="rounded-full bg-fuchsia-500/10 px-2.5 py-1 text-[10px] font-semibold text-fuchsia-700">
+                  RTL · Droite → Gauche
+                </span>
+              )}
+            </div>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="space-y-2">
+                <Label htmlFor="settings-country">Pays cible</Label>
+                <select
+                  id="settings-country"
+                  value={country}
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    setCountry(v);
+                    const match = SETTINGS_COUNTRIES.find((c) => c.code === v);
+                    if (match?.currency) setCurrency(match.currency);
+                    if (match?.arab && language !== 'ar') setLanguage('ar');
+                  }}
+                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                >
+                  <optgroup label="Monde arabe">
+                    {SETTINGS_COUNTRIES.filter((c) => c.group === 'arab').map((c) => (
+                      <option key={c.code} value={c.code}>{c.label}</option>
+                    ))}
+                  </optgroup>
+                  <optgroup label="Afrique">
+                    {SETTINGS_COUNTRIES.filter((c) => c.group === 'africa').map((c) => (
+                      <option key={c.code} value={c.code}>{c.label}</option>
+                    ))}
+                  </optgroup>
+                  <optgroup label="Autre">
+                    {SETTINGS_COUNTRIES.filter((c) => c.group === 'other').map((c) => (
+                      <option key={c.code || 'none'} value={c.code}>{c.label}</option>
+                    ))}
+                  </optgroup>
+                </select>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="settings-lang">Langue</Label>
+                <select
+                  id="settings-lang"
+                  value={language}
+                  onChange={(e) => setLanguage(e.target.value)}
+                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                >
+                  {SETTINGS_LANGUAGES.map((l) => (
+                    <option key={l.code} value={l.code}>{l.label}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="space-y-2 sm:col-span-2">
+                <Label htmlFor="settings-cur">Devise</Label>
+                <select
+                  id="settings-cur"
+                  value={currency}
+                  onChange={(e) => setCurrency(e.target.value)}
+                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                >
+                  {SETTINGS_CURRENCIES.map((c) => (
+                    <option key={c} value={c}>{c}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Delivery integration — only visible for physical-product stores */}
+        {(store.storeType !== 'digital') && (
+          <Card className="mt-6">
+            <CardHeader>
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <CardTitle className="flex items-center gap-2">
+                    Livraison &amp; logistique
+                    <span className="rounded-full bg-fuchsia-500/10 px-2.5 py-1 text-[10px] font-semibold text-fuchsia-700">
+                      Mogadelivery
+                    </span>
+                  </CardTitle>
+                  <CardDescription className="mt-1">
+                    Connecte ton compte mogadelivery pour que chaque commande payée parte automatiquement chez le coursier.
+                  </CardDescription>
+                </div>
+                <label className="inline-flex cursor-pointer items-center gap-2">
+                  <input
+                    type="checkbox"
+                    checked={!!delivery.enabled}
+                    onChange={(e) => setDelivery((d) => ({ ...d, enabled: e.target.checked }))}
+                    className="h-4 w-4 rounded border-input"
+                  />
+                  <span className="text-sm font-medium">Activé</span>
+                </label>
+              </div>
+            </CardHeader>
+            <CardContent className="space-y-5">
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div className="space-y-2">
+                  <Label htmlFor="moga-key">Clé API mogadelivery *</Label>
+                  <Input
+                    id="moga-key"
+                    type="password"
+                    autoComplete="off"
+                    placeholder="md_live_..."
+                    value={delivery.apiKey || ''}
+                    onChange={(e) => setDelivery((d) => ({ ...d, apiKey: e.target.value }))}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Récupère-la dans ton tableau de bord <code className="rounded bg-muted px-1 py-0.5 text-[11px]">admin-mogadelivery.com</code> → API.
+                  </p>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="moga-base">Base URL (avancé)</Label>
+                  <Input
+                    id="moga-base"
+                    placeholder="https://admin-mogadelivery.com"
+                    value={delivery.baseUrl || ''}
+                    onChange={(e) => setDelivery((d) => ({ ...d, baseUrl: e.target.value }))}
+                  />
+                  <p className="text-xs text-muted-foreground">Laisse vide pour utiliser la valeur par défaut.</p>
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="moga-secret">Secret webhook</Label>
+                <Input
+                  id="moga-secret"
+                  type="password"
+                  autoComplete="off"
+                  placeholder="(optionnel) clé HMAC partagée"
+                  value={delivery.webhookSecret || ''}
+                  onChange={(e) => setDelivery((d) => ({ ...d, webhookSecret: e.target.value }))}
+                />
+                <p className="text-xs text-muted-foreground">
+                  Configure ce même secret côté mogadelivery pour qu'on vérifie la signature des webhooks entrants.
+                </p>
+              </div>
+
+              {/* Webhook URL info */}
+              <div className="rounded-xl border border-border/60 bg-muted/30 p-4">
+                <div className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">URL du webhook entrant</div>
+                <div className="mt-1.5 flex items-center gap-2">
+                  <code className="flex-1 truncate rounded-md bg-background px-3 py-2 font-mono text-xs">
+                    {(process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5001')}/api/webhooks/mogadelivery
+                  </code>
+                </div>
+                <p className="mt-1.5 text-xs text-muted-foreground">
+                  Ajoute cette URL dans ta config mogadelivery pour recevoir les changements de statut (assigné, en transit, livré, retourné).
+                </p>
+              </div>
+
+              {/* Pickup address (expedition) */}
+              <div className="space-y-4 rounded-xl border border-border/60 bg-card p-4">
+                <div>
+                  <h3 className="text-sm font-semibold">Adresse d&apos;expédition</h3>
+                  <p className="text-xs text-muted-foreground">Le coursier MogaDelivery vient récupérer les colis à cette adresse. Renseigne tous les champs pour que le livreur trouve le bon endroit.</p>
+                </div>
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <div className="space-y-1.5">
+                    <Label htmlFor="pickup-contact-name">Nom du contact *</Label>
+                    <Input
+                      id="pickup-contact-name"
+                      placeholder="Ex: Aïssatou Diallo"
+                      value={delivery.pickupAddress?.contactName || ''}
+                      onChange={(e) => setDelivery((d) => ({ ...d, pickupAddress: { ...(d.pickupAddress || {}), contactName: e.target.value } }))}
+                    />
+                    <p className="text-[11px] text-muted-foreground">La personne que le livreur appelle à l&apos;arrivée.</p>
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="pickup-contact-phone">Téléphone du contact *</Label>
+                    <Input
+                      id="pickup-contact-phone"
+                      type="tel"
+                      placeholder="Ex: +221 70 000 00 00"
+                      value={delivery.pickupAddress?.contactPhone || ''}
+                      onChange={(e) => setDelivery((d) => ({ ...d, pickupAddress: { ...(d.pickupAddress || {}), contactPhone: e.target.value } }))}
+                    />
+                    <p className="text-[11px] text-muted-foreground">Format international avec indicatif pays.</p>
+                  </div>
+                  <div className="space-y-1.5 sm:col-span-2">
+                    <Label htmlFor="pickup-line1">Adresse complète *</Label>
+                    <Input
+                      id="pickup-line1"
+                      placeholder="Ex: 12 Rue Félix Faure, Plateau"
+                      value={delivery.pickupAddress?.line1 || ''}
+                      onChange={(e) => setDelivery((d) => ({ ...d, pickupAddress: { ...(d.pickupAddress || {}), line1: e.target.value } }))}
+                    />
+                    <p className="text-[11px] text-muted-foreground">N°, rue, quartier — comme sur Google Maps.</p>
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="pickup-city">Ville *</Label>
+                    <Input
+                      id="pickup-city"
+                      placeholder="Ex: Dakar"
+                      value={delivery.pickupAddress?.city || ''}
+                      onChange={(e) => setDelivery((d) => ({ ...d, pickupAddress: { ...(d.pickupAddress || {}), city: e.target.value } }))}
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="pickup-country">Pays *</Label>
+                    <Input
+                      id="pickup-country"
+                      placeholder="Ex: SN, CI, MA, TN"
+                      value={delivery.pickupAddress?.country || ''}
+                      onChange={(e) => setDelivery((d) => ({ ...d, pickupAddress: { ...(d.pickupAddress || {}), country: e.target.value } }))}
+                    />
+                    <p className="text-[11px] text-muted-foreground">Code ISO à 2 lettres (ex: SN pour Sénégal).</p>
+                  </div>
+                </div>
+              </div>
+
+              <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-border/60 bg-card p-4">
+                <input
+                  type="checkbox"
+                  checked={delivery.autoDispatch !== false}
+                  onChange={(e) => setDelivery((d) => ({ ...d, autoDispatch: e.target.checked }))}
+                  className="mt-0.5 h-4 w-4 rounded border-input"
+                />
+                <div>
+                  <div className="text-sm font-medium">Dispatch automatique</div>
+                  <p className="mt-0.5 text-xs text-muted-foreground">
+                    Dès qu'une commande est payée (ou COD), elle est envoyée automatiquement à mogadelivery. Décoche pour dispatcher manuellement depuis la liste des commandes.
+                  </p>
+                </div>
+              </label>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* COD form editor — physical stores only */}
+        {(store.storeType !== 'digital') && (
+          <Card className="mt-6">
+            <CardHeader>
+              <CardTitle>Formulaire de commande (COD)</CardTitle>
+              <CardDescription>
+                Le formulaire « paiement à la livraison » qui s'affiche sous chaque produit. Tu choisis quels champs afficher
+                et personnalises les libellés.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-5">
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div className="space-y-1.5">
+                  <Label htmlFor="cod-headline">Titre affiché en haut du formulaire</Label>
+                  <Input
+                    id="cod-headline"
+                    placeholder="Ex: Commander · Paiement à la livraison"
+                    value={codForm.headline || ''}
+                    onChange={(e) => setCodForm({ ...codForm, headline: e.target.value })}
+                  />
+                  <p className="text-[11px] text-muted-foreground">Le grand titre qui apparaît au-dessus du formulaire client.</p>
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="cod-submit">Texte du bouton de validation</Label>
+                  <Input
+                    id="cod-submit"
+                    placeholder="Ex: Commander · Réserver · اطلب الآن"
+                    value={codForm.submitLabel || ''}
+                    onChange={(e) => setCodForm({ ...codForm, submitLabel: e.target.value })}
+                  />
+                  <p className="text-[11px] text-muted-foreground">2-3 mots maximum. Sera suivi du prix automatiquement.</p>
+                </div>
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="cod-reassurance">Phrase rassurante sous le bouton (optionnel)</Label>
+                <Input
+                  id="cod-reassurance"
+                  placeholder="Ex: Aucun prépaiement, paiement à la livraison uniquement"
+                  value={codForm.reassurance || ''}
+                  onChange={(e) => setCodForm({ ...codForm, reassurance: e.target.value })}
+                />
+                <p className="text-[11px] text-muted-foreground">Petit message pour rassurer le client (ex: garantie, retour gratuit).</p>
+              </div>
+
+              <div className="space-y-3 rounded-xl border border-border/60 bg-muted/30 p-4">
+                <h4 className="text-sm font-semibold">Champs visibles</h4>
+                <div className="grid gap-2 sm:grid-cols-2">
+                  <FieldToggle
+                    label="Email"
+                    sublabel="On peut envoyer la confirmation par email"
+                    checked={!!codForm.showEmail}
+                    onChange={(v) => setCodForm({ ...codForm, showEmail: v })}
+                  />
+                  <FieldToggle
+                    label="Email obligatoire"
+                    sublabel="Force le client à saisir un email"
+                    disabled={!codForm.showEmail}
+                    checked={!!codForm.requireEmail}
+                    onChange={(v) => setCodForm({ ...codForm, requireEmail: v })}
+                  />
+                  <FieldToggle
+                    label="Code postal"
+                    sublabel="Recommandé pour Maroc / Tunisie"
+                    checked={!!codForm.showPostalCode}
+                    onChange={(v) => setCodForm({ ...codForm, showPostalCode: v })}
+                  />
+                  <FieldToggle
+                    label="Région / État"
+                    sublabel="Province, wilaya, etc."
+                    checked={!!codForm.showState}
+                    onChange={(v) => setCodForm({ ...codForm, showState: v })}
+                  />
+                  <FieldToggle
+                    label="Note pour le livreur"
+                    sublabel="Repère, étage, instructions"
+                    checked={!!codForm.showNotes}
+                    onChange={(v) => setCodForm({ ...codForm, showNotes: v })}
+                  />
+                  <FieldToggle
+                    label="Sélecteur de quantité"
+                    sublabel="Permet d'augmenter / diminuer la quantité"
+                    checked={!!codForm.showQuantity}
+                    onChange={(v) => setCodForm({ ...codForm, showQuantity: v })}
+                  />
+                </div>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Nom, téléphone et adresse sont toujours obligatoires (livreur en a besoin).
+              </p>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Storefront sections editor */}
+        <Card className="mt-6">
+          <CardHeader>
+            <CardTitle>Sections de la vitrine</CardTitle>
+            <CardDescription>
+              Active ou désactive les blocs affichés sur la page d'accueil de ta boutique.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-5">
+            <div className="space-y-3 rounded-xl border border-border/60 bg-muted/30 p-4">
+              <FieldToggle
+                label="Bandeau d'accueil (hero)"
+                sublabel="Grande zone en haut avec titre + sous-titre"
+                checked={storefront.showHero !== false}
+                onChange={(v) => setStorefront({ ...storefront, showHero: v })}
+              />
+              {storefront.showHero !== false && (
+                <div className="grid gap-4 pt-1 sm:grid-cols-2">
+                  <div className="space-y-1.5">
+                    <Label htmlFor="hero-title">Titre principal du hero</Label>
+                    <Input
+                      id="hero-title"
+                      placeholder="Ex: Bijoux artisanaux du Sahel"
+                      value={storefront.heroTitle || ''}
+                      onChange={(e) => setStorefront({ ...storefront, heroTitle: e.target.value })}
+                    />
+                    <p className="text-[11px] text-muted-foreground">Vide = nom de la boutique.</p>
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="hero-subtitle">Sous-titre du hero</Label>
+                    <Input
+                      id="hero-subtitle"
+                      placeholder="Ex: Pièces uniques fabriquées à la main, livrées en 48h"
+                      value={storefront.heroSubtitle || ''}
+                      onChange={(e) => setStorefront({ ...storefront, heroSubtitle: e.target.value })}
+                    />
+                    <p className="text-[11px] text-muted-foreground">Vide = description de la boutique.</p>
+                  </div>
+                  <div className="space-y-1.5 sm:col-span-2">
+                    <Label htmlFor="hero-image">URL de l&apos;image de fond du hero (optionnel)</Label>
+                    <Input
+                      id="hero-image"
+                      type="url"
+                      placeholder="Ex: https://images.unsplash.com/photo-..."
+                      value={storefront.heroImage || ''}
+                      onChange={(e) => setStorefront({ ...storefront, heroImage: e.target.value })}
+                    />
+                    <p className="text-[11px] text-muted-foreground">Lien direct vers une image (1920×1080 recommandé).</p>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className="space-y-3 rounded-xl border border-border/60 bg-muted/30 p-4">
+              <FieldToggle
+                label="Grille des produits"
+                sublabel="Liste des produits publiés"
+                checked={storefront.showProductsGrid !== false}
+                onChange={(v) => setStorefront({ ...storefront, showProductsGrid: v })}
+              />
+              {storefront.showProductsGrid !== false && (
+                <div className="space-y-1.5">
+                  <Label htmlFor="grid-title">Titre de la section produits</Label>
+                  <Input
+                    id="grid-title"
+                    placeholder="Ex: Nos produits · Le catalogue · Découvrir"
+                    value={storefront.productsGridTitle || ''}
+                    onChange={(e) => setStorefront({ ...storefront, productsGridTitle: e.target.value })}
+                  />
+                  <p className="text-[11px] text-muted-foreground">Vide = « Nos produits » par défaut.</p>
+                </div>
+              )}
+            </div>
+
+            <div className="space-y-3 rounded-xl border border-border/60 bg-muted/30 p-4">
+              <FieldToggle
+                label="Bandeau de réassurance"
+                sublabel="Livraison rapide · Paiement sécurisé · Support"
+                checked={storefront.showFeatures !== false}
+                onChange={(v) => setStorefront({ ...storefront, showFeatures: v })}
+              />
+              <FieldToggle
+                label="Pied de page"
+                sublabel="Mentions et lien vers les pages"
+                checked={storefront.showFooter !== false}
+                onChange={(v) => setStorefront({ ...storefront, showFooter: v })}
+              />
+              {storefront.showFooter !== false && (
+                <div className="space-y-1.5">
+                  <Label htmlFor="footer-note">Note légale du pied de page (optionnel)</Label>
+                  <Input
+                    id="footer-note"
+                    placeholder="Ex: © 2026 Ma Boutique · Tous droits réservés"
+                    value={storefront.footerNote || ''}
+                    onChange={(e) => setStorefront({ ...storefront, footerNote: e.target.value })}
+                  />
+                </div>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="mt-6">
+          <CardHeader>
+            <CardTitle>Theme</CardTitle>
+            <CardDescription>Choose a template for your storefront. Affects colors and style.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <ThemePreviewGrid
+              templates={STORE_THEME_TEMPLATES}
+              selectedId={
+                selectedTheme?.id ||
+                (store.theme as { templateId?: string })?.templateId
+              }
+              onSelect={setSelectedTheme}
+            />
+            <p className="mt-4 text-sm text-muted-foreground">
+              Sauvegarde les changements ci-dessus pour appliquer le thème sélectionné à ton storefront.
+            </p>
+          </CardContent>
+        </Card>
+      </form>
+    </div>
+  );
+}
+
+function FieldToggle({
+  label,
+  sublabel,
+  checked,
+  onChange,
+  disabled,
+}: {
+  label: string;
+  sublabel?: string;
+  checked: boolean;
+  onChange: (v: boolean) => void;
+  disabled?: boolean;
+}) {
+  return (
+    <label
+      className={`flex cursor-pointer items-start gap-3 rounded-lg border border-border/60 bg-card p-3 transition-colors ${
+        disabled ? 'opacity-50 cursor-not-allowed' : 'hover:bg-muted/30'
+      }`}
+    >
+      <input
+        type="checkbox"
+        checked={checked}
+        disabled={disabled}
+        onChange={(e) => onChange(e.target.checked)}
+        className="mt-0.5 h-4 w-4 rounded border-input"
+      />
+      <div className="min-w-0 flex-1">
+        <div className="text-sm font-medium">{label}</div>
+        {sublabel && <p className="mt-0.5 text-xs text-muted-foreground">{sublabel}</p>}
+      </div>
+    </label>
+  );
+}

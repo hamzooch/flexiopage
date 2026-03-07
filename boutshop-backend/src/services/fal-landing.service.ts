@@ -1,0 +1,1130 @@
+/**
+ * AI landing & product page generation — ayor.ia / tryad.app style.
+ *
+ * 3-step pipeline:
+ *   1) Strategic LLM (Claude 3.5 Sonnet via fal any-llm) writes the page
+ *      in the country's exact dialect, AND outputs short ENGLISH image
+ *      prompts for hero/gallery/avatar slots.
+ *   2) FLUX (schnell by default) generates each image in parallel.
+ *   3) Image URLs are injected back into the section JSON.
+ *
+ * Env overrides:
+ *   - FAL_KEY                  required
+ *   - FAL_LLM_MODEL            default 'anthropic/claude-3-5-sonnet'
+ *   - FAL_IMAGE_MODEL          default 'fal-ai/flux/schnell'
+ *   - FAL_AVATAR_MODEL         default same as FAL_IMAGE_MODEL
+ *   - LANDING_AI_IMAGES_ENABLED  default 'true' — set to 'false' to skip step 2
+ */
+import path from 'path';
+import fs from 'fs/promises';
+import type { TemplateSection } from '../data/landing-templates';
+import { generateImagesParallel, getAvatarModel, type ImageGenInput } from './image-generation.service';
+import { persistRemoteImage } from './storage.service';
+
+const FAL_BASE = 'https://fal.run';
+
+const MIME_BY_EXT: Record<string, string> = {
+  '.png': 'image/png',
+  '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
+  '.webp': 'image/webp',
+  '.gif': 'image/gif',
+  '.svg': 'image/svg+xml',
+};
+
+const ARAB_COUNTRIES = new Set([
+  'SA','AE','EG','MA','TN','DZ','QA','KW','BH','OM',
+  'IQ','JO','LB','YE','PS','SY','SD','LY','MR','DJ','KM','SO',
+]);
+
+const RTL_LANGS = new Set(['ar', 'fa', 'he', 'ur']);
+
+/**
+ * Per-country dialect & cultural cues. The LLM is told to write IN this
+ * dialect, not in MSA, so the page sounds like a friend recommending the
+ * product — exactly what dropshipping landing pages do.
+ */
+const DIALECT_MAP: Record<string, string> = {
+  TN: `Tunisian Derja (تونسي). MUST sound like a Tunisian on Facebook, NOT MSA / Fusha.
+Examples of expected vocabulary:
+  - "بَرشة" (beaucoup), "ياسر" (énormément), "نَجم" (peux), "نحب" (j'aime / je veux)
+  - "تَوّا" (maintenant), "مَالا" (alors), "أهَكّا" (c'est ça), "زادة" (aussi)
+  - "إنتي / إنتا" (tu f./m.), "أحنا" (nous)
+French loanwords integrated naturally: "famille", "qualité", "promotion", "livraison", "stock", "garantie".
+Mix typical: "إكتشف الـ produit الجديد متاعنا، بَرشة عائلات تونسية thqou فيه".
+NEVER use Fusha conjugations like "اشترِ" — say "اشري" / "إكتشف".`,
+
+  MA: `Moroccan Darija (دارجة). MUST sound like a Moroccan on Facebook, NOT MSA.
+Examples:
+  - "بزّاف" (beaucoup), "غادي" (futur), "بغيت" (je veux), "كنحبّ" (j'aime)
+  - "دابا" (maintenant), "هاد" (ce/cette), "ديال" (de), "نتا / نتي"
+French/Spanish loanwords: "qualité", "livraison", "promotion", "ofertas".
+Example: "هاد المنتج راه ديال الجودة، الأسعار خاصها تكون في متناولك".
+Avoid Fusha — write the way Moroccans actually message each other.`,
+
+  DZ: `Algerian Darija (دزيري) — also called "Derja". MUST sound exactly like an Algerian friend on Facebook / WhatsApp. NEVER use Modern Standard Arabic (Fusha / فصحى).
+Mandatory dialect markers:
+  - "بزاف" (beaucoup), "ياسر" (énormément), "راني" (je suis en train de), "راكي / راك" (tu es)
+  - "كاش" (du/de la), "ندير" (faire), "نحوس" (chercher), "هاكا" (comme ça)
+  - "وقتاه" (quand), "علاش" (pourquoi), "كيفاش" (comment), "ديالك" (à toi)
+  - "نتا / نتي" (tu m./f.), "حنا" (nous)
+Heavy French loanwords are NORMAL and EXPECTED: "qualité", "livraison gratuite", "promo", "garantie", "service", "stock", "famille", "maison", "cadeau".
+Mix freely: "هاد ال produit راه original، توصلك lvr في 48 ساعة، promo limitée!"
+Local cues: Alger, Oran, Constantine, Ramadan, école, dimanche.
+ANTI-EXAMPLE (do NOT do this): "اكتشف منتجنا الجديد بأعلى جودة" — too Fusha.
+GOOD EXAMPLE: "إكتشف الـ produit الجديد متاعنا، rapport qualité-prix رهيب، بزاف ناس عجبهم".`,
+
+  EG: `Egyptian Arabic (مصري) — Cairo dialect. Casual, expressive, direct. NEVER MSA.
+Markers: "أوي" (très), "كده" (comme ça), "ايه" (quoi), "إنت / إنتي", "إحنا", "بقى" (alors), "خالص" (du tout).
+Cultural touchpoints: ramadan, mahragan, cafés in Zamalek.`,
+
+  SA: `Saudi Khaliji (خليجي). For tone "professional", lean toward MSA-ish but keep warm. For "friendly", use full Khaliji.
+Markers: "أبغى" (je veux), "وش" (quoi), "زين" (bien), "هاي / هذي" (ce/cette), "أنت / أنتي".
+Local cues: Vision 2030, Riyadh Park / Mall of Arabia, Hajj / Umrah seasons.`,
+
+  AE: `Emirati Khaliji with English loanwords accepted ("offer", "delivery", "free shipping"). Cosmopolitan, premium tone. Dubai / Abu Dhabi lifestyle.`,
+
+  KW: 'Kuwaiti Khaliji. Use "ابي" (je veux), "شلون" (comment).',
+  QA: 'Qatari Khaliji.',
+  BH: 'Bahraini Khaliji.',
+  OM: 'Omani Arabic, lean toward MSA.',
+
+  JO: `Levantine Jordanian Arabic. Markers: "بدي" (je veux), "هلق" (maintenant), "كيف" (comment), "شو" (quoi), "إنت / إنتي".`,
+  LB: `Lebanese Levantine — casual, warm. Markers: "بدي", "هلق", "شو", "كتير" (beaucoup). French loanwords welcome ("merci", "bonjour").`,
+  PS: 'Palestinian Levantine, similar to Jordanian.',
+  SY: 'Syrian Levantine.',
+
+  IQ: `Iraqi Arabic (عراقي). Markers: "أريد" or "اَكو" (il y a), "ماكو" (il n'y a pas), "هواية" (beaucoup), "إنت / إنتي".`,
+
+  YE: 'Yemeni Arabic / MSA — lean MSA for clarity.',
+  LY: 'Libyan Arabic — markers: "نبي" (je veux), "هكي" (comme ça).',
+  SD: 'Sudanese Arabic — markers: "داير" (je veux), "كده" (comme ça).',
+  MR: 'Hassaniya Arabic / MSA.',
+};
+
+/**
+ * Country-specific photo direction for FLUX. Helps the image model produce
+ * scenes that look local — Tunisian café vs Saudi mall vs Egyptian apartment.
+ */
+const PHOTO_CULTURE: Record<string, string> = {
+  TN: 'modern Tunisian apartment or seaside café (Sidi Bou Said, La Marsa), warm Mediterranean light, bougainvillea, tile patterns',
+  MA: 'Moroccan riad or Casablanca apartment, zellige tiles, warm sunset light, mint tea on a brass tray',
+  DZ: 'Algerian urban apartment (Algiers), warm light, contemporary Maghreb interior',
+  EG: 'modern Cairo apartment, Egyptian woman/man (matching context), warm golden hour light',
+  SA: 'modern Saudi villa or Riyadh mall context, soft natural light, premium minimalist interior',
+  AE: 'luxury Dubai apartment with skyline view, premium minimalist styling, soft daylight',
+  KW: 'modern Kuwaiti home interior',
+  QA: 'modern Qatari home, Doha skyline view',
+  BH: 'modern Bahraini home',
+  OM: 'modern Omani home, Muscat coastal light',
+  JO: 'modern Amman apartment',
+  LB: 'modern Beirut apartment, mountain light',
+  PS: 'modern Palestinian home',
+  SY: 'modern Syrian home',
+  IQ: 'modern Baghdad apartment',
+  FR: 'Parisian apartment with herringbone floors, soft daylight',
+  US: 'modern American living room, natural daylight',
+  GB: 'London apartment with sash window',
+  DE: 'Berlin apartment, minimalist',
+};
+
+function isArabCountry(code?: string): boolean {
+  return !!code && ARAB_COUNTRIES.has(code.toUpperCase());
+}
+
+function deriveLanguage(language: string | undefined, country: string | undefined): string {
+  const lang = (language || '').trim().toLowerCase();
+  if (lang) return lang;
+  if (isArabCountry(country)) return 'ar';
+  return 'en';
+}
+
+function deriveDirection(language: string): 'ltr' | 'rtl' {
+  return RTL_LANGS.has(language.split('-')[0]) ? 'rtl' : 'ltr';
+}
+
+function getDialect(country?: string, language?: string): string {
+  if (!country) {
+    if (language === 'ar') return 'Modern Standard Arabic (فصحى) — neutral pan-Arab tone.';
+    return '';
+  }
+  const code = country.toUpperCase();
+  return DIALECT_MAP[code] || (isArabCountry(code) ? 'Modern Standard Arabic (فصحى).' : '');
+}
+
+function getPhotoCulture(country?: string): string {
+  if (!country) return 'modern, warm natural light, lifestyle photography';
+  return PHOTO_CULTURE[country.toUpperCase()] || 'modern, warm natural light, lifestyle photography';
+}
+
+const LANGUAGE_LABEL: Record<string, string> = {
+  ar: 'Arabic (العربية)',
+  fr: 'French (français)',
+  en: 'English',
+  es: 'Spanish (español)',
+  de: 'German (Deutsch)',
+  it: 'Italian (italiano)',
+  pt: 'Portuguese (português)',
+  he: 'Hebrew (עברית)',
+  fa: 'Persian (فارسی)',
+  ur: 'Urdu (اردو)',
+};
+
+// ─────────────────────────────────────────────────────────────────────
+// Local-image fal helper (unchanged)
+// ─────────────────────────────────────────────────────────────────────
+export async function resolveImageForFal(imageUrl: string): Promise<string> {
+  if (imageUrl.startsWith('data:')) return imageUrl;
+  let url: URL;
+  try { url = new URL(imageUrl); } catch { return imageUrl; }
+  const isLocal =
+    url.hostname === 'localhost' ||
+    url.hostname === '127.0.0.1' ||
+    url.hostname === '0.0.0.0' ||
+    url.hostname.endsWith('.local');
+  if (!isLocal) return imageUrl;
+  const publicPrefix = (process.env.PUBLIC_URL_PREFIX || '/uploads').replace(/\/+$/, '');
+  if (!url.pathname.startsWith(publicPrefix + '/')) return imageUrl;
+  const relKey = url.pathname.slice(publicPrefix.length + 1);
+  const uploadRoot = process.env.UPLOAD_PATH || path.join(process.cwd(), 'uploads');
+  const filePath = path.join(uploadRoot, relKey);
+  const resolved = path.resolve(filePath);
+  if (!resolved.startsWith(path.resolve(uploadRoot))) return imageUrl;
+  const buf = await fs.readFile(resolved);
+  const ext = path.extname(resolved).toLowerCase();
+  const mime = MIME_BY_EXT[ext] || 'application/octet-stream';
+  return `data:${mime};base64,${buf.toString('base64')}`;
+}
+
+export interface ProductInput {
+  name: string;
+  description?: string;
+  price?: number;
+  type?: 'physical' | 'digital';
+  images?: string[];
+}
+
+export interface GenerationContext {
+  language?: string;
+  country?: string;
+  category?: string;
+  priceBefore?: number;
+  priceAfter?: number;
+  currency?: string;
+  pageKind?: 'landing' | 'product';
+}
+
+export interface FalGenerateInput extends GenerationContext {
+  storeName: string;
+  product?: ProductInput;
+  imageCaption?: string;
+  imageUrl?: string;
+  tone?: 'professional' | 'friendly' | 'minimal';
+}
+
+export interface FalGenerateResult {
+  sections: TemplateSection[];
+  seoTitle?: string;
+  seoDescription?: string;
+  imageCaption?: string;
+  language: string;
+  direction: 'ltr' | 'rtl';
+  currency?: string;
+  country?: string;
+  dialect?: string;
+  imagesGenerated?: number;
+}
+
+function generateId(): string {
+  return `sec-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+}
+
+function getFalKey(): string {
+  const key = process.env.FAL_KEY;
+  if (!key) {
+    const err = new Error('FAL_KEY is not configured on the server') as Error & { statusCode?: number };
+    err.statusCode = 500;
+    throw err;
+  }
+  return key;
+}
+
+async function falRequest<T>(
+  model: string,
+  input: Record<string, unknown>,
+  options: { timeoutMs?: number } = {}
+): Promise<T> {
+  const key = getFalKey();
+  const ctrl = new AbortController();
+  const timeoutMs = options.timeoutMs ?? 90_000;
+  const timeout = setTimeout(() => ctrl.abort(), timeoutMs);
+  try {
+    const res = await fetch(`${FAL_BASE}/${model}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Key ${key}`,
+      },
+      body: JSON.stringify(input),
+      signal: ctrl.signal,
+    });
+    if (!res.ok) {
+      const text = await res.text();
+      const err = new Error(`fal.ai ${model} error ${res.status}: ${text}`) as Error & { statusCode?: number };
+      err.statusCode = 502;
+      throw err;
+    }
+    return (await res.json()) as T;
+  } catch (err) {
+    if ((err as Error).name === 'AbortError') {
+      const e = new Error(`fal.ai ${model} timeout after ${timeoutMs}ms`) as Error & { statusCode?: number };
+      e.statusCode = 504;
+      throw e;
+    }
+    throw err;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+/**
+ * Caption an image with Florence-2. Times out at 15s — captioning is a
+ * "nice to have" context for the LLM, not load-bearing. The pipeline
+ * tolerates an empty caption gracefully.
+ */
+export async function captionImage(imageUrl: string): Promise<string> {
+  const resolved = await resolveImageForFal(imageUrl);
+  const out = await falRequest<{ results?: { '<MORE_DETAILED_CAPTION>'?: string; '<DETAILED_CAPTION>'?: string; '<CAPTION>'?: string } }>(
+    'fal-ai/florence-2-large/more-detailed-caption',
+    { image_url: resolved },
+    { timeoutMs: 15_000 }
+  );
+  const r = out.results || {};
+  return (r['<MORE_DETAILED_CAPTION>'] || r['<DETAILED_CAPTION>'] || r['<CAPTION>'] || '').trim();
+}
+
+/**
+ * Caption multiple product images in parallel and merge into a single
+ * "what the LLM sees" description. Failures don't break the pipeline —
+ * the LLM just gets less visual context.
+ */
+async function captionProductImages(images: string[], max = 3): Promise<string> {
+  const subset = images.slice(0, max);
+  if (subset.length === 0) return '';
+  const captions = await Promise.all(
+    subset.map(async (url) => {
+      try {
+        const c = await captionImage(url);
+        return c.length > 0 ? c : null;
+      } catch (err) {
+        console.warn(`[landing-gen] caption failed for ${url.slice(0, 60)}:`, (err as Error).message);
+        return null;
+      }
+    })
+  );
+  const list = captions.filter((c): c is string => !!c);
+  if (list.length === 0) return '';
+  return list.map((c, i) => `Image ${i + 1}: ${c}`).join('\n');
+}
+
+const LLM_MODEL = process.env.FAL_LLM_MODEL || 'anthropic/claude-sonnet-4.5';
+
+/**
+ * Run the strategic LLM through fal's any-llm proxy. Claude 3.5 Sonnet by
+ * default — much better than Gemini Flash at dialect copy and large JSON
+ * outputs.
+ */
+export async function runLLM(prompt: string): Promise<string> {
+  const out = await falRequest<{ output?: string }>('fal-ai/any-llm', {
+    model: LLM_MODEL,
+    prompt,
+  });
+  return (out.output || '').trim();
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// PROMPT v2 — dialect-precise + image prompt slots
+// ─────────────────────────────────────────────────────────────────────
+function buildPrompt(input: FalGenerateInput, language: string, direction: 'ltr' | 'rtl'): string {
+  const {
+    storeName,
+    product,
+    imageCaption,
+    tone = 'professional',
+    country,
+    category,
+    priceBefore,
+    priceAfter,
+    currency,
+    pageKind = 'landing',
+  } = input;
+
+  const productBlock = product
+    ? [
+        `Product name: ${product.name}`,
+        product.description ? `Product description: ${product.description}` : '',
+        product.type ? `Product type: ${product.type}` : '',
+        product.images?.length ? `Product images already provided: ${product.images.length}` : '',
+      ].filter(Boolean).join('\n')
+    : 'No product data provided.';
+
+  const cur = currency || '';
+  const fmt = (n?: number) => (typeof n === 'number' ? `${n}${cur ? ' ' + cur : ''}` : '');
+  const hasDiscount =
+    typeof priceBefore === 'number' && typeof priceAfter === 'number' && priceBefore > priceAfter;
+  const discountPct = hasDiscount ? Math.round(((priceBefore! - priceAfter!) / priceBefore!) * 100) : 0;
+
+  const priceLines = [
+    typeof priceBefore === 'number' ? `Original price (before): ${fmt(priceBefore)}` : '',
+    typeof priceAfter  === 'number' ? `Sale price (after): ${fmt(priceAfter)}` : '',
+    hasDiscount ? `Discount: -${discountPct}%` : '',
+  ].filter(Boolean).join('\n');
+
+  const langLabel = LANGUAGE_LABEL[language] || language;
+  const dialect = getDialect(country, language);
+  const photoCulture = getPhotoCulture(country);
+  const arabHint = direction === 'rtl'
+    ? '\n- Page is RTL. Phrase naturally — never transliterate.'
+    : '';
+
+  const isArabicDialect = direction === 'rtl' && language.startsWith('ar') && !!dialect;
+  const audienceLines = [
+    `Output language: ${langLabel}.`,
+    dialect ? `Dialect & cultural register (MANDATORY — do not write in MSA / Fusha):\n${dialect}` : '',
+    country ? `Target market: ${country}.` : '',
+    category ? `Niche: ${category}.` : '',
+    `Direction: ${direction}.`,
+  ].filter(Boolean).join('\n');
+
+  const productImagesProvided = (product?.images?.length || 0) > 0;
+
+  const sectionsSchema = `
+Return between 9 and 14 sections in this preferred order: hero, features, steps, stats, gallery, product, brands, testimonials, video, pricing, cod-form, faq, cta, footer.
+
+For sections that need images, output an "imagePrompt" field — a short ENGLISH description (under 35 words) of a photorealistic, editorial-grade scene. The pipeline turns each imagePrompt into an actual image via FLUX. NEVER write Arabic text inside imagePrompt — image models do that poorly. Describe the scene visually only.
+
+# Image direction — MAKE THE PHOTOS MODERN, BOLD AND CINEMATIC
+Cultural anchor: ${photoCulture}.
+Universal modifiers (append to EVERY imagePrompt unless contradicted):
+  "shot on Sony A7 IV with 50mm prime, f/1.8, golden hour soft light or moody sidelight,
+   editorial fashion photography, magazine cover composition, rich shadows, cinematic color grade,
+   shallow depth of field, 8k, ultra detailed, no text, no logos, no watermark".
+Vary scene types across the page so it doesn't feel repetitive: choose from
+  • close-up product detail (macro, dramatic lighting)
+  • lifestyle scene with hands (in use, contextual)
+  • environmental / setting shot (room, café, market — no people)
+  • full-frame model wearing/holding the product (cropped, editorial pose)
+  • flat-lay overhead with complementary props
+  • bento / collage style mood board piece
+Avoid: stock-photo blandness, white seamless backgrounds, generic smiling faces, beige rooms,
+  cliché composition (centered subject + blurred bg). Push for ASYMMETRIC framing,
+  intentional negative space, ONE strong focal point, and a clear color story per scene.
+
+Per-section schema:
+
+- "hero" props: { "title", "subtitle", "ctaText", "ctaSecondary"?, "badge"?, "layout": "split", "imagePrompt": "lifestyle scene of someone using/wearing/holding the product, ${photoCulture}, photorealistic, no text" }
+  Title 6–11 words, benefit-driven. Subtitle 1–2 sentences.
+  ${productImagesProvided ? 'IMPORTANT: a product photo is provided — set hero.imageUrl to "__PRODUCT_IMAGE_0__" (literal placeholder) AND keep imagePrompt for a fallback lifestyle hero.' : ''}
+
+- "features" props: { "title", "subtitle", "items": [{ "title", "description", "icon" }] }
+  4–6 items. Icon ∈ {"check","shield","truck","clock","star","heart","sparkles","zap","gift","leaf","award","crown","lock","refresh","headphones"}.
+
+- "stats" props: { "title"?, "items": [{ "value", "label" }] } — 3–4 believable numbers.
+
+- "gallery" props: { "title"?, "subtitle"?, "imagePrompts": ["scene 1", "scene 2", "scene 3", "scene 4"] }
+  4 short ENGLISH prompts for varied lifestyle/usage shots in the local culture. The pipeline turns them into images.
+
+- "product" props: {
+    "name", "tagline", "priceBefore"?, "priceAfter"?, "currency"?, "discountPct"?,
+    "highlights": [4–6 short bullets, 4–8 words each],
+    "ctaText", "trustBadges"?: [...] (e.g. "دفع عند الاستلام", "شحن مجاني" for AR markets),
+    "rating"?: 4.7, "reviewCount"?: 1240
+    ${productImagesProvided ? ',\n    "imageUrl": "__PRODUCT_IMAGE_0__", "gallery": ["__PRODUCT_IMAGE_0__", "__PRODUCT_IMAGE_1__", ...]' : ',\n    "imagePrompt": "close-up product hero shot, studio lighting, premium feel, no text"'}
+  }
+
+- "brands" props: { "title"?, "items": [{ "name" }] } — 4–6 plausible local media outlet names.
+
+- "testimonials" props: { "title", "items": [{ "quote", "author", "role"?, "rating"?, "imagePrompt": "headshot of a smiling [age range] [gender] [country origin], natural light, photorealistic, no text" }] }
+  3 items. Authors must be plausible names for ${country || 'the target country'}. Quotes 2–3 sentences, specific.
+
+- "video" props: { "title"?, "subtitle"?, "imagePrompt": "cinematic lifestyle still as video poster, ${photoCulture}, photorealistic" } — optional.
+
+- "steps" props: { "title", "subtitle"?, "items": [{ "title", "description", "icon" }] }
+  3 numbered steps explaining how the product / service works — e.g. "Choose your size", "Place your order with cash on delivery", "Receive in 48h". Use the same icon set as "features".
+
+- "pricing" props: { "title", "subtitle"?, "plans": [{ "name", "price", "period"?, "features": [...], "ctaText", "highlight"? }] } — 1 plan for single product, 2–3 for SaaS.
+
+- "faq" props: { "title", "items": [{ "question", "answer" }] } — 5 items addressing real local objections.
+
+- "cta" props: { "title", "subtitle", "buttonText", "secondaryText"?, "urgency"? }
+
+- "cod-form" props: {
+    "title": "...", "subtitle"?: "...", "submitLabel"?: "...", "reassurance"?: "...",
+    "productSlug"?: "<slug-of-the-product-this-form-orders, OR omit to use the page's primary product>",
+    "showEmail"?: true, "requireEmail"?: false,
+    "showPostalCode"?: <true if MA/TN/DZ — otherwise false>,
+    "showState"?: <true if DZ (wilaya) or large country>,
+    "showNotes"?: true, "showQuantity"?: true
+  }
+  Inline cash-on-delivery order form. Use this section on physical-product landing pages
+  near the bottom (after testimonials, before faq). Title should be punchy, e.g. "Commandez maintenant"
+  or "اطلب الآن — الدفع عند الاستلام". Subtitle reinforces no-prepayment trust.
+
+- "footer" props: { "brandName", "tagline"?, "links": [{ "label", "href" }], "socials"?: [{ "name", "href" }], "paymentMethods"?: [...] }
+  For Arab markets, paymentMethods should include "cod" (cash on delivery) which is the dominant method.
+`;
+
+  const productPageRules = pageKind === 'product'
+    ? '\nThis is a PRODUCT detail page. Order: hero (split, with product image) → product → gallery → features → stats → testimonials → cod-form → faq → cta → footer.\nMUST include "cod-form" right after testimonials so the buyer can order without leaving the page. The cod-form productSlug should match the product on this page.'
+    : '\nThis is a LANDING page for a single offer. Order: hero → features → stats → gallery → product → testimonials → brands → cod-form → faq → cta → footer.\nFor physical-product landings ALWAYS include a "cod-form" section before the faq — that is the actual conversion point.';
+
+  const imageBlock = imageCaption
+    ? `\n# Visual context — what the product photo(s) actually show
+You CAN see the product. Vision system describes the photo as:
+"""
+${imageCaption}
+"""
+Anchor your copy in these CONCRETE visual details — the actual color, material, size, packaging, environment shown. Do NOT invent unrelated visuals. If the photo shows a leather wallet on wood, write about that wallet, that leather, that tone — not generic "products".`
+    : '';
+
+  // ──────── Arabic few-shots (only injected when targeting Arab market) ────────
+  // Real ad-creative copy patterns. The LLM is told to MIMIC the structure and
+  // tone, NOT copy the words. This is the single biggest quality lever for
+  // dialect-correct, conversion-focused Arabic copy.
+  const arabFewShots = isArabicDialect ? `
+# 📝 Few-shot: voici comment écrit un bon copywriter dropshipping arabe (style à imiter, PAS à copier)
+
+Hero (Algérie, Darija):
+  title: "اللي كاينة في الديار توصلكم في 48 ساعة"
+  subtitle: "اكتشف الـ produit اللي عجب بزاف ناس في الجزائر — qualité ممتازة و livraison gratuite حتى الباب."
+  ctaText: "اطلب دروك (paiement à la livraison)"
+
+Hero (Tunisie, Derja):
+  title: "العرض اللي ينتظرو الكل، توا متاعك."
+  subtitle: "بَرشة عائلات تونسية تستعمل الـ produit هذا. توصلك ل dar في 48 ساعة، قابل للtester قبل ما تخلص."
+  ctaText: "اطلب توا · livraison gratuite"
+
+Features item (Maroc, Darija):
+  title: "جودة كتعمر"
+  description: "Matériaux ديال الجودة، خدامة ل سنين. هاد الـ produit راه فيه garantie سنة كاملة."
+
+Testimonial (Saoudi, Khaliji):
+  quote: "صراحة فاجأني المنتج، الجودة ممتازة وأنا أمي اشتري له صديقاتي بعد ما شفته."
+  author: "نورة الشمري"
+  role: "ربة بيت — الرياض"
+
+CTA section (Égypte, Masri):
+  title: "اطلبه دلوقتي قبل ما يخلص!"
+  subtitle: "آخر 50 قطعة في المخزون — الدفع عند الاستلام والشحن مجاني لكل المحافظات."
+  buttonText: "اطلب دلوقتي"
+  urgency: "عرض محدود · ينتهي قريب"
+
+FAQ (Algérie, Darija):
+  question: "كيفاش ندفع؟"
+  answer: "تقدر تدفع cash à la livraison ملي يوصلك الكولي للديار، ولا par carte بان كاش transaction sécurisée."
+
+# 🚫 ANTI-PATTERNS — ne JAMAIS écrire comme ça (trop Fusha / trop générique):
+  ❌ "اشترِ الآن منتجنا الفاخر بأعلى جودة"  (verbe-initial classique, "الآن", "الفاخر")
+  ❌ "احصل على أفضل المنتجات"               (forme impérative MSA "احصل على")
+  ❌ "نحن نقدم لكم أرقى الخدمات"            (formel, vide, pas de spécifique)
+  ❌ "اكتشف عالم الجمال مع منتجاتنا"        (cliché publicitaire, aucune sensation)
+
+# ✅ PRINCIPES de copy (à appliquer dans CHAQUE section):
+  - PARLE comme sur Facebook/WhatsApp, pas comme un journal de presse
+  - 2ème personne directe ("إنتي", "نتا", "إنت") — JAMAIS de "نحن نقدم"
+  - SPÉCIFIQUE: prix, durée (48h, 7 jours), nombres (1500 client), bénéfice concret
+  - SENSORIEL: décris la sensation/usage, pas l'abstraction
+  - URGENCE crédible: "آخر X قطعة", "ينتهي السبت", PAS "اشتري بسرعة"
+  - Mots français intégrés QUAND la dialect_map le permet (Maghreb surtout)
+  - Questions rhétoriques OK pour le hero/cta — donne du rythme conversationnel
+` : '';
+
+  return `You are a senior conversion copywriter and dropshipping landing-page strategist. You write copy that sells — specific, sensory, culturally native — in the EXACT dialect of the target country. You output ONE valid JSON object only.
+
+# Brand
+Store: ${storeName}
+Tone: ${tone}
+
+# Audience
+${audienceLines}
+
+# Page kind
+${pageKind}${productPageRules}
+
+# Product
+${productBlock}
+${priceLines ? `\n# Pricing\n${priceLines}` : ''}${imageBlock}
+${arabFewShots}
+# Section schema
+${sectionsSchema}
+
+# Output (return ONLY this JSON, no markdown, no commentary)
+{
+  "sections": [ { "type": "hero", "props": { ... } }, ... ],
+  "seoTitle": "string ≤60 chars",
+  "seoDescription": "string ≤155 chars"
+}
+
+# Hard rules
+- Strict JSON. No trailing commas. No code fences.
+- ALL human-readable copy in ${langLabel}${dialect ? ` (dialect: ${dialect.split(/[.\n]/)[0]})` : ''}.${arabHint}
+${isArabicDialect ? `- DIALECT IS NON-NEGOTIABLE. Re-read the dialect block above before writing each section. After drafting, scan your output for any Fusha forms (e.g. "اشترِ", "احصل على", "الذي", verb-initial sentences with classical conjugation) and REWRITE them in ${country?.toUpperCase() || 'the target'} dialect with the markers listed.\n- French loanwords are encouraged where the dialect block lists them — DO NOT translate them to Arabic equivalents.` : ''}
+- ALL "imagePrompt" / "imagePrompts" fields stay in ENGLISH (image model needs English).
+- 9 to 13 sections. Start with "hero", end with "footer". Always include "cta" near the end.
+- NEVER invent a filename or URL. The ONLY allowed values for "imageUrl", "posterUrl", "avatarUrl", "images", "gallery" are: an http(s):// URL we already gave you, OR the literal placeholder "__PRODUCT_IMAGE_N__". For every other case, OMIT the field entirely and use "imagePrompt" / "imagePrompts" instead.
+${hasDiscount ? `- Mention savings (-${discountPct}%) and strikethrough ${fmt(priceBefore)} → ${fmt(priceAfter)} in hero AND cta.` : ''}
+- Specificity > generic. Every benefit concrete. No filler ("amazing", "the best") without proof.
+- Testimonial author names native to ${country || 'the target country'}.
+- For Arab markets, default trust badges & FAQ should address: cash on delivery (الدفع عند الاستلام), free shipping (شحن مجاني), 7-day returns, original product authenticity.`;
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// JSON parsing & section normalization (now with image-prompt extraction)
+// ─────────────────────────────────────────────────────────────────────
+interface RawAiResult {
+  sections?: Array<{ type?: string; props?: Record<string, unknown> }>;
+  seoTitle?: string;
+  seoDescription?: string;
+}
+
+function parseLLMJson(content: string): RawAiResult {
+  const cleaned = content
+    .replace(/^```(?:json)?\s*/i, '')
+    .replace(/\s*```\s*$/i, '')
+    .trim();
+  try { return JSON.parse(cleaned); } catch { /* fall through */ }
+  const m = cleaned.match(/\{[\s\S]*\}/);
+  if (m) {
+    try { return JSON.parse(m[0]); } catch { /* fall through */ }
+  }
+  const err = new Error('AI returned invalid JSON') as Error & { statusCode?: number };
+  err.statusCode = 502;
+  throw err;
+}
+
+const ALLOWED_TYPES = new Set([
+  'hero','features','stats','gallery','product','products','brands','video','pricing','testimonials','steps','cta','faq','footer',
+]);
+
+/**
+ * Recognize well-formed image URLs (real ones we can render). Anything else
+ * (e.g. "hero-image.png" invented by the LLM) is treated as missing so the
+ * pipeline either generates an AI image or falls back to a product image.
+ */
+function isRealImageUrl(u: unknown): u is string {
+  if (typeof u !== 'string' || !u) return false;
+  return /^(https?:|data:|blob:)/i.test(u) || u.startsWith('/uploads/');
+}
+
+/**
+ * Replace literal "__PRODUCT_IMAGE_N__" placeholders with the real product
+ * image URLs. Drops any other invented URL that doesn't look real. Walks
+ * known image-bearing keys (imageUrl / posterUrl / avatarUrl / images / gallery)
+ * so we don't accidentally rewrite text content like product names.
+ */
+const IMAGE_KEYS = new Set(['imageUrl', 'posterUrl', 'avatarUrl', 'image']);
+const IMAGE_LIST_KEYS = new Set(['images', 'gallery']);
+
+function resolveProductPlaceholders(value: unknown, images: string[], parentKey?: string): unknown {
+  if (typeof value === 'string') {
+    const m = value.match(/^__PRODUCT_IMAGE_(\d+)__$/);
+    if (m) return images[Number(m[1])] || images[0] || '';
+    // If the parent key is an image key but the value isn't a valid URL,
+    // drop it (return empty) so the AI image-gen / product fallback kicks in.
+    if (parentKey && IMAGE_KEYS.has(parentKey) && !isRealImageUrl(value)) return '';
+    return value;
+  }
+  if (Array.isArray(value)) {
+    const mapped = value.map((v) => resolveProductPlaceholders(v, images, parentKey));
+    if (parentKey && IMAGE_LIST_KEYS.has(parentKey)) {
+      return mapped.filter((u) => isRealImageUrl(u));
+    }
+    return mapped;
+  }
+  if (value && typeof value === 'object') {
+    const out: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+      out[k] = resolveProductPlaceholders(v, images, k);
+    }
+    return out;
+  }
+  return value;
+}
+
+interface ImageSlot {
+  /** Setter that injects the URL once the image is generated. */
+  apply: (url: string) => void;
+  /** Prompt for the image model. */
+  prompt: string;
+  /** Hint for sizing / model selection. */
+  kind: 'hero' | 'gallery' | 'product' | 'avatar' | 'video' | 'generic';
+  /**
+   * If set, the slot is generated via image-to-image so the output contains
+   * THIS exact reference product. Used for hero & gallery so the AI variants
+   * actually feature the user's product, not random images.
+   */
+  referenceImage?: string;
+}
+
+/**
+ * Walk the section list, find every imagePrompt / imagePrompts field, and
+ * return a list of slots whose apply() will inject a generated URL.
+ *
+ * When productImage is provided:
+ *   - hero / gallery / product slots get it as `referenceImage` so they're
+ *     generated via image-to-image (Nano Banana Edit) and contain THE
+ *     SAME product the user uploaded.
+ *   - testimonial avatars and video posters skip the reference (they're
+ *     people / scenes, not the product).
+ */
+function collectImageSlots(
+  sections: Array<{ type: string; props: Record<string, unknown> }>,
+  productImage?: string
+): ImageSlot[] {
+  const slots: ImageSlot[] = [];
+
+  for (const sec of sections) {
+    const p = sec.props;
+    if (!p || typeof p !== 'object') continue;
+
+    // hero / video / product / generic single-image slot
+    if (typeof p.imagePrompt === 'string' && !p.imageUrl) {
+      const prompt = p.imagePrompt;
+      const kind: ImageSlot['kind'] =
+        sec.type === 'hero' ? 'hero' :
+        sec.type === 'video' ? 'video' :
+        sec.type === 'product' ? 'product' : 'generic';
+      const useRef = productImage && (kind === 'hero' || kind === 'product' || kind === 'generic');
+      slots.push({
+        prompt,
+        kind,
+        referenceImage: useRef ? productImage : undefined,
+        apply: (url) => {
+          if (sec.type === 'video') p.posterUrl = url;
+          else p.imageUrl = url;
+        },
+      });
+    }
+
+    // gallery: multiple images — every gallery slot uses the product as ref
+    if (sec.type === 'gallery' && Array.isArray(p.imagePrompts) && (!Array.isArray(p.images) || p.images.length === 0)) {
+      const prompts = (p.imagePrompts as unknown[]).filter((x) => typeof x === 'string') as string[];
+      const urls: (string | null)[] = new Array(prompts.length).fill(null);
+      p.images = urls; // placeholder slot, finalized after generation
+      prompts.forEach((prompt, idx) => {
+        slots.push({
+          prompt,
+          kind: 'gallery',
+          referenceImage: productImage,
+          apply: (url) => { urls[idx] = url; },
+        });
+      });
+    }
+
+    // testimonials: per-item avatar (NEVER uses product reference — these are people)
+    if (sec.type === 'testimonials' && Array.isArray(p.items)) {
+      (p.items as Array<Record<string, unknown>>).forEach((item) => {
+        if (typeof item.imagePrompt === 'string' && !item.avatarUrl) {
+          const prompt = item.imagePrompt;
+          slots.push({
+            prompt,
+            kind: 'avatar',
+            apply: (url) => { item.avatarUrl = url; },
+          });
+        }
+      });
+    }
+  }
+  return slots;
+}
+
+const ASPECT_FOR_KIND: Record<ImageSlot['kind'], 'square' | 'portrait' | 'landscape' | 'wide'> = {
+  hero:    'wide',
+  gallery: 'square',
+  product: 'square',
+  avatar:  'portrait',
+  video:   'wide',
+  generic: 'square',
+};
+
+async function buildImageGenInput(slot: ImageSlot): Promise<ImageGenInput> {
+  const aspect = ASPECT_FOR_KIND[slot.kind];
+  const styleSuffix = ', photorealistic, natural daylight, shallow depth of field, lifestyle photography, no text, no logos, no watermark';
+  const promptLooksClean = /no text|photoreal/i.test(slot.prompt);
+  const finalPrompt = promptLooksClean ? slot.prompt : slot.prompt + styleSuffix;
+
+  // If reference image is a relative /uploads/... path, fal.ai cannot fetch
+  // localhost — convert it to a base64 data URL so fal receives the bytes.
+  let referenceImages: string[] | undefined;
+  if (slot.referenceImage) {
+    try {
+      const resolved = await resolveImageForFal(slot.referenceImage);
+      referenceImages = [resolved];
+    } catch (err) {
+      console.warn('[image-gen] could not resolve reference image, falling back to text-to-image:', (err as Error).message);
+    }
+  }
+
+  return {
+    prompt: finalPrompt,
+    aspect,
+    model: slot.kind === 'avatar' ? getAvatarModel() : undefined,
+    negativePrompt: 'text, watermark, logo, deformed, blurry, lowres, ugly, extra fingers, distorted face',
+    referenceImages,
+  };
+}
+
+/**
+ * Cleanup pass: prune internal fields, resolve gallery placeholders,
+ * fall back to product images when AI didn't generate any.
+ */
+function finalize(
+  sections: Array<{ type: string; props: Record<string, unknown> }>,
+  fallbackProduct?: ProductInput,
+  currency?: string
+): TemplateSection[] {
+  const productImages = fallbackProduct?.images?.filter((u) => typeof u === 'string' && u.length > 0) || [];
+  const firstImage = productImages[0];
+
+  for (const sec of sections) {
+    const p = sec.props;
+    // Strip imagePrompt-style fields from the final output (already consumed)
+    delete p.imagePrompt;
+    delete p.imagePrompts;
+    if (sec.type === 'testimonials' && Array.isArray(p.items)) {
+      (p.items as Array<Record<string, unknown>>).forEach((it) => { delete it.imagePrompt; });
+    }
+
+    // Inject currency
+    if ((sec.type === 'product' || sec.type === 'pricing') && currency && !p.currency) {
+      p.currency = currency;
+    }
+
+    // Gallery: filter nulls
+    if (sec.type === 'gallery' && Array.isArray(p.images)) {
+      p.images = (p.images as Array<string | null>).filter((u) => typeof u === 'string' && u.length > 0);
+      if ((p.images as string[]).length === 0 && productImages.length > 0) {
+        p.images = productImages;
+      }
+    }
+
+    // Hero / product fallback to product image
+    if (sec.type === 'hero' && firstImage && !p.imageUrl) {
+      p.imageUrl = firstImage;
+      if (!p.layout) p.layout = 'split';
+    }
+    if (sec.type === 'product') {
+      if (!p.imageUrl && firstImage) p.imageUrl = firstImage;
+      if (!Array.isArray(p.gallery) && productImages.length > 0) p.gallery = productImages;
+    }
+  }
+
+  // If we ended up with no visual section at all and product images exist, splice one
+  if (productImages.length > 0) {
+    const hasVisual = sections.some(
+      (s) => s.type === 'gallery' || (s.type === 'product' && s.props.imageUrl) || (s.type === 'hero' && s.props.imageUrl)
+    );
+    if (!hasVisual) {
+      const heroIdx = sections.findIndex((s) => s.type === 'hero');
+      const gallerySection = { type: 'gallery', props: { images: productImages } };
+      if (heroIdx >= 0) sections.splice(heroIdx + 1, 0, gallerySection);
+      else sections.unshift(gallerySection);
+    }
+  }
+
+  return sections.map((s, i) => ({
+    id: generateId(),
+    type: s.type,
+    order: i,
+    props: s.props,
+  }));
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// Public API
+// ─────────────────────────────────────────────────────────────────────
+/**
+ * Pre-fill ONLY the product detail section with the raw product image (it
+ * shows the unaltered photo). Hero / gallery slots are intentionally left
+ * empty so the pipeline generates AI VARIANTS of the same product via
+ * image-to-image (Nano Banana Edit) — placing the product into lifestyle
+ * scenes, studio shots, flatlays, etc.
+ */
+function injectProductImagesFirst(
+  sections: Array<{ type: string; props: Record<string, unknown> }>,
+  productImages: string[]
+): void {
+  if (productImages.length === 0) return;
+  const first = productImages[0];
+
+  for (const sec of sections) {
+    const p = sec.props;
+    if (!p || typeof p !== 'object') continue;
+
+    // Product detail: shows the unaltered photo (left side of the section).
+    if (sec.type === 'product') {
+      if (!p.imageUrl) p.imageUrl = first;
+      const existing = Array.isArray(p.gallery)
+        ? (p.gallery as unknown[]).filter((u) => typeof u === 'string' && u) as string[]
+        : [];
+      if (existing.length === 0) p.gallery = productImages;
+      delete p.imagePrompt;
+    }
+
+    // Hero: ensure split layout when we'll have an image (AI-generated)
+    if (sec.type === 'hero' && !p.layout) {
+      p.layout = 'split';
+    }
+  }
+}
+
+/**
+ * Fallback image-prompt synthesizer. Runs AFTER injectProductImagesFirst.
+ *
+ * When the user provided a product image, prompts are REWRITTEN as
+ * image-to-image instructions ("place this exact product in […]"). The
+ * pipeline routes those to Nano Banana Edit so the output contains the
+ * SAME product, in different scenes / styles.
+ */
+function synthesizeMissingPrompts(
+  sections: Array<{ type: string; props: Record<string, unknown> }>,
+  product: ProductInput | undefined,
+  country: string | undefined
+): void {
+  const productName = product?.name || 'product';
+  const productDesc = product?.description ? product.description.slice(0, 120) : '';
+  const culture = getPhotoCulture(country);
+  const subject = `${productName}${productDesc ? ` (${productDesc})` : ''}`;
+  // When a product image is available, generation will be img-to-img —
+  // wording must reference "this exact product", not describe a new one.
+  const hasRef = (product?.images?.filter((u) => typeof u === 'string' && u.length > 0).length || 0) > 0;
+  const productPhrase = hasRef ? 'the exact product shown in the reference image' : `a ${subject}`;
+
+  for (const sec of sections) {
+    const p = sec.props;
+    if (!p || typeof p !== 'object') continue;
+
+    // HERO — wide lifestyle scene featuring the product
+    if (sec.type === 'hero' && !p.imagePrompt && !p.imageUrl) {
+      p.imagePrompt = hasRef
+        ? `Place ${productPhrase} as the main subject in a wide lifestyle scene: ${culture}. Keep the product visually identical (same shape, color, materials, branding). A person ${culture.includes('Mediterranean') || culture.includes('Tunisian') ? 'enjoying it' : 'happily using it'}. Cinematic composition, photorealistic, soft natural daylight, shallow depth of field, no text, no watermark.`
+        : `lifestyle hero shot of someone happily using a ${subject}, ${culture}, photorealistic, natural daylight, shallow depth of field, no text, no watermark`;
+      if (!p.layout) p.layout = 'split';
+    }
+
+    // GALLERY — 4 typed variants (studio / lifestyle / flatlay / mockup)
+    if (sec.type === 'gallery') {
+      const hasImages = Array.isArray(p.images) && (p.images as unknown[]).filter((u) => typeof u === 'string' && u).length > 0;
+      const hasPrompts = Array.isArray(p.imagePrompts) && (p.imagePrompts as unknown[]).filter((s) => typeof s === 'string' && s).length > 0;
+      if (!hasImages && !hasPrompts) {
+        if (hasRef) {
+          p.imagePrompts = [
+            // Studio
+            `Studio shot of ${productPhrase} on a clean gradient backdrop, premium soft lighting, product perfectly centered, photorealistic, no text, no logos.`,
+            // Lifestyle (country-specific)
+            `${productPhrase} placed naturally in this scene: ${culture}. Show genuine usage context. Photorealistic, soft daylight, shallow depth of field, no text.`,
+            // Flatlay
+            `Top-down flatlay of ${productPhrase} on a marble or linen surface, surrounded by elegant complementary objects (cup, leaf, fabric), soft daylight, photorealistic, no text.`,
+            // Mockup / context
+            `Close-up macro shot of ${productPhrase} highlighting a beautiful detail (texture, material, finish), shallow depth of field, photorealistic, no text.`,
+          ];
+        } else {
+          p.imagePrompts = [
+            `close-up detail shot of a ${subject}, ${culture}, photorealistic, no text`,
+            `${subject} in use during daily routine, ${culture}, photorealistic, no text`,
+            `${subject} styled flat-lay on a marble surface, soft daylight, photorealistic, no text`,
+            `${subject} as a thoughtful gift, hands holding it, ${culture}, photorealistic, no text`,
+          ];
+        }
+      }
+    }
+
+    // PRODUCT (rare path: only when injectProductImagesFirst didn't run)
+    if (sec.type === 'product' && !p.imagePrompt && !p.imageUrl) {
+      p.imagePrompt = `studio product hero shot of a ${subject}, premium feel, soft gradient backdrop, photorealistic, no text, no logos`;
+    }
+
+    // TESTIMONIALS — avatars, NO product reference (these are people)
+    if (sec.type === 'testimonials' && Array.isArray(p.items)) {
+      (p.items as Array<Record<string, unknown>>).forEach((it, idx) => {
+        if (!it.imagePrompt && !it.avatarUrl) {
+          const gender = idx % 2 === 0 ? 'woman' : 'man';
+          const age = ['28', '34', '42'][idx % 3];
+          const heritage = country ? `${country.toUpperCase()} origin` : 'mixed heritage';
+          it.imagePrompt = `headshot portrait of a smiling ${age} year old ${gender} with ${heritage}, natural daylight, soft background, photorealistic, no text`;
+        }
+      });
+    }
+  }
+}
+
+/** Optional progress callback for async job tracking. 4 named steps. */
+export type PipelineStep = 'analyze' | 'copy' | 'images' | 'assemble';
+export type PipelineProgress = (u: { step: PipelineStep; status: 'running' | 'done' | 'failed' }) => void | Promise<void>;
+
+async function runFullPipeline(
+  input: FalGenerateInput,
+  language: string,
+  direction: 'ltr' | 'rtl',
+  onProgress?: PipelineProgress
+): Promise<FalGenerateResult> {
+  const t0 = Date.now();
+  console.log(`[landing-gen] start kind=${input.pageKind} country=${input.country} lang=${language} llm=${LLM_MODEL}`);
+  const tick = async (step: PipelineStep, status: 'running' | 'done' | 'failed') => {
+    if (onProgress) {
+      try { await onProgress({ step, status }); } catch { /* progress errors must not block the pipeline */ }
+    }
+  };
+
+  // STEP 0 — multimodal: caption product images so the LLM can "see" what's on
+  // the photo (fal any-llm doesn't accept image input, so we use Florence-2
+  // as a vision-to-text bridge).
+  await tick('analyze', 'running');
+  const productImagesForCaptioning = input.product?.images?.filter((u) => typeof u === 'string' && u.length > 0) || [];
+  if (productImagesForCaptioning.length > 0 && !input.imageCaption) {
+    try {
+      const merged = await captionProductImages(productImagesForCaptioning);
+      if (merged) {
+        input = { ...input, imageCaption: merged };
+        console.log(`[landing-gen] product captioning ok (${merged.length} chars across ${productImagesForCaptioning.length} img)`);
+      }
+    } catch (err) {
+      console.warn('[landing-gen] product captioning failed (non-fatal):', (err as Error).message);
+    }
+  }
+  await tick('analyze', 'done');
+
+  // STEP 1 — strategic LLM
+  await tick('copy', 'running');
+  const prompt = buildPrompt(input, language, direction);
+  let raw: string;
+  try {
+    raw = await runLLM(prompt);
+  } catch (err) {
+    console.error('[landing-gen] LLM failed:', (err as Error).message);
+    throw err;
+  }
+  const t1 = Date.now();
+  console.log(`[landing-gen] LLM ok in ${t1 - t0}ms (${raw.length} chars)`);
+
+  let parsed: RawAiResult;
+  try {
+    parsed = parseLLMJson(raw);
+  } catch (err) {
+    console.error('[landing-gen] JSON parse failed. First 400 chars of LLM output:\n', raw.slice(0, 400));
+    throw err;
+  }
+  console.log(`[landing-gen] parsed sections: ${parsed.sections?.length ?? 0}`);
+  await tick('copy', 'done');
+
+  const productImages = input.product?.images?.filter((u) => typeof u === 'string' && u.length > 0) || [];
+
+  // Whitelist + replace product placeholders + drop bad sections
+  const sections = (parsed.sections || [])
+    .filter((s) => s && typeof s.type === 'string' && ALLOWED_TYPES.has(s.type as string))
+    .map((s) => ({
+      type: s.type as string,
+      props: resolveProductPlaceholders((s.props && typeof s.props === 'object') ? s.props : {}, productImages) as Record<string, unknown>,
+    }));
+
+  // Inject the user's real product images FIRST (priority over AI generation),
+  // then synthesize prompts only for slots that are still empty.
+  injectProductImagesFirst(sections, productImages);
+  synthesizeMissingPrompts(sections, input.product, input.country);
+
+  // STEP 2 — image generation (parallel) — gated by env
+  await tick('images', 'running');
+  const imagesEnabled = (process.env.LANDING_AI_IMAGES_ENABLED || 'true').toLowerCase() !== 'false';
+  let imagesGenerated = 0;
+  if (imagesEnabled) {
+    const productImageRef = productImages[0];
+    const slots = collectImageSlots(sections, productImageRef);
+    const refCount = slots.filter((s) => s.referenceImage).length;
+    console.log(`[landing-gen] image slots collected: ${slots.length} (${refCount} with product reference for img2img)`);
+    if (slots.length > 0) {
+      const t2 = Date.now();
+      const inputs = await Promise.all(slots.map(buildImageGenInput));
+      const results = await generateImagesParallel(inputs);
+
+      // Persist generated images to our own storage (fal.media URLs expire in ~24h).
+      // We do this in parallel too — each slot independently.
+      const persistedUrls = await Promise.all(
+        results.map(async (res, i) => {
+          if (!res?.url) return null;
+          try {
+            const folder = `ai-landing/${slots[i].kind}`;
+            return await persistRemoteImage(res.url, folder);
+          } catch (err) {
+            console.warn(`[landing-gen] persist failed for slot #${i} (${slots[i].kind}):`, (err as Error).message);
+            // Fall back to the volatile fal URL — at least the page works for 24h
+            return res.url;
+          }
+        })
+      );
+
+      persistedUrls.forEach((url, i) => {
+        if (url) {
+          slots[i].apply(url);
+          imagesGenerated++;
+        } else {
+          console.warn(`[landing-gen] image slot #${i} (${slots[i].kind}) returned null. prompt: "${slots[i].prompt.slice(0, 80)}"`);
+        }
+      });
+      console.log(`[landing-gen] images: ${imagesGenerated}/${slots.length} ok+persisted in ${Date.now() - t2}ms`);
+    }
+  } else {
+    console.log('[landing-gen] image generation disabled via env');
+  }
+  await tick('images', 'done');
+
+  // STEP 3 — finalize / inject fallbacks
+  await tick('assemble', 'running');
+  const finalSections = finalize(sections, input.product, input.currency);
+  console.log(`[landing-gen] done in ${Date.now() - t0}ms — ${finalSections.length} sections, ${imagesGenerated} images`);
+  await tick('assemble', 'done');
+
+  return {
+    sections: finalSections,
+    seoTitle: parsed.seoTitle,
+    seoDescription: parsed.seoDescription,
+    imageCaption: input.imageCaption,
+    language,
+    direction,
+    currency: input.currency,
+    country: input.country,
+    dialect: getDialect(input.country, language) || undefined,
+    imagesGenerated,
+  };
+}
+
+export async function generateLandingFromProduct(
+  storeName: string,
+  product: ProductInput,
+  tone?: 'professional' | 'friendly' | 'minimal',
+  context?: GenerationContext,
+  onProgress?: PipelineProgress
+): Promise<FalGenerateResult> {
+  const language = deriveLanguage(context?.language, context?.country);
+  const direction = deriveDirection(language);
+  return runFullPipeline({ storeName, product, tone, ...context, language }, language, direction, onProgress);
+}
+
+export async function generateLandingFromImage(
+  storeName: string,
+  imageUrl: string,
+  product?: ProductInput,
+  tone?: 'professional' | 'friendly' | 'minimal',
+  context?: GenerationContext,
+  onProgress?: PipelineProgress
+): Promise<FalGenerateResult> {
+  const caption = await captionImage(imageUrl);
+  const language = deriveLanguage(context?.language, context?.country);
+  const direction = deriveDirection(language);
+  const result = await runFullPipeline(
+    { storeName, product, imageCaption: caption, imageUrl, tone, ...context, language },
+    language,
+    direction,
+    onProgress
+  );
+  return { ...result, imageCaption: caption };
+}
