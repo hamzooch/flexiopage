@@ -7,6 +7,8 @@ import {
   googleFontsHref,
   type ThemeTokens,
 } from '@/data/store-themes';
+import { MarketingPixels, type MarketingConfig } from '@/components/storefront/MarketingPixels';
+import { StorefrontSlider, type SliderConfig } from '@/components/storefront/Slider';
 
 interface Props {
   params: Promise<{ storeSlug: string }>;
@@ -22,6 +24,7 @@ interface StorefrontConfig {
   showFeatures?: boolean;
   showFooter?: boolean;
   footerNote?: string;
+  slider?: SliderConfig;
 }
 
 interface StoreDoc {
@@ -36,6 +39,9 @@ interface StoreDoc {
     language?: string;
     direction?: 'ltr' | 'rtl';
     storefront?: StorefrontConfig;
+  };
+  integrations?: {
+    marketing?: MarketingConfig;
   };
 }
 
@@ -113,6 +119,7 @@ export default async function PublicStorePage({ params }: Props) {
   return (
     <>
       {fontsUrl && <link rel="stylesheet" href={fontsUrl} />}
+      <MarketingPixels config={store.integrations?.marketing} />
       <div
         dir={direction}
         lang={language}
@@ -120,6 +127,12 @@ export default async function PublicStorePage({ params }: Props) {
         style={tokensToCssVars(theme)}
       >
         <Header store={store} theme={theme} />
+        <StorefrontSlider
+          config={sf.slider}
+          primary={theme.primary}
+          primaryFg={theme.primaryFg}
+          borderRadius={theme.borderRadius === 'none' ? 0 : 9999}
+        />
         {showHero && <Hero store={store} theme={theme} isDigital={isDigital} />}
         {isDigital && showFeatures && <DigitalTrustStrip theme={theme} />}
         {showGrid && (

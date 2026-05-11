@@ -82,6 +82,17 @@ export function requireRole(...roles: string[]) {
   };
 }
 
-/** Convenience helpers for the admin / superadmin tiers. */
-export const requireAdmin = requireRole('admin', 'superadmin');
-export const requireSuperAdmin = requireRole('superadmin');
+/**
+ * Convenience helpers. Higher roles always pass lower-role gates.
+ *
+ *   requireAdmin       — any staff role can browse the admin area (read).
+ *   requireAdminWrite  — write operations on users/wallets. Supervisor is
+ *                        intentionally excluded: they can view & moderate
+ *                        complaints, but not mutate user state or wallets.
+ *   requireSuperAdmin  — sensitive ops (role changes, wallet top-ups, deletes).
+ *   requireOwner       — owner-only ops (e.g. granting the owner role).
+ */
+export const requireAdmin = requireRole('supervisor', 'admin', 'superadmin', 'owner');
+export const requireAdminWrite = requireRole('admin', 'superadmin', 'owner');
+export const requireSuperAdmin = requireRole('superadmin', 'owner');
+export const requireOwner = requireRole('owner');

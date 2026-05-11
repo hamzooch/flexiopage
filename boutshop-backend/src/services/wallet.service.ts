@@ -9,6 +9,7 @@ import crypto from 'crypto';
 import mongoose from 'mongoose';
 import { Wallet, type IWallet, type IWalletTransaction, type TxKind, type WalletBucket } from '../models/Wallet.model';
 import { Store } from '../models/Store.model';
+import { User } from '../models/User.model';
 
 /**
  * Default commission policy. Tunable per-store later if needed.
@@ -45,11 +46,15 @@ function genId(): string {
 }
 
 /**
- * Infer the wallet currency from the seller's stores. Picks the oldest store's
- * currency (the one that anchored their account). Falls back to XOF when the
- * seller has no store yet.
+ * Infer the wallet currency for a seller. Precedence:
+ *   1. the seller's own profile currency (set from the profile page)
+ *   2. the oldest store's currency (the one that anchored the account)
+ *   3. XOF fallback
  */
 async function inferUserCurrency(userId: mongoose.Types.ObjectId): Promise<string> {
+  const user = await User.findById(userId).select('currency country').lean();
+  const userCur = user?.currency?.toUpperCase().trim();
+  if (userCur) return userCur;
   const firstStore = await Store.findOne({ ownerId: userId })
     .sort({ createdAt: 1 })
     .select('settings.currency')

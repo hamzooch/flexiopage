@@ -31,7 +31,10 @@ import {
   Eye,
   EyeOff,
   AlertTriangle,
+  Globe,
+  Lock,
 } from 'lucide-react';
+import { COUNTRIES, COUNTRY_GROUPS, currencyForCountry } from '@/data/countries';
 
 interface UserDoc {
   _id: string;
@@ -40,6 +43,8 @@ interface UserDoc {
   avatar?: string;
   emailVerified?: boolean;
   createdAt?: string;
+  country?: string;
+  currency?: string;
 }
 
 function fmtCur(amount: number, currency: string): string {
@@ -59,12 +64,16 @@ export default function ProfilePage() {
 
   const [user, setUser] = useState<UserDoc | null>(null);
   const [name, setName] = useState('');
+  const [country, setCountry] = useState('');
+  const [currency, setCurrency] = useState('');
   const [storeCount, setStoreCount] = useState(0);
   const [loading, setLoading] = useState(true);
 
   // Profile save
   const [savingName, setSavingName] = useState(false);
   const [nameSaved, setNameSaved] = useState(false);
+  const [savingRegion, setSavingRegion] = useState(false);
+  const [regionMsg, setRegionMsg] = useState<{ type: 'success' | 'warn' | 'error'; text: string } | null>(null);
 
   // Password change
   const [pwCurrent, setPwCurrent] = useState('');
@@ -84,6 +93,8 @@ export default function ProfilePage() {
         const u = (profileRes.data as { user: UserDoc }).user;
         setUser(u);
         setName(u.name || '');
+        setCountry(u.country || '');
+        setCurrency(u.currency || '');
         setStoreCount(((storesRes.data as { stores: unknown[] }).stores || []).length);
       })
       .finally(() => setLoading(false));
@@ -101,6 +112,52 @@ export default function ProfilePage() {
   const memberSince = user?.createdAt
     ? new Date(user.createdAt).toLocaleDateString(undefined, { month: 'long', year: 'numeric' })
     : '—';
+
+  // ── Country / currency ─────────────────────────────────────────────
+  function handleCountryChange(code: string) {
+    setCountry(code);
+    // Auto-fill the currency from the country, but the user can still edit it.
+    const auto = currencyForCountry(code);
+    if (auto) setCurrency(auto);
+  }
+
+  async function handleSaveRegion(e: React.FormEvent) {
+    e.preventDefault();
+    setSavingRegion(true);
+    setRegionMsg(null);
+    try {
+      const res = await usersApi.updateProfile({
+        country: country || '',
+        currency: currency || '',
+      });
+      const data = res.data as { user: UserDoc; walletCurrencyUpdated?: boolean; walletCurrencyPinned?: boolean };
+      setUser(data.user);
+      if (data.walletCurrencyPinned) {
+        setRegionMsg({
+          type: 'warn',
+          text: 'Pays enregistré. Le solde reste dans sa devise actuelle car il contient déjà des transactions.',
+        });
+      } else if (data.walletCurrencyUpdated) {
+        setRegionMsg({ type: 'success', text: 'Pays et devise du solde mis à jour.' });
+        refreshWallet();
+      } else {
+        setRegionMsg({ type: 'success', text: 'Pays enregistré.' });
+        refreshWallet();
+      }
+      window.setTimeout(() => setRegionMsg(null), 4000);
+    } catch (err) {
+      const e = err as { response?: { data?: { error?: string } } };
+      setRegionMsg({ type: 'error', text: e.response?.data?.error || 'Erreur lors de l’enregistrement.' });
+    } finally {
+      setSavingRegion(false);
+    }
+  }
+
+  const walletHasActivity = !!wallet && (
+    (wallet.transactions?.length || 0) > 0 ||
+    wallet.balance > 0 ||
+    wallet.aiBalance > 0
+  );
 
   async function handleSaveName(e: React.FormEvent) {
     e.preventDefault();
@@ -204,6 +261,108 @@ export default function ProfilePage() {
           href="/dashboard/wallet?bucket=ai"
         />
       </section>
+
+      {/* Pays & devise du solde */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Globe className="h-4 w-4" /> Pays & devise
+          </CardTitle>
+          <CardDescription>
+            Ton pays détermine la devise par défaut de ton solde principal et de ton solde IA.
+            {walletHasActivity && (
+              <span className="mt-1 inline-flex items-center gap-1.5 text-amber-700">
+                <Lock className="h-3.5 w-3.5" />
+                La devise du solde est verrouillée — des transactions existent déjà.
+              </span>
+            )}
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <form onSubmit={handleSaveRegion} className="space-y-4">
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div>
+                <Label htmlFor="country">Pays</Label>
+                <select
+                  id="country"
+                  value={country}
+                  onChange={(e) => handleCountryChange(e.target.value)}
+                  className="mt-1 h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+                >
+                  <option value="">— Choisis ton pays —</option>
+                  {COUNTRY_GROUPS.map((g) => {
+                    const list = COUNTRIES.filter((c) => c.group === g.id);
+                    if (list.length === 0) return null;
+                    return (
+                      <optgroup key={g.id} label={g.label}>
+                        {list.map((c) => (
+                          <option key={c.code} value={c.code}>
+                            {c.label} ({c.currency})
+                          </option>
+                        ))}
+                      </optgroup>
+                    );
+                  })}
+                </select>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Choisir un pays sélectionne automatiquement sa devise locale.
+                </p>
+              </div>
+
+              <div>
+                <Label htmlFor="currency">Devise du solde</Label>
+                <Input
+                  id="currency"
+                  value={currency}
+                  onChange={(e) => setCurrency(e.target.value.toUpperCase().slice(0, 3))}
+                  placeholder="Ex: EUR · TND · DZD · USD"
+                  maxLength={3}
+                  className="mt-1 font-mono uppercase"
+                />
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Code ISO 3 lettres. Modifie ici si tu veux une devise différente du pays.
+                </p>
+              </div>
+            </div>
+
+            <div className="rounded-xl border border-border/60 bg-muted/30 p-3 text-xs text-muted-foreground">
+              {wallet ? (
+                <>
+                  Solde principal actuel : <strong className="text-foreground">{fmtCur(wallet.balance, wallet.currency)}</strong> · Solde IA :
+                  {' '}<strong className="text-foreground">{fmtCur(wallet.aiBalance, wallet.currency)}</strong>
+                  {wallet.currency !== currency && currency && (
+                    <span className="ml-2 inline-flex items-center gap-1 rounded-full bg-amber-500/15 px-2 py-0.5 text-amber-700">
+                      → passera à <span className="font-mono">{currency}</span> si le solde est encore vide
+                    </span>
+                  )}
+                </>
+              ) : (
+                'Aucun solde initialisé pour l’instant.'
+              )}
+            </div>
+
+            {regionMsg && (
+              <div
+                className={`flex items-start gap-2 rounded-lg border p-3 text-sm ${
+                  regionMsg.type === 'success'
+                    ? 'border-emerald-500/30 bg-emerald-500/5 text-emerald-700'
+                    : regionMsg.type === 'warn'
+                      ? 'border-amber-500/30 bg-amber-500/5 text-amber-800'
+                      : 'border-destructive/30 bg-destructive/5 text-destructive'
+                }`}
+              >
+                {regionMsg.type === 'success' ? <Check className="mt-0.5 h-4 w-4 shrink-0" /> : <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />}
+                {regionMsg.text}
+              </div>
+            )}
+
+            <Button type="submit" disabled={savingRegion} className="gap-2">
+              {savingRegion ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
+              Enregistrer
+            </Button>
+          </form>
+        </CardContent>
+      </Card>
 
       <div className="grid gap-6 lg:grid-cols-2">
         {/* Profile info */}

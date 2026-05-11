@@ -10,6 +10,8 @@ import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { CheckCircle2, Home, Loader2, Phone, Truck, Wallet } from 'lucide-react';
 import { formatCurrency } from '@/lib/utils';
+import { MarketingPixels, type MarketingConfig } from '@/components/storefront/MarketingPixels';
+import { TrackEvent } from '@/components/storefront/TrackEvent';
 
 const API_BASE = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5001').replace(/\/$/, '');
 
@@ -44,6 +46,7 @@ export default function CodThanksPage() {
   const [order, setOrder] = useState<CodOrder | null>(null);
   const [storeName, setStoreName] = useState('');
   const [storeSlug, setStoreSlug] = useState('');
+  const [marketing, setMarketing] = useState<MarketingConfig | undefined>(undefined);
   const [error, setError] = useState('');
 
   useEffect(() => {
@@ -60,6 +63,16 @@ export default function CodThanksPage() {
         setOrder(data.order);
         setStoreName(data.store?.name || '');
         setStoreSlug(data.store?.slug || '');
+        // Load the store's pixel config so we can fire the Purchase event.
+        if (data.store?.slug) {
+          try {
+            const sRes = await fetch(`${API_BASE}/api/public/store-by-slug/${data.store.slug}`);
+            if (sRes.ok) {
+              const sData = await sRes.json();
+              if (!cancelled) setMarketing(sData.store?.integrations?.marketing);
+            }
+          } catch { /* noop */ }
+        }
       } catch {
         if (!cancelled) setError('Impossible de charger la commande.');
       }
@@ -90,6 +103,18 @@ export default function CodThanksPage() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-emerald-50 via-background to-amber-50/30 dark:from-emerald-950/10 dark:via-background dark:to-amber-950/10">
+      <MarketingPixels config={marketing} />
+      <TrackEvent
+        payload={{
+          event: 'Purchase',
+          contentIds: order.items.map((it) => it.name),
+          contentName: order.items[0]?.name,
+          value: order.total,
+          currency: order.currency,
+          transactionId: order.orderNumber,
+          items: order.items.map((it) => ({ id: it.sku || it.name, name: it.name, quantity: it.quantity, price: it.price })),
+        }}
+      />
       <main className="mx-auto max-w-3xl px-4 py-12 sm:px-6 sm:py-16">
         {/* Hero */}
         <div className="text-center">

@@ -11,6 +11,9 @@ export interface IStore extends Document {
   logo?: string;
   favicon?: string;
   customDomain?: string;
+  customDomainVerified?: boolean;
+  customDomainVerifiedAt?: Date;
+  customDomainTarget?: string;
   subdomain: string;
   theme?: Record<string, unknown>;
   settings: {
@@ -54,6 +57,25 @@ export interface IStore extends Document {
       showFeatures?: boolean;        // default true (3 reassurance pills)
       showFooter?: boolean;          // default true
       footerNote?: string;
+      /**
+       * Carousel/slider displayed right under the navbar.
+       * Sellers add their own slides (image, title, subtitle, CTA).
+       */
+      slider?: {
+        enabled?: boolean;           // default false
+        autoplay?: boolean;          // default true
+        autoplayMs?: number;         // default 5000
+        height?: 'sm' | 'md' | 'lg' | 'xl'; // default 'lg'
+        slides?: Array<{
+          image: string;             // required — background image URL
+          title?: string;
+          subtitle?: string;
+          ctaLabel?: string;
+          ctaUrl?: string;
+          textAlign?: 'left' | 'center' | 'right';  // default 'center'
+          overlay?: 'none' | 'light' | 'dark';      // default 'dark'
+        }>;
+      };
     };
   };
   /**
@@ -62,7 +84,7 @@ export interface IStore extends Document {
    */
   integrations?: {
     delivery?: {
-      provider: 'mogadelivery' | 'manual' | 'other';
+      provider: 'mogadelivery' | 'yalidine' | 'noest' | 'aramex' | 'manual' | 'other';
       enabled: boolean;
       /** API key issued by the provider (server-side only). */
       apiKey?: string;
@@ -84,6 +106,33 @@ export interface IStore extends Document {
       /** Auto-dispatch every paid order. If false, the seller dispatches manually. */
       autoDispatch?: boolean;
     };
+    /**
+     * Push every new order to a Google Apps Script webhook that appends a row
+     * to the seller's Google Sheet. The seller pastes the deployed Apps Script
+     * URL — no OAuth required.
+     */
+    googleSheets?: {
+      enabled: boolean;
+      webhookUrl?: string;
+      lastSyncAt?: Date;
+      lastError?: string;
+    };
+    /**
+     * Marketing pixels injected into the public storefront. The seller pastes
+     * their pixel IDs and BoutShop emits PageView / ViewContent /
+     * InitiateCheckout / Purchase events automatically.
+     */
+    marketing?: {
+      facebookPixelId?: string;
+      facebookConversionsApiToken?: string;
+      facebookTestEventCode?: string;
+      googleAnalyticsId?: string;
+      tiktokPixelId?: string;
+      googleAdsConversionId?: string;
+      googleAdsConversionLabel?: string;
+      /** Arbitrary HTML/JS injected into <head> (use with caution). */
+      customHeadCode?: string;
+    };
   };
   isPublished: boolean;
   createdAt: Date;
@@ -99,7 +148,10 @@ const StoreSchema = new Schema<IStore>(
     description: { type: String },
     logo: { type: String },
     favicon: { type: String },
-    customDomain: { type: String, trim: true },
+    customDomain: { type: String, trim: true, lowercase: true },
+    customDomainVerified: { type: Boolean, default: false },
+    customDomainVerifiedAt: { type: Date },
+    customDomainTarget: { type: String, trim: true, lowercase: true },
     subdomain: { type: String, required: true, unique: true, lowercase: true, trim: true },
     theme: { type: Schema.Types.Mixed },
     settings: {
@@ -132,11 +184,28 @@ const StoreSchema = new Schema<IStore>(
         showFeatures: { type: Boolean, default: true },
         showFooter: { type: Boolean, default: true },
         footerNote: { type: String },
+        slider: {
+          enabled: { type: Boolean, default: false },
+          autoplay: { type: Boolean, default: true },
+          autoplayMs: { type: Number, default: 5000 },
+          height: { type: String, enum: ['sm', 'md', 'lg', 'xl'], default: 'lg' },
+          slides: [
+            {
+              image: { type: String, required: true },
+              title: { type: String },
+              subtitle: { type: String },
+              ctaLabel: { type: String },
+              ctaUrl: { type: String },
+              textAlign: { type: String, enum: ['left', 'center', 'right'], default: 'center' },
+              overlay: { type: String, enum: ['none', 'light', 'dark'], default: 'dark' },
+            },
+          ],
+        },
       },
     },
     integrations: {
       delivery: {
-        provider: { type: String, enum: ['mogadelivery', 'manual', 'other'] },
+        provider: { type: String, enum: ['mogadelivery', 'yalidine', 'noest', 'aramex', 'manual', 'other'] },
         enabled: { type: Boolean, default: false },
         apiKey: { type: String },
         baseUrl: { type: String },
@@ -152,6 +221,22 @@ const StoreSchema = new Schema<IStore>(
           country: { type: String },
         },
         autoDispatch: { type: Boolean, default: true },
+      },
+      googleSheets: {
+        enabled: { type: Boolean, default: false },
+        webhookUrl: { type: String, trim: true },
+        lastSyncAt: { type: Date },
+        lastError: { type: String },
+      },
+      marketing: {
+        facebookPixelId: { type: String, trim: true },
+        facebookConversionsApiToken: { type: String, trim: true },
+        facebookTestEventCode: { type: String, trim: true },
+        googleAnalyticsId: { type: String, trim: true },
+        tiktokPixelId: { type: String, trim: true },
+        googleAdsConversionId: { type: String, trim: true },
+        googleAdsConversionLabel: { type: String, trim: true },
+        customHeadCode: { type: String },
       },
     },
     isPublished: { type: Boolean, default: false },

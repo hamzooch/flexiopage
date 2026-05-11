@@ -19,6 +19,7 @@ import { Store } from '../models/Store.model';
 import { Product } from '../models/Product.model';
 import { Order } from '../models/Order.model';
 import { Wallet } from '../models/Wallet.model';
+import { Complaint } from '../models/Complaint.model';
 import { credit, debit } from '../services/wallet.service';
 
 const DEFAULT_LIMIT = 50;
@@ -37,6 +38,11 @@ export async function getOverview(_req: AuthRequest, res: Response): Promise<voi
     last30Orders,
     walletAgg,
     commissionAgg,
+    openComplaints,
+    urgentComplaints,
+    recentOrders,
+    recentUsers,
+    topStoresAgg,
   ] = await Promise.all([
     User.countDocuments({ role: 'user' }),
     Store.countDocuments(),
@@ -68,6 +74,44 @@ export async function getOverview(_req: AuthRequest, res: Response): Promise<voi
         },
       },
     ]),
+    Complaint.countDocuments({ status: { $in: ['open', 'in_progress'] } }),
+    Complaint.countDocuments({ status: { $in: ['open', 'in_progress'] }, priority: 'urgent' }),
+    Order.find()
+      .populate('storeId', 'name slug')
+      .sort({ createdAt: -1 })
+      .limit(6)
+      .select('orderNumber total currency paymentStatus fulfillmentStatus customerName email storeId createdAt')
+      .lean(),
+    User.find({ role: 'user' })
+      .sort({ createdAt: -1 })
+      .limit(6)
+      .select('email name createdAt emailVerified')
+      .lean(),
+    Order.aggregate([
+      { $match: { createdAt: { $gte: since30d }, paymentStatus: 'paid' } },
+      {
+        $group: {
+          _id: '$storeId',
+          orders: { $sum: 1 },
+          gmv: { $sum: '$total' },
+          currency: { $first: '$currency' },
+        },
+      },
+      { $sort: { gmv: -1 } },
+      { $limit: 5 },
+      { $lookup: { from: 'stores', localField: '_id', foreignField: '_id', as: 'store' } },
+      { $unwind: { path: '$store', preserveNullAndEmptyArrays: true } },
+      {
+        $project: {
+          _id: 1,
+          orders: 1,
+          gmv: 1,
+          currency: 1,
+          name: '$store.name',
+          slug: '$store.slug',
+        },
+      },
+    ]),
   ]);
 
   // GMV per currency on last-30d orders
@@ -75,6 +119,34 @@ export async function getOverview(_req: AuthRequest, res: Response): Promise<voi
   for (const o of last30Orders) {
     const c = o.currency || 'XOF';
     gmvByCurrency[c] = (gmvByCurrency[c] || 0) + (o.total || 0);
+  }
+
+  // Daily breakdown for the last 30 days (sparkline + line chart)
+  const dayBuckets: { date: string; orders: number; revenue: number }[] = [];
+  const dayMap = new Map<string, { orders: number; revenue: number }>();
+  for (let i = 29; i >= 0; i--) {
+    const d = new Date();
+    d.setDate(d.getDate() - i);
+    const key = d.toISOString().slice(0, 10);
+    const bucket = { orders: 0, revenue: 0 };
+    dayMap.set(key, bucket);
+    dayBuckets.push({ date: key, ...bucket });
+  }
+  for (const o of last30Orders) {
+    const key = new Date(o.createdAt).toISOString().slice(0, 10);
+    const b = dayMap.get(key);
+    if (b) {
+      b.orders += 1;
+      if (o.paymentStatus === 'paid') b.revenue += o.total || 0;
+    }
+  }
+  // Reflect mutated bucket values back into the array (same refs).
+  for (const day of dayBuckets) {
+    const m = dayMap.get(day.date);
+    if (m) {
+      day.orders = m.orders;
+      day.revenue = m.revenue;
+    }
   }
 
   res.json({
@@ -86,6 +158,11 @@ export async function getOverview(_req: AuthRequest, res: Response): Promise<voi
       gmv30d: gmvByCurrency,
       walletsByCurrency: walletAgg,
       commissionByCurrency: commissionAgg,
+      complaints: { open: openComplaints, urgent: urgentComplaints },
+      ordersByDay30d: dayBuckets,
+      recentOrders,
+      recentUsers,
+      topStores30d: topStoresAgg,
     },
   });
 }
@@ -209,17 +286,25 @@ export async function adjustWallet(req: AuthRequest, res: Response): Promise<voi
   }
 }
 
-/** PATCH /api/admin/users/:userId/role — superadmin only. Allowed roles: admin | user. */
+type StaffRole = 'owner' | 'superadmin' | 'admin' | 'supervisor' | 'user';
+const STAFF_ROLES: StaffRole[] = ['owner', 'superadmin', 'admin', 'supervisor', 'user'];
+
+/** PATCH /api/admin/users/:userId/role — superadmin or owner. */
 export async function updateUserRole(req: AuthRequest, res: Response): Promise<void> {
   const { userId } = req.params;
-  const { role } = (req.body || {}) as { role?: 'superadmin' | 'admin' | 'user' };
-  if (!['superadmin', 'admin', 'user'].includes(role || '')) {
-    res.status(400).json({ error: 'role must be "superadmin", "admin" or "user"' });
+  const { role } = (req.body || {}) as { role?: StaffRole };
+  if (!STAFF_ROLES.includes(role as StaffRole)) {
+    res.status(400).json({ error: `role must be one of: ${STAFF_ROLES.join(', ')}` });
     return;
   }
-  // Only a superadmin can grant superadmin (already gated by middleware, but double-check).
-  if (req.user?.role !== 'superadmin') {
-    res.status(403).json({ error: 'Only superadmin can change roles' });
+  // Only superadmin or owner can change roles at all.
+  if (req.user?.role !== 'superadmin' && req.user?.role !== 'owner') {
+    res.status(403).json({ error: 'Only superadmin or owner can change roles' });
+    return;
+  }
+  // Only an owner can grant the "owner" role (privilege-escalation guard).
+  if (role === 'owner' && req.user?.role !== 'owner') {
+    res.status(403).json({ error: 'Only an owner can grant the owner role' });
     return;
   }
   const u = await User.findByIdAndUpdate(userId, { $set: { role } }, { new: true })
@@ -317,7 +402,7 @@ export async function patchUser(req: AuthRequest, res: Response): Promise<void> 
   const { userId } = req.params;
   const body = (req.body || {}) as Partial<{
     name: string;
-    role: 'superadmin' | 'admin' | 'user';
+    role: StaffRole;
     emailVerified: boolean;
     suspended: boolean;
     suspendedReason: string;
@@ -332,15 +417,20 @@ export async function patchUser(req: AuthRequest, res: Response): Promise<void> 
       return;
     }
   }
-  // Role changes are reserved to superadmin (the dedicated /role endpoint
-  // also enforces this; this is a defence-in-depth check).
-  if (body.role && req.user?.role !== 'superadmin') {
-    res.status(403).json({ error: 'Only superadmin can change roles' });
+  // Role changes are reserved to superadmin or owner (the dedicated /role
+  // endpoint also enforces this; this is a defence-in-depth check).
+  if (body.role && req.user?.role !== 'superadmin' && req.user?.role !== 'owner') {
+    res.status(403).json({ error: 'Only superadmin or owner can change roles' });
+    return;
+  }
+  // Only an owner can grant the "owner" role.
+  if (body.role === 'owner' && req.user?.role !== 'owner') {
+    res.status(403).json({ error: 'Only an owner can grant the owner role' });
     return;
   }
   const updates: Record<string, unknown> = {};
   if (typeof body.name === 'string') updates.name = body.name.trim();
-  if (body.role === 'superadmin' || body.role === 'admin' || body.role === 'user') updates.role = body.role;
+  if (body.role && STAFF_ROLES.includes(body.role)) updates.role = body.role;
   if (typeof body.emailVerified === 'boolean') updates.emailVerified = body.emailVerified;
   if (typeof body.suspended === 'boolean') {
     updates.suspended = body.suspended;
@@ -425,4 +515,66 @@ export async function deleteUser(req: AuthRequest, res: Response): Promise<void>
     User.deleteOne({ _id: userId }),
   ]);
   res.json({ ok: true, email: user.email });
+}
+
+/**
+ * POST /api/admin/users — superadmin or owner. Create a staff account directly
+ * (admin, supervisor, superadmin) without going through the public signup flow.
+ *
+ * Body: { email, password, name, role }
+ * Allowed roles: 'user' | 'supervisor' | 'admin' | 'superadmin' | 'owner'
+ *   - 'owner' requires the caller to be owner (anti-escalation).
+ *   - 'superadmin' requires the caller to be superadmin or owner — already
+ *     enforced because this route is gated by requireSuperAdmin.
+ */
+export async function createUser(req: AuthRequest, res: Response): Promise<void> {
+  const { email, password, name, role } = (req.body || {}) as {
+    email?: string;
+    password?: string;
+    name?: string;
+    role?: StaffRole;
+  };
+
+  const cleanEmail = (email || '').trim().toLowerCase();
+  const cleanName = (name || '').trim();
+  const cleanRole: StaffRole = (STAFF_ROLES.includes(role as StaffRole) ? role : 'user') as StaffRole;
+
+  if (!cleanEmail || !cleanName || !password) {
+    res.status(400).json({ error: 'email, name and password are required' });
+    return;
+  }
+  if (password.length < 8) {
+    res.status(400).json({ error: 'password must be at least 8 characters' });
+    return;
+  }
+  if (cleanRole === 'owner' && req.user?.role !== 'owner') {
+    res.status(403).json({ error: 'Only an owner can create another owner' });
+    return;
+  }
+
+  const existing = await User.findOne({ email: cleanEmail });
+  if (existing) {
+    res.status(409).json({ error: 'A user with this email already exists' });
+    return;
+  }
+
+  const hash = await bcrypt.hash(password, 10);
+  const user = await User.create({
+    email: cleanEmail,
+    password: hash,
+    name: cleanName,
+    role: cleanRole,
+    emailVerified: true,
+  });
+
+  res.status(201).json({
+    user: {
+      _id: user._id,
+      email: user.email,
+      name: user.name,
+      role: user.role,
+      emailVerified: user.emailVerified,
+      createdAt: user.createdAt,
+    },
+  });
 }

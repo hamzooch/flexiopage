@@ -9,6 +9,8 @@ import {
 } from '@/data/store-themes';
 import { CodOrderForm, type CodFormConfig } from '@/components/storefront/cod-order-form';
 import { CodCtaButton } from '@/components/storefront/cod-cta-button';
+import { MarketingPixels, type MarketingConfig } from '@/components/storefront/MarketingPixels';
+import { TrackEvent } from '@/components/storefront/TrackEvent';
 
 interface Props {
   params: Promise<{ storeSlug: string; productSlug: string }>;
@@ -57,6 +59,7 @@ interface StoreDoc {
     country?: string;
     codForm?: CodFormConfig;
   };
+  integrations?: { marketing?: MarketingConfig };
 }
 
 const FALLBACK_THEME = STORE_THEME_TEMPLATES[0].theme;
@@ -140,6 +143,18 @@ export default async function PublicProductPage({ params }: Props) {
   return (
     <>
       {fontsUrl && <link rel="stylesheet" href={fontsUrl} />}
+      <MarketingPixels config={store?.integrations?.marketing} />
+      <TrackEvent
+        payload={{
+          event: 'ViewContent',
+          contentIds: [product._id],
+          contentName: product.name,
+          contentType: 'product',
+          value: product.price,
+          currency,
+          items: [{ id: product._id, name: product.name, price: product.price, quantity: 1 }],
+        }}
+      />
       <div
         dir={direction}
         lang={language}

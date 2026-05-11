@@ -9,7 +9,7 @@ import { Label } from '@/components/ui/label';
 import { storesApi } from '@/lib/api';
 import { STORE_THEME_TEMPLATES, type StoreThemeTemplate } from '@/data/store-themes';
 import { ThemePreviewGrid } from '@/components/dashboard/theme-preview-card';
-import { Check } from 'lucide-react';
+import { Check, ImageIcon, Plus, Trash2, GripVertical, ChevronUp, ChevronDown } from 'lucide-react';
 
 interface DeliveryIntegration {
   provider?: 'mogadelivery' | 'manual' | 'other';
@@ -42,6 +42,24 @@ interface CodFormSettings {
   reassurance?: string;
 }
 
+interface SlideItem {
+  image: string;
+  title?: string;
+  subtitle?: string;
+  ctaLabel?: string;
+  ctaUrl?: string;
+  textAlign?: 'left' | 'center' | 'right';
+  overlay?: 'none' | 'light' | 'dark';
+}
+
+interface SliderSettings {
+  enabled?: boolean;
+  autoplay?: boolean;
+  autoplayMs?: number;
+  height?: 'sm' | 'md' | 'lg' | 'xl';
+  slides?: SlideItem[];
+}
+
 interface StorefrontSettings {
   showHero?: boolean;
   heroTitle?: string;
@@ -52,6 +70,7 @@ interface StorefrontSettings {
   showFeatures?: boolean;
   showFooter?: boolean;
   footerNote?: string;
+  slider?: SliderSettings;
 }
 
 interface StoreType {
@@ -746,6 +765,11 @@ export default function StoreSettingsPage() {
               )}
             </div>
 
+            <SliderEditor
+              slider={storefront.slider}
+              onChange={(slider) => setStorefront({ ...storefront, slider })}
+            />
+
             <div className="space-y-3 rounded-xl border border-border/60 bg-muted/30 p-4">
               <FieldToggle
                 label="Grille des produits"
@@ -850,5 +874,249 @@ function FieldToggle({
         {sublabel && <p className="mt-0.5 text-xs text-muted-foreground">{sublabel}</p>}
       </div>
     </label>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// Slider editor — add/remove/reorder slides, configure autoplay
+// ─────────────────────────────────────────────────────────────────────
+const HEIGHT_OPTIONS: { value: NonNullable<SliderSettings['height']>; label: string }[] = [
+  { value: 'sm', label: 'Compact (260-320px)' },
+  { value: 'md', label: 'Moyen (340-420px)' },
+  { value: 'lg', label: 'Grand (420-520px)' },
+  { value: 'xl', label: 'Très grand (520-640px)' },
+];
+
+function emptySlide(): SlideItem {
+  return { image: '', title: '', subtitle: '', ctaLabel: '', ctaUrl: '', textAlign: 'center', overlay: 'dark' };
+}
+
+function SliderEditor({
+  slider,
+  onChange,
+}: {
+  slider?: SliderSettings;
+  onChange: (s: SliderSettings) => void;
+}) {
+  const cfg: SliderSettings = {
+    enabled: false,
+    autoplay: true,
+    autoplayMs: 5000,
+    height: 'lg',
+    slides: [],
+    ...(slider || {}),
+  };
+  const slides = cfg.slides || [];
+
+  function update(patch: Partial<SliderSettings>) {
+    onChange({ ...cfg, ...patch });
+  }
+
+  function updateSlide(i: number, patch: Partial<SlideItem>) {
+    const next = slides.slice();
+    next[i] = { ...next[i], ...patch };
+    update({ slides: next });
+  }
+
+  function addSlide() {
+    update({ slides: [...slides, emptySlide()] });
+  }
+
+  function removeSlide(i: number) {
+    const next = slides.slice();
+    next.splice(i, 1);
+    update({ slides: next });
+  }
+
+  function moveSlide(i: number, dir: -1 | 1) {
+    const j = i + dir;
+    if (j < 0 || j >= slides.length) return;
+    const next = slides.slice();
+    [next[i], next[j]] = [next[j], next[i]];
+    update({ slides: next });
+  }
+
+  return (
+    <div className="space-y-4 rounded-xl border border-border/60 bg-muted/30 p-4">
+      <FieldToggle
+        label="Slider d'accueil"
+        sublabel="Carrousel d'images affiché juste après le menu de navigation"
+        checked={cfg.enabled !== false && !!cfg.enabled}
+        onChange={(v) => update({ enabled: v })}
+      />
+
+      {cfg.enabled && (
+        <>
+          <div className="grid gap-3 pt-1 sm:grid-cols-3">
+            <div className="space-y-1.5">
+              <Label className="text-xs">Hauteur</Label>
+              <select
+                value={cfg.height || 'lg'}
+                onChange={(e) => update({ height: e.target.value as SliderSettings['height'] })}
+                className="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm"
+              >
+                {HEIGHT_OPTIONS.map((o) => (
+                  <option key={o.value} value={o.value}>{o.label}</option>
+                ))}
+              </select>
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs">Intervalle autoplay (ms)</Label>
+              <Input
+                type="number"
+                min={2000}
+                step={500}
+                value={cfg.autoplayMs ?? 5000}
+                onChange={(e) => update({ autoplayMs: parseInt(e.target.value, 10) || 5000 })}
+                className="h-10"
+              />
+            </div>
+            <div className="flex items-end">
+              <FieldToggle
+                label="Autoplay"
+                sublabel="Défilement automatique"
+                checked={cfg.autoplay !== false}
+                onChange={(v) => update({ autoplay: v })}
+              />
+            </div>
+          </div>
+
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <div>
+                <h4 className="text-sm font-semibold">Slides ({slides.length})</h4>
+                <p className="text-[11px] text-muted-foreground">
+                  Image de fond + titre/sous-titre + bouton optionnel
+                </p>
+              </div>
+              <Button type="button" size="sm" onClick={addSlide} className="gap-1.5">
+                <Plus className="h-3.5 w-3.5" />
+                Ajouter un slide
+              </Button>
+            </div>
+
+            {slides.length === 0 ? (
+              <div className="rounded-lg border border-dashed border-border/70 bg-card p-6 text-center text-xs text-muted-foreground">
+                Aucun slide. Clique sur « Ajouter un slide » pour commencer.
+              </div>
+            ) : (
+              <ul className="space-y-3">
+                {slides.map((slide, i) => (
+                  <li key={i} className="rounded-xl border border-border/60 bg-card p-4">
+                    <div className="mb-3 flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <GripVertical className="h-4 w-4 text-muted-foreground" />
+                        <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                          Slide {i + 1}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <button
+                          type="button"
+                          aria-label="Monter"
+                          disabled={i === 0}
+                          onClick={() => moveSlide(i, -1)}
+                          className="grid h-7 w-7 place-items-center rounded-md hover:bg-muted disabled:opacity-30"
+                        >
+                          <ChevronUp className="h-3.5 w-3.5" />
+                        </button>
+                        <button
+                          type="button"
+                          aria-label="Descendre"
+                          disabled={i === slides.length - 1}
+                          onClick={() => moveSlide(i, 1)}
+                          className="grid h-7 w-7 place-items-center rounded-md hover:bg-muted disabled:opacity-30"
+                        >
+                          <ChevronDown className="h-3.5 w-3.5" />
+                        </button>
+                        <button
+                          type="button"
+                          aria-label="Supprimer"
+                          onClick={() => removeSlide(i)}
+                          className="grid h-7 w-7 place-items-center rounded-md text-destructive hover:bg-destructive/10"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="grid gap-3 sm:grid-cols-[160px_1fr]">
+                      <div className="space-y-2">
+                        <div className="relative aspect-[4/3] overflow-hidden rounded-lg border border-border/60 bg-muted">
+                          {slide.image ? (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img src={slide.image} alt="" className="h-full w-full object-cover" />
+                          ) : (
+                            <div className="grid h-full place-items-center text-muted-foreground">
+                              <ImageIcon className="h-7 w-7" />
+                            </div>
+                          )}
+                        </div>
+                        <Input
+                          type="url"
+                          placeholder="URL image"
+                          value={slide.image}
+                          onChange={(e) => updateSlide(i, { image: e.target.value })}
+                          className="h-9 text-xs"
+                        />
+                      </div>
+
+                      <div className="space-y-2">
+                        <Input
+                          placeholder="Titre du slide (optionnel)"
+                          value={slide.title || ''}
+                          onChange={(e) => updateSlide(i, { title: e.target.value })}
+                          className="h-9"
+                        />
+                        <Input
+                          placeholder="Sous-titre (optionnel)"
+                          value={slide.subtitle || ''}
+                          onChange={(e) => updateSlide(i, { subtitle: e.target.value })}
+                          className="h-9"
+                        />
+                        <div className="grid gap-2 sm:grid-cols-2">
+                          <Input
+                            placeholder="Texte du bouton"
+                            value={slide.ctaLabel || ''}
+                            onChange={(e) => updateSlide(i, { ctaLabel: e.target.value })}
+                            className="h-9 text-xs"
+                          />
+                          <Input
+                            placeholder="Lien du bouton (/produit, https://...)"
+                            value={slide.ctaUrl || ''}
+                            onChange={(e) => updateSlide(i, { ctaUrl: e.target.value })}
+                            className="h-9 text-xs"
+                          />
+                        </div>
+                        <div className="grid gap-2 sm:grid-cols-2">
+                          <select
+                            value={slide.textAlign || 'center'}
+                            onChange={(e) => updateSlide(i, { textAlign: e.target.value as SlideItem['textAlign'] })}
+                            className="h-9 rounded-md border border-border bg-background px-2 text-xs"
+                          >
+                            <option value="left">Texte à gauche</option>
+                            <option value="center">Texte centré</option>
+                            <option value="right">Texte à droite</option>
+                          </select>
+                          <select
+                            value={slide.overlay || 'dark'}
+                            onChange={(e) => updateSlide(i, { overlay: e.target.value as SlideItem['overlay'] })}
+                            className="h-9 rounded-md border border-border bg-background px-2 text-xs"
+                          >
+                            <option value="dark">Overlay sombre</option>
+                            <option value="light">Overlay clair</option>
+                            <option value="none">Sans overlay</option>
+                          </select>
+                        </div>
+                      </div>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        </>
+      )}
+    </div>
   );
 }

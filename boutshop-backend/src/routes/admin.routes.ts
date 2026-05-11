@@ -1,13 +1,19 @@
 /**
- * Platform-admin routes. Two tiers:
- *   - requireAdmin (admin OR superadmin) for read + most mutations
- *   - requireSuperAdmin for sensitive ops:
- *       · changing roles
- *       · funding wallets (top-up)
- *       · deleting users
+ * Platform-admin routes. Four tiers:
+ *   - requireAdmin       (supervisor + admin + superadmin + owner) — read access
+ *   - requireAdminWrite  (admin + superadmin + owner) — user/wallet mutations
+ *   - requireSuperAdmin  (superadmin + owner) — role changes, top-ups, deletes,
+ *                        creating new staff accounts
+ *   - requireOwner       (owner) — granting the 'owner' role (enforced inside
+ *                        the controllers)
  */
 import { Router } from 'express';
-import { authMiddleware, requireAdmin, requireSuperAdmin } from '../middleware/auth.middleware';
+import {
+  authMiddleware,
+  requireAdmin,
+  requireAdminWrite,
+  requireSuperAdmin,
+} from '../middleware/auth.middleware';
 import { sanitizeMiddleware } from '../middleware/validate';
 import * as admin from '../controllers/admin.controller';
 import * as complaint from '../controllers/complaint.controller';
@@ -18,7 +24,7 @@ router.use(authMiddleware);
 router.use(sanitizeMiddleware);
 router.use(requireAdmin);
 
-// Read endpoints (admin + superadmin)
+// Read endpoints (any staff role, including supervisor)
 router.get('/overview', admin.getOverview);
 router.get('/users', admin.listUsers);
 router.get('/users/:userId', admin.getUserDetail);
@@ -26,11 +32,12 @@ router.get('/stores', admin.listStores);
 router.get('/orders', admin.listOrders);
 router.get('/wallets', admin.listWallets);
 
-// Mutations open to admin (general user updates excluding role)
-router.patch('/users/:userId', admin.patchUser);
-router.post('/wallets/:userId/adjust', admin.adjustWallet);
+// Mutations open to admin+ (excludes supervisor)
+router.patch('/users/:userId', requireAdminWrite, admin.patchUser);
+router.post('/wallets/:userId/adjust', requireAdminWrite, admin.adjustWallet);
 
-// Superadmin-only — sensitive operations
+// Superadmin+ — sensitive operations
+router.post('/users', requireSuperAdmin, admin.createUser);
 router.patch('/users/:userId/role', requireSuperAdmin, admin.updateUserRole);
 router.post('/wallets/:userId/credit', requireSuperAdmin, admin.creditWallet);
 router.post('/users/:userId/reset-password', requireSuperAdmin, admin.resetUserPassword);

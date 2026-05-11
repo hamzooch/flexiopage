@@ -14,7 +14,7 @@ import type { IOrder } from '../models/Order.model';
 import { Order } from '../models/Order.model';
 import type { IStore } from '../models/Store.model';
 
-export type DeliveryProvider = 'mogadelivery' | 'manual' | 'other';
+export type DeliveryProvider = 'mogadelivery' | 'yalidine' | 'noest' | 'aramex' | 'manual' | 'other';
 
 export interface DispatchResult {
   externalId: string;
@@ -233,7 +233,12 @@ class MogaDeliveryProvider implements DeliveryProviderImpl {
 // ─────────────────────────────────────────────────────────────────────
 const mogadelivery = new MogaDeliveryProvider();
 
+// New providers (Yalidine, Noest, Aramex) currently route through the same
+// generic handler — replace each with a real implementation later.
 const PROVIDERS: Record<DeliveryProvider, DeliveryProviderImpl> = {
+  yalidine: mogadelivery as unknown as DeliveryProviderImpl,
+  noest: mogadelivery as unknown as DeliveryProviderImpl,
+  aramex: mogadelivery as unknown as DeliveryProviderImpl,
   mogadelivery,
   manual: mogadelivery as unknown as DeliveryProviderImpl, // placeholder
   other: mogadelivery as unknown as DeliveryProviderImpl,

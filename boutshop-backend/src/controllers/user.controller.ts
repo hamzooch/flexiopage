@@ -2,8 +2,10 @@ import { Response } from 'express';
 import bcrypt from 'bcryptjs';
 import { AuthRequest } from '../middleware/auth.middleware';
 import { User } from '../models/User.model';
+import { Wallet } from '../models/Wallet.model';
 import { Subscription } from '../models/Subscription.model';
 import * as storeService from '../services/store.service';
+import { currencyForCountry, isKnownCountry } from '../data/countries';
 
 export async function getProfile(req: AuthRequest, res: Response): Promise<void> {
   if (!req.user) {
@@ -31,14 +33,72 @@ export async function updateProfile(req: AuthRequest, res: Response): Promise<vo
     res.status(401).json({ error: 'Not authenticated' });
     return;
   }
-  const { name, avatar } = req.body;
-  const updates: { name?: string; avatar?: string } = {};
+  const { name, avatar, country, currency } = req.body as {
+    name?: string;
+    avatar?: string;
+    country?: string;
+    currency?: string;
+  };
+
+  const updates: { name?: string; avatar?: string; country?: string; currency?: string } = {};
   if (typeof name === 'string') updates.name = name.trim();
   if (typeof avatar === 'string') updates.avatar = avatar;
+
+  // Country / currency — country picks the default currency, but the seller
+  // can override (e.g. Tunisian seller targeting France in EUR).
+  if (typeof country === 'string') {
+    const c = country.trim().toUpperCase();
+    if (c && !isKnownCountry(c)) {
+      res.status(400).json({ error: 'Unknown country code', code: 'unknown_country' });
+      return;
+    }
+    updates.country = c || undefined;
+    // Auto-derive currency unless the caller is explicitly providing one.
+    if (typeof currency !== 'string' && c) {
+      const auto = currencyForCountry(c);
+      if (auto) updates.currency = auto;
+    }
+  }
+  if (typeof currency === 'string') {
+    const cur = currency.trim().toUpperCase();
+    if (cur && !/^[A-Z]{3}$/.test(cur)) {
+      res.status(400).json({ error: 'Invalid currency code', code: 'invalid_currency' });
+      return;
+    }
+    updates.currency = cur || undefined;
+  }
+
   const user = await User.findByIdAndUpdate(req.user._id, { $set: updates }, { new: true })
-    .select('-password')
-    .lean();
-  res.json({ user });
+    .select('-password');
+  if (!user) {
+    res.status(404).json({ error: 'User not found' });
+    return;
+  }
+
+  // Propagate to the wallet ONLY if it has no transactions yet — once the
+  // wallet is in use we can't safely change its currency.
+  let walletUpdated = false;
+  let walletPinned = false;
+  if (updates.currency) {
+    const wallet = await Wallet.findOne({ userId: user._id });
+    if (wallet) {
+      if (wallet.transactions.length === 0 && wallet.balance === 0 && wallet.aiBalance === 0) {
+        if (wallet.currency.toUpperCase() !== updates.currency) {
+          wallet.currency = updates.currency;
+          await wallet.save();
+          walletUpdated = true;
+        }
+      } else if (wallet.currency.toUpperCase() !== updates.currency) {
+        walletPinned = true;
+      }
+    }
+  }
+
+  res.json({
+    user: user.toObject(),
+    walletCurrencyUpdated: walletUpdated,
+    walletCurrencyPinned: walletPinned,
+  });
 }
 
 /** POST /api/users/change-password — body: { currentPassword, newPassword } */

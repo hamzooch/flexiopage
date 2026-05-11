@@ -11,8 +11,34 @@ import { Product } from '../models/Product.model';
 import { Order } from '../models/Order.model';
 import { initOrderPayment, isMockMode, type Channel } from '../services/mobile-money.service';
 import { dispatchOrder } from '../services/delivery.service';
+import { pushOrderToSheets } from '../services/sheets.service';
 
 const router = Router();
+
+/** Strip server-only secrets from the integrations object before exposing it. */
+function publicSafeStore<T extends { integrations?: Record<string, unknown> }>(store: T): T {
+  if (!store?.integrations) return store;
+  const raw = store.integrations as {
+    marketing?: Record<string, unknown>;
+    delivery?: Record<string, unknown>;
+    googleSheets?: Record<string, unknown>;
+  };
+  const safe: Record<string, unknown> = {};
+  // Marketing — only public pixel IDs leave the server. Access tokens / test
+  // event codes are server-side (Conversions API).
+  if (raw.marketing) {
+    const m = raw.marketing;
+    safe.marketing = {
+      facebookPixelId: m.facebookPixelId,
+      googleAnalyticsId: m.googleAnalyticsId,
+      tiktokPixelId: m.tiktokPixelId,
+      googleAdsConversionId: m.googleAdsConversionId,
+      googleAdsConversionLabel: m.googleAdsConversionLabel,
+      customHeadCode: m.customHeadCode,
+    };
+  }
+  return { ...store, integrations: safe } as T;
+}
 
 /** Resolve store by slug (e.g. myshop) or custom domain - caller can use Host header */
 router.get('/store-by-slug/:slug', async (req: Request, res: Response): Promise<void> => {
@@ -21,7 +47,7 @@ router.get('/store-by-slug/:slug', async (req: Request, res: Response): Promise<
     res.status(404).json({ error: 'Store not found' });
     return;
   }
-  res.json({ store });
+  res.json({ store: publicSafeStore(store) });
 });
 
 router.get('/store-by-subdomain/:subdomain', async (req: Request, res: Response): Promise<void> => {
@@ -30,7 +56,22 @@ router.get('/store-by-subdomain/:subdomain', async (req: Request, res: Response)
     res.status(404).json({ error: 'Store not found' });
     return;
   }
-  res.json({ store });
+  res.json({ store: publicSafeStore(store) });
+});
+
+/** Resolve store by custom domain (used by middleware when Host !== app domain). */
+router.get('/store-by-domain', async (req: Request, res: Response): Promise<void> => {
+  const domain = String(req.query.domain || '').toLowerCase();
+  if (!domain) {
+    res.status(400).json({ error: 'domain required' });
+    return;
+  }
+  const store = await storeService.getStoreByCustomDomain(domain);
+  if (!store) {
+    res.status(404).json({ error: 'Store not found' });
+    return;
+  }
+  res.json({ store: publicSafeStore(store) });
 });
 
 /** Public products for a store (published only) */
@@ -411,6 +452,17 @@ router.post('/checkout/cod', async (req: Request, res: Response): Promise<void> 
         Product.updateOne({ _id: it.productDoc._id }, { $inc: { stock: -it.quantity } })
       )
   );
+
+  // ── Best-effort push to Google Sheets ────────────────────────────
+  try {
+    await pushOrderToSheets({
+      order,
+      store: { _id: store._id, name: store.name, slug: store.slug },
+      event: 'order.created',
+    });
+  } catch (err) {
+    console.error('[checkout cod] sheets push error (non-fatal):', (err as Error).message);
+  }
 
   // ── Best-effort dispatch to MogaDelivery ─────────────────────────
   // We do NOT await finalizePaidOrder (that path is for `paid` orders);

@@ -15,6 +15,7 @@ import { Product } from '../models/Product.model';
 import { Store } from '../models/Store.model';
 import { sendOrderPaidEmail } from './email.service';
 import { dispatchOrder } from './delivery.service';
+import { pushOrderToSheets } from './sheets.service';
 
 const TOKEN_BYTES = 24; // 32 base64url chars after encoding
 const DEFAULT_EXPIRY_DAYS = 30;
@@ -128,6 +129,16 @@ export async function finalizePaidOrder(orderId: string, providerData?: {
     } catch (err) {
       console.error('[order-finalize] dispatch error (non-fatal):', (err as Error).message);
     }
+  }
+
+  // Push to Google Sheets (best-effort).
+  try {
+    const fullStore = await Store.findById(order.storeId).select('_id name slug').lean();
+    if (fullStore) {
+      await pushOrderToSheets({ order, store: fullStore, event: 'order.paid' });
+    }
+  } catch (err) {
+    console.error('[order-finalize] sheets push failed (non-fatal):', (err as Error).message);
   }
 
   // Send confirmation email (best-effort — never block the webhook on email)

@@ -26,6 +26,8 @@ import {
   googleFontsHref,
   type ThemeTokens,
 } from '@/data/store-themes';
+import { MarketingPixels, type MarketingConfig } from '@/components/storefront/MarketingPixels';
+import { TrackEvent } from '@/components/storefront/TrackEvent';
 
 const API_BASE = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5001').replace(/\/$/, '');
 
@@ -50,6 +52,7 @@ interface StoreDoc {
   storeType?: 'physical' | 'digital';
   theme?: { templateId?: string };
   settings?: { currency?: string; country?: string; direction?: 'ltr' | 'rtl' };
+  integrations?: { marketing?: MarketingConfig };
 }
 
 const FALLBACK_THEME = STORE_THEME_TEMPLATES[0].theme;
@@ -222,6 +225,19 @@ export default function CodCheckoutPage() {
   return (
     <>
       {fontsHref && <link rel="stylesheet" href={fontsHref} />}
+      <MarketingPixels config={store?.integrations?.marketing} />
+      {product && (
+        <TrackEvent
+          payload={{
+            event: 'InitiateCheckout',
+            contentIds: [product._id],
+            contentName: product.name,
+            value: product.price,
+            currency: store?.settings?.currency || 'EUR',
+            items: [{ id: product._id, name: product.name, price: product.price, quantity: 1 }],
+          }}
+        />
+      )}
       <div
         className="min-h-screen"
         style={{ ...cssVars, backgroundColor: theme.background, color: theme.foreground, fontFamily: theme.fontBody }}

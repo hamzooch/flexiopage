@@ -16,6 +16,8 @@ import { useEffect, useState } from 'react';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { Loader2, CheckCircle2, AlertCircle, Sparkles } from 'lucide-react';
+import { MarketingPixels, type MarketingConfig } from '@/components/storefront/MarketingPixels';
+import { TrackEvent } from '@/components/storefront/TrackEvent';
 
 const API_BASE = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000').replace(/\/$/, '');
 

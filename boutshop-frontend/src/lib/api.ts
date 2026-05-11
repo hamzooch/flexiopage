@@ -46,8 +46,8 @@ export const authApi = {
 // Users
 export const usersApi = {
   getProfile: () => api.get<{ user: unknown; subscription: unknown }>('/users/profile'),
-  updateProfile: (data: { name?: string; avatar?: string }) =>
-    api.patch<{ user: unknown }>('/users/profile', data),
+  updateProfile: (data: { name?: string; avatar?: string; country?: string; currency?: string }) =>
+    api.patch<{ user: unknown; walletCurrencyUpdated?: boolean; walletCurrencyPinned?: boolean }>('/users/profile', data),
   changePassword: (data: { currentPassword: string; newPassword: string }) =>
     api.post<{ ok: boolean }>('/users/change-password', data),
   getStores: () => api.get<{ stores: unknown[] }>('/users/stores'),
@@ -140,12 +140,41 @@ export interface AdminOverview {
   gmv30d: Record<string, number>;
   walletsByCurrency: Array<{ _id: string; totalBalance: number; totalAi: number; count: number }>;
   commissionByCurrency: Array<{ _id: string; total: number; count: number }>;
+  complaints: { open: number; urgent: number };
+  ordersByDay30d: Array<{ date: string; orders: number; revenue: number }>;
+  recentOrders: Array<{
+    _id: string;
+    orderNumber: string;
+    total: number;
+    currency: string;
+    paymentStatus: string;
+    fulfillmentStatus: string;
+    customerName?: string;
+    email?: string;
+    storeId?: { _id: string; name: string; slug: string };
+    createdAt: string;
+  }>;
+  recentUsers: Array<{
+    _id: string;
+    email: string;
+    name: string;
+    emailVerified?: boolean;
+    createdAt: string;
+  }>;
+  topStores30d: Array<{
+    _id: string;
+    orders: number;
+    gmv: number;
+    currency: string;
+    name?: string;
+    slug?: string;
+  }>;
 }
 export interface AdminUser {
   _id: string;
   email: string;
   name: string;
-  role: 'superadmin' | 'admin' | 'user';
+  role: 'owner' | 'superadmin' | 'admin' | 'supervisor' | 'user';
   emailVerified?: boolean;
   suspended?: boolean;
   suspendedReason?: string;
@@ -236,17 +265,21 @@ export const complaintsApi = {
     api.post<{ complaint: MyComplaint }>(`/complaints/${id}/messages`, { message }),
 };
 
+export type StaffRole = 'owner' | 'superadmin' | 'admin' | 'supervisor' | 'user';
+
 export const adminApi = {
   overview: () => api.get<{ overview: AdminOverview }>('/admin/overview'),
   users: (search?: string) =>
     api.get<{ users: AdminUser[]; total: number }>('/admin/users', { params: { search } }),
   userDetail: (userId: string) =>
     api.get<AdminUserDetail>(`/admin/users/${userId}`),
+  createUser: (data: { email: string; name: string; password: string; role: StaffRole }) =>
+    api.post<{ user: AdminUser }>('/admin/users', data),
   patchUser: (
     userId: string,
-    data: Partial<{ name: string; role: 'superadmin' | 'admin' | 'user'; emailVerified: boolean; suspended: boolean; suspendedReason: string }>
+    data: Partial<{ name: string; role: StaffRole; emailVerified: boolean; suspended: boolean; suspendedReason: string }>
   ) => api.patch<{ user: AdminUser }>(`/admin/users/${userId}`, data),
-  setUserRole: (userId: string, role: 'superadmin' | 'admin' | 'user') =>
+  setUserRole: (userId: string, role: StaffRole) =>
     api.patch<{ user: AdminUser }>(`/admin/users/${userId}/role`, { role }),
   /** Superadmin only — direct positive top-up of main or AI balance. */
   creditWallet: (
@@ -306,6 +339,16 @@ export const storesApi = {
   update: (storeId: string, data: Record<string, unknown>) =>
     api.patch<{ store: unknown }>(`/stores/${storeId}`, data),
   getAnalytics: (storeId: string) => api.get<Record<string, number>>(`/stores/${storeId}/analytics`),
+  // Custom domain
+  getDomainTarget: (storeId: string) =>
+    api.get<{ host: string; ips: string[] }>(`/stores/${storeId}/domain-target`),
+  verifyDomain: (storeId: string) =>
+    api.post<{ domain: string; expectedTarget: string; expectedIps: string[]; cname?: string[]; aRecords?: string[]; verified: boolean; reason?: string; saved?: boolean }>(`/stores/${storeId}/verify-domain`),
+  checkDomain: (storeId: string, domain: string) =>
+    api.post<{ domain: string; expectedTarget: string; verified: boolean; cname?: string[]; aRecords?: string[]; reason?: string }>(`/stores/${storeId}/check-domain`, { domain }),
+  // Google Sheets webhook
+  testSheets: (storeId: string, webhookUrl?: string) =>
+    api.post<{ ok: boolean; status?: number; error?: string }>(`/stores/${storeId}/integrations/sheets/test`, { webhookUrl }),
   // Products
   listProducts: (storeId: string, params?: { published?: string }) =>
     api.get<{ products: unknown[] }>(`/stores/${storeId}/products`, { params }),

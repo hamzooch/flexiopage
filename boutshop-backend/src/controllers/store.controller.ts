@@ -2,6 +2,8 @@ import { Response } from 'express';
 import { AuthRequest } from '../middleware/auth.middleware';
 import * as storeService from '../services/store.service';
 import { getStoreAnalytics } from '../services/analytics.service';
+import { verifyAndSaveDomain, getDomainTarget, checkDomain } from '../services/domain.service';
+import { testSheetsWebhook } from '../services/sheets.service';
 
 export async function createStore(req: AuthRequest, res: Response): Promise<void> {
   if (!req.user) {
@@ -84,4 +86,40 @@ export async function getStoreAnalyticsController(req: AuthRequest, res: Respons
   const store = (req as AuthRequest & { store: { _id: unknown } }).store;
   const analytics = await getStoreAnalytics(store._id.toString());
   res.json(analytics);
+}
+
+/** GET /api/stores/:storeId/domain-target — DNS values the seller must configure. */
+export async function getDomainTargetController(_req: AuthRequest, res: Response): Promise<void> {
+  res.json(getDomainTarget());
+}
+
+/** POST /api/stores/:storeId/verify-domain — re-check DNS for the saved customDomain. */
+export async function verifyDomainController(req: AuthRequest, res: Response): Promise<void> {
+  const store = (req as AuthRequest & { store: { _id: unknown } }).store;
+  const result = await verifyAndSaveDomain(store._id!.toString());
+  res.json(result);
+}
+
+/** POST /api/stores/:storeId/check-domain — preview a domain check without saving. */
+export async function previewDomainController(req: AuthRequest, res: Response): Promise<void> {
+  const { domain } = req.body as { domain?: string };
+  if (!domain?.trim()) {
+    res.status(400).json({ error: 'domain required' });
+    return;
+  }
+  const result = await checkDomain(domain);
+  res.json(result);
+}
+
+/** POST /api/stores/:storeId/integrations/sheets/test — ping the Apps Script webhook. */
+export async function testSheetsController(req: AuthRequest, res: Response): Promise<void> {
+  const store = (req as AuthRequest & { store: { _id: unknown; name: string; integrations?: { googleSheets?: { webhookUrl?: string } } } }).store;
+  const { webhookUrl } = req.body as { webhookUrl?: string };
+  const url = webhookUrl?.trim() || store.integrations?.googleSheets?.webhookUrl?.trim() || '';
+  if (!url) {
+    res.status(400).json({ error: 'webhookUrl required' });
+    return;
+  }
+  const result = await testSheetsWebhook(url, store.name);
+  res.json(result);
 }

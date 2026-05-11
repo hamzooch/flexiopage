@@ -15,30 +15,47 @@ import {
   ShoppingCart,
   Wallet,
   ShieldCheck,
+  ShieldAlert,
   LogOut,
   Menu,
   X,
   ExternalLink,
   MessageSquare,
   Crown,
+  Eye,
+  User as UserIcon,
 } from 'lucide-react';
 import { useAuthStore } from '@/stores/auth-store';
 import { cn } from '@/lib/utils';
 
 const NAV = [
   { href: '/admin', label: 'Vue d\'ensemble', icon: LayoutDashboard },
-  { href: '/admin/users', label: 'Vendeurs', icon: Users },
+  { href: '/admin/users', label: 'Utilisateurs', icon: Users },
   { href: '/admin/stores', label: 'Boutiques', icon: Store },
   { href: '/admin/orders', label: 'Commandes', icon: ShoppingCart },
   { href: '/admin/wallets', label: 'Wallets', icon: Wallet },
   { href: '/admin/complaints', label: 'Réclamations', icon: MessageSquare },
+  { href: '/admin/profile', label: 'Profil', icon: UserIcon },
 ];
+
+type StaffRole = 'owner' | 'superadmin' | 'admin' | 'supervisor';
+
+const ROLE_META: Record<StaffRole, { label: string; short: string; mode: string; Icon: typeof Crown }> = {
+  owner:      { label: 'Owner',       short: 'Owner',       mode: 'Mode owner',         Icon: Crown },
+  superadmin: { label: 'Super admin', short: 'Super admin', mode: 'Mode super-admin',   Icon: ShieldAlert },
+  admin:      { label: 'Admin',       short: 'Admin',       mode: 'Mode administrateur',Icon: ShieldCheck },
+  supervisor: { label: 'Superviseur', short: 'Superviseur', mode: 'Mode superviseur',   Icon: Eye },
+};
 
 export function AdminShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
   const { user, logout } = useAuthStore();
   const [open, setOpen] = useState(false);
+
+  const role = (user?.role as StaffRole | undefined) || 'admin';
+  const meta = ROLE_META[role] || ROLE_META.admin;
+  const RoleIcon = meta.Icon;
 
   const initials = (user?.name || user?.email || 'A')
     .split(/[\s@]/)
@@ -72,16 +89,12 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
         <div className="relative flex items-center justify-between px-5 py-5">
           <Link href="/admin" className="group flex items-center gap-2.5">
             <span className="grid h-9 w-9 place-items-center rounded-xl bg-gradient-to-br from-rose-600 via-orange-600 to-amber-500 shadow-lg shadow-rose-500/30">
-              {user?.role === 'superadmin' ? (
-                <Crown className="h-4 w-4 text-white" strokeWidth={2.5} />
-              ) : (
-                <ShieldCheck className="h-4 w-4 text-white" strokeWidth={2.5} />
-              )}
+              <RoleIcon className="h-4 w-4 text-white" strokeWidth={2.5} />
             </span>
             <div>
               <div className="text-lg font-bold leading-none">BoutShop</div>
               <div className="mt-0.5 inline-flex items-center gap-1 rounded-full bg-rose-500/10 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-rose-700">
-                {user?.role === 'superadmin' ? 'Super admin' : 'Admin'}
+                {meta.short}
               </div>
             </div>
           </Link>
@@ -133,19 +146,25 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
             <ExternalLink className="h-3.5 w-3.5" />
             Voir le dashboard vendeur
           </Link>
-          <div className="flex items-center gap-3 rounded-xl px-2 py-2">
-            <div className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-gradient-to-br from-rose-600 to-orange-600 text-xs font-semibold text-white shadow-md">
-              {initials}
-            </div>
-            <div className="min-w-0 flex-1">
-              <div className="truncate text-sm font-medium">{user?.name}</div>
-              <div className="truncate text-xs text-muted-foreground">{user?.email}</div>
-            </div>
+          <div className="flex items-center gap-2 rounded-xl px-2 py-2">
+            <Link
+              href="/admin/profile"
+              className="flex min-w-0 flex-1 items-center gap-3 rounded-lg p-1 transition hover:bg-muted/50"
+            >
+              <div className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-gradient-to-br from-rose-600 to-orange-600 text-xs font-semibold text-white shadow-md">
+                {initials}
+              </div>
+              <div className="min-w-0 flex-1">
+                <div className="truncate text-sm font-medium">{user?.name}</div>
+                <div className="truncate text-xs text-muted-foreground">{user?.email}</div>
+              </div>
+            </Link>
             <button
               type="button"
               onClick={() => { logout(); router.push('/'); }}
-              className="grid h-8 w-8 place-items-center rounded-lg text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+              className="grid h-8 w-8 shrink-0 place-items-center rounded-lg text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
               aria-label="Logout"
+              title="Se déconnecter"
             >
               <LogOut className="h-4 w-4" />
             </button>
@@ -173,10 +192,19 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
               <h1 className="truncate text-lg font-semibold tracking-tight">{labelFromPath(pathname)}</h1>
             </div>
           </div>
-          <span className="hidden items-center gap-2 rounded-full bg-rose-500/10 px-3 py-1.5 text-xs font-bold text-rose-700 sm:inline-flex">
-            {user?.role === 'superadmin' ? <Crown className="h-3.5 w-3.5" /> : <ShieldCheck className="h-3.5 w-3.5" />}
-            {user?.role === 'superadmin' ? 'Mode super-admin' : 'Mode administrateur'}
-          </span>
+          <div className="flex items-center gap-2">
+            <span className="hidden items-center gap-2 rounded-full bg-rose-500/10 px-3 py-1.5 text-xs font-bold text-rose-700 sm:inline-flex">
+              <RoleIcon className="h-3.5 w-3.5" />
+              {meta.mode}
+            </span>
+            <Link
+              href="/admin/profile"
+              title="Mon profil"
+              className="grid h-9 w-9 place-items-center rounded-full bg-gradient-to-br from-rose-600 to-orange-600 text-[10px] font-bold text-white shadow-md transition hover:scale-105"
+            >
+              {initials}
+            </Link>
+          </div>
         </header>
 
         <main className="flex-1 p-4 sm:p-6 lg:p-8">
@@ -190,10 +218,12 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
 function labelFromPath(path: string): string {
   if (path === '/admin') return 'Vue d\'ensemble';
   const map: Record<string, string> = {
-    users: 'Vendeurs',
+    users: 'Utilisateurs',
     stores: 'Boutiques',
     orders: 'Commandes',
     wallets: 'Wallets',
+    complaints: 'Réclamations',
+    profile: 'Profil',
   };
   const seg = path.split('/')[2];
   return map[seg] || seg || 'Admin';

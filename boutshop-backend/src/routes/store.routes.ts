@@ -23,6 +23,14 @@ router.get('/:storeId', storeController.getStore);
 router.patch('/:storeId', storeController.updateStore);
 router.get('/:storeId/analytics', storeController.getStoreAnalyticsController);
 
+// Custom domain
+router.get('/:storeId/domain-target', storeController.getDomainTargetController);
+router.post('/:storeId/verify-domain', storeController.verifyDomainController);
+router.post('/:storeId/check-domain', storeController.previewDomainController);
+
+// Integrations
+router.post('/:storeId/integrations/sheets/test', storeController.testSheetsController);
+
 // Nested resources
 router.get('/:storeId/products', productController.listProducts);
 router.post('/:storeId/products', productController.createProduct);
