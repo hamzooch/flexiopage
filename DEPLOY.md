@@ -38,7 +38,7 @@ ufw --force enable
 # Clone the repo
 mkdir -p /opt
 cd /opt
-git clone https://github.com/hamzooch/boutshop.git flexiopage
+git clone https://github.com/hamzooch/flexiopage.git
 cd flexiopage
 
 # Copy and edit the environment template
