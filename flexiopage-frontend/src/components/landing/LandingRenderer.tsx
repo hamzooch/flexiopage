@@ -28,7 +28,7 @@ import {
   ShoppingBag,
 } from 'lucide-react';
 import { useState } from 'react';
-import { cn } from '@/lib/utils';
+import { cn, formatCurrency } from '@/lib/utils';
 import type { PageSection } from './SectionEditor';
 import { CodOrderForm, type CodFormConfig } from '@/components/storefront/cod-order-form';
 import { STORE_THEME_TEMPLATES } from '@/data/store-themes';
@@ -1211,35 +1211,102 @@ function CodFormSection({
     );
   }
 
+  // Pull the first product image for the right-hand summary card.
+  const productImage = product.images?.[0] ? absUrl(product.images[0]) : '';
+  const stockHint = product.trackInventory && !product.allowBackorder && (product.stock ?? 0) > 0 && (product.stock ?? 0) < 20
+    ? `Plus que ${product.stock} en stock`
+    : null;
+
   return (
     <section
       id="cod-order-form-section"
-      className="mx-auto max-w-2xl scroll-mt-24 px-4 py-14 sm:px-6 sm:py-20"
+      className="relative scroll-mt-24 overflow-hidden py-16 sm:py-24"
     >
-      {(title || subtitle) && (
-        <div className="mb-8 text-center">
-          {title && (
-            <h2 className="text-2xl font-bold tracking-tight sm:text-3xl md:text-4xl">{title}</h2>
-          )}
-          {subtitle && (
-            <p className="mt-3 text-sm text-muted-foreground sm:text-base">{subtitle}</p>
-          )}
+      {/* Soft brand-tinted backdrop so the form pops out from the rest of the page */}
+      <div className="pointer-events-none absolute inset-0 -z-10" aria-hidden>
+        <div className="absolute inset-0 bg-gradient-to-br from-amber-50 via-orange-50/60 to-background dark:from-amber-950/20 dark:via-orange-950/10 dark:to-background" />
+        <div className="absolute -top-32 left-1/4 h-[420px] w-[420px] rounded-full bg-amber-400/20 blur-[120px]" />
+        <div className="absolute -bottom-32 right-1/4 h-[420px] w-[420px] rounded-full bg-orange-500/15 blur-[120px]" />
+      </div>
+
+      <div className="mx-auto max-w-6xl px-4 sm:px-6">
+        {(title || subtitle) && (
+          <div className="mb-10 text-center">
+            <span className="mb-3 inline-flex items-center gap-1.5 rounded-full bg-orange-500/10 px-3 py-1 text-xs font-bold uppercase tracking-wider text-orange-700">
+              <ShoppingBag className="h-3 w-3" /> Paiement à la livraison
+            </span>
+            {title && (
+              <h2 className="text-balance text-3xl font-bold tracking-tight sm:text-4xl md:text-5xl">
+                {title}
+              </h2>
+            )}
+            {subtitle && (
+              <p className="mx-auto mt-3 max-w-xl text-balance text-sm text-muted-foreground sm:text-base">
+                {subtitle}
+              </p>
+            )}
+          </div>
+        )}
+
+        <div className="grid gap-6 lg:grid-cols-[1.1fr_1fr] lg:gap-10">
+          {/* ── FORM (left column) ─────────────────────────────── */}
+          <div className="order-2 lg:order-1">
+            <CodOrderForm
+              storeSlug={storeSlug}
+              productSlug={product.slug || ''}
+              productName={product.name}
+              productPrice={product.price || 0}
+              productStock={product.stock ?? 999}
+              trackInventory={!!product.trackInventory}
+              allowBackorder={!!product.allowBackorder}
+              currency={currency || 'XOF'}
+              defaultCountry={country}
+              config={config}
+              theme={theme}
+              radius={radius}
+            />
+          </div>
+
+          {/* ── PRODUCT SUMMARY (right column) ─────────────────── */}
+          <aside className="order-1 lg:order-2 lg:sticky lg:top-24 lg:self-start">
+            <div className="overflow-hidden rounded-2xl border border-border/60 bg-card shadow-xl shadow-orange-500/5">
+              {productImage && (
+                <div className="aspect-[4/3] w-full overflow-hidden bg-muted">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={productImage} alt={product.name} className="h-full w-full object-cover" />
+                </div>
+              )}
+              <div className="space-y-4 p-5 sm:p-6">
+                <div>
+                  <h3 className="text-lg font-bold tracking-tight sm:text-xl">{product.name}</h3>
+                  <p className="mt-1 text-2xl font-extrabold text-orange-600 sm:text-3xl">
+                    {formatCurrency(product.price || 0, currency || 'XOF')}
+                  </p>
+                  {stockHint && (
+                    <p className="mt-1 inline-flex items-center gap-1.5 rounded-full bg-rose-500/10 px-2.5 py-0.5 text-[11px] font-semibold text-rose-600">
+                      🔥 {stockHint}
+                    </p>
+                  )}
+                </div>
+                <div className="grid gap-2 border-t border-border/60 pt-4 text-sm">
+                  <div className="flex items-center gap-2 text-muted-foreground">
+                    <ShoppingBag className="h-4 w-4 shrink-0 text-emerald-600" />
+                    <span>Paiement <strong className="text-foreground">en espèces</strong> au livreur</span>
+                  </div>
+                  <div className="flex items-center gap-2 text-muted-foreground">
+                    <ShoppingBag className="h-4 w-4 shrink-0 text-emerald-600" />
+                    <span>Livraison rapide <strong className="text-foreground">24-72h</strong></span>
+                  </div>
+                  <div className="flex items-center gap-2 text-muted-foreground">
+                    <ShoppingBag className="h-4 w-4 shrink-0 text-emerald-600" />
+                    <span>Sans carte bancaire, <strong className="text-foreground">sans acompte</strong></span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </aside>
         </div>
-      )}
-      <CodOrderForm
-        storeSlug={storeSlug}
-        productSlug={product.slug || ''}
-        productName={product.name}
-        productPrice={product.price || 0}
-        productStock={product.stock ?? 999}
-        trackInventory={!!product.trackInventory}
-        allowBackorder={!!product.allowBackorder}
-        currency={currency || 'XOF'}
-        defaultCountry={country}
-        config={config}
-        theme={theme}
-        radius={radius}
-      />
+      </div>
     </section>
   );
 }

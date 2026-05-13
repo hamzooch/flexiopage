@@ -487,20 +487,45 @@ For sections that need images, output an "imagePrompt" field — a short ENGLISH
 
 # Image direction — MAKE THE PHOTOS MODERN, BOLD AND CINEMATIC
 Cultural anchor: ${photoCulture}.
+
+Quality bar — these images are a 2026 luxury-brand landing page (think Apple
+product page, Aesop, Le Labo, Loewe campaign). Every shot should feel
+hand-art-directed, not AI-generated. The viewer should pause on each image.
+
 Universal modifiers (append to EVERY imagePrompt unless contradicted):
-  "shot on Sony A7 IV with 50mm prime, f/1.8, golden hour soft light or moody sidelight,
-   editorial fashion photography, magazine cover composition, rich shadows, cinematic color grade,
-   shallow depth of field, 8k, ultra detailed, no text, no logos, no watermark".
-Vary scene types across the page so it doesn't feel repetitive: choose from
-  • close-up product detail (macro, dramatic lighting)
-  • lifestyle scene with hands (in use, contextual)
-  • environmental / setting shot (room, café, market — no people)
-  • full-frame model wearing/holding the product (cropped, editorial pose)
-  • flat-lay overhead with complementary props
-  • bento / collage style mood board piece
-Avoid: stock-photo blandness, white seamless backgrounds, generic smiling faces, beige rooms,
-  cliché composition (centered subject + blurred bg). Push for ASYMMETRIC framing,
-  intentional negative space, ONE strong focal point, and a clear color story per scene.
+  "shot on Sony A7 IV with 50mm prime, f/1.4, golden hour soft light OR
+   moody single-source sidelight, editorial fashion photography, magazine
+   cover composition, rich shadows, cinematic color grade with one
+   dominant accent color, shallow depth of field, 8k, ultra detailed,
+   sharp focus on subject, organic film grain, no text, no logos,
+   no watermark, no extra fingers, no warped hands".
+
+Vary scene types across the page — NEVER use the same composition twice.
+Pick a different bucket for each image:
+  • Close-up product detail — macro shot, dramatic chiaroscuro lighting,
+    one tight angle revealing texture, material, craftsmanship
+  • Lifestyle in-use — hands holding/wearing/using the product, real-world
+    context (market, café, home interior), candid framing
+  • Environmental still life — product placed in a curated scene with
+    complementary props (linen, marble, fresh flowers, ceramic, leather),
+    NO PEOPLE, painterly composition
+  • Full-frame human portrait — model wearing/holding the product, cropped
+    at chest or thighs, eye contact, confident editorial pose
+  • Flat-lay overhead — top-down composition with the product surrounded
+    by 3-5 complementary objects, intentional negative space
+  • Atmospheric mood — extreme shallow depth, product partially out of
+    frame, focus on color/light/feeling rather than literal product
+
+Composition rules — break the stock-photo defaults:
+  ✓ ASYMMETRIC framing (subject off-center on a 1/3 line)
+  ✓ Intentional negative space — at least 30% of the frame is breathing room
+  ✓ ONE strong focal point per image, single light source
+  ✓ A clear color story (1 dominant + 1 accent — not 5 random colors)
+  ✓ Honest grain / texture — feels analog, not over-processed
+  ✗ Centered subject + blurred background — too generic
+  ✗ Beige hotel-room interior, white seamless backdrop, generic smiles
+  ✗ Multiple competing colors, busy backgrounds, lens flare overload
+  ✗ Symmetrical "Pinterest aesthetic" without intention
 
 Per-section schema:
 
@@ -978,30 +1003,32 @@ function finalize(
     }
   }
 
-  // ── Enforce: every landing page MUST have a cod-form (order form) ─────
-  // The LLM occasionally skips it. We splice one in just before the FAQ
-  // (or before the footer if no FAQ) so buyers can always place an order.
+  // ── Enforce: every physical-product landing MUST have a cod-form ────
+  // Digital products skip COD entirely (instant download = no delivery).
+  // For everything else we ensure exactly one cod-form is present with
+  // a minimal 3-field shape — nom complet + téléphone + adresse — so the
+  // seller can convert directly from the landing without any extra steps.
   const isDigitalProduct = fallbackProduct?.type === 'digital';
   if (!isDigitalProduct) {
     const hasCodForm = sections.some((s) => s.type === 'cod-form');
     if (!hasCodForm) {
-      // Build a sensible default cod-form from the product info.
       const productSlug = fallbackProduct?.name
         ? fallbackProduct.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40)
         : undefined;
       const codFormSection = {
         type: 'cod-form',
         props: {
-          title: 'Commandez maintenant — Paiement à la livraison',
-          subtitle: 'Remplis le formulaire ci-dessous. On te rappelle pour confirmer puis on livre. Aucun acompte.',
+          title: 'Commandez maintenant',
+          subtitle: 'Remplis tes coordonnées — on te rappelle pour confirmer, puis on livre. Pas d\'acompte, paiement à la livraison.',
           submitLabel: 'Confirmer ma commande',
           reassurance: 'Paiement uniquement à la réception · Livraison rapide',
           productSlug,
-          showEmail: true,
+          // Minimal-friction defaults: 3 essential fields only
+          showEmail: false,
           requireEmail: false,
           showPostalCode: false,
           showState: false,
-          showNotes: true,
+          showNotes: false,
           showQuantity: true,
         } as Record<string, unknown>,
       };
@@ -1014,6 +1041,17 @@ function finalize(
       else insertAt = sections.length;
       sections.splice(insertAt, 0, codFormSection);
       console.log('[landing-gen] auto-injected cod-form section (LLM skipped it)');
+    } else {
+      // The LLM did emit a cod-form — strip the optional clutter fields so
+      // the rendered form stays focused on nom/téléphone/adresse and
+      // mirrors the seller's expectation.
+      for (const sec of sections) {
+        if (sec.type === 'cod-form') {
+          const p = sec.props as Record<string, unknown>;
+          if (p.showEmail === undefined) p.showEmail = false;
+          if (p.showNotes === undefined) p.showNotes = false;
+        }
+      }
     }
   }
 
