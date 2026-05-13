@@ -914,7 +914,7 @@ async function buildImageGenInput(slot: ImageSlot): Promise<ImageGenInput> {
   const isBanner = slot.kind === 'banner';
   const styleSuffix = ', photorealistic, natural daylight, shallow depth of field, lifestyle photography, no text, no logos, no watermark';
   const promptLooksClean = /no text|photoreal/i.test(slot.prompt);
-  const finalPrompt = isBanner
+  let finalPrompt = isBanner
     ? slot.prompt
     : (promptLooksClean ? slot.prompt : slot.prompt + styleSuffix);
 
@@ -928,6 +928,19 @@ async function buildImageGenInput(slot: ImageSlot): Promise<ImageGenInput> {
     } catch (err) {
       console.warn('[image-gen] could not resolve reference image, falling back to text-to-image:', (err as Error).message);
     }
+  }
+
+  // Nano Banana Edit fidelity guard. When we hand it a reference photo we
+  // want it to PLACE THE SAME PRODUCT in a new scene — not invent a similar
+  // object. The model honours strong, explicit identity locks at the very
+  // start of the prompt much better than vague "based on this product"
+  // wording, so we prepend a fixed lock when a reference is attached.
+  const model = modelForKind(slot.kind) || '';
+  const isNanoBananaEdit = /nano-banana/i.test(model) && referenceImages && referenceImages.length > 0;
+  if (isNanoBananaEdit) {
+    const fidelityLock =
+      'Use the product from the reference image EXACTLY — keep its real shape, color, material, branding, hardware and proportions identical to the reference. Do NOT change the product, do NOT invent a new variant. Compose a NEW scene around this same product. Scene: ';
+    finalPrompt = fidelityLock + finalPrompt;
   }
 
   // Negative prompts only apply to FLUX-class models. Banners want text in
@@ -1073,6 +1086,60 @@ function finalize(
  * image-to-image (Nano Banana Edit) — placing the product into lifestyle
  * scenes, studio shots, flatlays, etc.
  */
+
+/**
+ * Auto-inject a promo banner imagePrompt when the seller has set a
+ * compareAtPrice (priceBefore > priceAfter) but the LLM forgot to emit a
+ * `bannerPrompt`. The banner is rendered by Ideogram v3 (text specialist)
+ * and applied to the CTA section if present, otherwise to the hero. We
+ * skip if any section already has a banner — no point duplicating.
+ *
+ * Why this matters: a "-XX%" sticker on the page is the single biggest
+ * conversion lever on COD landings, and asking the LLM to ALWAYS emit it
+ * costs a long, fragile prompt rule. Doing it deterministically here is
+ * cheaper and more reliable.
+ */
+function injectPromoBannerIfDiscount(
+  sections: Array<{ type: string; props: Record<string, unknown> }>,
+  input: FalGenerateInput,
+): void {
+  const priceBefore = input.priceBefore;
+  const priceAfter = input.priceAfter ?? input.product?.price;
+  if (typeof priceBefore !== 'number' || typeof priceAfter !== 'number') return;
+  if (priceBefore <= priceAfter) return;
+
+  const discountPct = Math.round(((priceBefore - priceAfter) / priceBefore) * 100);
+  if (discountPct < 5) return; // sub-5% isn't worth shouting about
+
+  const alreadyHasBanner = sections.some((s) => {
+    const p = s.props || {};
+    return typeof p.bannerPrompt === 'string' || typeof p.bannerUrl === 'string';
+  });
+  if (alreadyHasBanner) return;
+
+  const lang = (input.language || 'fr').toLowerCase();
+  // Pick the local banner copy so the sticker looks native, not stock.
+  const offerWord =
+    lang.startsWith('ar') ? 'عرض خاص' :
+    lang.startsWith('en') ? 'LIMITED OFFER' :
+    'OFFRE LIMITÉE';
+
+  const bannerPrompt =
+    `Modern promotional sticker badge reading "-${discountPct}%" in bold sans-serif as the centerpiece, ` +
+    `with the smaller text "${offerWord}" arching above it. ` +
+    `Vibrant orange and amber gradient background, white text with subtle drop shadow, ` +
+    `circular tilted sticker shape, flat 2026 e-commerce design, sharp edges, no realistic photo, ` +
+    `transparent surroundings, high contrast for legibility on a product page.`;
+
+  // Prefer cta (best conversion placement); fall back to hero.
+  const cta = sections.find((s) => s.type === 'cta');
+  const hero = sections.find((s) => s.type === 'hero');
+  const target = cta || hero;
+  if (!target) return;
+  target.props.bannerPrompt = bannerPrompt;
+  console.log(`[landing-gen] auto-injected -${discountPct}% promo banner on ${target.type}`);
+}
+
 function injectProductImagesFirst(
   sections: Array<{ type: string; props: Record<string, unknown> }>,
   productImages: string[]
@@ -1254,6 +1321,7 @@ async function runFullPipeline(
   // then synthesize prompts only for slots that are still empty.
   injectProductImagesFirst(sections, productImages);
   synthesizeMissingPrompts(sections, input.product, input.country);
+  injectPromoBannerIfDiscount(sections, input);
 
   // STEP 2 — image generation (parallel) — gated by env
   await tick('images', 'running');
