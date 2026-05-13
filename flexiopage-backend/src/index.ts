@@ -27,16 +27,33 @@ import { rateLimiter } from './middleware/rateLimiter';
 const app = express();
 const PORT = process.env.PORT || 5000;
 
-// Optional: serve uploaded files when using local storage
-const uploadPath = process.env.UPLOAD_PATH || path.join(process.cwd(), 'uploads');
-app.use('/uploads', express.static(uploadPath));
-
 // Structured request logging — must come before route handlers so every
 // request gets a logger attached at req.log.
 app.use(httpLogger);
 
-// Security & parsing
-app.use(helmet());
+// Security headers. Helmet's default Cross-Origin-Resource-Policy is
+// "same-origin", which would block the frontend (flexiopage.com) from
+// embedding images served by the API (api.flexiopage.com). We disable
+// the global CORP header here and set it explicitly on /uploads so
+// only the public static folder is cross-origin-embeddable.
+app.use(helmet({ crossOriginResourcePolicy: false }));
+
+// ── Public static uploads — open, non-credentialed CORS ─────────────
+// Mounted BEFORE the credentialed cors() below so the wildcard
+// Access-Control-Allow-Origin doesn't clash with Access-Control-Allow-
+// Credentials: true (combination is invalid per the CORS spec).
+const uploadPath = process.env.UPLOAD_PATH || path.join(process.cwd(), 'uploads');
+app.use(
+  '/uploads',
+  (_req, res, next) => {
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+    next();
+  },
+  express.static(uploadPath),
+);
+
+// ── API CORS — credentialed, origin allow-list ──────────────────────
 // Accept either a single FRONTEND_URL or a comma-separated list (handy during
 // dev when the frontend is run on multiple ports).
 const corsOrigins = (process.env.FRONTEND_URL || 'http://localhost:3000,http://localhost:3002')
