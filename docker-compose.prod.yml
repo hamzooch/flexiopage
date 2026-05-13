@@ -1,0 +1,114 @@
+# BoutShop — Production stack for a single VPS (Hostinger / OVH / Hetzner).
+#
+# Layout:
+#   nginx (80/443)  ──┬──>  127.0.0.1:3000   (frontend, Next.js standalone)
+#                     └──>  127.0.0.1:5000   (backend, Express + Mongo client)
+#                              │
+#                              └──>  mongodb:27017  (internal network only)
+#
+# Backend & frontend are NOT exposed to the public — only nginx listens
+# externally. SSL certificates are mounted from /etc/letsencrypt on the host.
+#
+# Usage:
+#   cp .env.production.example .env
+#   nano .env                          # fill in secrets + DOMAIN
+#   docker compose -f docker-compose.prod.yml --env-file .env up -d --build
+
+services:
+  mongodb:
+    image: mongo:7
+    restart: unless-stopped
+    volumes:
+      - mongodb_data:/data/db
+    environment:
+      MONGO_INITDB_DATABASE: boutshop
+    # No ports: section — Mongo is only reachable from inside the compose network.
+    networks:
+      - boutshop
+
+  backend:
+    build:
+      context: ./boutshop-backend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    # Bind only to localhost — nginx is the public entry point.
+    ports:
+      - "127.0.0.1:5000:5000"
+    environment:
+      NODE_ENV: production
+      PORT: 5000
+      MONGODB_URI: mongodb://mongodb:27017/boutshop
+      JWT_SECRET: ${JWT_SECRET}
+      JWT_EXPIRES: ${JWT_EXPIRES:-7d}
+      FRONTEND_URL: ${FRONTEND_URL}
+      STORAGE_DRIVER: ${STORAGE_DRIVER:-local}
+      UPLOAD_PATH: /app/uploads
+      PUBLIC_URL_PREFIX: /uploads
+      # Optional integrations — all empty by default
+      S3_BUCKET: ${S3_BUCKET:-}
+      S3_REGION: ${S3_REGION:-}
+      S3_ENDPOINT: ${S3_ENDPOINT:-}
+      S3_ACCESS_KEY: ${S3_ACCESS_KEY:-}
+      S3_SECRET_KEY: ${S3_SECRET_KEY:-}
+      STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:-}
+      STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      FAL_KEY: ${FAL_KEY:-}
+      FAL_LLM_MODEL: ${FAL_LLM_MODEL:-}
+      FAL_IMAGE_MODEL: ${FAL_IMAGE_MODEL:-}
+      LANDING_AI_IMAGES_ENABLED: ${LANDING_AI_IMAGES_ENABLED:-true}
+      RESEND_API_KEY: ${RESEND_API_KEY:-}
+      EMAIL_FROM: ${EMAIL_FROM:-}
+      CINETPAY_API_KEY: ${CINETPAY_API_KEY:-}
+      CINETPAY_SITE_ID: ${CINETPAY_SITE_ID:-}
+      CINETPAY_NOTIFY_URL: ${CINETPAY_NOTIFY_URL:-}
+      API_PUBLIC_URL: ${API_PUBLIC_URL}
+      BOUTSHOP_WEBHOOK_SECRET: ${BOUTSHOP_WEBHOOK_SECRET:-}
+      MOGADELIVERY_WEBHOOK_URL: ${MOGADELIVERY_WEBHOOK_URL:-}
+    depends_on:
+      - mongodb
+    volumes:
+      - backend_uploads:/app/uploads
+    networks:
+      - boutshop
+
+  frontend:
+    build:
+      context: ./boutshop-frontend
+      dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL}
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:3000:3000"
+    environment:
+      NODE_ENV: production
+    depends_on:
+      - backend
+    networks:
+      - boutshop
+
+  nginx:
+    image: nginx:1.27-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/conf.d:/etc/nginx/conf.d:ro
+      - /etc/letsencrypt:/etc/letsencrypt:ro
+      - certbot_webroot:/var/www/certbot
+    depends_on:
+      - backend
+      - frontend
+    networks:
+      - boutshop
+
+volumes:
+  mongodb_data:
+  backend_uploads:
+  certbot_webroot:
+
+networks:
+  boutshop:
+    driver: bridge
