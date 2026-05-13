@@ -1,5 +1,5 @@
 /**
- * Axios API client for BoutShop backend.
+ * Axios API client for FlexioPage backend.
  * Uses credentials for cookies (JWT). Base URL from env.
  */
 import axios, { type AxiosInstance } from 'axios';

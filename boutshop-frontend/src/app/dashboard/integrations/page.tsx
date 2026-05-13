@@ -307,7 +307,7 @@ function DomainPanel({ store, onSaved, saving, setSaving }: PanelProps) {
               Chez ton registrar (OVH, GoDaddy, Namecheap…), ajoute :
             </p>
             <div className="mt-3 space-y-2">
-              <DnsRow type="CNAME" host={domain} value={target.host || 'stores.boutshop.io'} />
+              <DnsRow type="CNAME" host={domain} value={target.host || 'stores.flexiopage.com'} />
               {target.ips.length > 0 && (
                 <DnsRow type="A (apex)" host={domain} value={target.ips.join(', ')} />
               )}

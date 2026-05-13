@@ -101,7 +101,7 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
               <RoleIcon className="h-4 w-4 text-white" strokeWidth={2.5} />
             </span>
             <div>
-              <div className="text-lg font-bold leading-none">BoutShop</div>
+              <div className="text-lg font-bold leading-none">FlexioPage</div>
               <div className="mt-0.5 inline-flex items-center gap-1 rounded-full bg-rose-500/10 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-rose-700">
                 {meta.short}
               </div>

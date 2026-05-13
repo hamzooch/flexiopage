@@ -10,9 +10,9 @@ import mongoose from 'mongoose';
 import { connectDB } from '../src/config/database';
 import { User } from '../src/models/User.model';
 
-const EMAIL = process.env.ADMIN_EMAIL || 'admin@boutshop.dev';
+const EMAIL = process.env.ADMIN_EMAIL || 'admin@flexiopage.com';
 const PASSWORD = process.env.ADMIN_PASSWORD || 'Admin1234!';
-const NAME = 'BoutShop Admin';
+const NAME = 'FlexioPage Admin';
 
 async function main(): Promise<void> {
   await connectDB();

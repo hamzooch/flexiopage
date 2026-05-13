@@ -1,5 +1,5 @@
 /**
- * BoutShop Backend - Main entry point
+ * FlexioPage Backend - Main entry point
  * Express server with MongoDB, JWT auth, REST API
  */
 import 'dotenv/config';
@@ -77,7 +77,7 @@ app.use(errorHandler);
 async function start() {
   await connectDB();
   app.listen(PORT, () => {
-    logger.info({ port: PORT }, `BoutShop API running on http://localhost:${PORT}`);
+    logger.info({ port: PORT }, `FlexioPage API running on http://localhost:${PORT}`);
   });
 }
 

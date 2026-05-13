@@ -45,7 +45,7 @@ export default function LoginPage() {
       <Card className="w-full max-w-md">
         <CardHeader className="space-y-1 text-center">
           <Link href="/" className="text-2xl font-bold text-primary">
-            BoutShop
+            FlexioPage
           </Link>
           <CardTitle className="text-2xl">Log in</CardTitle>
           <CardDescription>Enter your email and password</CardDescription>

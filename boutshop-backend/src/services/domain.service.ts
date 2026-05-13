@@ -2,19 +2,19 @@
  * Custom domain verification using DNS resolution.
  *
  * The seller adds their domain (e.g. shop.example.com) and points its CNAME
- * (or A record for apex) to BoutShop's hosting domain. We verify by resolving
+ * (or A record for apex) to FlexioPage's hosting domain. We verify by resolving
  * the DNS records and comparing.
  *
  * Env:
- *   STOREFRONT_HOST   — the canonical host BoutShop expects (e.g.
- *                       "stores.boutshop.io"). The seller's CNAME must point
+ *   STOREFRONT_HOST   — the canonical host FlexioPage expects (e.g.
+ *                       "stores.flexiopage.com"). The seller's CNAME must point
  *                       here. Defaults to a sensible local-dev value.
  *   STOREFRONT_IPS    — optional comma-separated apex IPs (for A records).
  */
 import dns from 'node:dns/promises';
 import { Store } from '../models/Store.model';
 
-const TARGET_HOST = (process.env.STOREFRONT_HOST || 'stores.boutshop.io').toLowerCase();
+const TARGET_HOST = (process.env.STOREFRONT_HOST || 'stores.flexiopage.com').toLowerCase();
 const TARGET_IPS = (process.env.STOREFRONT_IPS || '')
   .split(',')
   .map((s) => s.trim())

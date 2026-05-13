@@ -1,4 +1,4 @@
-# BoutShop — Production stack for a single VPS (Hostinger / OVH / Hetzner).
+# FlexioPage — Production stack for a single VPS (Hostinger / OVH / Hetzner).
 #
 # Layout:
 #   nginx (80/443)  ──┬──>  127.0.0.1:3000   (frontend, Next.js standalone)

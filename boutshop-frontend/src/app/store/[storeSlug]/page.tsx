@@ -102,7 +102,7 @@ export default async function PublicStorePage({ params }: Props) {
         <div className="text-center">
           <h1 className="text-2xl font-bold">Store not found</h1>
           <Link href="/" className="mt-4 inline-block text-primary hover:underline">
-            Back to BoutShop
+            Back to FlexioPage
           </Link>
         </div>
       </div>

@@ -5,7 +5,7 @@ import './globals.css';
 const inter = Inter({ subsets: ['latin'] });
 
 export const metadata: Metadata = {
-  title: 'BoutShop - Create Your Online Store',
+  title: 'FlexioPage — Create Your Online Store',
   description: 'Sell physical or digital products with your own online store and landing pages.',
 };
 

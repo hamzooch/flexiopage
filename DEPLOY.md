@@ -1,19 +1,19 @@
-# BoutShop — Deploying on a Hostinger VPS
+# FlexioPage — Deploying on a Hostinger VPS
 
-End-to-end guide to ship BoutShop on a fresh Ubuntu 22.04 / 24.04 VPS.
+End-to-end guide to ship FlexioPage on a fresh Ubuntu 22.04 / 24.04 VPS.
 Time: ~30 min if the DNS is already pointing to the VPS.
 
 ## 1. Prerequisites
 
 - A Hostinger VPS with **≥ 2 GB RAM** and **≥ 20 GB disk**
-- A domain name (e.g. `boutshop.tn`)
+- A domain name (e.g. `flexiopage.com`)
 - Two DNS A records pointing to the VPS IP:
-  - `boutshop.tn` → `<VPS_IP>`
-  - `api.boutshop.tn` → `<VPS_IP>`
-  - (optionally `www.boutshop.tn` → `<VPS_IP>`)
+  - `flexiopage.com` → `<VPS_IP>`
+  - `api.flexiopage.com` → `<VPS_IP>`
+  - (optionally `www.flexiopage.com` → `<VPS_IP>`)
 - Your SSH public key on the VPS, or root password
 
-> Wait until `dig +short boutshop.tn` returns your VPS IP before going further —
+> Wait until `dig +short flexiopage.com` returns your VPS IP before going further —
 > Let's Encrypt validates DNS before issuing certificates.
 
 ## 2. First-time VPS setup
@@ -38,8 +38,8 @@ ufw --force enable
 # Clone the repo
 mkdir -p /opt
 cd /opt
-git clone https://github.com/hamzooch/boutshop.git
-cd boutshop
+git clone https://github.com/hamzooch/boutshop.git flexiopage
+cd flexiopage
 
 # Copy and edit the environment template
 cp .env.production.example .env
@@ -59,24 +59,24 @@ Paste the output as `JWT_SECRET` in `.env`.
 Stop anything listening on port 80, then ask certbot for the cert:
 
 ```bash
-cd /opt/boutshop
+cd /opt/flexiopage
 certbot certonly --standalone \
-  -d boutshop.tn -d www.boutshop.tn -d api.boutshop.tn \
-  --email you@boutshop.tn --agree-tos --no-eff-email
+  -d flexiopage.com -d www.flexiopage.com -d api.flexiopage.com \
+  --email you@flexiopage.com --agree-tos --no-eff-email
 ```
 
 > Replace the three `-d` values with **your** domains. Both apex and
 > `api.` subdomain need to resolve to this VPS *before* running this.
 
-After success, the certificate lives under `/etc/letsencrypt/live/boutshop.tn/`.
+After success, the certificate lives under `/etc/letsencrypt/live/flexiopage.com/`.
 
 ## 4. Update nginx config with your real domain
 
 ```bash
-nano nginx/conf.d/boutshop.conf
+nano nginx/conf.d/flexiopage.conf
 ```
 
-Replace every occurrence of `boutshop.tn` and `api.boutshop.tn` with
+Replace every occurrence of `flexiopage.com` and `api.flexiopage.com` with
 your real domain(s). Save and quit.
 
 ## 5. Launch the stack
@@ -100,7 +100,7 @@ docker compose -f docker-compose.prod.yml exec backend \
       const bcrypt = require('bcryptjs');
       const passwordHash = await bcrypt.hash('CHANGE_ME', 12);
       await User.create({
-        email: 'admin@boutshop.tn',
+        email: 'admin@flexiopage.com',
         passwordHash,
         name: 'Admin',
         role: 'admin',
@@ -111,7 +111,7 @@ docker compose -f docker-compose.prod.yml exec backend \
   "
 ```
 
-> Replace `admin@boutshop.tn` and `CHANGE_ME` with your real credentials.
+> Replace `admin@flexiopage.com` and `CHANGE_ME` with your real credentials.
 > Or use the existing script: `npx tsx scripts/seed-admin.ts`.
 
 ## 7. Renew SSL certificates automatically
@@ -126,7 +126,7 @@ crontab -e
 Add this line:
 
 ```
-0 3 * * 0 certbot renew --quiet --deploy-hook "docker compose -f /opt/boutshop/docker-compose.prod.yml exec nginx nginx -s reload"
+0 3 * * 0 certbot renew --quiet --deploy-hook "docker compose -f /opt/flexiopage/docker-compose.prod.yml exec nginx nginx -s reload"
 ```
 
 ## 8. Day-to-day operations
@@ -139,7 +139,7 @@ Add this line:
 | Restart one service | `docker compose -f docker-compose.prod.yml restart backend` |
 | Mongo shell | `docker compose -f docker-compose.prod.yml exec mongodb mongosh boutshop` |
 | Backup Mongo | `docker compose -f docker-compose.prod.yml exec mongodb mongodump --archive --gzip > /opt/backups/$(date +%F).archive.gz` |
-| Storage backup | `tar czf /opt/backups/uploads-$(date +%F).tgz $(docker volume inspect boutshop_backend_uploads -f '{{ .Mountpoint }}')` |
+| Storage backup | `tar czf /opt/backups/uploads-$(date +%F).tgz $(docker volume inspect flexiopage_backend_uploads -f '{{ .Mountpoint }}')` |
 
 ## 9. Troubleshooting
 

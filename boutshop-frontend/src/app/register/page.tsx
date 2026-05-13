@@ -44,7 +44,7 @@ export default function RegisterPage() {
       <Card className="w-full max-w-md">
         <CardHeader className="space-y-1 text-center">
           <Link href="/" className="text-2xl font-bold text-primary">
-            BoutShop
+            FlexioPage
           </Link>
           <CardTitle className="text-2xl">Create account</CardTitle>
           <CardDescription>Enter your details to get started</CardDescription>

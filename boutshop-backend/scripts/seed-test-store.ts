@@ -214,14 +214,14 @@ async function main(): Promise<void> {
     subdomain: STORE_SUBDOMAIN,
     storeType: 'physical',
     description:
-      'Boutique de démonstration BoutShop ↔ MogaDelivery — produits artisanaux et tech.',
+      'Boutique de démonstration FlexioPage ↔ MogaDelivery — produits artisanaux et tech.',
     settings: {
       currency: 'XOF',
       country: 'SN',
       timezone: 'Africa/Dakar',
       language: 'fr',
       direction: 'ltr',
-      seoTitle: 'Boutique Test — BoutShop',
+      seoTitle: 'Boutique Test — FlexioPage',
       seoDescription:
         'Caftans, parfums, audio et artisanat. Livraison en Afrique de l’Ouest et Maghreb. Paiement à la livraison.',
     },

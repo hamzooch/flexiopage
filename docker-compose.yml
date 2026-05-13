@@ -1,4 +1,4 @@
-# BoutShop - Docker Compose for local development / VPS deployment
+# FlexioPage - Docker Compose for local development / VPS deployment
 # Usage: docker-compose up -d
 # Backend: http://localhost:5000
 # Frontend: http://localhost:3000

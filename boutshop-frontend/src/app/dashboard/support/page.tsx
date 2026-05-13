@@ -84,7 +84,7 @@ export default function SellerSupportPage() {
             <LifeBuoy className="h-7 w-7 text-fuchsia-500" />
             Support
           </h1>
-          <p className="text-muted-foreground">Ouvre une réclamation et suis sa résolution avec l&apos;équipe BoutShop.</p>
+          <p className="text-muted-foreground">Ouvre une réclamation et suis sa résolution avec l&apos;équipe FlexioPage.</p>
         </div>
         {!creating && (
           <Button onClick={() => setCreating(true)} className="gap-1.5 gradient-brand">

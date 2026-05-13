@@ -3,7 +3,7 @@
  *
  * Configure via env :
  *   RESEND_API_KEY=re_…             — sinon les emails sont juste loggés
- *   EMAIL_FROM='BoutShop <noreply@yourdomain.com>'
+ *   EMAIL_FROM='FlexioPage <noreply@yourdomain.com>'
  *   FRONTEND_URL=https://yourapp.com  — pour les liens absolus
  */
 import { Resend } from 'resend';
@@ -26,7 +26,7 @@ function getClient(): Resend | null {
   return cachedClient;
 }
 
-const DEFAULT_FROM = process.env.EMAIL_FROM || 'BoutShop <onboarding@resend.dev>';
+const DEFAULT_FROM = process.env.EMAIL_FROM || 'FlexioPage <onboarding@resend.dev>';
 
 export async function sendEmail(args: SendEmailArgs): Promise<{ ok: boolean; id?: string; error?: string }> {
   const client = getClient();

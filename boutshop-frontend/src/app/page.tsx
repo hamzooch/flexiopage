@@ -19,7 +19,7 @@ import {
 } from 'lucide-react';
 
 /**
- * Boutshop — public landing page.
+ * FlexioPage — public landing page.
  * Pricing: zero subscription. Sellers pay a small commission per sale, debited
  * from a prepaid balance (solde). Marketing messaging revolves around that.
  *
@@ -88,10 +88,10 @@ function Header() {
       <div className="mx-auto flex h-14 max-w-6xl items-center justify-between gap-3 px-3 sm:h-16 sm:px-6">
         <Link href="/" className="flex items-center gap-2 text-base font-bold tracking-tight sm:text-xl">
           <span className="grid h-8 w-8 place-items-center rounded-lg bg-gradient-to-br from-fuchsia-600 via-indigo-600 to-amber-500 text-sm font-black text-white">
-            B
+            F
           </span>
           <span className="bg-gradient-to-r from-fuchsia-600 via-indigo-600 to-amber-600 bg-clip-text text-transparent">
-            BoutShop
+            FlexioPage
           </span>
         </Link>
         <nav className="hidden items-center gap-7 md:flex">
@@ -214,7 +214,7 @@ function HeroScreenMock() {
           <span className="h-2 w-2 rounded-full bg-amber-400 sm:h-2.5 sm:w-2.5" />
           <span className="h-2 w-2 rounded-full bg-emerald-400 sm:h-2.5 sm:w-2.5" />
           <span className="ml-2 truncate rounded-md bg-background/60 px-2 py-0.5 text-[10px] text-muted-foreground sm:ml-3 sm:px-2.5 sm:text-[11px]">
-            boutique-test.boutshop.com/p/caftan-marrakech
+            boutique-test.flexiopage.com/p/caftan-marrakech
           </span>
         </div>
 
@@ -411,7 +411,7 @@ function Features() {
           variants={fadeUp}
           className="mt-3 text-sm text-muted-foreground sm:mt-4 sm:text-base lg:text-lg"
         >
-          BoutShop combine boutique, landing pages, formulaire COD et logistique en une seule app.
+          FlexioPage combine boutique, landing pages, formulaire COD et logistique en une seule app.
         </motion.p>
       </motion.div>
 
@@ -730,10 +730,10 @@ function Footer() {
           <span className="grid h-7 w-7 place-items-center rounded-md bg-gradient-to-br from-fuchsia-600 via-indigo-600 to-amber-500 text-xs font-black text-white">
             B
           </span>
-          <span className="font-semibold text-foreground">BoutShop</span>
+          <span className="font-semibold text-foreground">FlexioPage</span>
           <span className="text-xs">— vendre, livrer, encaisser.</span>
         </div>
-        <div className="text-[11px] sm:text-xs">© {new Date().getFullYear()} BoutShop. Tous droits réservés.</div>
+        <div className="text-[11px] sm:text-xs">© {new Date().getFullYear()} FlexioPage. Tous droits réservés.</div>
       </div>
     </footer>
   );

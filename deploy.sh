@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# BoutShop — one-shot deploy script for the VPS.
+# FlexioPage — one-shot deploy script for the VPS.
 # Pulls the latest code, rebuilds the containers, applies migrations
 # (if any), and restarts the stack with zero secrets in CLI history.
 #
 # Usage on the VPS (after first-time setup — see DEPLOY.md):
-#   cd /opt/boutshop && ./deploy.sh
+#   cd /opt/flexiopage && ./deploy.sh
 
 set -euo pipefail
 

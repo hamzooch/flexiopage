@@ -1,6 +1,8 @@
-# BoutShop
+# FlexioPage
 
 A full-stack **SaaS e-commerce platform** (similar to Shopify, YouCan, Ayor.ai) that lets users create online stores and landing pages to sell physical or digital products.
+
+Live: <https://flexiopage.com>. See [DEPLOY.md](./DEPLOY.md) for the VPS deployment guide.
 
 ## Tech Stack
 

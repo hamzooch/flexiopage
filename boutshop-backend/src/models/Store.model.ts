@@ -182,7 +182,7 @@ export interface IStore extends Document {
     };
     /**
      * Marketing pixels injected into the public storefront. The seller pastes
-     * their pixel IDs and BoutShop emits PageView / ViewContent /
+     * their pixel IDs and FlexioPage emits PageView / ViewContent /
      * InitiateCheckout / Purchase events automatically.
      */
     marketing?: {

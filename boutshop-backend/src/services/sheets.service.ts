@@ -5,9 +5,9 @@
  *   1. Open Google Sheets, Extensions → Apps Script.
  *   2. Paste the snippet shown in the integrations page.
  *   3. Deploy → New deployment → Type "Web app", access "Anyone".
- *   4. Copy the /macros/s/.../exec URL into BoutShop.
+ *   4. Copy the /macros/s/.../exec URL into FlexioPage.
  *
- * BoutShop posts a JSON payload here every time an order is created (COD)
+ * FlexioPage posts a JSON payload here every time an order is created (COD)
  * or finalized as paid. The Apps Script appends one row per order.
  */
 import { Store, type IStore } from '../models/Store.model';

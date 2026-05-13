@@ -414,7 +414,7 @@ export default function StoreSettingsPage() {
                 value={customDomain}
                 onChange={(e) => setCustomDomain(e.target.value)}
               />
-              <p className="text-[11px] text-muted-foreground">Configure un CNAME chez ton registrar vers `cname.boutshop.app`.</p>
+              <p className="text-[11px] text-muted-foreground">Configure un CNAME chez ton registrar vers `cname.flexiopage.com`.</p>
             </div>
             <label htmlFor="published" className="flex items-center gap-2 cursor-pointer">
               <input
