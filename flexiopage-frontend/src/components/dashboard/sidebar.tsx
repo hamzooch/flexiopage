@@ -33,6 +33,7 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAuthStore } from '@/stores/auth-store';
+import { BrandLogo } from '@/components/brand-logo';
 
 interface NavItem {
   href: string;
@@ -136,13 +137,12 @@ export function Sidebar({ mobileOpen = false, onMobileClose }: Props) {
 
         {/* Logo + close (mobile) */}
         <div className="relative flex items-center justify-between px-5 py-5">
-          <Link href="/dashboard" className="group flex items-center gap-2.5">
-            <span className="relative grid h-9 w-9 place-items-center rounded-xl gradient-brand shadow-lg shadow-primary/30 transition-transform duration-300 group-hover:scale-105">
-              <Sparkles className="h-5 w-5 text-white" strokeWidth={2.5} />
-            </span>
-            <span className="text-lg font-bold tracking-tight text-foreground">
-              Bout<span className="gradient-brand-text">Shop</span>
-            </span>
+          <Link
+            href="/dashboard"
+            className="group flex items-center transition-transform duration-300 hover:scale-[1.02]"
+            aria-label="FlexioPage — tableau de bord"
+          >
+            <BrandLogo variant="color" width={140} priority />
           </Link>
           <button
             type="button"

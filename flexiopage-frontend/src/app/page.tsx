@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { motion, useInView, useReducedMotion, type Variants } from 'framer-motion';
 import { Button } from '@/components/ui/button';
 import { useCountUp } from '@/lib/use-count-up';
+import { BrandLogo } from '@/components/brand-logo';
 import {
   ArrowRight,
   Sparkles,
@@ -86,13 +87,8 @@ function Header() {
   return (
     <header className="sticky top-0 z-30 border-b border-border/40 bg-background/70 backdrop-blur-xl">
       <div className="mx-auto flex h-14 max-w-6xl items-center justify-between gap-3 px-3 sm:h-16 sm:px-6">
-        <Link href="/" className="flex items-center gap-2 text-base font-bold tracking-tight sm:text-xl">
-          <span className="grid h-8 w-8 place-items-center rounded-lg bg-gradient-to-br from-fuchsia-600 via-indigo-600 to-amber-500 text-sm font-black text-white">
-            F
-          </span>
-          <span className="bg-gradient-to-r from-fuchsia-600 via-indigo-600 to-amber-600 bg-clip-text text-transparent">
-            FlexioPage
-          </span>
+        <Link href="/" className="flex items-center" aria-label="FlexioPage — accueil">
+          <BrandLogo variant="color" width={150} priority />
         </Link>
         <nav className="hidden items-center gap-7 md:flex">
           <a href="#features" className="text-sm font-medium text-muted-foreground transition-colors hover:text-foreground">Fonctionnalités</a>
@@ -726,11 +722,8 @@ function Footer() {
   return (
     <footer className="border-t border-border/40 bg-card/30 backdrop-blur">
       <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-3 px-4 py-8 text-sm text-muted-foreground sm:px-6 sm:py-10">
-        <div className="flex items-center gap-2">
-          <span className="grid h-7 w-7 place-items-center rounded-md bg-gradient-to-br from-fuchsia-600 via-indigo-600 to-amber-500 text-xs font-black text-white">
-            B
-          </span>
-          <span className="font-semibold text-foreground">FlexioPage</span>
+        <div className="flex items-center gap-3">
+          <BrandLogo variant="color" width={120} />
           <span className="text-xs">— vendre, livrer, encaisser.</span>
         </div>
         <div className="text-[11px] sm:text-xs">© {new Date().getFullYear()} FlexioPage. Tous droits réservés.</div>

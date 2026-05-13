@@ -1,0 +1,19 @@
+{
+  "name": "FlexioPage",
+  "short_name": "FlexioPage",
+  "description": "Vends des produits physiques ou digitaux avec ta boutique en ligne et tes landing pages.",
+  "start_url": "/dashboard",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#0a0a0a",
+  "theme_color": "#f97316",
+  "lang": "fr",
+  "icons": [
+    {
+      "src": "/brand/icon.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}

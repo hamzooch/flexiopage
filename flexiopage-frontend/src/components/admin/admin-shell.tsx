@@ -28,6 +28,7 @@ import {
 } from 'lucide-react';
 import { useAuthStore } from '@/stores/auth-store';
 import { cn } from '@/lib/utils';
+import { BrandLogo } from '@/components/brand-logo';
 
 const NAV = [
   { href: '/admin', label: 'Vue d\'ensemble', icon: LayoutDashboard },
@@ -96,16 +97,12 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
         <div className="pointer-events-none absolute -right-16 bottom-32 h-48 w-48 rounded-full bg-amber-500/10 blur-3xl" aria-hidden />
 
         <div className="relative flex items-center justify-between px-5 py-5">
-          <Link href="/admin" className="group flex items-center gap-2.5">
-            <span className="grid h-9 w-9 place-items-center rounded-xl bg-gradient-to-br from-rose-600 via-orange-600 to-amber-500 shadow-lg shadow-rose-500/30">
-              <RoleIcon className="h-4 w-4 text-white" strokeWidth={2.5} />
+          <Link href="/admin" className="group flex items-center gap-3" aria-label="FlexioPage Admin">
+            <BrandLogo variant="color" width={130} priority />
+            <span className="inline-flex items-center gap-1 rounded-full bg-rose-500/10 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider text-rose-700">
+              <RoleIcon className="h-3 w-3" strokeWidth={2.5} />
+              {meta.short}
             </span>
-            <div>
-              <div className="text-lg font-bold leading-none">FlexioPage</div>
-              <div className="mt-0.5 inline-flex items-center gap-1 rounded-full bg-rose-500/10 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-rose-700">
-                {meta.short}
-              </div>
-            </div>
           </Link>
           <button
             onClick={() => setOpen(false)}

@@ -10,6 +10,7 @@ import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { authApi } from '@/lib/api';
 import { useAuthStore } from '@/stores/auth-store';
+import { BrandLogo } from '@/components/brand-logo';
 
 export default function LoginPage() {
   const router = useRouter();
@@ -44,8 +45,8 @@ export default function LoginPage() {
     <div className="flex min-h-screen items-center justify-center bg-muted/30 px-4">
       <Card className="w-full max-w-md">
         <CardHeader className="space-y-1 text-center">
-          <Link href="/" className="text-2xl font-bold text-primary">
-            FlexioPage
+          <Link href="/" className="mx-auto inline-flex" aria-label="FlexioPage — accueil">
+            <BrandLogo variant="color" width={160} priority />
           </Link>
           <CardTitle className="text-2xl">Log in</CardTitle>
           <CardDescription>Enter your email and password</CardDescription>
