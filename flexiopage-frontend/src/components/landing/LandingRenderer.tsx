@@ -123,7 +123,11 @@ export function LandingRenderer({
       {stickyCta && <StickyMobileCta {...stickyCta} />}
       {storeChat && (
         <ChatBot
-          script={buildStoreScript(storeChat)}
+          script={buildStoreScript({
+            storeName: storeChat.name,
+            whatsapp: storeChat.whatsapp,
+            phone: storeChat.phone,
+          })}
           storageKey={`flexiopage-store-chat:${storeSlug ?? 'preview'}`}
           triggerLabel="Besoin d'aide ?"
         />

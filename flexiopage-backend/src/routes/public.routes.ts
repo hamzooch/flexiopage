@@ -9,6 +9,8 @@ import * as pageService from '../services/page.service';
 import * as orderService from '../services/order.service';
 import { Product } from '../models/Product.model';
 import { Order } from '../models/Order.model';
+import { Store } from '../models/Store.model';
+import { LandingPage } from '../models/LandingPage.model';
 import { initOrderPayment, isMockMode, type Channel } from '../services/mobile-money.service';
 import { dispatchOrder } from '../services/delivery.service';
 import { pushOrderToSheets } from '../services/sheets.service';
@@ -39,6 +41,42 @@ function publicSafeStore<T extends { integrations?: Record<string, unknown> }>(s
   }
   return { ...store, integrations: safe } as T;
 }
+
+/**
+ * GET /api/public/stores — minimal index used by the frontend sitemap.ts
+ * to surface every published seller shop on Google. Returns only slugs
+ * and lastUpdated for store + their published landing pages — no
+ * private data, no expensive joins.
+ */
+router.get('/stores', async (_req: Request, res: Response): Promise<void> => {
+  const stores = await Store.find({ isPublished: true })
+    .select('_id slug updatedAt')
+    .sort({ updatedAt: -1 })
+    .limit(5000)
+    .lean();
+
+  const storeIds = stores.map((s) => s._id);
+  const pages = await LandingPage.find({ storeId: { $in: storeIds }, isPublished: true })
+    .select('slug storeId updatedAt')
+    .lean();
+
+  // Group landing pages by their parent storeId so each store gets its page list.
+  const pagesByStoreId = new Map<string, Array<{ slug: string; updatedAt: Date }>>();
+  for (const p of pages) {
+    const id = String(p.storeId);
+    const arr = pagesByStoreId.get(id) || [];
+    arr.push({ slug: p.slug, updatedAt: p.updatedAt });
+    pagesByStoreId.set(id, arr);
+  }
+
+  res.json({
+    stores: stores.map((s) => ({
+      slug: s.slug,
+      updatedAt: s.updatedAt,
+      pages: pagesByStoreId.get(String(s._id)) || [],
+    })),
+  });
+});
 
 /** Resolve store by slug (e.g. myshop) or custom domain - caller can use Host header */
 router.get('/store-by-slug/:slug', async (req: Request, res: Response): Promise<void> => {

@@ -75,10 +75,39 @@ async function fetchProducts(storeSlug: string): Promise<ProductLite[]> {
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { storeSlug, pageSlug } = await params;
   const data = await fetchPage(storeSlug, pageSlug);
-  if (!data) return { title: 'Page not found' };
+  if (!data) {
+    return {
+      title: 'Page introuvable',
+      robots: { index: false, follow: false },
+    };
+  }
+  const title = data.page.seoTitle || `${data.page.name} · ${data.store.name}`;
+  const description =
+    data.page.seoDescription ||
+    `Découvre les produits de ${data.store.name}. Commande facilement, paiement à la livraison.`;
+  const canonical = `/store/${storeSlug}/p/${pageSlug}`;
+  const ogImage = data.store.logo || '/opengraph-image';
+
   return {
-    title: data.page.seoTitle || `${data.page.name} | ${data.store.name}`,
-    description: data.page.seoDescription,
+    title,
+    description,
+    alternates: { canonical },
+    openGraph: {
+      type: 'website',
+      title,
+      description,
+      url: canonical,
+      siteName: data.store.name,
+      locale: (data.page.language || data.store.settings?.language || 'fr') + '_FR',
+      images: [{ url: ogImage, alt: data.store.name }],
+    },
+    twitter: {
+      card: 'summary_large_image',
+      title,
+      description,
+      images: [ogImage],
+    },
+    robots: { index: true, follow: true },
   };
 }
 

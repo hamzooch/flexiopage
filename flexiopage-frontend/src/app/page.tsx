@@ -8,6 +8,28 @@ import { useCountUp } from '@/lib/use-count-up';
 import { BrandLogo } from '@/components/brand-logo';
 import { ChatBot } from '@/components/chatbot/ChatBot';
 import { flexiopageScript } from '@/components/chatbot/scripts';
+import { StructuredData } from '@/components/seo/StructuredData';
+
+// Mirrors the FAQ rendered inside <Faq /> so Google can index the
+// questions as rich results without scraping the React tree.
+const FAQ_ITEMS = [
+  {
+    q: 'Comment fonctionne le solde ?',
+    a: "Tu recharges ton solde via Wave, Orange Money, MTN MoMo ou virement. À chaque commande livrée, on prélève 3% (max 1 500 F CFA) directement du solde. Si le solde tombe à 0, tu ne peux plus dispatcher de nouvelles commandes jusqu'au prochain rechargement.",
+  },
+  {
+    q: "Que se passe-t-il si une commande n'est pas livrée ?",
+    a: "Aucun frais. La commission n'est prélevée que lorsque MogaDelivery confirme la livraison ET la collecte du paiement client. Annulation, retour, refus → 0 frais.",
+  },
+  {
+    q: 'Dans quels pays opérez-vous ?',
+    a: "16 pays : Sénégal, Côte d'Ivoire, Mali, Burkina Faso, Bénin, Togo, Guinée, Niger, Gambie, Ghana, Nigeria, Cameroun, Maroc, Tunisie, Algérie, Libye.",
+  },
+  {
+    q: 'Puis-je vendre des produits digitaux ?',
+    a: 'Oui. Pour les produits digitaux le client paie en ligne (Wave, Orange Money, carte) et reçoit son fichier instantanément. Le système de commission par vente s\'applique aussi.',
+  },
+];
 import {
   ArrowRight,
   Sparkles,
@@ -67,6 +89,8 @@ export default function HomePage() {
       <Footer />
 
       <ChatBot script={flexiopageScript} storageKey="flexiopage-marketing-chat" />
+
+      <StructuredData faq={FAQ_ITEMS} />
     </div>
   );
 }

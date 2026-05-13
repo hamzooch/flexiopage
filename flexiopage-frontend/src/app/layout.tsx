@@ -1,28 +1,76 @@
-import type { Metadata } from 'next';
+import type { Metadata, Viewport } from 'next';
 import { Inter } from 'next/font/google';
 import './globals.css';
 
 const inter = Inter({ subsets: ['latin'] });
 
+/**
+ * Root metadata for the marketing surface. Per-route pages can override
+ * via their own `metadata` export — Next.js merges shallowly, so the
+ * defaults below (title template, og defaults, verification, theme color)
+ * apply everywhere except where explicitly replaced.
+ *
+ * To finish the SEO loop after deployment:
+ *   1. Replace the empty `verification.google` string with the token
+ *      you get from https://search.google.com/search-console
+ *   2. Submit https://flexiopage.com/sitemap.xml from Search Console →
+ *      Sitemaps. Google typically indexes within 24-72 h.
+ */
 export const metadata: Metadata = {
   metadataBase: new URL('https://flexiopage.com'),
   title: {
-    default: 'FlexioPage — Create Your Online Store',
+    default: 'FlexioPage — Crée ta boutique en un clic. Paiement à la livraison inclus.',
     template: '%s · FlexioPage',
   },
   description:
-    'Vends des produits physiques ou digitaux avec ta boutique en ligne et tes landing pages — paiement à la livraison, logistique, et tout le reste inclus.',
+    "FlexioPage : la plateforme tout-en-un pour créer ta boutique en ligne en 60 secondes. Génère tes landing pages par IA, accepte le paiement à la livraison (COD), dispatche automatiquement via MogaDelivery. Sénégal, Maroc, Tunisie, Algérie, Côte d'Ivoire — 16 pays.",
   applicationName: 'FlexioPage',
   authors: [{ name: 'FlexioPage' }],
+  creator: 'FlexioPage',
+  publisher: 'FlexioPage',
+  category: 'business',
   keywords: [
-    'e-commerce',
     'boutique en ligne',
-    'landing page',
+    'créer une boutique',
     'paiement à la livraison',
-    'COD',
+    'cash on delivery',
+    'COD Maroc',
+    'COD Sénégal',
+    'COD Tunisie',
+    'COD Algérie',
+    'landing page IA',
+    'générateur landing page',
+    'e-commerce Afrique',
+    'MogaDelivery',
+    'SaaS e-commerce',
     'dropshipping',
-    'SaaS',
+    'متجر إلكتروني',
+    'الدفع عند الاستلام',
   ],
+  alternates: {
+    canonical: '/',
+    languages: {
+      fr: '/',
+      ar: '/',
+      'x-default': '/',
+    },
+  },
+  robots: {
+    index: true,
+    follow: true,
+    googleBot: {
+      index: true,
+      follow: true,
+      'max-image-preview': 'large',
+      'max-snippet': -1,
+      'max-video-preview': -1,
+    },
+  },
+  // Replace with the real token from Google Search Console once verified.
+  // The tag is harmless when empty; Google ignores blank verification strings.
+  verification: {
+    google: '',
+  },
   icons: {
     icon: [
       { url: '/favicon.ico', sizes: 'any' },
@@ -34,21 +82,39 @@ export const metadata: Metadata = {
   openGraph: {
     type: 'website',
     siteName: 'FlexioPage',
-    title: 'FlexioPage — Create Your Online Store',
+    title: 'FlexioPage — Crée ta boutique en un clic',
     description:
-      'Vends des produits physiques ou digitaux avec ta boutique en ligne et tes landing pages.',
+      "Crée ta boutique, génère tes landing pages par IA, accepte le paiement à la livraison. Tu paies seulement quand tu vends — pas d'abonnement.",
     url: 'https://flexiopage.com',
     locale: 'fr_FR',
-    images: [{ url: '/brand/icon.png', width: 512, height: 512, alt: 'FlexioPage' }],
+    alternateLocale: ['ar_MA', 'ar_TN', 'ar_DZ', 'fr_SN', 'fr_CI'],
+    images: [
+      // /opengraph-image generates a proper 1200×630 social card at build time.
+      // Falling back to the brand icon if the dynamic image fails to render.
+      { url: '/opengraph-image', width: 1200, height: 630, alt: 'FlexioPage — Crée ta boutique en un clic' },
+    ],
   },
   twitter: {
-    card: 'summary',
-    title: 'FlexioPage — Create Your Online Store',
+    card: 'summary_large_image',
+    title: 'FlexioPage — Crée ta boutique en un clic',
     description:
-      'Vends des produits physiques ou digitaux avec ta boutique en ligne et tes landing pages.',
-    images: ['/brand/icon.png'],
+      'Crée ta boutique, génère tes landing pages par IA, accepte le paiement à la livraison.',
+    images: ['/opengraph-image'],
   },
   manifest: '/manifest.webmanifest',
+  formatDetection: {
+    telephone: false,
+    address: false,
+    email: false,
+  },
+};
+
+export const viewport: Viewport = {
+  themeColor: '#f97316',
+  colorScheme: 'light',
+  width: 'device-width',
+  initialScale: 1,
+  maximumScale: 5,
 };
 
 export default function RootLayout({
