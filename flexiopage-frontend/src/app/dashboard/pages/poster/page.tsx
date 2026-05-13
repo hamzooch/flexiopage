@@ -21,6 +21,7 @@ import Link from 'next/link';
 import { storesApi, type PosterContent, type PosterTheme } from '@/lib/api';
 import { PosterCanvas } from '@/components/poster/poster-canvas';
 import { useWalletStore } from '@/stores/wallet-store';
+import { useAuthStore } from '@/stores/auth-store';
 
 interface StoreLite { _id: string; name: string; slug: string; settings?: { country?: string; language?: string; currency?: string } }
 interface ProductLite { _id: string; name: string; price: number; compareAtPrice?: number; images?: string[] }
@@ -56,6 +57,7 @@ export default function PosterGenerationPage() {
   const exportRef = useRef<HTMLDivElement | null>(null);
   const refreshWallet = useWalletStore((s) => s.refresh);
   const wallet = useWalletStore((s) => s.wallet);
+  const isAdmin = useAuthStore((s) => s.user?.role === 'admin');
 
   // Load stores
   useEffect(() => {
@@ -245,7 +247,9 @@ export default function PosterGenerationPage() {
             </Button>
             {generating && (
               <p className="text-xs text-muted-foreground">
-                Étape 1/2 : copywriting (Claude) · Étape 2/2 : génération des avatars (FLUX)
+                {isAdmin
+                  ? 'Étape 1/2 : copywriting (Claude) · Étape 2/2 : génération des avatars (FLUX)'
+                  : 'Étape 1/2 : rédaction du texte · Étape 2/2 : génération des avatars'}
               </p>
             )}
           </CardContent>

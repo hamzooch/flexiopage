@@ -7,7 +7,7 @@ import { storesApi } from '@/lib/api';
 import { STORE_THEME_TEMPLATES, themesForStoreType, type StoreThemeTemplate } from '@/data/store-themes';
 import { ThemePreviewGrid } from '@/components/dashboard/theme-preview-card';
 import { MediaPicker } from '@/components/dashboard/MediaPicker';
-import { StoreSubPageShell } from '@/components/dashboard/store-sub-page';
+import { StoreSubPageShell, type SaveStatus } from '@/components/dashboard/store-sub-page';
 import type { StoreType } from '@/components/dashboard/store-editor';
 
 export default function StoreAppearancePage() {
@@ -15,7 +15,8 @@ export default function StoreAppearancePage() {
   const storeId = params.storeId as string;
   const [store, setStore] = useState<StoreType | null>(null);
   const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
+  const [status, setStatus] = useState<SaveStatus>('idle');
+  const [errorMessage, setErrorMessage] = useState<string>('');
   const [logo, setLogo] = useState<string | undefined>(undefined);
   const [favicon, setFavicon] = useState<string | undefined>(undefined);
   const [selectedTheme, setSelectedTheme] = useState<StoreThemeTemplate | null>(null);
@@ -41,7 +42,8 @@ export default function StoreAppearancePage() {
 
   async function handleSave() {
     if (!store) return;
-    setSaving(true);
+    setStatus('saving');
+    setErrorMessage('');
     try {
       await storesApi.update(storeId, {
         logo: logo ?? '',
@@ -54,8 +56,16 @@ export default function StoreAppearancePage() {
         favicon,
         theme: selectedTheme ? (selectedTheme.theme as unknown as Record<string, unknown>) : undefined,
       });
-    } finally {
-      setSaving(false);
+      setStatus('saved');
+      setTimeout(() => setStatus('idle'), 2400);
+    } catch (err: unknown) {
+      console.error('[store/appearance] save failed', err);
+      const msg =
+        err && typeof err === 'object' && 'response' in err
+          ? (err as { response?: { data?: { error?: string } } }).response?.data?.error
+          : (err as Error)?.message;
+      setErrorMessage(msg || "L'enregistrement a échoué. Réessaie.");
+      setStatus('error');
     }
   }
 
@@ -69,7 +79,8 @@ export default function StoreAppearancePage() {
       storeName={store.name}
       title="Apparence"
       description="Logo, favicon et thème — la signature visuelle de ta boutique."
-      saving={saving}
+      status={status}
+      errorMessage={errorMessage}
       onSave={handleSave}
     >
       <Card>

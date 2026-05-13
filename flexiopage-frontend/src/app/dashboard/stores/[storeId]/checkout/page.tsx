@@ -6,7 +6,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { storesApi } from '@/lib/api';
-import { StoreSubPageShell } from '@/components/dashboard/store-sub-page';
+import { StoreSubPageShell, type SaveStatus } from '@/components/dashboard/store-sub-page';
 import { FieldToggle, type CodFormSettings, type StoreType } from '@/components/dashboard/store-editor';
 
 export default function StoreCheckoutPage() {
@@ -15,7 +15,8 @@ export default function StoreCheckoutPage() {
   const storeId = params.storeId as string;
   const [store, setStore] = useState<StoreType | null>(null);
   const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
+  const [status, setStatus] = useState<SaveStatus>('idle');
+  const [errorMessage, setErrorMessage] = useState<string>('');
   const [codForm, setCodForm] = useState<CodFormSettings>({
     showEmail: true,
     requireEmail: false,
@@ -55,13 +56,22 @@ export default function StoreCheckoutPage() {
 
   async function handleSave() {
     if (!store) return;
-    setSaving(true);
+    setStatus('saving');
+    setErrorMessage('');
     try {
       const newSettings = { ...(store.settings || {}), codForm };
       await storesApi.update(storeId, { settings: newSettings });
       setStore({ ...store, settings: newSettings });
-    } finally {
-      setSaving(false);
+      setStatus('saved');
+      setTimeout(() => setStatus('idle'), 2400);
+    } catch (err: unknown) {
+      console.error('[store/checkout] save failed', err);
+      const msg =
+        err && typeof err === 'object' && 'response' in err
+          ? (err as { response?: { data?: { error?: string } } }).response?.data?.error
+          : (err as Error)?.message;
+      setErrorMessage(msg || "L'enregistrement a échoué. Réessaie.");
+      setStatus('error');
     }
   }
 
@@ -75,7 +85,8 @@ export default function StoreCheckoutPage() {
       storeName={store.name}
       title="Formulaire de commande (COD)"
       description="Le formulaire « paiement à la livraison » qui s'affiche sous chaque produit physique."
-      saving={saving}
+      status={status}
+      errorMessage={errorMessage}
       onSave={handleSave}
     >
       <Card>

@@ -322,6 +322,31 @@ export const adminApi = {
       `/admin/wallets/${userId}/adjust`,
       data
     ),
+
+  // ── AI pricing (read by any admin tier, write by superadmin+) ──
+  getAiPricing: () =>
+    api.get<{
+      aiPricing: {
+        prices: { landing: number; poster: number; product_page: number; text_only: number };
+        rates: Record<string, number>;
+      };
+      defaults: {
+        prices: { landing: number; poster: number; product_page: number; text_only: number };
+        rates: Record<string, number>;
+      };
+      updatedAt: string;
+    }>('/admin/settings/ai-pricing'),
+  updateAiPricing: (data: {
+    prices?: Partial<{ landing: number; poster: number; product_page: number; text_only: number }>;
+    rates?: Record<string, number>;
+  }) =>
+    api.put<{
+      aiPricing: {
+        prices: { landing: number; poster: number; product_page: number; text_only: number };
+        rates: Record<string, number>;
+      };
+      updatedAt: string;
+    }>('/admin/settings/ai-pricing', data),
 };
 
 // Stores (and nested resources)

@@ -45,6 +45,10 @@ router.post('/wallets/:userId/credit', requireSuperAdmin, admin.creditWallet);
 router.post('/users/:userId/reset-password', requireSuperAdmin, admin.resetUserPassword);
 router.delete('/users/:userId', requireSuperAdmin, admin.deleteUser);
 
+// Pricing — admin reads, superadmin writes
+router.get('/settings/ai-pricing', admin.getAiPricing);
+router.put('/settings/ai-pricing', requireSuperAdmin, admin.updateAiPricing);
+
 // Réclamations — admin tier (read + reply + state)
 router.get('/complaints', complaint.listComplaintsAdmin);
 router.get('/complaints/:id', complaint.getComplaintAdmin);

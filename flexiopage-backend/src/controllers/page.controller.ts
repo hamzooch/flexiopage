@@ -7,7 +7,9 @@ import { generateLandingFromProduct, generateLandingFromImage } from '../service
 import { generatePoster, type PosterTheme } from '../services/poster.service';
 import { Product } from '../models/Product.model';
 import * as jobService from '../services/generation-job.service';
-import { chargeAiGeneration, AI_COSTS } from '../services/wallet.service';
+import { chargeAiGeneration, aiCostInCurrency } from '../services/wallet.service';
+import { getOrCreateWallet } from '../services/wallet.service';
+import type { AiKind } from '../models/Settings.model';
 import validator from 'validator';
 
 /**
@@ -19,7 +21,7 @@ import validator from 'validator';
 async function chargeOrFail(
   req: AuthRequest,
   res: Response,
-  kind: keyof typeof AI_COSTS,
+  kind: AiKind,
   jobId?: string
 ): Promise<{ amount: number; balanceAfter: number; currency: string } | null> {
   if (!req.user) {
@@ -30,10 +32,17 @@ async function chargeOrFail(
     return await chargeAiGeneration({ userId: req.user._id, kind, jobId });
   } catch (err) {
     const e = err as Error & { statusCode?: number; code?: string };
+    // Look up the price in the user's wallet currency so the frontend can
+    // show "Top up X TND" with the right amount, not the USD figure.
+    let cost = 0;
+    try {
+      const wallet = await getOrCreateWallet(req.user._id);
+      cost = await aiCostInCurrency(kind, wallet.currency);
+    } catch { /* fall back to 0 if wallet read fails — already in an error path */ }
     res.status(e.statusCode || 402).json({
       error: e.message,
       code: e.code || 'insufficient_ai_balance',
-      cost: AI_COSTS[kind],
+      cost,
     });
     return null;
   }
@@ -450,7 +459,7 @@ export async function generatePosterPage(req: AuthRequest, res: Response): Promi
     res.status(404).json({ error: 'Product not found in this store' });
     return;
   }
-  const charge = await chargeOrFail(req, res, 'landing');
+  const charge = await chargeOrFail(req, res, 'poster');
   if (!charge) return;
   try {
     const poster = await generatePoster({

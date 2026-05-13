@@ -32,6 +32,8 @@ import { cn } from '@/lib/utils';
 import type { PageSection } from './SectionEditor';
 import { CodOrderForm, type CodFormConfig } from '@/components/storefront/cod-order-form';
 import { STORE_THEME_TEMPLATES } from '@/data/store-themes';
+import { ChatBot } from '@/components/chatbot/ChatBot';
+import { buildStoreScript } from '@/components/chatbot/scripts';
 
 interface Props {
   sections: PageSection[];
@@ -62,6 +64,16 @@ interface Props {
   country?: string;
   /** Theme template id (volt|atelier|bloom) for cod-form styling. */
   themeId?: string;
+  /**
+   * Optional store identity for the floating chatbot. When provided
+   * (typically by the public store page), a scripted help bot appears
+   * bottom-right with quick replies and WhatsApp/phone fallbacks.
+   */
+  storeChat?: {
+    name: string;
+    whatsapp?: string;
+    phone?: string;
+  };
 }
 
 export function LandingRenderer({
@@ -75,6 +87,7 @@ export function LandingRenderer({
   storeSlug,
   country,
   themeId,
+  storeChat,
 }: Props) {
   const ordered = [...sections].sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
 
@@ -108,6 +121,13 @@ export function LandingRenderer({
         />
       ))}
       {stickyCta && <StickyMobileCta {...stickyCta} />}
+      {storeChat && (
+        <ChatBot
+          script={buildStoreScript(storeChat)}
+          storageKey={`flexiopage-store-chat:${storeSlug ?? 'preview'}`}
+          triggerLabel="Besoin d'aide ?"
+        />
+      )}
     </div>
   );
 }

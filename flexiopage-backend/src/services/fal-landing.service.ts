@@ -250,8 +250,12 @@ function generateId(): string {
 function getFalKey(): string {
   const key = process.env.FAL_KEY;
   if (!key) {
-    const err = new Error('FAL_KEY is not configured on the server') as Error & { statusCode?: number };
-    err.statusCode = 500;
+    const err = new Error('FAL_KEY is not configured on the server') as Error & {
+      statusCode?: number;
+      publicMessage?: string;
+    };
+    err.statusCode = 503;
+    err.publicMessage = 'Le service de génération AI est temporairement indisponible. Contacte le support.';
     throw err;
   }
   return key;
@@ -278,15 +282,23 @@ async function falRequest<T>(
     });
     if (!res.ok) {
       const text = await res.text();
-      const err = new Error(`fal.ai ${model} error ${res.status}: ${text}`) as Error & { statusCode?: number };
+      const err = new Error(`fal.ai ${model} error ${res.status}: ${text}`) as Error & {
+        statusCode?: number;
+        publicMessage?: string;
+      };
       err.statusCode = 502;
+      err.publicMessage = `Le service IA a renvoyé une erreur (code ${res.status}). Réessaie dans un instant.`;
       throw err;
     }
     return (await res.json()) as T;
   } catch (err) {
     if ((err as Error).name === 'AbortError') {
-      const e = new Error(`fal.ai ${model} timeout after ${timeoutMs}ms`) as Error & { statusCode?: number };
+      const e = new Error(`fal.ai ${model} timeout after ${timeoutMs}ms`) as Error & {
+        statusCode?: number;
+        publicMessage?: string;
+      };
       e.statusCode = 504;
+      e.publicMessage = "Le service IA n'a pas répondu à temps. Réessaie.";
       throw e;
     }
     throw err;

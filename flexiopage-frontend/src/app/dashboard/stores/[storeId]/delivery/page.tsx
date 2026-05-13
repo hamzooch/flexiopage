@@ -6,7 +6,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { storesApi } from '@/lib/api';
-import { StoreSubPageShell } from '@/components/dashboard/store-sub-page';
+import { StoreSubPageShell, type SaveStatus } from '@/components/dashboard/store-sub-page';
 import type { DeliveryIntegration, StoreType } from '@/components/dashboard/store-editor';
 
 export default function StoreDeliveryPage() {
@@ -15,7 +15,8 @@ export default function StoreDeliveryPage() {
   const storeId = params.storeId as string;
   const [store, setStore] = useState<StoreType | null>(null);
   const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
+  const [status, setStatus] = useState<SaveStatus>('idle');
+  const [errorMessage, setErrorMessage] = useState<string>('');
   const [delivery, setDelivery] = useState<DeliveryIntegration>({
     provider: 'mogadelivery',
     enabled: false,
@@ -51,13 +52,22 @@ export default function StoreDeliveryPage() {
 
   async function handleSave() {
     if (!store) return;
-    setSaving(true);
+    setStatus('saving');
+    setErrorMessage('');
     try {
       const newIntegrations = { ...(store.integrations || {}), delivery: { ...delivery } };
       await storesApi.update(storeId, { integrations: newIntegrations });
       setStore({ ...store, integrations: newIntegrations });
-    } finally {
-      setSaving(false);
+      setStatus('saved');
+      setTimeout(() => setStatus('idle'), 2400);
+    } catch (err: unknown) {
+      console.error('[store/delivery] save failed', err);
+      const msg =
+        err && typeof err === 'object' && 'response' in err
+          ? (err as { response?: { data?: { error?: string } } }).response?.data?.error
+          : (err as Error)?.message;
+      setErrorMessage(msg || "L'enregistrement a échoué. Réessaie.");
+      setStatus('error');
     }
   }
 
@@ -73,7 +83,8 @@ export default function StoreDeliveryPage() {
       storeName={store.name}
       title="Livraison & logistique"
       description="Connecte ton compte MogaDelivery — chaque commande payée part automatiquement chez le coursier."
-      saving={saving}
+      status={status}
+      errorMessage={errorMessage}
       onSave={handleSave}
     >
       <Card>

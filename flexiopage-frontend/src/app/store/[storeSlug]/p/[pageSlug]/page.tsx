@@ -22,6 +22,12 @@ interface StoreDoc {
     direction?: 'ltr' | 'rtl';
     storefront?: { navbar?: NavbarConfig };
   };
+  layout?: {
+    footer?: {
+      social?: { whatsapp?: string };
+      contact?: { phone?: string };
+    };
+  };
 }
 interface PageDoc {
   _id: string;
@@ -108,6 +114,11 @@ export default async function PublicLandingPage({ params }: Props) {
       currency={data.page.currency || data.store.settings?.currency}
       language={data.page.language || data.store.settings?.language}
       direction={data.page.direction || data.store.settings?.direction || 'ltr'}
+      storeChat={{
+        name: data.store.name,
+        whatsapp: data.store.layout?.footer?.social?.whatsapp,
+        phone: data.store.layout?.footer?.contact?.phone,
+      }}
       banner={
         <StoreNavbar
           storeName={data.store.name}

@@ -8,7 +8,8 @@
 import { Router, Response } from 'express';
 import { authMiddleware, type AuthRequest } from '../middleware/auth.middleware';
 import { sanitizeMiddleware } from '../middleware/validate';
-import { getOrCreateWallet, credit, commissionFor, AI_COSTS } from '../services/wallet.service';
+import { getOrCreateWallet, credit, commissionFor, aiCostInCurrency } from '../services/wallet.service';
+import type { AiKind } from '../models/Settings.model';
 
 const router = Router();
 router.use(authMiddleware);
@@ -25,6 +26,13 @@ router.get('/', async (req: AuthRequest, res: Response): Promise<void> => {
   const transactions = [...wallet.transactions]
     .sort((a, b) => +new Date(b.createdAt) - +new Date(a.createdAt))
     .slice(0, 50);
+  // Compute the per-kind cost in the wallet's currency so the dashboard
+  // can show "Generate landing — 30 TND" without doing the conversion itself.
+  const KINDS: AiKind[] = ['landing', 'poster', 'product_page', 'text_only'];
+  const aiCosts: Record<string, number> = {};
+  for (const k of KINDS) {
+    aiCosts[k] = await aiCostInCurrency(k, wallet.currency);
+  }
   res.json({
     wallet: {
       balance: wallet.balance,
@@ -32,7 +40,7 @@ router.get('/', async (req: AuthRequest, res: Response): Promise<void> => {
       currency: wallet.currency,
       commissionRate: Number(process.env.COMMISSION_RATE || 0.03),
       commissionCap: Number(process.env.COMMISSION_CAP || 1500),
-      aiCosts: AI_COSTS,
+      aiCosts,
       transactions,
       updatedAt: wallet.updatedAt,
     },

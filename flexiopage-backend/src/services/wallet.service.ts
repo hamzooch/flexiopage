@@ -10,6 +10,7 @@ import mongoose from 'mongoose';
 import { Wallet, type IWallet, type IWalletTransaction, type TxKind, type WalletBucket } from '../models/Wallet.model';
 import { Store } from '../models/Store.model';
 import { User } from '../models/User.model';
+import { getSettings, DEFAULT_AI_PRICING, type AiKind } from '../models/Settings.model';
 
 /**
  * Default commission policy. Tunable per-store later if needed.
@@ -19,17 +20,15 @@ const COMMISSION_RATE = Number(process.env.COMMISSION_RATE || 0.03);
 const COMMISSION_CAP = Number(process.env.COMMISSION_CAP || 1500);
 
 /**
- * AI generation cost catalogue. All amounts are in the seller's wallet
- * currency. Tunable per deployment via env vars.
- *   AI_LANDING_COST     — full FAL landing (LLM + ~10 images). Default 500.
- *   AI_PRODUCT_PAGE_COST — product detail page (similar pipeline).  Default 500.
- *   AI_TEXT_ONLY_COST   — OpenAI text-only landing.                 Default 50.
+ * AI generation pricing is now stored in MongoDB (Settings singleton)
+ * and edited by admins from /admin/pricing. Prices are in USD; each
+ * seller's wallet is debited in their local currency using the
+ * USD→currency rate table (also in Settings).
+ *
+ * `AI_COSTS` is kept for backwards-compatibility as a type alias only;
+ * the actual values come from `aiCostFor()` / `aiCostInCurrency()`.
  */
-export const AI_COSTS: Record<string, number> = {
-  landing: Number(process.env.AI_LANDING_COST || 500),
-  product_page: Number(process.env.AI_PRODUCT_PAGE_COST || 500),
-  text_only: Number(process.env.AI_TEXT_ONLY_COST || 50),
-};
+export type AI_COSTS = AiKind;
 
 export function commissionFor(orderTotal: number): number {
   if (!orderTotal || orderTotal <= 0) return 0;
@@ -37,8 +36,35 @@ export function commissionFor(orderTotal: number): number {
   return Math.min(raw, COMMISSION_CAP);
 }
 
-export function aiCostFor(kind: keyof typeof AI_COSTS): number {
-  return AI_COSTS[kind] ?? AI_COSTS.landing;
+/**
+ * Resolve the USD price for one generation kind from the Settings doc.
+ * Falls back to the in-code defaults if Settings is missing for any
+ * reason (db down on first call, kind not yet in the doc, …).
+ */
+export async function aiCostUSD(kind: AiKind): Promise<number> {
+  const s = await getSettings();
+  const price = s.aiPricing?.prices?.[kind];
+  return typeof price === 'number' && price >= 0
+    ? price
+    : DEFAULT_AI_PRICING.prices[kind] ?? DEFAULT_AI_PRICING.prices.landing;
+}
+
+/**
+ * Convert the USD price into the seller's wallet currency. If we have no
+ * rate for that currency, we charge in USD (and warn so the admin can
+ * add the rate). Returned amount is rounded to the nearest integer —
+ * sub-unit billing is too noisy for prepaid SaaS UX.
+ */
+export async function aiCostInCurrency(kind: AiKind, currency: string): Promise<number> {
+  const usd = await aiCostUSD(kind);
+  const s = await getSettings();
+  const cur = (currency || 'USD').toUpperCase();
+  const rate = s.aiPricing?.rates?.[cur] ?? DEFAULT_AI_PRICING.rates[cur];
+  if (!rate) {
+    console.warn(`[wallet] no USD→${cur} rate configured — billing in USD as-is`);
+    return Math.round(usd);
+  }
+  return Math.max(1, Math.round(usd * rate));
 }
 
 function genId(): string {
@@ -217,16 +243,16 @@ export async function debit(args: DebitArgs): Promise<{ wallet: IWallet; transac
  */
 export async function chargeAiGeneration(args: {
   userId: string | mongoose.Types.ObjectId;
-  kind: keyof typeof AI_COSTS;
+  kind: AiKind;
   jobId?: string;
   note?: string;
 }): Promise<{ amount: number; balanceAfter: number; currency: string }> {
-  const amount = aiCostFor(args.kind);
+  const wallet = await getOrCreateWallet(args.userId);
+  const amount = await aiCostInCurrency(args.kind, wallet.currency);
   if (amount <= 0) {
-    const wallet = await getOrCreateWallet(args.userId);
     return { amount: 0, balanceAfter: wallet.aiBalance, currency: wallet.currency };
   }
-  const { transaction, wallet } = await debit({
+  const { transaction, wallet: w } = await debit({
     userId: args.userId,
     amount,
     bucket: 'ai',
@@ -234,7 +260,7 @@ export async function chargeAiGeneration(args: {
     enforceBalance: true,
     note: args.note || `Génération AI · ${args.kind}${args.jobId ? ` · ${args.jobId}` : ''}`,
   });
-  return { amount, balanceAfter: transaction.balanceAfter, currency: wallet.currency };
+  return { amount, balanceAfter: transaction.balanceAfter, currency: w.currency };
 }
 
 /**

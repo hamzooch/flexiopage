@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { storesApi, jobsApi, type GenerationJob } from '@/lib/api';
+import { useAuthStore } from '@/stores/auth-store';
 import { SectionEditor, type PageSection } from '@/components/landing/SectionEditor';
 import { LandingRenderer } from '@/components/landing/LandingRenderer';
 import { DevicePreviewFrame } from '@/components/landing/DevicePreviewFrame';
@@ -81,10 +82,28 @@ const SECTION_TYPES = [
   { id: 'footer', label: 'Footer' },
 ] as const;
 
+/**
+ * Strip provider names (fal.ai, FAL_KEY, Claude, Florence, FLUX, Nano Banana,
+ * Replicate, OpenAI) from any backend error before it reaches the user — keep
+ * the rest of the message so debugging clues survive (rate-limit, timeout, etc).
+ * Returns null if the sanitized message is empty/unsafe, so callers can fall
+ * back to a generic copy.
+ */
+function sanitizeAiError(raw: string | null | undefined): string | null {
+  if (!raw) return null;
+  const blacklist = /fal\.ai|FAL_KEY|FAL[_ -]?API|\bFAL\b|Florence(?:-\d+)?|Nano[ -]?Banana(?:[ -]?Edit)?|\bClaude\b|\bFLUX\b|Replicate|OpenAI|Anthropic/gi;
+  const cleaned = raw.replace(blacklist, "le service IA").trim();
+  if (!cleaned) return null;
+  // If the cleaned message no longer makes sense (e.g. "is not configured"), drop it.
+  if (/^(is |n'est pas )/i.test(cleaned)) return null;
+  return cleaned;
+}
+
 export default function NewLandingPagePage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const storeId = searchParams.get('storeId');
+  const isAdmin = useAuthStore((s) => s.user?.role === 'admin');
 
   // wizard
   const [step, setStep] = useState<Step>('choice');
@@ -307,7 +326,11 @@ export default function NewLandingPagePage() {
         err && typeof err === 'object' && 'response' in err
           ? (err as { response?: { data?: { error?: string } } }).response?.data?.error
           : null;
-      setError(msg || 'AI generation failed. Check FAL_KEY on the server.');
+      setError(
+        isAdmin
+          ? (msg || 'AI generation failed. Check FAL_KEY on the server.')
+          : (sanitizeAiError(msg) || 'La génération a échoué. Réessaie dans un instant.'),
+      );
     } finally {
       setGenerating(false);
     }
@@ -342,7 +365,11 @@ export default function NewLandingPagePage() {
         err && typeof err === 'object' && 'response' in err
           ? (err as { response?: { data?: { error?: string } } }).response?.data?.error
           : null;
-      setError(msg || 'AI generation failed. Check the image URL or FAL_KEY on the server.');
+      setError(
+        isAdmin
+          ? (msg || 'AI generation failed. Check the image URL or FAL_KEY on the server.')
+          : (sanitizeAiError(msg) || "La génération a échoué. Vérifie l'URL de l'image et réessaie."),
+      );
     } finally {
       setGenerating(false);
     }
@@ -598,7 +625,7 @@ export default function NewLandingPagePage() {
             className="h-11 gap-2 rounded-xl gradient-brand text-white shadow-lg shadow-primary/25 hover:opacity-95"
           >
             {generating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
-            {generating ? 'Generating with fal.ai...' : 'Generate landing'}
+            {generating ? (isAdmin ? 'Generating with fal.ai…' : 'Génération en cours…') : 'Générer la landing'}
           </Button>
           <Link href={`/dashboard/products/new?storeId=${storeId}`}>
             <Button variant="outline" className="h-11 gap-2 rounded-xl">
@@ -716,7 +743,7 @@ export default function NewLandingPagePage() {
             className="h-11 w-full gap-2 rounded-xl gradient-brand text-white shadow-lg shadow-primary/25 hover:opacity-95"
           >
             {generating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
-            {generating ? 'Analyzing image with fal.ai...' : 'Generate from image'}
+            {generating ? (isAdmin ? 'Analyzing image with fal.ai…' : "Analyse de l'image…") : "Générer à partir de l'image"}
           </Button>
         </div>
       </div>
@@ -769,10 +796,32 @@ export default function NewLandingPagePage() {
     const progress = j?.progress ?? 5;
     type StepKey = 'analyze' | 'copy' | 'images' | 'assemble';
     const STEPS: { key: StepKey; label: string; sub: string }[] = [
-      { key: 'analyze',  label: 'Analyse photo',     sub: 'Florence-2 décrit ce qu\'il voit sur ton produit' },
-      { key: 'copy',     label: 'Rédaction copy',    sub: 'Claude écrit en dialecte natif (anti-Fusha)' },
-      { key: 'images',   label: 'Génération visuels', sub: 'Nano Banana Edit place ton produit dans des scènes' },
-      { key: 'assemble', label: 'Assemblage',        sub: 'Sauvegarde des images, finalisation des sections' },
+      {
+        key: 'analyze',
+        label: isAdmin ? 'Analyse photo' : 'Analyse du produit',
+        sub: isAdmin
+          ? "Florence-2 décrit ce qu'il voit sur ton produit"
+          : "L'IA détecte ce qu'il y a sur ta photo",
+      },
+      {
+        key: 'copy',
+        label: isAdmin ? 'Rédaction copy' : 'Rédaction du texte',
+        sub: isAdmin
+          ? 'Claude écrit en dialecte natif (anti-Fusha)'
+          : 'Génération du copy en dialecte natif (anti-Fusha)',
+      },
+      {
+        key: 'images',
+        label: isAdmin ? 'Génération visuels' : 'Création des visuels',
+        sub: isAdmin
+          ? 'Nano Banana Edit place ton produit dans des scènes'
+          : 'Ton produit est mis en scène dans des décors cinématiques',
+      },
+      {
+        key: 'assemble',
+        label: 'Assemblage',
+        sub: 'Sauvegarde des images, finalisation des sections',
+      },
     ];
     const stepStatus = (k: StepKey) => j?.steps?.[k] || 'pending';
     return (

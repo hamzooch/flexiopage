@@ -6,7 +6,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { storesApi } from '@/lib/api';
-import { StoreSubPageShell } from '@/components/dashboard/store-sub-page';
+import { StoreSubPageShell, type SaveStatus } from '@/components/dashboard/store-sub-page';
 import {
   SETTINGS_COUNTRIES,
   SETTINGS_CURRENCIES,
@@ -20,7 +20,8 @@ export default function StoreInfoPage() {
   const storeId = params.storeId as string;
   const [store, setStore] = useState<StoreType | null>(null);
   const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
+  const [status, setStatus] = useState<SaveStatus>('idle');
+  const [errorMessage, setErrorMessage] = useState<string>('');
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [customDomain, setCustomDomain] = useState('');
@@ -48,7 +49,8 @@ export default function StoreInfoPage() {
 
   async function handleSave() {
     if (!store) return;
-    setSaving(true);
+    setStatus('saving');
+    setErrorMessage('');
     try {
       const newSettings = {
         ...(store.settings || {}),
@@ -64,8 +66,18 @@ export default function StoreInfoPage() {
         settings: newSettings,
       });
       setStore({ ...store, name, description, customDomain, settings: newSettings });
-    } finally {
-      setSaving(false);
+      setStatus('saved');
+      // Drop the success pill back to idle after a short moment so it doesn't
+      // linger forever — long enough to be read, short enough to feel snappy.
+      setTimeout(() => setStatus('idle'), 2400);
+    } catch (err: unknown) {
+      console.error('[store/info] save failed', err);
+      const msg =
+        err && typeof err === 'object' && 'response' in err
+          ? (err as { response?: { data?: { error?: string } } }).response?.data?.error
+          : (err as Error)?.message;
+      setErrorMessage(msg || "L'enregistrement a échoué. Réessaie.");
+      setStatus('error');
     }
   }
 
@@ -79,7 +91,8 @@ export default function StoreInfoPage() {
       storeName={store.name}
       title="Informations"
       description="Nom, description, langue, devise, pays, et domaine personnalisé."
-      saving={saving}
+      status={status}
+      errorMessage={errorMessage}
       onSave={handleSave}
     >
       <Card>

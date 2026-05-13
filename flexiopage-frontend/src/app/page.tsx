@@ -6,6 +6,8 @@ import { motion, useInView, useReducedMotion, type Variants } from 'framer-motio
 import { Button } from '@/components/ui/button';
 import { useCountUp } from '@/lib/use-count-up';
 import { BrandLogo } from '@/components/brand-logo';
+import { ChatBot } from '@/components/chatbot/ChatBot';
+import { flexiopageScript } from '@/components/chatbot/scripts';
 import {
   ArrowRight,
   Sparkles,
@@ -63,6 +65,8 @@ export default function HomePage() {
       </main>
 
       <Footer />
+
+      <ChatBot script={flexiopageScript} storageKey="flexiopage-marketing-chat" />
     </div>
   );
 }

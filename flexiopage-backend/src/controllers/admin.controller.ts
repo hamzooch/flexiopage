@@ -21,6 +21,13 @@ import { Order } from '../models/Order.model';
 import { Wallet } from '../models/Wallet.model';
 import { Complaint } from '../models/Complaint.model';
 import { credit, debit } from '../services/wallet.service';
+import {
+  Settings,
+  getSettings,
+  invalidateSettingsCache,
+  DEFAULT_AI_PRICING,
+  type IAiPricing,
+} from '../models/Settings.model';
 
 const DEFAULT_LIMIT = 50;
 
@@ -859,4 +866,64 @@ export async function createUser(req: AuthRequest, res: Response): Promise<void>
       createdAt: user.createdAt,
     },
   });
+}
+
+/**
+ * GET /api/admin/settings/ai-pricing — read the AI generation price grid
+ * (USD prices + USD→currency rate table). Returns defaults if the
+ * Settings doc hasn't been initialised yet.
+ */
+export async function getAiPricing(_req: AuthRequest, res: Response): Promise<void> {
+  const s = await getSettings();
+  res.json({
+    aiPricing: s.aiPricing,
+    defaults: DEFAULT_AI_PRICING,
+    updatedAt: s.updatedAt,
+    updatedBy: s.updatedBy,
+  });
+}
+
+/**
+ * PUT /api/admin/settings/ai-pricing — superadmin only. Replace prices
+ * and/or rates. Values must be positive numbers; bad inputs are silently
+ * dropped so a typo can't crash the whole grid.
+ */
+export async function updateAiPricing(req: AuthRequest, res: Response): Promise<void> {
+  const body = (req.body || {}) as Partial<IAiPricing>;
+
+  const cleanPrices: Partial<IAiPricing['prices']> = {};
+  if (body.prices && typeof body.prices === 'object') {
+    for (const [k, v] of Object.entries(body.prices)) {
+      const n = Number(v);
+      if (Number.isFinite(n) && n >= 0) {
+        cleanPrices[k as keyof IAiPricing['prices']] = n;
+      }
+    }
+  }
+
+  const cleanRates: Record<string, number> = {};
+  if (body.rates && typeof body.rates === 'object') {
+    for (const [k, v] of Object.entries(body.rates)) {
+      const n = Number(v);
+      const code = k.toUpperCase();
+      if (!Number.isFinite(n) || n <= 0) continue;
+      if (code === 'USD' && n !== 1) continue;
+      cleanRates[code] = n;
+    }
+  }
+
+  const update: Record<string, unknown> = { updatedBy: req.user?._id };
+  if (Object.keys(cleanPrices).length > 0) {
+    for (const [k, v] of Object.entries(cleanPrices)) {
+      update[`aiPricing.prices.${k}`] = v;
+    }
+  }
+  if (Object.keys(cleanRates).length > 0) {
+    update['aiPricing.rates'] = cleanRates;
+  }
+
+  await Settings.updateOne({ key: 'global' }, { $set: update }, { upsert: true });
+  invalidateSettingsCache();
+  const fresh = await getSettings(true);
+  res.json({ aiPricing: fresh.aiPricing, updatedAt: fresh.updatedAt });
 }

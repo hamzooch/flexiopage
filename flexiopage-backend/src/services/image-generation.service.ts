@@ -67,8 +67,14 @@ const IDEOGRAM_ASPECT: Record<ImageAspect, { token: string; width: number; heigh
 function getFalKey(): string {
   const key = process.env.FAL_KEY;
   if (!key) {
-    const err = new Error('FAL_KEY is not configured on the server') as Error & { statusCode?: number };
-    err.statusCode = 500;
+    // Admins see the real cause; everyone else sees a generic message
+    // (errorHandler picks based on req.user.role).
+    const err = new Error('FAL_KEY is not configured on the server') as Error & {
+      statusCode?: number;
+      publicMessage?: string;
+    };
+    err.statusCode = 503;
+    err.publicMessage = 'Le service de génération AI est temporairement indisponible. Contacte le support.';
     throw err;
   }
   return key;
@@ -187,8 +193,12 @@ export async function generateImage(input: ImageGenInput): Promise<ImageGenResul
   });
   if (!res.ok) {
     const text = await res.text();
-    const err = new Error(`fal.ai ${endpoint} error ${res.status}: ${text}`) as Error & { statusCode?: number };
+    const err = new Error(`fal.ai ${endpoint} error ${res.status}: ${text}`) as Error & {
+      statusCode?: number;
+      publicMessage?: string;
+    };
     err.statusCode = 502;
+    err.publicMessage = `La génération de l'image a échoué (code ${res.status}). Réessaie dans un instant.`;
     throw err;
   }
   const out = (await res.json()) as {
@@ -196,8 +206,12 @@ export async function generateImage(input: ImageGenInput): Promise<ImageGenResul
   };
   const first = out.images?.[0];
   if (!first?.url) {
-    const err = new Error('fal.ai returned no image') as Error & { statusCode?: number };
+    const err = new Error('fal.ai returned no image') as Error & {
+      statusCode?: number;
+      publicMessage?: string;
+    };
     err.statusCode = 502;
+    err.publicMessage = "La génération de l'image n'a rien retourné. Réessaie.";
     throw err;
   }
   const dims = defaultDimsFor(model, aspect);

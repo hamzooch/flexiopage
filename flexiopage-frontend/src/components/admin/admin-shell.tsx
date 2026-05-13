@@ -25,6 +25,7 @@ import {
   Eye,
   User as UserIcon,
   Briefcase,
+  DollarSign,
 } from 'lucide-react';
 import { useAuthStore } from '@/stores/auth-store';
 import { cn } from '@/lib/utils';
@@ -36,6 +37,7 @@ const NAV = [
   { href: '/admin/stores', label: 'Boutiques', icon: Store },
   { href: '/admin/orders', label: 'Commandes', icon: ShoppingCart },
   { href: '/admin/wallets', label: 'Wallets', icon: Wallet },
+  { href: '/admin/pricing', label: 'Tarifs AI', icon: DollarSign },
   { href: '/admin/complaints', label: 'Réclamations', icon: MessageSquare },
   { href: '/admin/profile', label: 'Profil', icon: UserIcon },
 ];
@@ -250,6 +252,7 @@ function labelFromPath(path: string): string {
     stores: 'Boutiques',
     orders: 'Commandes',
     wallets: 'Wallets',
+    pricing: 'Tarifs AI',
     complaints: 'Réclamations',
     profile: 'Profil',
   };

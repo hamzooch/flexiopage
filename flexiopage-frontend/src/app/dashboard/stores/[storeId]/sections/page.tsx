@@ -7,7 +7,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { storesApi } from '@/lib/api';
 import { MediaPicker } from '@/components/dashboard/MediaPicker';
-import { StoreSubPageShell } from '@/components/dashboard/store-sub-page';
+import { StoreSubPageShell, type SaveStatus } from '@/components/dashboard/store-sub-page';
 import {
   FieldToggle,
   FooterEditor,
@@ -23,7 +23,8 @@ export default function StoreSectionsPage() {
   const storeId = params.storeId as string;
   const [store, setStore] = useState<StoreType | null>(null);
   const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
+  const [status, setStatus] = useState<SaveStatus>('idle');
+  const [errorMessage, setErrorMessage] = useState<string>('');
   const [storefront, setStorefront] = useState<StorefrontSettings>({
     showHero: true,
     showProductsGrid: true,
@@ -54,13 +55,22 @@ export default function StoreSectionsPage() {
 
   async function handleSave() {
     if (!store) return;
-    setSaving(true);
+    setStatus('saving');
+    setErrorMessage('');
     try {
       const newSettings = { ...(store.settings || {}), storefront };
       await storesApi.update(storeId, { settings: newSettings });
       setStore({ ...store, settings: newSettings });
-    } finally {
-      setSaving(false);
+      setStatus('saved');
+      setTimeout(() => setStatus('idle'), 2400);
+    } catch (err: unknown) {
+      console.error('[store/sections] save failed', err);
+      const msg =
+        err && typeof err === 'object' && 'response' in err
+          ? (err as { response?: { data?: { error?: string } } }).response?.data?.error
+          : (err as Error)?.message;
+      setErrorMessage(msg || "L'enregistrement a échoué. Réessaie.");
+      setStatus('error');
     }
   }
 
@@ -74,7 +84,8 @@ export default function StoreSectionsPage() {
       storeName={store.name}
       title="Sections de la vitrine"
       description="Active, désactive et personnalise chaque bloc affiché sur la page d'accueil de ta boutique."
-      saving={saving}
+      status={status}
+      errorMessage={errorMessage}
       onSave={handleSave}
     >
       <Card>
