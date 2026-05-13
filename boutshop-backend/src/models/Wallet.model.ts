@@ -83,7 +83,7 @@ const WalletTransactionSchema = new Schema<IWalletTransaction>(
 const WalletSchema = new Schema<IWallet>(
   {
     userId: { type: Schema.Types.ObjectId, ref: 'User', required: true, unique: true },
-    currency: { type: String, default: 'XOF' },
+    currency: { type: String, default: 'USD' },
     balance: { type: Number, default: 0, min: 0 },
     aiBalance: { type: Number, default: 0, min: 0 },
     transactions: { type: [WalletTransactionSchema], default: [] },

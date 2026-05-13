@@ -3,7 +3,7 @@ import { AuthRequest } from '../middleware/auth.middleware';
 import * as productService from '../services/product.service';
 
 export async function createProduct(req: AuthRequest, res: Response): Promise<void> {
-  const store = (req as AuthRequest & { store: { _id: unknown } }).store;
+  const store = req.store!;
   const storeId = store._id.toString();
   const body = req.body;
   if (!body.name?.trim()) {
@@ -41,14 +41,14 @@ export async function createProduct(req: AuthRequest, res: Response): Promise<vo
 }
 
 export async function listProducts(req: AuthRequest, res: Response): Promise<void> {
-  const store = (req as AuthRequest & { store: { _id: unknown } }).store;
+  const store = req.store!;
   const publishedOnly = req.query.published === 'true';
   const products = await productService.getProductsByStore(store._id.toString(), { publishedOnly });
   res.json({ products });
 }
 
 export async function getProduct(req: AuthRequest, res: Response): Promise<void> {
-  const store = (req as AuthRequest & { store: { _id: unknown } }).store;
+  const store = req.store!;
   const productId = req.params.productId;
   const product = await productService.getProductById(productId, store._id.toString());
   if (!product) {
@@ -59,7 +59,7 @@ export async function getProduct(req: AuthRequest, res: Response): Promise<void>
 }
 
 export async function updateProduct(req: AuthRequest, res: Response): Promise<void> {
-  const store = (req as AuthRequest & { store: { _id: unknown } }).store;
+  const store = req.store!;
   const productId = req.params.productId;
   const body = req.body;
   const updated = await productService.updateProduct(productId, store._id.toString(), {
@@ -91,7 +91,7 @@ export async function updateProduct(req: AuthRequest, res: Response): Promise<vo
 }
 
 export async function deleteProduct(req: AuthRequest, res: Response): Promise<void> {
-  const store = (req as AuthRequest & { store: { _id: unknown } }).store;
+  const store = req.store!;
   const deleted = await productService.deleteProduct(req.params.productId, store._id.toString());
   if (!deleted) {
     res.status(404).json({ error: 'Product not found' });

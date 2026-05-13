@@ -74,15 +74,15 @@ export async function updatePage(
 }
 
 export async function getPagesByStore(storeId: string): Promise<ILandingPage[]> {
-  return LandingPage.find({ storeId }).sort({ updatedAt: -1 }).lean();
+  return LandingPage.find({ storeId }).sort({ updatedAt: -1 }).lean<ILandingPage[]>();
 }
 
 export async function getPageById(pageId: string, storeId: string): Promise<ILandingPage | null> {
-  return LandingPage.findOne({ _id: pageId, storeId }).lean();
+  return LandingPage.findOne({ _id: pageId, storeId }).lean<ILandingPage | null>();
 }
 
 export async function getPageBySlug(storeId: string, slug: string): Promise<ILandingPage | null> {
-  return LandingPage.findOne({ storeId, slug, isPublished: true }).lean();
+  return LandingPage.findOne({ storeId, slug, isPublished: true }).lean<ILandingPage | null>();
 }
 
 export async function deletePage(pageId: string, storeId: string): Promise<boolean> {

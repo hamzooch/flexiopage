@@ -18,7 +18,7 @@ import {
   ExternalLink,
   Settings as SettingsIcon,
 } from 'lucide-react';
-import { STORE_THEME_TEMPLATES, type StoreThemeTemplate } from '@/data/store-themes';
+import { STORE_THEME_TEMPLATES, themesForStoreType, type StoreThemeTemplate } from '@/data/store-themes';
 import { ThemePreviewGrid } from '@/components/dashboard/theme-preview-card';
 import { cn } from '@/lib/utils';
 
@@ -362,7 +362,7 @@ export default function DashboardStoresPage() {
           subtitle={`Sélectionne un design adapté à ton ${selectedType === 'physical' ? 'commerce physique' : 'produit digital'}. Tu pourras le changer plus tard.`}
         />
         <ThemePreviewGrid
-          templates={STORE_THEME_TEMPLATES}
+          templates={themesForStoreType(selectedType)}
           selectedId={selectedTheme?.id}
           onSelect={handleSelectTheme}
         />

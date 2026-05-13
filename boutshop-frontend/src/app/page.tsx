@@ -1,5 +1,10 @@
+'use client';
+
+import { useRef } from 'react';
 import Link from 'next/link';
+import { motion, useInView, useReducedMotion, type Variants } from 'framer-motion';
 import { Button } from '@/components/ui/button';
+import { useCountUp } from '@/lib/use-count-up';
 import {
   ArrowRight,
   Sparkles,
@@ -17,15 +22,31 @@ import {
  * Boutshop — public landing page.
  * Pricing: zero subscription. Sellers pay a small commission per sale, debited
  * from a prepaid balance (solde). Marketing messaging revolves around that.
+ *
+ * Animations: framer-motion for scroll-triggered fades + hero staggered
+ * entrance + floating phone mockup. `useReducedMotion` is respected so users
+ * with the OS-level "reduce motion" preference get a static page.
  */
 export default function HomePage() {
   return (
     <div className="relative min-h-screen overflow-x-hidden bg-background text-foreground">
-      {/* Soft mesh background */}
+      {/* Soft mesh background — subtle drift for life */}
       <div className="pointer-events-none absolute inset-0 -z-10 overflow-hidden" aria-hidden>
-        <div className="absolute -left-32 -top-40 h-[480px] w-[480px] rounded-full bg-fuchsia-500/20 blur-3xl" />
-        <div className="absolute -right-24 top-32 h-[420px] w-[420px] rounded-full bg-indigo-500/20 blur-3xl" />
-        <div className="absolute left-1/3 top-[680px] h-[360px] w-[360px] rounded-full bg-amber-300/10 blur-3xl" />
+        <motion.div
+          className="absolute -left-32 -top-40 h-[480px] w-[480px] rounded-full bg-fuchsia-500/20 blur-3xl"
+          animate={{ x: [0, 30, 0], y: [0, 20, 0] }}
+          transition={{ duration: 14, repeat: Infinity, ease: 'easeInOut' }}
+        />
+        <motion.div
+          className="absolute -right-24 top-32 h-[420px] w-[420px] rounded-full bg-indigo-500/20 blur-3xl"
+          animate={{ x: [0, -25, 0], y: [0, 25, 0] }}
+          transition={{ duration: 16, repeat: Infinity, ease: 'easeInOut', delay: 2 }}
+        />
+        <motion.div
+          className="absolute left-1/3 top-[680px] h-[360px] w-[360px] rounded-full bg-amber-300/10 blur-3xl"
+          animate={{ x: [0, 40, 0], y: [0, -20, 0] }}
+          transition={{ duration: 18, repeat: Infinity, ease: 'easeInOut', delay: 4 }}
+        />
       </div>
 
       <Header />
@@ -46,13 +67,26 @@ export default function HomePage() {
 }
 
 // ─────────────────────────────────────────────────────────────────────
+// Shared variants
+// ─────────────────────────────────────────────────────────────────────
+const fadeUp: Variants = {
+  hidden: { opacity: 0, y: 24 },
+  show: { opacity: 1, y: 0, transition: { duration: 0.55, ease: [0.21, 0.61, 0.35, 1] } },
+};
+
+const staggerContainer: Variants = {
+  hidden: {},
+  show: { transition: { staggerChildren: 0.08, delayChildren: 0.05 } },
+};
+
+// ─────────────────────────────────────────────────────────────────────
 // HEADER
 // ─────────────────────────────────────────────────────────────────────
 function Header() {
   return (
     <header className="sticky top-0 z-30 border-b border-border/40 bg-background/70 backdrop-blur-xl">
-      <div className="mx-auto flex h-16 max-w-6xl items-center justify-between px-6">
-        <Link href="/" className="flex items-center gap-2 text-xl font-bold tracking-tight">
+      <div className="mx-auto flex h-14 max-w-6xl items-center justify-between gap-3 px-3 sm:h-16 sm:px-6">
+        <Link href="/" className="flex items-center gap-2 text-base font-bold tracking-tight sm:text-xl">
           <span className="grid h-8 w-8 place-items-center rounded-lg bg-gradient-to-br from-fuchsia-600 via-indigo-600 to-amber-500 text-sm font-black text-white">
             B
           </span>
@@ -72,7 +106,8 @@ function Header() {
           </Link>
           <Link href="/register">
             <Button size="sm" className="gap-1.5 bg-gradient-to-r from-fuchsia-600 to-indigo-600 hover:from-fuchsia-700 hover:to-indigo-700">
-              Créer ma boutique
+              <span className="hidden sm:inline">Créer ma boutique</span>
+              <span className="sm:hidden">Commencer</span>
               <ArrowRight className="h-3.5 w-3.5" />
             </Button>
           </Link>
@@ -83,33 +118,51 @@ function Header() {
 }
 
 // ─────────────────────────────────────────────────────────────────────
-// HERO
+// HERO — staggered entrance + floating phone mockup
 // ─────────────────────────────────────────────────────────────────────
 function Hero() {
+  const reduceMotion = useReducedMotion();
   return (
-    <section className="relative mx-auto max-w-6xl px-6 pb-24 pt-16 sm:pt-24 md:pt-32">
-      <div className="mx-auto max-w-3xl text-center">
-        <div className="mb-6 inline-flex items-center gap-2 rounded-full border border-border/60 bg-card/60 px-3.5 py-1.5 text-xs font-semibold backdrop-blur">
-          <span className="grid h-1.5 w-1.5 place-items-center">
+    <section className="relative mx-auto max-w-6xl px-4 pb-16 pt-10 sm:px-6 sm:pb-24 sm:pt-16 md:pt-32">
+      <motion.div
+        initial="hidden"
+        animate="show"
+        variants={staggerContainer}
+        className="mx-auto max-w-3xl text-center"
+      >
+        <motion.div
+          variants={fadeUp}
+          className="mb-6 inline-flex items-center gap-2 rounded-full border border-border/60 bg-card/60 px-3.5 py-1.5 text-xs font-semibold backdrop-blur"
+        >
+          <span className="relative grid h-1.5 w-1.5 place-items-center">
             <span className="absolute h-1.5 w-1.5 animate-ping rounded-full bg-emerald-500 opacity-60" />
             <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
           </span>
           Sans abonnement · Tu paies seulement quand tu vends
-        </div>
+        </motion.div>
 
-        <h1 className="text-balance text-4xl font-bold leading-[1.05] tracking-tight sm:text-5xl md:text-6xl lg:text-7xl">
+        <motion.h1
+          variants={fadeUp}
+          className="text-balance text-3xl font-bold leading-[1.05] tracking-tight sm:text-5xl md:text-6xl lg:text-7xl"
+        >
           Crée ta boutique en ligne.{' '}
           <span className="bg-gradient-to-r from-fuchsia-600 via-indigo-600 to-amber-500 bg-clip-text text-transparent">
             Vends dès aujourd&apos;hui.
           </span>
-        </h1>
+        </motion.h1>
 
-        <p className="mx-auto mt-6 max-w-2xl text-balance text-base leading-relaxed text-muted-foreground sm:text-lg md:text-xl">
+        <motion.p
+          variants={fadeUp}
+          className="mx-auto mt-5 max-w-2xl text-balance text-sm leading-relaxed text-muted-foreground sm:mt-6 sm:text-lg md:text-xl"
+        >
           Boutique, landing pages, paiement à la livraison, livraison auto via MogaDelivery.
           Pour les vendeurs en Afrique de l&apos;Ouest et au Maghreb.
-        </p>
+        </motion.p>
 
-        <div className="mt-10 flex flex-wrap items-center justify-center gap-3">
+        <motion.div
+          variants={fadeUp}
+          className="mt-8 flex flex-wrap items-center justify-center gap-3 sm:mt-10"
+        >
           <Link href="/register">
             <Button size="lg" className="h-12 gap-2 bg-gradient-to-r from-fuchsia-600 to-indigo-600 px-7 text-base font-semibold shadow-xl shadow-indigo-500/30 transition-all hover:scale-[1.02] hover:from-fuchsia-700 hover:to-indigo-700">
               Démarrer gratuitement
@@ -121,71 +174,118 @@ function Hero() {
               Voir comment ça marche
             </Button>
           </a>
-        </div>
+        </motion.div>
 
-        <p className="mt-6 inline-flex items-center gap-1.5 text-xs text-muted-foreground">
+        <motion.p
+          variants={fadeUp}
+          className="mt-6 inline-flex items-center gap-1.5 text-xs text-muted-foreground"
+        >
           <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" /> Aucune carte bancaire pour commencer · Aucun engagement
-        </p>
-      </div>
+        </motion.p>
+      </motion.div>
 
-      {/* Hero "screen" mock */}
-      <HeroScreenMock />
+      {/* Hero "screen" mock — slides up + floats subtly */}
+      <motion.div
+        initial={{ opacity: 0, y: 80, scale: 0.97 }}
+        animate={{ opacity: 1, y: 0, scale: 1 }}
+        transition={{ duration: 0.9, delay: 0.35, ease: [0.21, 0.61, 0.35, 1] }}
+        className="relative mx-auto mt-12 max-w-5xl sm:mt-20"
+      >
+        <motion.div
+          animate={reduceMotion ? undefined : { y: [0, -8, 0] }}
+          transition={{ duration: 6, repeat: Infinity, ease: 'easeInOut' }}
+        >
+          <HeroScreenMock />
+        </motion.div>
+      </motion.div>
     </section>
   );
 }
 
 function HeroScreenMock() {
+  const reduceMotion = useReducedMotion();
   return (
-    <div className="relative mx-auto mt-20 max-w-5xl">
+    <div className="relative">
       <div className="absolute -inset-4 -z-10 rounded-3xl bg-gradient-to-br from-fuchsia-500/30 via-indigo-500/20 to-amber-300/20 blur-3xl" aria-hidden />
       <div className="overflow-hidden rounded-2xl border border-border/60 bg-card shadow-2xl ring-1 ring-black/5">
         {/* Browser chrome */}
-        <div className="flex items-center gap-2 border-b border-border/60 bg-muted/40 px-4 py-2.5">
-          <span className="h-2.5 w-2.5 rounded-full bg-rose-400" />
-          <span className="h-2.5 w-2.5 rounded-full bg-amber-400" />
-          <span className="h-2.5 w-2.5 rounded-full bg-emerald-400" />
-          <span className="ml-3 truncate rounded-md bg-background/60 px-2.5 py-0.5 text-[11px] text-muted-foreground">
+        <div className="flex items-center gap-2 border-b border-border/60 bg-muted/40 px-3 py-2 sm:px-4 sm:py-2.5">
+          <span className="h-2 w-2 rounded-full bg-rose-400 sm:h-2.5 sm:w-2.5" />
+          <span className="h-2 w-2 rounded-full bg-amber-400 sm:h-2.5 sm:w-2.5" />
+          <span className="h-2 w-2 rounded-full bg-emerald-400 sm:h-2.5 sm:w-2.5" />
+          <span className="ml-2 truncate rounded-md bg-background/60 px-2 py-0.5 text-[10px] text-muted-foreground sm:ml-3 sm:px-2.5 sm:text-[11px]">
             boutique-test.boutshop.com/p/caftan-marrakech
           </span>
         </div>
 
-        <div className="grid gap-6 p-6 sm:grid-cols-[1.05fr_1fr] sm:gap-8 sm:p-10">
+        <div className="grid gap-4 p-4 sm:grid-cols-[1.05fr_1fr] sm:gap-8 sm:p-10">
           {/* Mock product image */}
           <div className="relative aspect-[4/5] overflow-hidden rounded-xl bg-gradient-to-br from-amber-100 via-fuchsia-100 to-indigo-100">
-            <div className="absolute left-4 top-4 inline-flex items-center gap-1 rounded-full bg-emerald-500 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-white">
+            <motion.div
+              initial={{ y: -30, opacity: 0 }}
+              animate={{ y: 0, opacity: 1 }}
+              transition={{ duration: 0.6, delay: 1.2, type: 'spring', stiffness: 200 }}
+              className="absolute left-3 top-3 inline-flex items-center gap-1 rounded-full bg-emerald-500 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider text-white sm:left-4 sm:top-4 sm:px-2.5 sm:py-1 sm:text-[10px]"
+            >
               −25%
-            </div>
-            <div className="absolute right-4 top-4 inline-flex items-center gap-1 rounded-full bg-card/90 px-2.5 py-1 text-[10px] font-semibold backdrop-blur">
-              <Wallet className="h-3 w-3" /> Cash à la livraison
-            </div>
-            <div className="absolute inset-x-6 bottom-6 grid grid-cols-4 gap-1.5">
+            </motion.div>
+            <motion.div
+              initial={{ y: -30, opacity: 0 }}
+              animate={{ y: 0, opacity: 1 }}
+              transition={{ duration: 0.6, delay: 1.4, type: 'spring', stiffness: 200 }}
+              className="absolute right-3 top-3 inline-flex items-center gap-1 rounded-full bg-card/90 px-2 py-0.5 text-[9px] font-semibold backdrop-blur sm:right-4 sm:top-4 sm:px-2.5 sm:py-1 sm:text-[10px]"
+            >
+              <Wallet className="h-2.5 w-2.5 sm:h-3 sm:w-3" /> Cash
+            </motion.div>
+            <div className="absolute inset-x-4 bottom-4 grid grid-cols-4 gap-1 sm:inset-x-6 sm:bottom-6 sm:gap-1.5">
               {[0,1,2,3].map((i) => (
-                <div key={i} className="aspect-square rounded-md bg-card/70 backdrop-blur" />
+                <motion.div
+                  key={i}
+                  initial={{ opacity: 0, scale: 0.7 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  transition={{ duration: 0.35, delay: 1.6 + i * 0.08 }}
+                  className="aspect-square rounded-md bg-card/70 backdrop-blur"
+                />
               ))}
             </div>
           </div>
 
           {/* Mock product details + tiny form */}
-          <div className="space-y-4">
+          <div className="space-y-3 sm:space-y-4">
             <div>
               <div className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Caftan Marrakech</div>
-              <div className="mt-2 text-2xl font-bold tracking-tight sm:text-3xl">Soie brodée main</div>
-              <div className="mt-2 text-xs text-muted-foreground">Coupe ample · livré sous 48h</div>
+              <div className="mt-1.5 text-xl font-bold tracking-tight sm:mt-2 sm:text-3xl">Soie brodée main</div>
+              <div className="mt-1.5 text-[11px] text-muted-foreground sm:mt-2 sm:text-xs">Coupe ample · livré sous 48h</div>
             </div>
             <div className="flex items-baseline gap-2">
-              <span className="text-3xl font-extrabold text-fuchsia-600">45 000 F CFA</span>
-              <span className="text-sm text-muted-foreground line-through">60 000</span>
+              {/* Pulsing price — draws the eye */}
+              <motion.span
+                animate={reduceMotion ? undefined : { scale: [1, 1.04, 1] }}
+                transition={{ duration: 2.5, repeat: Infinity, ease: 'easeInOut', delay: 2 }}
+                className="text-2xl font-extrabold text-fuchsia-600 sm:text-3xl"
+              >
+                45 000 F CFA
+              </motion.span>
+              <span className="text-xs text-muted-foreground line-through sm:text-sm">60 000</span>
             </div>
-            <div className="space-y-2 rounded-xl border border-border/60 bg-background/40 p-3.5 text-xs">
+            <div className="space-y-2 rounded-xl border border-border/60 bg-background/40 p-3 text-xs">
               <div className="font-semibold">Commande à la livraison</div>
               <div className="grid grid-cols-2 gap-2">
-                <div className="h-8 rounded-md border border-border/60 bg-card" />
-                <div className="h-8 rounded-md border border-border/60 bg-card" />
+                <div className="h-7 rounded-md border border-border/60 bg-card sm:h-8" />
+                <div className="h-7 rounded-md border border-border/60 bg-card sm:h-8" />
               </div>
-              <div className="h-8 rounded-md border border-border/60 bg-card" />
-              <div className="grid h-9 place-items-center rounded-md bg-gradient-to-r from-fuchsia-600 to-indigo-600 text-xs font-bold text-white">
+              <div className="h-7 rounded-md border border-border/60 bg-card sm:h-8" />
+              <motion.div
+                animate={reduceMotion ? undefined : { boxShadow: [
+                  '0 0 0 0 rgba(217, 70, 239, 0.4)',
+                  '0 0 0 8px rgba(217, 70, 239, 0)',
+                  '0 0 0 0 rgba(217, 70, 239, 0)',
+                ] }}
+                transition={{ duration: 2, repeat: Infinity, ease: 'easeOut', delay: 2.5 }}
+                className="grid h-9 place-items-center rounded-md bg-gradient-to-r from-fuchsia-600 to-indigo-600 text-xs font-bold text-white"
+              >
                 Commander
-              </div>
+              </motion.div>
             </div>
           </div>
         </div>
@@ -195,33 +295,56 @@ function HeroScreenMock() {
 }
 
 // ─────────────────────────────────────────────────────────────────────
-// SOCIAL PROOF
+// SOCIAL PROOF — animated count-up stats
 // ─────────────────────────────────────────────────────────────────────
 function SocialProofBar() {
   const stats = [
-    { value: '0 €', label: "d'abonnement" },
-    { value: '< 5 min', label: 'pour ouvrir une boutique' },
-    { value: '16 pays', label: 'Afrique de l’Ouest + Maghreb' },
-    { value: '24/7', label: 'support FR / AR' },
+    { value: 0, suffix: '€', label: "d'abonnement", customFormat: () => '0 €' },
+    { value: 5, suffix: 'min', label: 'pour ouvrir une boutique', customFormat: (n: number) => `< ${n} min` },
+    { value: 16, suffix: 'pays', label: 'Afrique de l’Ouest + Maghreb', customFormat: (n: number) => `${n} pays` },
+    { value: 24, suffix: '/7', label: 'support FR / AR', customFormat: (n: number) => `${n}/7` },
   ];
   return (
     <section className="border-y border-border/40 bg-card/30 backdrop-blur">
-      <div className="mx-auto grid max-w-6xl grid-cols-2 gap-y-6 px-6 py-10 sm:grid-cols-4 sm:gap-6">
-        {stats.map((s) => (
-          <div key={s.label} className="text-center">
-            <div className="bg-gradient-to-br from-fuchsia-600 via-indigo-600 to-amber-500 bg-clip-text text-3xl font-extrabold tracking-tight text-transparent sm:text-4xl">
-              {s.value}
-            </div>
-            <div className="mt-1 text-[11px] font-medium uppercase tracking-wider text-muted-foreground">{s.label}</div>
-          </div>
+      <div className="mx-auto grid max-w-6xl grid-cols-2 gap-y-6 px-4 py-8 sm:grid-cols-4 sm:gap-6 sm:px-6 sm:py-10">
+        {stats.map((s, i) => (
+          <StatBlock key={s.label} {...s} delay={i * 0.08} />
         ))}
       </div>
     </section>
   );
 }
 
+function StatBlock({
+  value, label, delay = 0, customFormat,
+}: {
+  value: number;
+  suffix: string;
+  label: string;
+  delay?: number;
+  customFormat: (n: number) => string;
+}) {
+  const ref = useRef<HTMLDivElement>(null);
+  const inView = useInView(ref, { once: true, margin: '-50px' });
+  const n = useCountUp(value, inView);
+  return (
+    <motion.div
+      ref={ref}
+      initial={{ opacity: 0, y: 20 }}
+      animate={inView ? { opacity: 1, y: 0 } : {}}
+      transition={{ duration: 0.5, delay }}
+      className="text-center"
+    >
+      <div className="bg-gradient-to-br from-fuchsia-600 via-indigo-600 to-amber-500 bg-clip-text text-2xl font-extrabold tracking-tight text-transparent sm:text-4xl">
+        {customFormat(n)}
+      </div>
+      <div className="mt-1 text-[10px] font-medium uppercase tracking-wider text-muted-foreground sm:text-[11px]">{label}</div>
+    </motion.div>
+  );
+}
+
 // ─────────────────────────────────────────────────────────────────────
-// FEATURES
+// FEATURES — fade-up + stagger on scroll
 // ─────────────────────────────────────────────────────────────────────
 function Features() {
   const items = [
@@ -264,40 +387,67 @@ function Features() {
   ];
 
   return (
-    <section id="features" className="mx-auto max-w-6xl px-6 py-24 sm:py-32">
-      <div className="mb-14 max-w-2xl">
-        <div className="mb-3 inline-flex items-center gap-1.5 rounded-full bg-fuchsia-500/10 px-3 py-1 text-xs font-semibold text-fuchsia-700">
+    <section id="features" className="mx-auto max-w-6xl px-4 py-16 sm:px-6 sm:py-24 lg:py-32">
+      <motion.div
+        initial="hidden"
+        whileInView="show"
+        viewport={{ once: true, margin: '-80px' }}
+        variants={staggerContainer}
+        className="mb-10 max-w-2xl sm:mb-14"
+      >
+        <motion.div
+          variants={fadeUp}
+          className="mb-3 inline-flex items-center gap-1.5 rounded-full bg-fuchsia-500/10 px-3 py-1 text-xs font-semibold text-fuchsia-700"
+        >
           <Sparkles className="h-3 w-3" /> Une stack complète
-        </div>
-        <h2 className="text-balance text-3xl font-bold tracking-tight sm:text-4xl md:text-5xl">
+        </motion.div>
+        <motion.h2
+          variants={fadeUp}
+          className="text-balance text-2xl font-bold tracking-tight sm:text-3xl md:text-4xl lg:text-5xl"
+        >
           Tout ce qu&apos;il faut pour vendre. <span className="text-muted-foreground">Rien de plus.</span>
-        </h2>
-        <p className="mt-4 text-base text-muted-foreground sm:text-lg">
+        </motion.h2>
+        <motion.p
+          variants={fadeUp}
+          className="mt-3 text-sm text-muted-foreground sm:mt-4 sm:text-base lg:text-lg"
+        >
           BoutShop combine boutique, landing pages, formulaire COD et logistique en une seule app.
-        </p>
-      </div>
+        </motion.p>
+      </motion.div>
 
-      <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
+      <motion.div
+        initial="hidden"
+        whileInView="show"
+        viewport={{ once: true, margin: '-50px' }}
+        variants={staggerContainer}
+        className="grid gap-4 sm:gap-5 md:grid-cols-2 lg:grid-cols-3"
+      >
         {items.map((item) => (
-          <div
+          <motion.div
             key={item.title}
-            className="group relative overflow-hidden rounded-2xl border border-border/60 bg-card p-6 transition-all duration-300 hover:-translate-y-1 hover:shadow-2xl"
+            variants={fadeUp}
+            whileHover={{ y: -6, transition: { duration: 0.2 } }}
+            className="group relative overflow-hidden rounded-2xl border border-border/60 bg-card p-5 transition-shadow duration-300 hover:shadow-2xl sm:p-6"
           >
             <div className={`pointer-events-none absolute -right-16 -top-16 h-40 w-40 rounded-full bg-gradient-to-br ${item.gradient} opacity-10 blur-3xl transition-opacity duration-300 group-hover:opacity-20`} aria-hidden />
-            <div className={`relative mb-5 grid h-12 w-12 place-items-center rounded-xl bg-gradient-to-br ${item.gradient} text-white shadow-lg transition-transform duration-300 group-hover:rotate-3 group-hover:scale-110`}>
+            <motion.div
+              whileHover={{ rotate: 6, scale: 1.1 }}
+              transition={{ type: 'spring', stiffness: 300 }}
+              className={`relative mb-4 grid h-11 w-11 place-items-center rounded-xl bg-gradient-to-br ${item.gradient} text-white shadow-lg sm:mb-5 sm:h-12 sm:w-12`}
+            >
               <item.icon className="h-5 w-5" />
-            </div>
-            <h3 className="relative text-lg font-bold tracking-tight">{item.title}</h3>
-            <p className="relative mt-2 text-sm leading-relaxed text-muted-foreground">{item.desc}</p>
-          </div>
+            </motion.div>
+            <h3 className="relative text-base font-bold tracking-tight sm:text-lg">{item.title}</h3>
+            <p className="relative mt-2 text-xs leading-relaxed text-muted-foreground sm:text-sm">{item.desc}</p>
+          </motion.div>
         ))}
-      </div>
+      </motion.div>
     </section>
   );
 }
 
 // ─────────────────────────────────────────────────────────────────────
-// HOW IT WORKS
+// HOW IT WORKS — fade-up steps
 // ─────────────────────────────────────────────────────────────────────
 function HowItWorks() {
   const steps = [
@@ -318,39 +468,58 @@ function HowItWorks() {
     },
   ];
   return (
-    <section id="how" className="mx-auto max-w-6xl px-6 py-24 sm:py-32">
-      <div className="mb-14 max-w-2xl">
-        <div className="mb-3 inline-flex items-center gap-1.5 rounded-full bg-indigo-500/10 px-3 py-1 text-xs font-semibold text-indigo-700">
+    <section id="how" className="mx-auto max-w-6xl px-4 py-16 sm:px-6 sm:py-24 lg:py-32">
+      <motion.div
+        initial="hidden"
+        whileInView="show"
+        viewport={{ once: true, margin: '-80px' }}
+        variants={staggerContainer}
+        className="mb-10 max-w-2xl sm:mb-14"
+      >
+        <motion.div
+          variants={fadeUp}
+          className="mb-3 inline-flex items-center gap-1.5 rounded-full bg-indigo-500/10 px-3 py-1 text-xs font-semibold text-indigo-700"
+        >
           <Zap className="h-3 w-3" /> 3 étapes
-        </div>
-        <h2 className="text-balance text-3xl font-bold tracking-tight sm:text-4xl md:text-5xl">
+        </motion.div>
+        <motion.h2
+          variants={fadeUp}
+          className="text-balance text-2xl font-bold tracking-tight sm:text-3xl md:text-4xl lg:text-5xl"
+        >
           De la création à la première vente.
-        </h2>
-      </div>
+        </motion.h2>
+      </motion.div>
 
-      <div className="grid gap-6 lg:grid-cols-3">
+      <motion.div
+        initial="hidden"
+        whileInView="show"
+        viewport={{ once: true, margin: '-50px' }}
+        variants={staggerContainer}
+        className="grid gap-4 sm:gap-6 lg:grid-cols-3"
+      >
         {steps.map((step, i) => (
-          <div
+          <motion.div
             key={step.n}
-            className="relative rounded-2xl border border-border/60 bg-card p-7"
+            variants={fadeUp}
+            className="relative rounded-2xl border border-border/60 bg-card p-5 sm:p-7"
           >
-            <div className="bg-gradient-to-br from-fuchsia-600 via-indigo-600 to-amber-500 bg-clip-text text-5xl font-black leading-none tracking-tighter text-transparent">
+            <div className="bg-gradient-to-br from-fuchsia-600 via-indigo-600 to-amber-500 bg-clip-text text-4xl font-black leading-none tracking-tighter text-transparent sm:text-5xl">
               {step.n}
             </div>
-            <h3 className="mt-5 text-xl font-bold tracking-tight">{step.title}</h3>
-            <p className="mt-2.5 text-sm leading-relaxed text-muted-foreground">{step.desc}</p>
+            <h3 className="mt-4 text-lg font-bold tracking-tight sm:mt-5 sm:text-xl">{step.title}</h3>
+            <p className="mt-2 text-xs leading-relaxed text-muted-foreground sm:mt-2.5 sm:text-sm">{step.desc}</p>
             {i < steps.length - 1 && (
-              <ArrowRight className="absolute right-7 top-7 h-5 w-5 text-muted-foreground/30 lg:right-auto lg:-translate-x-3 lg:translate-y-1/2" />
+              <ArrowRight className="absolute right-5 top-5 h-5 w-5 text-muted-foreground/30 sm:right-7 sm:top-7 lg:right-auto lg:-translate-x-3 lg:translate-y-1/2" />
             )}
-          </div>
+          </motion.div>
         ))}
-      </div>
+      </motion.div>
     </section>
   );
 }
 
 // ─────────────────────────────────────────────────────────────────────
-// COMMISSION PANEL — replaces the old "View pricing" CTA
+// COMMISSION PANEL
 // ─────────────────────────────────────────────────────────────────────
 function CommissionPanel() {
   const perks = [
@@ -362,31 +531,43 @@ function CommissionPanel() {
     'Support FR / AR',
   ];
   return (
-    <section id="commission" className="mx-auto max-w-6xl px-6 py-24 sm:py-32">
-      <div className="relative overflow-hidden rounded-3xl border border-border/60 bg-gradient-to-br from-card via-card to-card/40 p-10 sm:p-14">
+    <section id="commission" className="mx-auto max-w-6xl px-4 py-16 sm:px-6 sm:py-24 lg:py-32">
+      <motion.div
+        initial={{ opacity: 0, y: 40 }}
+        whileInView={{ opacity: 1, y: 0 }}
+        viewport={{ once: true, margin: '-80px' }}
+        transition={{ duration: 0.6 }}
+        className="relative overflow-hidden rounded-3xl border border-border/60 bg-gradient-to-br from-card via-card to-card/40 p-6 sm:p-10 lg:p-14"
+      >
         <div className="pointer-events-none absolute -right-24 top-1/2 h-[420px] w-[420px] -translate-y-1/2 rounded-full bg-gradient-to-br from-fuchsia-500/20 via-indigo-500/15 to-amber-300/10 blur-3xl" aria-hidden />
 
-        <div className="grid gap-12 lg:grid-cols-[1.1fr_1fr]">
+        <div className="grid gap-8 lg:grid-cols-[1.1fr_1fr] lg:gap-12">
           <div className="relative">
             <div className="mb-3 inline-flex items-center gap-1.5 rounded-full bg-emerald-500/10 px-3 py-1 text-xs font-semibold text-emerald-700">
               <Wallet className="h-3 w-3" /> Tarification équitable
             </div>
-            <h2 className="text-balance text-3xl font-bold tracking-tight sm:text-4xl md:text-5xl">
+            <h2 className="text-balance text-2xl font-bold tracking-tight sm:text-3xl md:text-4xl lg:text-5xl">
               Tu paies <span className="bg-gradient-to-r from-fuchsia-600 to-indigo-600 bg-clip-text text-transparent">seulement quand tu vends</span>.
             </h2>
-            <p className="mt-5 text-base leading-relaxed text-muted-foreground sm:text-lg">
+            <p className="mt-4 text-sm leading-relaxed text-muted-foreground sm:mt-5 sm:text-base lg:text-lg">
               Pas d&apos;abonnement, pas de carte bancaire à la création, pas de frais cachés.
               Tu recharges ton solde quand tu veux, on prélève une petite commission sur chaque commande livrée.
               <strong className="text-foreground"> Si tu ne vends pas, tu ne paies pas.</strong>
             </p>
 
-            <div className="mt-8 inline-flex items-baseline gap-3 rounded-2xl border border-border/60 bg-background/60 px-6 py-4 backdrop-blur">
-              <span className="text-5xl font-black tracking-tight text-foreground">3%</span>
+            <motion.div
+              initial={{ scale: 0.92, opacity: 0 }}
+              whileInView={{ scale: 1, opacity: 1 }}
+              viewport={{ once: true }}
+              transition={{ duration: 0.5, delay: 0.2, type: 'spring', stiffness: 200 }}
+              className="mt-6 inline-flex items-baseline gap-3 rounded-2xl border border-border/60 bg-background/60 px-5 py-3.5 backdrop-blur sm:mt-8 sm:px-6 sm:py-4"
+            >
+              <span className="text-4xl font-black tracking-tight text-foreground sm:text-5xl">3%</span>
               <div className="text-left">
-                <div className="text-sm font-semibold">par commande livrée</div>
-                <div className="text-xs text-muted-foreground">débité de ton solde · plafonné à 1 500 F CFA</div>
+                <div className="text-xs font-semibold sm:text-sm">par commande livrée</div>
+                <div className="text-[11px] text-muted-foreground sm:text-xs">débité du solde · plafonné 1 500 F CFA</div>
               </div>
-            </div>
+            </motion.div>
 
             <div className="mt-6 flex flex-wrap gap-3">
               <Link href="/register">
@@ -399,22 +580,32 @@ function CommissionPanel() {
           </div>
 
           <div className="relative">
-            <div className="rounded-2xl border border-border/60 bg-background/60 p-7 backdrop-blur">
+            <motion.div
+              initial="hidden"
+              whileInView="show"
+              viewport={{ once: true, margin: '-50px' }}
+              variants={staggerContainer}
+              className="rounded-2xl border border-border/60 bg-background/60 p-5 backdrop-blur sm:p-7"
+            >
               <div className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Inclus pour 0 €</div>
-              <ul className="mt-4 space-y-3">
+              <ul className="mt-4 space-y-2.5 sm:space-y-3">
                 {perks.map((p) => (
-                  <li key={p} className="flex items-center gap-2.5 text-sm">
+                  <motion.li
+                    key={p}
+                    variants={fadeUp}
+                    className="flex items-center gap-2.5 text-xs sm:text-sm"
+                  >
                     <span className="grid h-5 w-5 shrink-0 place-items-center rounded-full bg-emerald-500/15">
                       <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" />
                     </span>
                     {p}
-                  </li>
+                  </motion.li>
                 ))}
               </ul>
-            </div>
+            </motion.div>
           </div>
         </div>
-      </div>
+      </motion.div>
     </section>
   );
 }
@@ -442,31 +633,50 @@ function Faq() {
     },
   ];
   return (
-    <section id="faq" className="mx-auto max-w-4xl px-6 py-24 sm:py-32">
-      <div className="mb-12 text-center">
-        <div className="mb-3 inline-flex items-center gap-1.5 rounded-full bg-amber-500/10 px-3 py-1 text-xs font-semibold text-amber-700">
+    <section id="faq" className="mx-auto max-w-4xl px-4 py-16 sm:px-6 sm:py-24 lg:py-32">
+      <motion.div
+        initial="hidden"
+        whileInView="show"
+        viewport={{ once: true, margin: '-80px' }}
+        variants={staggerContainer}
+        className="mb-10 text-center sm:mb-12"
+      >
+        <motion.div
+          variants={fadeUp}
+          className="mb-3 inline-flex items-center gap-1.5 rounded-full bg-amber-500/10 px-3 py-1 text-xs font-semibold text-amber-700"
+        >
           FAQ
-        </div>
-        <h2 className="text-balance text-3xl font-bold tracking-tight sm:text-4xl md:text-5xl">
+        </motion.div>
+        <motion.h2
+          variants={fadeUp}
+          className="text-balance text-2xl font-bold tracking-tight sm:text-3xl md:text-4xl lg:text-5xl"
+        >
           Les questions qu&apos;on nous pose le plus.
-        </h2>
-      </div>
-      <div className="space-y-3">
+        </motion.h2>
+      </motion.div>
+      <motion.div
+        initial="hidden"
+        whileInView="show"
+        viewport={{ once: true, margin: '-50px' }}
+        variants={staggerContainer}
+        className="space-y-2.5 sm:space-y-3"
+      >
         {items.map((item) => (
-          <details
+          <motion.details
             key={item.q}
-            className="group rounded-xl border border-border/60 bg-card p-5 open:bg-card/80 transition-colors"
+            variants={fadeUp}
+            className="group rounded-xl border border-border/60 bg-card p-4 transition-colors open:bg-card/80 sm:p-5"
           >
-            <summary className="flex cursor-pointer items-center justify-between text-left text-base font-semibold sm:text-lg">
-              <span className="pr-6">{item.q}</span>
+            <summary className="flex cursor-pointer items-center justify-between gap-3 text-left text-sm font-semibold sm:text-base lg:text-lg">
+              <span className="min-w-0 pr-2 sm:pr-6">{item.q}</span>
               <span className="grid h-7 w-7 shrink-0 place-items-center rounded-full border border-border/60 transition-transform group-open:rotate-45">
                 <span className="text-lg leading-none">+</span>
               </span>
             </summary>
-            <p className="mt-3 text-sm leading-relaxed text-muted-foreground sm:text-base">{item.a}</p>
-          </details>
+            <p className="mt-3 text-xs leading-relaxed text-muted-foreground sm:text-sm lg:text-base">{item.a}</p>
+          </motion.details>
         ))}
-      </div>
+      </motion.div>
     </section>
   );
 }
@@ -476,19 +686,25 @@ function Faq() {
 // ─────────────────────────────────────────────────────────────────────
 function FinalCta() {
   return (
-    <section className="mx-auto max-w-6xl px-6 py-24 sm:py-32">
-      <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-fuchsia-600 via-indigo-600 to-amber-500 p-10 text-center text-white sm:p-16">
+    <section className="mx-auto max-w-6xl px-4 py-16 sm:px-6 sm:py-24 lg:py-32">
+      <motion.div
+        initial={{ opacity: 0, scale: 0.96, y: 30 }}
+        whileInView={{ opacity: 1, scale: 1, y: 0 }}
+        viewport={{ once: true, margin: '-80px' }}
+        transition={{ duration: 0.7, ease: [0.21, 0.61, 0.35, 1] }}
+        className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-fuchsia-600 via-indigo-600 to-amber-500 p-6 text-center text-white sm:p-10 lg:p-16"
+      >
         <div className="absolute inset-0 -z-0 opacity-30" aria-hidden style={{ backgroundImage: 'radial-gradient(white 1px, transparent 1px)', backgroundSize: '32px 32px' }} />
         <div className="relative mx-auto max-w-2xl">
-          <h2 className="text-balance text-3xl font-bold tracking-tight sm:text-4xl md:text-5xl">
+          <h2 className="text-balance text-2xl font-bold tracking-tight sm:text-3xl md:text-4xl lg:text-5xl">
             Prêt à vendre ?
           </h2>
-          <p className="mt-4 text-base text-white/85 sm:text-lg">
+          <p className="mt-3 text-sm text-white/85 sm:mt-4 sm:text-base lg:text-lg">
             Crée ta boutique en moins de 5 minutes. Aucune carte bancaire, aucun engagement.
           </p>
-          <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
+          <div className="mt-6 flex flex-wrap items-center justify-center gap-3 sm:mt-8">
             <Link href="/register">
-              <Button size="lg" variant="secondary" className="h-12 gap-2 bg-white px-7 text-base font-bold text-foreground hover:bg-white/90">
+              <Button size="lg" variant="secondary" className="h-12 gap-2 bg-white px-6 text-base font-bold text-foreground hover:bg-white/90 sm:px-7">
                 Démarrer gratuitement
                 <ArrowRight className="h-4 w-4" />
               </Button>
@@ -498,7 +714,7 @@ function FinalCta() {
             </Link>
           </div>
         </div>
-      </div>
+      </motion.div>
     </section>
   );
 }
@@ -509,7 +725,7 @@ function FinalCta() {
 function Footer() {
   return (
     <footer className="border-t border-border/40 bg-card/30 backdrop-blur">
-      <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-4 px-6 py-10 text-sm text-muted-foreground">
+      <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-3 px-4 py-8 text-sm text-muted-foreground sm:px-6 sm:py-10">
         <div className="flex items-center gap-2">
           <span className="grid h-7 w-7 place-items-center rounded-md bg-gradient-to-br from-fuchsia-600 via-indigo-600 to-amber-500 text-xs font-black text-white">
             B
@@ -517,7 +733,7 @@ function Footer() {
           <span className="font-semibold text-foreground">BoutShop</span>
           <span className="text-xs">— vendre, livrer, encaisser.</span>
         </div>
-        <div className="text-xs">© {new Date().getFullYear()} BoutShop. Tous droits réservés.</div>
+        <div className="text-[11px] sm:text-xs">© {new Date().getFullYear()} BoutShop. Tous droits réservés.</div>
       </div>
     </footer>
   );

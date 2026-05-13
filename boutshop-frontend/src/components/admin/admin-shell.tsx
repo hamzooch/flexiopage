@@ -24,6 +24,7 @@ import {
   Crown,
   Eye,
   User as UserIcon,
+  Briefcase,
 } from 'lucide-react';
 import { useAuthStore } from '@/stores/auth-store';
 import { cn } from '@/lib/utils';
@@ -56,6 +57,14 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
   const role = (user?.role as StaffRole | undefined) || 'admin';
   const meta = ROLE_META[role] || ROLE_META.admin;
   const RoleIcon = meta.Icon;
+
+  // Owners (and the platform founder by email) get a one-click jump to the
+  // seller-side dashboard. We keep the explicit email in addition to the role
+  // check so the founder's account never loses access even if the role string
+  // gets renamed during a future refactor.
+  const FOUNDER_EMAIL = 'teyeb.hamza12@gmail.com';
+  const canSwitchToOwner =
+    role === 'owner' || user?.email?.toLowerCase() === FOUNDER_EMAIL;
 
   const initials = (user?.name || user?.email || 'A')
     .split(/[\s@]/)
@@ -139,13 +148,24 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
 
         {/* Switch back + user */}
         <div className="relative space-y-2 border-t border-border/60 p-3">
-          <Link
-            href="/dashboard"
-            className="flex items-center gap-2 rounded-lg px-2 py-2 text-xs text-muted-foreground hover:bg-muted hover:text-foreground"
-          >
-            <ExternalLink className="h-3.5 w-3.5" />
-            Voir le dashboard vendeur
-          </Link>
+          {canSwitchToOwner ? (
+            <Link
+              href="/dashboard"
+              className="group flex items-center gap-2.5 rounded-xl bg-gradient-to-r from-violet-600 via-fuchsia-600 to-pink-600 px-3 py-2.5 text-sm font-semibold text-white shadow-md shadow-fuchsia-500/30 transition-transform hover:scale-[1.02]"
+            >
+              <Briefcase className="h-4 w-4" />
+              <span className="flex-1">Dashboard Owner</span>
+              <ExternalLink className="h-3.5 w-3.5 opacity-80 transition-transform group-hover:translate-x-0.5" />
+            </Link>
+          ) : (
+            <Link
+              href="/dashboard"
+              className="flex items-center gap-2 rounded-lg px-2 py-2 text-xs text-muted-foreground hover:bg-muted hover:text-foreground"
+            >
+              <ExternalLink className="h-3.5 w-3.5" />
+              Voir le dashboard vendeur
+            </Link>
+          )}
           <div className="flex items-center gap-2 rounded-xl px-2 py-2">
             <Link
               href="/admin/profile"
@@ -193,6 +213,17 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
             </div>
           </div>
           <div className="flex items-center gap-2">
+            {canSwitchToOwner && (
+              <Link
+                href="/dashboard"
+                title="Aller au dashboard vendeur"
+                className="group hidden h-9 items-center gap-2 rounded-xl bg-gradient-to-r from-violet-600 via-fuchsia-600 to-pink-600 px-3.5 text-xs font-bold text-white shadow-md shadow-fuchsia-500/30 transition-transform hover:scale-[1.03] sm:inline-flex"
+              >
+                <Briefcase className="h-3.5 w-3.5" />
+                Dashboard Owner
+                <ExternalLink className="h-3 w-3 opacity-80 transition-transform group-hover:translate-x-0.5" />
+              </Link>
+            )}
             <span className="hidden items-center gap-2 rounded-full bg-rose-500/10 px-3 py-1.5 text-xs font-bold text-rose-700 sm:inline-flex">
               <RoleIcon className="h-3.5 w-3.5" />
               {meta.mode}
@@ -207,7 +238,7 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
           </div>
         </header>
 
-        <main className="flex-1 p-4 sm:p-6 lg:p-8">
+        <main className="flex-1 p-3 sm:p-6 lg:p-8">
           <div className="mx-auto w-full max-w-7xl">{children}</div>
         </main>
       </div>

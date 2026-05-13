@@ -22,11 +22,14 @@ import {
   Settings,
   Sparkles,
   Plug,
+  AppWindow,
   Wallet,
   UserRound,
   X,
   LifeBuoy,
   Image as ImageIcon,
+  ShieldCheck,
+  ArrowRight,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAuthStore } from '@/stores/auth-store';
@@ -62,6 +65,7 @@ const SECTIONS: { title: string; items: NavItem[] }[] = [
       { href: '/dashboard/wallet', label: 'Solde', icon: Wallet },
       { href: '/dashboard/support', label: 'Support', icon: LifeBuoy },
       { href: '/dashboard/integrations', label: 'Intégrations', icon: Plug },
+      { href: '/dashboard/apps', label: 'Applications', icon: AppWindow },
       { href: '/dashboard/profile', label: 'Profil', icon: UserRound },
       { href: '/dashboard/settings', label: 'Paramètres', icon: Settings },
     ],
@@ -84,6 +88,15 @@ export function Sidebar({ mobileOpen = false, onMobileClose }: Props) {
     .slice(0, 2)
     .join('')
     .toUpperCase();
+
+  // Staff (owner/superadmin/admin/supervisor) and the platform founder get a
+  // shortcut button to the admin area. Email is kept alongside the role check
+  // so the founder's account keeps access even if roles get renamed later.
+  const FOUNDER_EMAIL = 'teyeb.hamza12@gmail.com';
+  const STAFF_ROLES = new Set(['owner', 'superadmin', 'admin', 'supervisor']);
+  const canAccessAdmin =
+    STAFF_ROLES.has(String(user?.role || '')) ||
+    user?.email?.toLowerCase() === FOUNDER_EMAIL;
 
   // Close mobile drawer when navigating
   useEffect(() => {
@@ -186,6 +199,21 @@ export function Sidebar({ mobileOpen = false, onMobileClose }: Props) {
             </div>
           ))}
         </nav>
+
+        {/* Admin shortcut (staff + founder only) */}
+        {canAccessAdmin && (
+          <div className="relative border-t border-sidebar-border px-3 pt-3">
+            <Link
+              href="/admin"
+              onClick={onMobileClose}
+              className="group flex items-center gap-2.5 rounded-xl bg-gradient-to-r from-rose-600 via-orange-600 to-amber-500 px-3 py-2.5 text-sm font-semibold text-white shadow-md shadow-rose-500/30 transition-transform hover:scale-[1.02]"
+            >
+              <ShieldCheck className="h-4 w-4" strokeWidth={2.5} />
+              <span className="flex-1">Mode Admin Plateforme</span>
+              <ArrowRight className="h-3.5 w-3.5 opacity-80 transition-transform group-hover:translate-x-0.5" />
+            </Link>
+          </div>
+        )}
 
         {/* User card */}
         <div className="relative border-t border-sidebar-border p-3">

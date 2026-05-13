@@ -9,12 +9,16 @@ import {
 } from '@/data/store-themes';
 import { MarketingPixels, type MarketingConfig } from '@/components/storefront/MarketingPixels';
 import { StorefrontSlider, type SliderConfig } from '@/components/storefront/Slider';
+import { StoreNavbar, type NavbarConfig } from '@/components/storefront/StoreNavbar';
+import { StoreFooter, type FooterConfig } from '@/components/storefront/StoreFooter';
+import { StorefrontTestimonials, type TestimonialsConfig } from '@/components/storefront/Testimonials';
 
 interface Props {
   params: Promise<{ storeSlug: string }>;
 }
 
 interface StorefrontConfig {
+  navbar?: NavbarConfig;
   showHero?: boolean;
   heroTitle?: string;
   heroSubtitle?: string;
@@ -22,8 +26,10 @@ interface StorefrontConfig {
   showProductsGrid?: boolean;
   productsGridTitle?: string;
   showFeatures?: boolean;
+  testimonials?: TestimonialsConfig;
   showFooter?: boolean;
   footerNote?: string;
+  footer?: FooterConfig;
   slider?: SliderConfig;
 }
 
@@ -33,6 +39,7 @@ interface StoreDoc {
   slug: string;
   description?: string;
   storeType?: 'physical' | 'digital';
+  logo?: string;
   theme?: { templateId?: string } & Record<string, unknown>;
   settings?: {
     currency?: string;
@@ -126,7 +133,13 @@ export default async function PublicStorePage({ params }: Props) {
         className="min-h-screen"
         style={tokensToCssVars(theme)}
       >
-        <Header store={store} theme={theme} />
+        <StoreNavbar
+          storeName={store.name}
+          storeSlug={store.slug}
+          storeLogo={store.logo}
+          theme={theme}
+          config={sf.navbar}
+        />
         <StorefrontSlider
           config={sf.slider}
           primary={theme.primary}
@@ -145,8 +158,17 @@ export default async function PublicStorePage({ params }: Props) {
             title={sf.productsGridTitle}
           />
         )}
+        <StorefrontTestimonials config={sf.testimonials} theme={theme} />
         {isDigital && showFeatures && <DigitalGuarantee theme={theme} />}
-        {showFooter && <Footer store={store} theme={theme} />}
+        {showFooter && (
+          <StoreFooter
+            storeName={store.name}
+            storeSlug={store.slug}
+            footerNote={sf.footerNote}
+            config={sf.footer}
+            theme={theme}
+          />
+        )}
       </div>
     </>
   );
@@ -164,20 +186,21 @@ function Header({ store, theme }: { store: StoreDoc; theme: ThemeTokens }) {
         backgroundColor: hexA(theme.background, 0.85),
       }}
     >
-      <div className="mx-auto flex h-16 max-w-6xl items-center justify-between px-6">
+      <div className="mx-auto flex h-14 max-w-6xl items-center justify-between gap-3 px-3 sm:h-16 sm:px-6">
         <Link
           href={`/store/${store.slug}`}
-          className="text-xl font-bold tracking-tight"
+          className="truncate text-base font-bold tracking-tight sm:text-xl"
           style={{ fontFamily: theme.fontHeading, color: theme.foreground }}
         >
           {store.name}
         </Link>
         <Link
           href="/login"
-          className="text-sm transition-colors"
+          className="shrink-0 text-xs transition-colors sm:text-sm"
           style={{ color: theme.muted }}
         >
-          Espace marchand
+          <span className="hidden sm:inline">Espace marchand</span>
+          <span className="sm:hidden">Marchand</span>
         </Link>
       </div>
     </header>
@@ -193,8 +216,8 @@ function Hero({ store, theme, isDigital = false }: { store: StoreDoc; theme: The
   const isSoft = theme.style === 'soft';
 
   const titleSize =
-    theme.fontDisplaySize === 'xlarge' ? 'text-5xl sm:text-7xl' :
-    theme.fontDisplaySize === 'large'  ? 'text-4xl sm:text-6xl' : 'text-3xl sm:text-5xl';
+    theme.fontDisplaySize === 'xlarge' ? 'text-3xl sm:text-5xl lg:text-7xl' :
+    theme.fontDisplaySize === 'large'  ? 'text-3xl sm:text-4xl lg:text-6xl' : 'text-2xl sm:text-3xl lg:text-5xl';
 
   return (
     <section className="relative overflow-hidden">
@@ -225,7 +248,7 @@ function Hero({ store, theme, isDigital = false }: { store: StoreDoc; theme: The
         </>
       )}
 
-      <div className={`relative mx-auto max-w-6xl px-6 ${isEditorial ? 'py-24 sm:py-32' : 'py-20 sm:py-28'}`}>
+      <div className={`relative mx-auto max-w-6xl px-4 sm:px-6 ${isEditorial ? 'py-14 sm:py-24 lg:py-32' : 'py-12 sm:py-20 lg:py-28'}`}>
         <div className={`${isEditorial ? 'max-w-3xl' : 'mx-auto max-w-3xl text-center'}`}>
           {!isEditorial && (
             <div
@@ -324,24 +347,24 @@ function ProductsGrid({
       className="border-t"
       style={{ borderColor: theme.border, backgroundColor: theme.background }}
     >
-      <div className="mx-auto max-w-6xl px-6 py-16 sm:py-20">
-        <div className={`mb-10 ${isEditorial ? '' : 'text-center'}`}>
+      <div className="mx-auto max-w-6xl px-4 py-10 sm:px-6 sm:py-16 lg:py-20">
+        <div className={`mb-7 sm:mb-10 ${isEditorial ? '' : 'text-center'}`}>
           {isEditorial && (
             <div
-              className="mb-2 text-xs font-semibold uppercase tracking-[0.25em]"
+              className="mb-2 text-[10px] font-semibold uppercase tracking-[0.25em] sm:text-xs"
               style={{ color: theme.accent }}
             >
               — Sélection
             </div>
           )}
           <h2
-            className="text-3xl font-bold tracking-tight sm:text-4xl"
+            className="text-2xl font-bold tracking-tight sm:text-3xl lg:text-4xl"
             style={{ fontFamily: theme.fontHeading, color: theme.foreground }}
           >
             {title || 'Nos produits'}
           </h2>
           {!isEditorial && (
-            <p className="mt-2 text-sm" style={{ color: theme.muted }}>
+            <p className="mt-2 text-xs sm:text-sm" style={{ color: theme.muted }}>
               Tous nos produits, choisis avec soin.
             </p>
           )}
@@ -349,7 +372,7 @@ function ProductsGrid({
 
         {products.length === 0 ? (
           <div
-            className="grid place-items-center border border-dashed p-16 text-sm"
+            className="grid place-items-center border border-dashed p-10 text-sm sm:p-16"
             style={{
               borderColor: theme.border,
               color: theme.muted,
@@ -360,7 +383,7 @@ function ProductsGrid({
             Aucun produit pour l&apos;instant.
           </div>
         ) : (
-          <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+          <div className="grid grid-cols-2 gap-3 sm:gap-6 lg:grid-cols-3">
             {products.map((p) => {
               const hasDiscount = p.compareAtPrice && p.compareAtPrice > p.price;
               const discountPct = hasDiscount
@@ -469,14 +492,14 @@ function Footer({ store, theme }: { store: StoreDoc; theme: ThemeTokens }) {
         color: theme.muted,
       }}
     >
-      <div className="mx-auto max-w-6xl px-6 py-10 text-center text-sm">
+      <div className="mx-auto max-w-6xl px-4 py-8 text-center text-sm sm:px-6 sm:py-10">
         <span
           className="font-bold tracking-tight"
           style={{ fontFamily: theme.fontHeading, color: theme.foreground }}
         >
           {store.name}
         </span>
-        <p className="mt-2 text-xs">
+        <p className="mt-2 text-[11px] sm:text-xs">
           © {new Date().getFullYear()} {store.name}. Tous droits réservés.
         </p>
       </div>
@@ -507,16 +530,16 @@ function DigitalTrustStrip({ theme }: { theme: ThemeTokens }) {
       className="border-y"
       style={{ borderColor: theme.border, backgroundColor: theme.surfaceMuted }}
     >
-      <div className="mx-auto grid max-w-6xl grid-cols-2 gap-4 px-6 py-7 text-sm sm:grid-cols-4 sm:gap-6">
+      <div className="mx-auto grid max-w-6xl grid-cols-2 gap-3 px-4 py-5 text-xs sm:gap-6 sm:px-6 sm:py-7 sm:text-sm lg:grid-cols-4">
         {items.map((it, i) => (
-          <div key={i} className="flex items-center gap-3" style={{ color: theme.muted }}>
+          <div key={i} className="flex items-center gap-2 sm:gap-3" style={{ color: theme.muted }}>
             <span
-              className="grid h-9 w-9 shrink-0 place-items-center rounded-full text-base"
+              className="grid h-8 w-8 shrink-0 place-items-center rounded-full text-sm sm:h-9 sm:w-9 sm:text-base"
               style={{ backgroundColor: theme.surface, border: `1px solid ${theme.border}` }}
             >
               {it.icon}
             </span>
-            <span className="font-medium leading-tight" style={{ color: theme.foreground }}>
+            <span className="min-w-0 font-medium leading-tight" style={{ color: theme.foreground }}>
               {it.label}
             </span>
           </div>
@@ -532,7 +555,7 @@ function DigitalGuarantee({ theme }: { theme: ThemeTokens }) {
       className="border-t"
       style={{ borderColor: theme.border, backgroundColor: theme.background }}
     >
-      <div className="mx-auto max-w-3xl px-6 py-16 text-center">
+      <div className="mx-auto max-w-3xl px-4 py-10 text-center sm:px-6 sm:py-16">
         <div
           className="mx-auto mb-5 grid h-14 w-14 place-items-center rounded-2xl text-2xl"
           style={{

@@ -18,7 +18,15 @@
 import path from 'path';
 import fs from 'fs/promises';
 import type { TemplateSection } from '../data/landing-templates';
-import { generateImagesParallel, getAvatarModel, type ImageGenInput } from './image-generation.service';
+import {
+  generateImagesParallel,
+  getHeroModel,
+  getGalleryModel,
+  getAvatarModel,
+  getBannerModel,
+  isBannerPrompt,
+  type ImageGenInput,
+} from './image-generation.service';
 import { persistRemoteImage } from './storage.service';
 
 const FAL_BASE = 'https://fal.run';
@@ -288,19 +296,81 @@ async function falRequest<T>(
 }
 
 /**
- * Caption an image with Florence-2. Times out at 15s — captioning is a
- * "nice to have" context for the LLM, not load-bearing. The pipeline
- * tolerates an empty caption gracefully.
+ * Caption an image. Default: Claude Sonnet 4.5 vision via fal's any-llm/vision
+ * endpoint — much richer than Florence-2 (mentions material, finish, packaging,
+ * dimensions, staging) which is what the copywriter LLM downstream actually
+ * needs. Override with FAL_CAPTION_MODEL.
+ *
+ * Two-step fallback: vision LLM → Florence-2 → empty string. The pipeline
+ * tolerates an empty caption (less rich copy, no crash).
+ *
+ * Available models on fal-ai/any-llm/vision (verified by 422 response):
+ *   • anthropic/claude-sonnet-4.5          ← DEFAULT (best detail, same family as LLM copywriter)
+ *   • anthropic/claude-haiku-4.5           — cheaper Claude
+ *   • anthropic/claude-3.7-sonnet
+ *   • anthropic/claude-3.5-sonnet
+ *   • google/gemini-2.5-pro                — top tier Google
+ *   • google/gemini-2.5-flash              — cheap multilingual
+ *   • google/gemini-2.5-flash-lite         — cheapest Google
+ *   • openai/gpt-4o, openai/gpt-4.1, openai/gpt-5-chat, openai/gpt-5-mini
+ *   • meta-llama/llama-4-maverick          — open weights vision
+ *   • qwen/qwen3-vl-235b-a22b-instruct     — top Qwen vision
+ *   • x-ai/grok-4-fast
  */
+const CAPTION_MODEL = process.env.FAL_CAPTION_MODEL || 'anthropic/claude-sonnet-4.5';
+const CAPTION_PROMPT =
+  'You are describing this product photo for a copywriter who will write a landing page from your description and CANNOT see the image.\n\n' +
+  'Return 3–5 sentences covering ALL of:\n' +
+  '1. Object type & category (e.g. "leather bifold wallet", "stainless-steel insulated water bottle")\n' +
+  '2. Material(s), finish, texture (matte/glossy, smooth/grained, knit/woven)\n' +
+  '3. Exact color palette (specific colors, e.g. "warm caramel brown with dark chocolate stitching", not just "brown")\n' +
+  '4. Distinctive design details (logo position, hardware, buttons, zippers, prints, contrast panels)\n' +
+  '5. Scale & form (size estimate, shape, proportions)\n' +
+  '6. Staging context (background, surface, lighting, props if any)\n' +
+  '7. Packaging visible (box, label, tag) if applicable\n\n' +
+  'Style: factual reporter tone. NO marketing language ("premium", "elegant"…), NO invented features. Reply in English regardless of any text inside the image.';
+
 export async function captionImage(imageUrl: string): Promise<string> {
   const resolved = await resolveImageForFal(imageUrl);
-  const out = await falRequest<{ results?: { '<MORE_DETAILED_CAPTION>'?: string; '<DETAILED_CAPTION>'?: string; '<CAPTION>'?: string } }>(
-    'fal-ai/florence-2-large/more-detailed-caption',
-    { image_url: resolved },
-    { timeoutMs: 15_000 }
-  );
-  const r = out.results || {};
-  return (r['<MORE_DETAILED_CAPTION>'] || r['<DETAILED_CAPTION>'] || r['<CAPTION>'] || '').trim();
+
+  // Primary: Claude 3.5 Sonnet vision via fal-ai/any-llm/vision.
+  // IMPORTANT: this is a separate endpoint from `fal-ai/any-llm` (text-only).
+  // The vision endpoint accepts `image_url` (http URL or data URL).
+  try {
+    const out = await falRequest<{ output?: string; usage?: unknown }>(
+      'fal-ai/any-llm/vision',
+      {
+        model: CAPTION_MODEL,
+        prompt: CAPTION_PROMPT,
+        image_url: resolved,
+      },
+      { timeoutMs: 20_000 }
+    );
+    const caption = (out.output || '').trim();
+    if (caption.length > 20) {
+      console.log(`[caption] vision OK (${CAPTION_MODEL}, ${caption.length} chars)`);
+      return caption;
+    }
+    console.warn('[caption] vision returned suspiciously short output, falling back. raw=', JSON.stringify(out).slice(0, 200));
+  } catch (err) {
+    console.warn(`[caption] vision LLM failed (${CAPTION_MODEL}), falling back to Florence-2:`, (err as Error).message);
+  }
+
+  // Fallback: Florence-2 (small VL model, less verbose but very reliable).
+  try {
+    const out = await falRequest<{ results?: { '<MORE_DETAILED_CAPTION>'?: string; '<DETAILED_CAPTION>'?: string; '<CAPTION>'?: string } }>(
+      'fal-ai/florence-2-large/more-detailed-caption',
+      { image_url: resolved },
+      { timeoutMs: 15_000 }
+    );
+    const r = out.results || {};
+    const caption = (r['<MORE_DETAILED_CAPTION>'] || r['<DETAILED_CAPTION>'] || r['<CAPTION>'] || '').trim();
+    console.log(`[caption] Florence-2 fallback used (${caption.length} chars)`);
+    return caption;
+  } catch (err) {
+    console.warn('[caption] Florence-2 fallback also failed:', (err as Error).message);
+    return '';
+  }
 }
 
 /**
@@ -456,7 +526,12 @@ Per-section schema:
 
 - "faq" props: { "title", "items": [{ "question", "answer" }] } — 5 items addressing real local objections.
 
-- "cta" props: { "title", "subtitle", "buttonText", "secondaryText"?, "urgency"? }
+- "cta" props: { "title", "subtitle", "buttonText", "secondaryText"?, "urgency"?,
+    "bannerPrompt"?: "promotional sticker reading \\"−${'${'}discountPct${'}'}%\\" in bold sans-serif, vibrant brand colors, modern flat design" }
+  The optional "bannerPrompt" generates a promo image WITH LEGIBLE TEXT (Ideogram v3).
+  Use it for cta/hero/features when you want a graphic with text like "−50%", "NEW",
+  "SOLDES", "العرض ينتهي قريبا". ALWAYS wrap the exact text the image must contain in
+  straight double quotes inside the prompt. Skip bannerPrompt when no promo / no discount.
 
 - "cod-form" props: {
     "title": "...", "subtitle"?: "...", "submitLabel"?: "...", "reassurance"?: "...",
@@ -475,16 +550,24 @@ Per-section schema:
 `;
 
   const productPageRules = pageKind === 'product'
-    ? '\nThis is a PRODUCT detail page. Order: hero (split, with product image) → product → gallery → features → stats → testimonials → cod-form → faq → cta → footer.\nMUST include "cod-form" right after testimonials so the buyer can order without leaving the page. The cod-form productSlug should match the product on this page.'
-    : '\nThis is a LANDING page for a single offer. Order: hero → features → stats → gallery → product → testimonials → brands → cod-form → faq → cta → footer.\nFor physical-product landings ALWAYS include a "cod-form" section before the faq — that is the actual conversion point.';
+    ? '\nThis is a PRODUCT detail page. Order: hero (split, with product image) → product → gallery → features → stats → testimonials → cod-form → faq → cta → footer.\n⚠️ MANDATORY: every output MUST contain exactly one "cod-form" section, placed right after testimonials. Omitting it = invalid output. The cod-form productSlug should match the product on this page.'
+    : '\nThis is a LANDING page for a single offer. Order: hero → features → stats → gallery → product → testimonials → brands → cod-form → faq → cta → footer.\n⚠️ MANDATORY: every output MUST contain exactly one "cod-form" section, placed before the faq. Omitting it = invalid output (the page has no conversion point).';
 
   const imageBlock = imageCaption
-    ? `\n# Visual context — what the product photo(s) actually show
-You CAN see the product. Vision system describes the photo as:
+    ? `\n# 🛑 PRODUCT IDENTITY — ABSOLUTE SOURCE OF TRUTH 🛑
+A vision model has DESCRIBED the actual product photo. This description is THE product. You MUST write copy about THIS exact object, nothing else.
+
+Vision description:
 """
 ${imageCaption}
 """
-Anchor your copy in these CONCRETE visual details — the actual color, material, size, packaging, environment shown. Do NOT invent unrelated visuals. If the photo shows a leather wallet on wood, write about that wallet, that leather, that tone — not generic "products".`
+
+# Hard rules (violating these = invalid output):
+1. The PRODUCT TYPE (the very first noun in the description, e.g. "wallet", "phone holder", "candle", "watch") IS the product. NEVER substitute it with another category. If the description starts with "magnetic phone mount with rotating base" you MUST write about a magnetic phone mount with rotating base — not headphones, not a speaker, not generic "products".
+2. Every concrete attribute (color, material, finish, hardware, distinctive parts) mentioned in the description MUST appear at least once across your copy (hero, features, product, faq).
+3. Forbidden: inventing features or attributes NOT in the description. If the description doesn't say "waterproof", do NOT claim waterproof. If it doesn't mention a battery, do NOT mention battery life.
+4. The hero title, product.name and faq questions all refer to THE SAME OBJECT.
+5. Before writing, mentally answer: "What is this object?" → write that answer in 2-3 words → that's your product category. Use it consistently.`
     : '';
 
   // ──────── Arabic few-shots (only injected when targeting Arab market) ────────
@@ -657,7 +740,7 @@ interface ImageSlot {
   /** Prompt for the image model. */
   prompt: string;
   /** Hint for sizing / model selection. */
-  kind: 'hero' | 'gallery' | 'product' | 'avatar' | 'video' | 'generic';
+  kind: 'hero' | 'gallery' | 'product' | 'avatar' | 'video' | 'banner' | 'generic';
   /**
    * If set, the slot is generated via image-to-image so the output contains
    * THIS exact reference product. Used for hero & gallery so the AI variants
@@ -687,14 +770,29 @@ function collectImageSlots(
     const p = sec.props;
     if (!p || typeof p !== 'object') continue;
 
+    // Banner slot — promotional image with legible text overlay (Ideogram v3).
+    // The LLM may emit `bannerPrompt` in cta/hero/features/etc., OR an
+    // `imagePrompt` that explicitly asks for text in the image.
+    if (typeof p.bannerPrompt === 'string' && !p.bannerUrl) {
+      slots.push({
+        prompt: p.bannerPrompt,
+        kind: 'banner',
+        apply: (url) => { p.bannerUrl = url; },
+      });
+    }
+
     // hero / video / product / generic single-image slot
     if (typeof p.imagePrompt === 'string' && !p.imageUrl) {
       const prompt = p.imagePrompt;
+      // Detect "banner-style" prompts even when emitted under imagePrompt.
+      // These prompts ask for legible text → route to Ideogram, no reference.
+      const isBanner = isBannerPrompt(prompt);
       const kind: ImageSlot['kind'] =
+        isBanner ? 'banner' :
         sec.type === 'hero' ? 'hero' :
         sec.type === 'video' ? 'video' :
         sec.type === 'product' ? 'product' : 'generic';
-      const useRef = productImage && (kind === 'hero' || kind === 'product' || kind === 'generic');
+      const useRef = !isBanner && productImage && (kind === 'hero' || kind === 'product' || kind === 'generic');
       slots.push({
         prompt,
         kind,
@@ -744,14 +842,44 @@ const ASPECT_FOR_KIND: Record<ImageSlot['kind'], 'square' | 'portrait' | 'landsc
   product: 'square',
   avatar:  'portrait',
   video:   'wide',
+  banner:  'wide',     // promo banners are typically wide
   generic: 'square',
 };
 
+/**
+ * Pick the model to use for a given slot kind. Each kind has a configurable
+ * default in the image-generation service (env-overridable).
+ *   hero    → FLUX pro 1.1
+ *   gallery → FLUX schnell
+ *   avatar  → FLUX realism
+ *   banner  → Ideogram v3 (text-in-image specialist)
+ *   product / video / generic → gallery default
+ */
+function modelForKind(kind: ImageSlot['kind']): string | undefined {
+  switch (kind) {
+    case 'hero':    return getHeroModel();
+    case 'gallery': return getGalleryModel();
+    case 'avatar':  return getAvatarModel();
+    case 'banner':  return getBannerModel();
+    case 'product':
+    case 'video':
+    case 'generic':
+    default:
+      return getGalleryModel();
+  }
+}
+
 async function buildImageGenInput(slot: ImageSlot): Promise<ImageGenInput> {
   const aspect = ASPECT_FOR_KIND[slot.kind];
+
+  // Banner prompts ASK for text in the image — don't append "no text" to them
+  // and don't add the lifestyle-photo suffix.
+  const isBanner = slot.kind === 'banner';
   const styleSuffix = ', photorealistic, natural daylight, shallow depth of field, lifestyle photography, no text, no logos, no watermark';
   const promptLooksClean = /no text|photoreal/i.test(slot.prompt);
-  const finalPrompt = promptLooksClean ? slot.prompt : slot.prompt + styleSuffix;
+  const finalPrompt = isBanner
+    ? slot.prompt
+    : (promptLooksClean ? slot.prompt : slot.prompt + styleSuffix);
 
   // If reference image is a relative /uploads/... path, fal.ai cannot fetch
   // localhost — convert it to a base64 data URL so fal receives the bytes.
@@ -765,11 +893,17 @@ async function buildImageGenInput(slot: ImageSlot): Promise<ImageGenInput> {
     }
   }
 
+  // Negative prompts only apply to FLUX-class models. Banners want text in
+  // the image so we MUST NOT add "text, watermark, logo" to the negative.
+  const negativePrompt = isBanner
+    ? 'blurry, lowres, distorted, deformed'
+    : 'text, watermark, logo, deformed, blurry, lowres, ugly, extra fingers, distorted face';
+
   return {
     prompt: finalPrompt,
     aspect,
-    model: slot.kind === 'avatar' ? getAvatarModel() : undefined,
-    negativePrompt: 'text, watermark, logo, deformed, blurry, lowres, ugly, extra fingers, distorted face',
+    model: modelForKind(slot.kind),
+    negativePrompt,
     referenceImages,
   };
 }
@@ -829,6 +963,45 @@ function finalize(
       const gallerySection = { type: 'gallery', props: { images: productImages } };
       if (heroIdx >= 0) sections.splice(heroIdx + 1, 0, gallerySection);
       else sections.unshift(gallerySection);
+    }
+  }
+
+  // ── Enforce: every landing page MUST have a cod-form (order form) ─────
+  // The LLM occasionally skips it. We splice one in just before the FAQ
+  // (or before the footer if no FAQ) so buyers can always place an order.
+  const isDigitalProduct = fallbackProduct?.type === 'digital';
+  if (!isDigitalProduct) {
+    const hasCodForm = sections.some((s) => s.type === 'cod-form');
+    if (!hasCodForm) {
+      // Build a sensible default cod-form from the product info.
+      const productSlug = fallbackProduct?.name
+        ? fallbackProduct.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40)
+        : undefined;
+      const codFormSection = {
+        type: 'cod-form',
+        props: {
+          title: 'Commandez maintenant — Paiement à la livraison',
+          subtitle: 'Remplis le formulaire ci-dessous. On te rappelle pour confirmer puis on livre. Aucun acompte.',
+          submitLabel: 'Confirmer ma commande',
+          reassurance: 'Paiement uniquement à la réception · Livraison rapide',
+          productSlug,
+          showEmail: true,
+          requireEmail: false,
+          showPostalCode: false,
+          showState: false,
+          showNotes: true,
+          showQuantity: true,
+        } as Record<string, unknown>,
+      };
+      // Prefer to insert just before the FAQ; otherwise before footer; otherwise at end.
+      const faqIdx = sections.findIndex((s) => s.type === 'faq');
+      const footerIdx = sections.findIndex((s) => s.type === 'footer');
+      let insertAt: number;
+      if (faqIdx >= 0) insertAt = faqIdx;
+      else if (footerIdx >= 0) insertAt = footerIdx;
+      else insertAt = sections.length;
+      sections.splice(insertAt, 0, codFormSection);
+      console.log('[landing-gen] auto-injected cod-form section (LLM skipped it)');
     }
   }
 

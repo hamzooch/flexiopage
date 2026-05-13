@@ -13,8 +13,18 @@
  */
 import type { CSSProperties } from 'react';
 
-export type ThemeNiche = 'electronics' | 'fashion' | 'beauty' | 'general';
-export type ThemeStyle = 'editorial' | 'tech' | 'soft';
+export type ThemeNiche =
+  | 'electronics'
+  | 'fashion'
+  | 'beauty'
+  | 'general'
+  // Digital niches
+  | 'saas'        // software, SaaS, tools
+  | 'coaching'    // courses, coaching, memberships
+  | 'creators'    // creators, templates, portfolios
+  | 'ebooks';     // ebooks, PDFs, digital downloads
+export type ThemeStyle = 'editorial' | 'tech' | 'soft' | 'minimal' | 'glass';
+export type StoreKind = 'physical' | 'digital';
 export type ThemeRadius = 'none' | 'small' | 'medium' | 'large' | 'xl';
 export type ThemeSpacing = 'tight' | 'normal' | 'relaxed';
 
@@ -61,6 +71,12 @@ export interface StoreThemeTemplate {
   niche: ThemeNiche;
   /** Used by the wizard preview to label the niche. */
   nicheLabel: string;
+  /**
+   * Which store kinds this theme is offered for. Physical-product themes
+   * (Volt/Atelier/Bloom) target retail; digital themes (Pulse/Sage/Studio/Lumen)
+   * target courses, ebooks, SaaS, templates, etc.
+   */
+  forStoreTypes: StoreKind[];
   theme: ThemeTokens;
 }
 
@@ -87,6 +103,7 @@ const volt: StoreThemeTemplate = {
     'Sombre, géométrique, accent cyan électrique. Idéal pour smartphones, accessoires, gaming, audio.',
   niche: 'electronics',
   nicheLabel: 'Électronique',
+  forStoreTypes: ['physical'],
   theme: makeTheme({
     templateId: 'volt',
     primary: '#06b6d4',         // electric cyan
@@ -125,6 +142,7 @@ const atelier: StoreThemeTemplate = {
     'Magazine de mode : sérif large, crème chaud, lignes droites. Parfait pour vêtements, maroquinerie, accessoires.',
   niche: 'fashion',
   nicheLabel: 'Mode & vêtements',
+  forStoreTypes: ['physical'],
   theme: makeTheme({
     templateId: 'atelier',
     primary: '#1c1917',
@@ -164,6 +182,7 @@ const bloom: StoreThemeTemplate = {
     'Pastels chauds, rose poudré, formes très arrondies. Idéal pour cosmétiques, parfums, soin, bien-être, bijoux.',
   niche: 'beauty',
   nicheLabel: 'Beauté & bien-être',
+  forStoreTypes: ['physical'],
   theme: makeTheme({
     templateId: 'bloom',
     primary: '#be185d',          // berry rose
@@ -189,7 +208,182 @@ const bloom: StoreThemeTemplate = {
   }),
 };
 
-export const STORE_THEME_TEMPLATES: StoreThemeTemplate[] = [volt, atelier, bloom];
+// ═════════════════════════════════════════════════════════════════════
+// DIGITAL THEMES — courses, ebooks, SaaS, templates, downloads
+// All four are tuned for shipping pixels and earning trust on a digital
+// product (no shipping address, instant delivery, refund guarantee).
+// ═════════════════════════════════════════════════════════════════════
+
+// ─────────────────────────────────────────────────────────────────────
+// 4. PULSE — SaaS / software / digital tools
+// Dark gradient hero, violet→cyan accent, geometric sans, tight radius.
+// Inspired by Linear / Vercel / Stripe.
+// ─────────────────────────────────────────────────────────────────────
+const pulse: StoreThemeTemplate = {
+  id: 'pulse',
+  name: 'Pulse',
+  tagline: 'SaaS · outils · tech',
+  description:
+    'Sombre, gradient violet-cyan, géométrique. Pour logiciels, outils SaaS, scripts, plugins, abonnements.',
+  niche: 'saas',
+  nicheLabel: 'SaaS & outils',
+  forStoreTypes: ['digital'],
+  theme: makeTheme({
+    templateId: 'pulse',
+    primary: '#8b5cf6',           // violet 500
+    primaryFg: '#ffffff',
+    accent: '#22d3ee',            // cyan 400
+    background: '#0b1020',        // deep night
+    surface: '#111827',
+    surfaceMuted: '#0f172a',
+    foreground: '#e2e8f0',
+    muted: '#94a3b8',
+    border: '#1f2937',
+    gradientFrom: '#8b5cf6',
+    gradientTo: '#22d3ee',
+    fontHeading: '"Space Grotesk", "Inter", system-ui, sans-serif',
+    fontBody: '"Inter", system-ui, sans-serif',
+    fontDisplaySize: 'xlarge',
+    borderRadius: 'medium',
+    spacing: 'normal',
+    style: 'tech',
+    pattern: 'mesh',
+    shadow: 'glow',
+    dark: true,
+  }),
+};
+
+// ─────────────────────────────────────────────────────────────────────
+// 5. SAGE — coaching / courses / memberships
+// Warm cream + sage green, soft serif headlines, generous breathing room.
+// Inspired by Teachable / Mighty Networks / On Deck.
+// ─────────────────────────────────────────────────────────────────────
+const sage: StoreThemeTemplate = {
+  id: 'sage',
+  name: 'Sage',
+  tagline: 'Coaching · cours · communauté',
+  description:
+    'Crème chaud, vert sauge, sérif doux. Idéal pour formations en ligne, coaching, masterclasses, communautés privées.',
+  niche: 'coaching',
+  nicheLabel: 'Coaching & cours',
+  forStoreTypes: ['digital'],
+  theme: makeTheme({
+    templateId: 'sage',
+    primary: '#3f6c51',            // sage deep
+    primaryFg: '#fafaf5',
+    accent: '#b08c4f',              // warm brass
+    background: '#faf8f1',          // cream
+    surface: '#ffffff',
+    surfaceMuted: '#f4f1e8',
+    foreground: '#1f2a24',
+    muted: '#6b6b62',
+    border: '#e6e1d3',
+    gradientFrom: '#3f6c51',
+    gradientTo: '#b08c4f',
+    fontHeading: '"DM Serif Display", "Cormorant Garamond", Georgia, serif',
+    fontBody: '"Inter", system-ui, sans-serif',
+    fontDisplaySize: 'xlarge',
+    borderRadius: 'medium',
+    spacing: 'relaxed',
+    style: 'editorial',
+    pattern: 'none',
+    shadow: 'soft',
+    dark: false,
+  }),
+};
+
+// ─────────────────────────────────────────────────────────────────────
+// 6. STUDIO — creators / templates / portfolios
+// Monochrome black/white, a single bold accent, geometric sans, sharp lines.
+// Inspired by Notion / Substack / Cosmos.
+// ─────────────────────────────────────────────────────────────────────
+const studio: StoreThemeTemplate = {
+  id: 'studio',
+  name: 'Studio',
+  tagline: 'Créateurs · templates · portfolio',
+  description:
+    'Noir & blanc minimaliste, un seul accent vif. Parfait pour templates Notion/Figma, packs créatifs, presets, prompts.',
+  niche: 'creators',
+  nicheLabel: 'Créateurs',
+  forStoreTypes: ['digital'],
+  theme: makeTheme({
+    templateId: 'studio',
+    primary: '#111111',
+    primaryFg: '#fafafa',
+    accent: '#f97316',              // bold orange accent
+    background: '#fafafa',
+    surface: '#ffffff',
+    surfaceMuted: '#f4f4f5',
+    foreground: '#0a0a0a',
+    muted: '#71717a',
+    border: '#e4e4e7',
+    gradientFrom: '#111111',
+    gradientTo: '#f97316',
+    fontHeading: '"Inter", system-ui, sans-serif',
+    fontBody: '"Inter", system-ui, sans-serif',
+    fontDisplaySize: 'xlarge',
+    borderRadius: 'none',
+    spacing: 'normal',
+    style: 'minimal',
+    pattern: 'none',
+    shadow: 'sharp',
+    dark: false,
+  }),
+};
+
+// ─────────────────────────────────────────────────────────────────────
+// 7. LUMEN — ebooks / digital downloads / PDFs
+// Clean white + indigo, rounded radius, modern sans + occasional serif accent.
+// Inspired by Gumroad / Stripe Press / Lemon Squeezy.
+// ─────────────────────────────────────────────────────────────────────
+const lumen: StoreThemeTemplate = {
+  id: 'lumen',
+  name: 'Lumen',
+  tagline: 'Ebooks · PDF · téléchargements',
+  description:
+    'Lumineux, indigo profond, formes arrondies douces. Pour ebooks, guides PDF, packs téléchargeables.',
+  niche: 'ebooks',
+  nicheLabel: 'Ebooks & téléchargements',
+  forStoreTypes: ['digital'],
+  theme: makeTheme({
+    templateId: 'lumen',
+    primary: '#4f46e5',            // indigo 600
+    primaryFg: '#ffffff',
+    accent: '#f59e0b',              // amber 500
+    background: '#fafbff',
+    surface: '#ffffff',
+    surfaceMuted: '#eef0ff',
+    foreground: '#101935',
+    muted: '#5b6584',
+    border: '#dfe3f6',
+    gradientFrom: '#4f46e5',
+    gradientTo: '#f59e0b',
+    fontHeading: '"Outfit", "Inter", system-ui, sans-serif',
+    fontBody: '"Inter", system-ui, sans-serif',
+    fontDisplaySize: 'large',
+    borderRadius: 'large',
+    spacing: 'relaxed',
+    style: 'glass',
+    pattern: 'mesh',
+    shadow: 'soft',
+    dark: false,
+  }),
+};
+
+export const STORE_THEME_TEMPLATES: StoreThemeTemplate[] = [
+  // Physical stores
+  volt, atelier, bloom,
+  // Digital stores
+  pulse, sage, studio, lumen,
+];
+
+/**
+ * Filter themes by store type. Physical stores see only physical-product
+ * themes, digital stores see only digital-product themes.
+ */
+export function themesForStoreType(kind: StoreKind): StoreThemeTemplate[] {
+  return STORE_THEME_TEMPLATES.filter((t) => t.forStoreTypes.includes(kind));
+}
 
 export function getThemeById(id: string): StoreThemeTemplate | undefined {
   return STORE_THEME_TEMPLATES.find((t) => t.id === id);

@@ -26,9 +26,11 @@ router.use(requireAdmin);
 
 // Read endpoints (any staff role, including supervisor)
 router.get('/overview', admin.getOverview);
+router.get('/overview/rich', admin.getOverviewRich);
 router.get('/users', admin.listUsers);
 router.get('/users/:userId', admin.getUserDetail);
 router.get('/stores', admin.listStores);
+router.get('/stores/:storeId/analytics', admin.getStoreDrilldown);
 router.get('/orders', admin.listOrders);
 router.get('/wallets', admin.listWallets);
 

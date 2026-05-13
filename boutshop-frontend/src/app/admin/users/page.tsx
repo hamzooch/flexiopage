@@ -38,19 +38,20 @@ export default function AdminUsersPage() {
     <Card>
       <CardHeader>
         <div className="flex flex-wrap items-start justify-between gap-3">
-          <div>
-            <CardTitle>Utilisateurs ({users.length})</CardTitle>
-            <CardDescription>Clique sur une ligne pour voir le détail, gérer le rôle, suspendre, réinitialiser le mot de passe.</CardDescription>
+          <div className="min-w-0">
+            <CardTitle className="text-base sm:text-lg">Utilisateurs ({users.length})</CardTitle>
+            <CardDescription className="text-xs sm:text-sm">Clique sur une ligne pour voir le détail.</CardDescription>
           </div>
           {canCreate && (
-            <Button onClick={() => setShowCreate((v) => !v)} className="gap-2">
+            <Button onClick={() => setShowCreate((v) => !v)} className="gap-2 px-3 sm:px-4">
               {showCreate ? <X className="h-4 w-4" /> : <Plus className="h-4 w-4" />}
-              {showCreate ? 'Annuler' : 'Créer un compte'}
+              <span className="hidden sm:inline">{showCreate ? 'Annuler' : 'Créer un compte'}</span>
+              <span className="sm:hidden">{showCreate ? 'Annuler' : 'Créer'}</span>
             </Button>
           )}
         </div>
       </CardHeader>
-      <CardContent>
+      <CardContent className="px-3 sm:px-6">
         {canCreate && showCreate && (
           <CreateUserForm
             myRole={myRole}
@@ -87,30 +88,39 @@ export default function AdminUsersPage() {
                 <li key={u._id}>
                   <Link
                     href={`/admin/users/${u._id}`}
-                    className="group flex flex-wrap items-center gap-4 rounded-lg p-3 hover:bg-muted/30"
+                    className="group flex items-center gap-2.5 rounded-lg p-2.5 hover:bg-muted/30 sm:gap-4 sm:p-3"
                   >
-                    <div className={`grid h-10 w-10 shrink-0 place-items-center rounded-full text-xs font-semibold text-white shadow-md ${
+                    <div className={`grid h-9 w-9 shrink-0 place-items-center rounded-full text-xs font-semibold text-white shadow-md sm:h-10 sm:w-10 ${
                       u.suspended ? 'bg-rose-500/40 grayscale' :
                       isStaff ? 'bg-gradient-to-br from-rose-600 to-orange-600' : 'gradient-brand'
                     }`}>
                       {initials}
                     </div>
                     <div className="min-w-0 flex-1">
-                      <div className="flex flex-wrap items-center gap-1.5">
-                        <span className="text-sm font-semibold">{u.name || '—'}</span>
+                      <div className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5 sm:gap-1.5">
+                        <span className="truncate text-xs font-semibold sm:text-sm">{u.name || u.email.split('@')[0]}</span>
                         <RoleBadge role={u.role} />
-                        {u.emailVerified && <Pill icon={<BadgeCheck className="h-2.5 w-2.5" />} tone="emerald">Email vérifié</Pill>}
+                        {u.emailVerified && (
+                          <span className="hidden sm:inline">
+                            <Pill icon={<BadgeCheck className="h-2.5 w-2.5" />} tone="emerald">Email vérifié</Pill>
+                          </span>
+                        )}
                         {u.suspended && <Pill icon={<Ban className="h-2.5 w-2.5" />} tone="amber">Suspendu</Pill>}
                       </div>
-                      <div className="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-muted-foreground">
-                        <span className="inline-flex items-center gap-1"><Mail className="h-3 w-3" />{u.email}</span>
-                        <span className="inline-flex items-center gap-1"><StoreIcon className="h-3 w-3" />{u.storeCount || 0} boutique(s)</span>
+                      <div className="mt-0.5 flex flex-wrap items-center gap-x-2.5 gap-y-0.5 text-[11px] text-muted-foreground sm:gap-x-3 sm:text-xs">
+                        <span className="inline-flex min-w-0 items-center gap-1">
+                          <Mail className="h-3 w-3 shrink-0" />
+                          <span className="truncate">{u.email}</span>
+                        </span>
+                        <span className="inline-flex shrink-0 items-center gap-1"><StoreIcon className="h-3 w-3" />{u.storeCount || 0}</span>
                         {u.lastLoginAt && (
-                          <span className="inline-flex items-center gap-1"><Clock className="h-3 w-3" />Dernière connexion {new Date(u.lastLoginAt).toLocaleDateString()}</span>
+                          <span className="hidden items-center gap-1 sm:inline-flex">
+                            <Clock className="h-3 w-3" />Dernière conn. {new Date(u.lastLoginAt).toLocaleDateString()}
+                          </span>
                         )}
                       </div>
                     </div>
-                    <ChevronRight className="h-4 w-4 text-muted-foreground transition-transform group-hover:translate-x-0.5" />
+                    <ChevronRight className="hidden h-4 w-4 shrink-0 text-muted-foreground transition-transform group-hover:translate-x-0.5 sm:block" />
                   </Link>
                 </li>
               );

@@ -2,6 +2,8 @@ import Link from 'next/link';
 import type { Metadata } from 'next';
 import { LandingRenderer } from '@/components/landing/LandingRenderer';
 import type { PageSection } from '@/components/landing/SectionEditor';
+import { StoreNavbar, type NavbarConfig } from '@/components/storefront/StoreNavbar';
+import { STORE_THEME_TEMPLATES } from '@/data/store-themes';
 
 interface Props {
   params: Promise<{ storeSlug: string; pageSlug: string }>;
@@ -11,8 +13,15 @@ interface StoreDoc {
   _id: string;
   name: string;
   slug: string;
+  logo?: string;
   theme?: { templateId?: string };
-  settings?: { country?: string; currency?: string; language?: string; direction?: 'ltr' | 'rtl' };
+  settings?: {
+    country?: string;
+    currency?: string;
+    language?: string;
+    direction?: 'ltr' | 'rtl';
+    storefront?: { navbar?: NavbarConfig };
+  };
 }
 interface PageDoc {
   _id: string;
@@ -85,6 +94,9 @@ export default async function PublicLandingPage({ params }: Props) {
   }
 
   const products = await fetchProducts(storeSlug);
+  const themeTokens =
+    STORE_THEME_TEMPLATES.find((t) => t.id === data.store.theme?.templateId)?.theme ||
+    STORE_THEME_TEMPLATES[0].theme;
 
   return (
     <LandingRenderer
@@ -97,19 +109,13 @@ export default async function PublicLandingPage({ params }: Props) {
       language={data.page.language || data.store.settings?.language}
       direction={data.page.direction || data.store.settings?.direction || 'ltr'}
       banner={
-        <header className="border-b border-border/60 bg-card/80 backdrop-blur-xl">
-          <div className="mx-auto flex h-14 max-w-6xl items-center justify-between px-6">
-            <Link href={`/store/${storeSlug}`} className="text-sm font-semibold tracking-tight">
-              {data.store.name}
-            </Link>
-            <Link
-              href={`/store/${storeSlug}`}
-              className="text-xs text-muted-foreground transition-colors hover:text-foreground"
-            >
-              All products →
-            </Link>
-          </div>
-        </header>
+        <StoreNavbar
+          storeName={data.store.name}
+          storeSlug={storeSlug}
+          storeLogo={data.store.logo}
+          theme={themeTokens}
+          config={data.store.settings?.storefront?.navbar}
+        />
       }
     />
   );

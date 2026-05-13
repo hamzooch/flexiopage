@@ -9,7 +9,6 @@ const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
 export const api: AxiosInstance = axios.create({
   baseURL: `${API_URL}/api`,
   withCredentials: true,
-  headers: { 'Content-Type': 'application/json' },
 });
 
 // Attach token from localStorage if present (for SSR we might pass token differently)
@@ -269,6 +268,10 @@ export type StaffRole = 'owner' | 'superadmin' | 'admin' | 'supervisor' | 'user'
 
 export const adminApi = {
   overview: () => api.get<{ overview: AdminOverview }>('/admin/overview'),
+  overviewRich: (range: '7d' | '30d' | '90d' | '12m' = '30d') =>
+    api.get<import('@/types/admin-analytics').AdminOverviewRich>('/admin/overview/rich', { params: { range } }),
+  storeDrilldown: (storeId: string, range: '7d' | '30d' | '90d' | '12m' = '30d') =>
+    api.get<import('@/types/admin-analytics').AdminStoreDrilldown>(`/admin/stores/${storeId}/analytics`, { params: { range } }),
   users: (search?: string) =>
     api.get<{ users: AdminUser[]; total: number }>('/admin/users', { params: { search } }),
   userDetail: (userId: string) =>
@@ -339,6 +342,8 @@ export const storesApi = {
   update: (storeId: string, data: Record<string, unknown>) =>
     api.patch<{ store: unknown }>(`/stores/${storeId}`, data),
   getAnalytics: (storeId: string) => api.get<Record<string, number>>(`/stores/${storeId}/analytics`),
+  getAnalyticsRich: (storeId: string, range: '7d' | '30d' | '90d' | '12m' = '30d') =>
+    api.get<import('@/types/analytics').StoreAnalyticsRich>(`/stores/${storeId}/analytics/rich`, { params: { range } }),
   // Custom domain
   getDomainTarget: (storeId: string) =>
     api.get<{ host: string; ips: string[] }>(`/stores/${storeId}/domain-target`),
@@ -485,9 +490,10 @@ export const storesApi = {
   uploadMedia: (storeId: string, file: File) => {
     const form = new FormData();
     form.append('file', file);
-    return api.post<{ media: unknown }>(`/stores/${storeId}/media`, form, {
-      headers: { 'Content-Type': 'multipart/form-data' },
-    });
+    // Do NOT set Content-Type manually here — axios needs to detect FormData
+    // and inject the multipart boundary (`multipart/form-data; boundary=...`).
+    // Setting it ourselves strips the boundary and multer rejects the body.
+    return api.post<{ media: unknown }>(`/stores/${storeId}/media`, form);
   },
 };
 

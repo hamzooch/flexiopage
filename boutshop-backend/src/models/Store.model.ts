@@ -48,6 +48,14 @@ export interface IStore extends Document {
      * Sellers toggle each section on/off and customize hero copy.
      */
     storefront?: {
+      /**
+       * Navbar (sticky top bar). Logo + optional menu links. Sellers add
+       * their own links (Catalogue, À propos, Contact, etc.). Always visible.
+       */
+      navbar?: {
+        showSearch?: boolean;       // default false
+        menuLinks?: Array<{ label: string; url: string }>;
+      };
       showHero?: boolean;            // default true
       heroTitle?: string;            // overrides store.name when set
       heroSubtitle?: string;         // overrides store.description when set
@@ -55,8 +63,47 @@ export interface IStore extends Document {
       showProductsGrid?: boolean;    // default true
       productsGridTitle?: string;    // default "Nos produits"
       showFeatures?: boolean;        // default true (3 reassurance pills)
+      /**
+       * Customer testimonials / reviews section managed by the seller.
+       * Each testimonial has the buyer's name, optional photo, rating 1-5
+       * and a short quote.
+       */
+      testimonials?: {
+        enabled?: boolean;          // default false
+        title?: string;             // default "Ils nous font confiance"
+        subtitle?: string;
+        items?: Array<{
+          author: string;
+          role?: string;            // optional sub-line (city, role, age, etc.)
+          rating?: number;          // 1..5 stars
+          content: string;
+          avatar?: string;          // optional photo URL
+          productName?: string;     // optional — "Acheté: X"
+          verified?: boolean;       // shows a "Vérifié" badge
+        }>;
+      };
       showFooter?: boolean;          // default true
       footerNote?: string;
+      /**
+       * Extended footer fields. Toggled on/off implicitly when any value is
+       * present — no separate enabled flag needed.
+       */
+      footer?: {
+        social?: {
+          instagram?: string;
+          facebook?: string;
+          tiktok?: string;
+          youtube?: string;
+          x?: string;                // formerly twitter
+          whatsapp?: string;
+        };
+        contact?: {
+          email?: string;
+          phone?: string;
+          address?: string;
+        };
+        links?: Array<{ label: string; url: string }>;
+      };
       /**
        * Carousel/slider displayed right under the navbar.
        * Sellers add their own slides (image, title, subtitle, CTA).
@@ -105,6 +152,22 @@ export interface IStore extends Document {
       };
       /** Auto-dispatch every paid order. If false, the seller dispatches manually. */
       autoDispatch?: boolean;
+    };
+    /**
+     * 3PL / logistics provider — stores and ships inventory on the seller's
+     * behalf (ShipBob, Cubyn, Amazon MCF, etc.). Independent from `delivery`
+     * (last-mile carrier): a seller can use a 3PL that itself selects a carrier.
+     */
+    logistics?: {
+      provider: 'shipbob' | 'cubyn' | 'amazon-mcf' | 'sendcloud' | 'easyship' | 'manual' | 'other';
+      enabled: boolean;
+      apiKey?: string;
+      baseUrl?: string;
+      webhookSecret?: string;
+      /** Warehouse / fulfillment center identifier on the provider side. */
+      warehouseId?: string;
+      /** Auto-forward every paid order to the 3PL. */
+      autoForward?: boolean;
     };
     /**
      * Push every new order to a Google Apps Script webhook that appends a row
@@ -175,6 +238,15 @@ const StoreSchema = new Schema<IStore>(
         reassurance: { type: String },
       },
       storefront: {
+        navbar: {
+          showSearch: { type: Boolean, default: false },
+          menuLinks: [
+            {
+              label: { type: String, required: true },
+              url: { type: String, required: true },
+            },
+          ],
+        },
         showHero: { type: Boolean, default: true },
         heroTitle: { type: String },
         heroSubtitle: { type: String },
@@ -182,8 +254,45 @@ const StoreSchema = new Schema<IStore>(
         showProductsGrid: { type: Boolean, default: true },
         productsGridTitle: { type: String },
         showFeatures: { type: Boolean, default: true },
+        testimonials: {
+          enabled: { type: Boolean, default: false },
+          title: { type: String },
+          subtitle: { type: String },
+          items: [
+            {
+              author: { type: String, required: true },
+              role: { type: String },
+              rating: { type: Number, min: 1, max: 5 },
+              content: { type: String, required: true },
+              avatar: { type: String },
+              productName: { type: String },
+              verified: { type: Boolean, default: false },
+            },
+          ],
+        },
         showFooter: { type: Boolean, default: true },
         footerNote: { type: String },
+        footer: {
+          social: {
+            instagram: { type: String },
+            facebook: { type: String },
+            tiktok: { type: String },
+            youtube: { type: String },
+            x: { type: String },
+            whatsapp: { type: String },
+          },
+          contact: {
+            email: { type: String },
+            phone: { type: String },
+            address: { type: String },
+          },
+          links: [
+            {
+              label: { type: String, required: true },
+              url: { type: String, required: true },
+            },
+          ],
+        },
         slider: {
           enabled: { type: Boolean, default: false },
           autoplay: { type: Boolean, default: true },
@@ -221,6 +330,15 @@ const StoreSchema = new Schema<IStore>(
           country: { type: String },
         },
         autoDispatch: { type: Boolean, default: true },
+      },
+      logistics: {
+        provider: { type: String, enum: ['shipbob', 'cubyn', 'amazon-mcf', 'sendcloud', 'easyship', 'manual', 'other'] },
+        enabled: { type: Boolean, default: false },
+        apiKey: { type: String },
+        baseUrl: { type: String },
+        webhookSecret: { type: String },
+        warehouseId: { type: String },
+        autoForward: { type: Boolean, default: true },
       },
       googleSheets: {
         enabled: { type: Boolean, default: false },

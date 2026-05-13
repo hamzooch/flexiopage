@@ -72,21 +72,21 @@ export async function updateStore(
 }
 
 export async function getStoresByOwner(ownerId: string): Promise<IStore[]> {
-  return Store.find({ ownerId }).sort({ updatedAt: -1 }).lean();
+  return Store.find({ ownerId }).sort({ updatedAt: -1 }).lean<IStore[]>();
 }
 
 export async function getStoreById(storeId: string): Promise<IStore | null> {
-  return Store.findById(storeId).lean();
+  return Store.findById(storeId).lean<IStore | null>();
 }
 
 export async function getStoreBySlug(slug: string): Promise<IStore | null> {
-  return Store.findOne({ slug, isPublished: true }).lean();
+  return Store.findOne({ slug, isPublished: true }).lean<IStore | null>();
 }
 
 export async function getStoreBySubdomain(subdomain: string): Promise<IStore | null> {
-  return Store.findOne({ subdomain, isPublished: true }).lean();
+  return Store.findOne({ subdomain, isPublished: true }).lean<IStore | null>();
 }
 
 export async function getStoreByCustomDomain(domain: string): Promise<IStore | null> {
-  return Store.findOne({ customDomain: domain, isPublished: true }).lean();
+  return Store.findOne({ customDomain: domain, isPublished: true }).lean<IStore | null>();
 }

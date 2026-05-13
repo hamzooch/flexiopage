@@ -49,7 +49,7 @@ function genId(): string {
  * Infer the wallet currency for a seller. Precedence:
  *   1. the seller's own profile currency (set from the profile page)
  *   2. the oldest store's currency (the one that anchored the account)
- *   3. XOF fallback
+ *   3. USD fallback
  */
 async function inferUserCurrency(userId: mongoose.Types.ObjectId): Promise<string> {
   const user = await User.findById(userId).select('currency country').lean();
@@ -60,7 +60,7 @@ async function inferUserCurrency(userId: mongoose.Types.ObjectId): Promise<strin
     .select('settings.currency')
     .lean();
   const cur = firstStore?.settings?.currency?.toUpperCase().trim();
-  return cur || 'XOF';
+  return cur || 'USD';
 }
 
 /**
@@ -68,7 +68,7 @@ async function inferUserCurrency(userId: mongoose.Types.ObjectId): Promise<strin
  * is pinned the first time the seller uses the wallet:
  *   - explicit hint (`currencyHint`) wins
  *   - else the currency of the seller's oldest store
- *   - else XOF
+ *   - else USD
  *
  * If the wallet exists but is brand new (balance 0 and no transactions yet)
  * we keep its currency in sync with the inferred one — handy when a seller

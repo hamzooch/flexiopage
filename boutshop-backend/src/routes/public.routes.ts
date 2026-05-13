@@ -255,7 +255,7 @@ router.post('/checkout/init', async (req: Request, res: Response): Promise<void>
       shippingCost: 0,
       tax: 0,
       discount: 0,
-      currency: store.settings?.currency || 'XOF',
+      currency: store.settings?.currency || 'USD',
       paymentMethod: body.channel === 'card' ? 'card' : 'mobile_money',
     });
   } catch (err) {
@@ -435,7 +435,7 @@ router.post('/checkout/cod', async (req: Request, res: Response): Promise<void> 
       shippingCost,
       tax: 0,
       discount: 0,
-      currency: store.settings?.currency || 'XOF',
+      currency: store.settings?.currency || 'USD',
       paymentMethod: 'cod',
       notes: body.notes?.trim(),
     });

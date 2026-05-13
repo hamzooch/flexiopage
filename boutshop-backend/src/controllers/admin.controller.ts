@@ -117,7 +117,7 @@ export async function getOverview(_req: AuthRequest, res: Response): Promise<voi
   // GMV per currency on last-30d orders
   const gmvByCurrency: Record<string, number> = {};
   for (const o of last30Orders) {
-    const c = o.currency || 'XOF';
+    const c = o.currency || 'USD';
     gmvByCurrency[c] = (gmvByCurrency[c] || 0) + (o.total || 0);
   }
 
@@ -164,6 +164,288 @@ export async function getOverview(_req: AuthRequest, res: Response): Promise<voi
       recentUsers,
       topStores30d: topStoresAgg,
     },
+  });
+}
+
+/**
+ * GET /api/admin/overview/rich?range=7d|30d|90d|12m
+ *
+ * Powers the new pro admin dashboard. Returns everything `getOverview` does
+ * PLUS: signup timeseries, commission timeseries, geo breakdown, alerts, and
+ * top stores enriched with currency-grouped GMV.
+ */
+type AdminRange = '7d' | '30d' | '90d' | '12m';
+interface AdminWindow { from: Date; to: Date; bucket: 'day' | 'month'; }
+
+function resolveAdminRange(range: AdminRange): AdminWindow {
+  const to = new Date();
+  to.setHours(23, 59, 59, 999);
+  if (range === '12m') {
+    const from = new Date(to);
+    from.setMonth(from.getMonth() - 11);
+    from.setDate(1);
+    from.setHours(0, 0, 0, 0);
+    return { from, to, bucket: 'month' };
+  }
+  const days = range === '7d' ? 7 : range === '90d' ? 90 : 30;
+  const from = new Date(to);
+  from.setDate(from.getDate() - (days - 1));
+  from.setHours(0, 0, 0, 0);
+  return { from, to, bucket: 'day' };
+}
+
+function denseSeries(
+  from: Date,
+  to: Date,
+  bucket: 'day' | 'month',
+  rows: Array<Record<string, unknown> & { _id: string }>,
+  fields: readonly string[]
+): Array<Record<string, number | string>> {
+  const map = new Map<string, Record<string, number>>();
+  const cursor = new Date(from);
+  while (cursor <= to) {
+    const key = bucket === 'day'
+      ? cursor.toISOString().slice(0, 10)
+      : `${cursor.getFullYear()}-${String(cursor.getMonth() + 1).padStart(2, '0')}`;
+    const empty: Record<string, number> = {};
+    for (const f of fields) empty[f] = 0;
+    map.set(key, empty);
+    if (bucket === 'day') cursor.setDate(cursor.getDate() + 1);
+    else cursor.setMonth(cursor.getMonth() + 1);
+  }
+  for (const row of rows) {
+    const cur = map.get(row._id);
+    if (!cur) continue;
+    for (const f of fields) cur[f] = Number(row[f]) || 0;
+  }
+  return Array.from(map.entries()).map(([date, v]) => ({ date, ...v }));
+}
+
+export async function getOverviewRich(req: AuthRequest, res: Response): Promise<void> {
+  const allowed: AdminRange[] = ['7d', '30d', '90d', '12m'];
+  const raw = String(req.query.range || '30d');
+  const range = (allowed as string[]).includes(raw) ? (raw as AdminRange) : '30d';
+  const w = resolveAdminRange(range);
+  const dateFormat = w.bucket === 'day' ? '%Y-%m-%d' : '%Y-%m';
+
+  const [
+    userCount,
+    storeCount,
+    productCount,
+    orderCount,
+    paidCount,
+    deliveredCount,
+    failedCount,
+    revenueSeries,
+    signupSeries,
+    commissionSeries,
+    paymentMix,
+    geoBreakdown,
+    topStoresRaw,
+    walletAgg,
+    commissionTotalAgg,
+    openComplaints,
+    urgentComplaints,
+    recentOrders,
+    recentUsers,
+    failingPayments,
+  ] = await Promise.all([
+    User.countDocuments({ role: 'user' }),
+    Store.countDocuments(),
+    Product.countDocuments(),
+    Order.countDocuments(),
+    Order.countDocuments({ paymentStatus: 'paid' }),
+    Order.countDocuments({ fulfillmentStatus: 'fulfilled' }),
+    Order.countDocuments({ paymentStatus: 'failed' }),
+    // Revenue + orders timeseries
+    Order.aggregate([
+      { $match: { createdAt: { $gte: w.from, $lte: w.to } } },
+      {
+        $group: {
+          _id: { $dateToString: { date: '$createdAt', format: dateFormat } },
+          orders: { $sum: 1 },
+          paid: { $sum: { $cond: [{ $eq: ['$paymentStatus', 'paid'] }, 1, 0] } },
+          revenue: { $sum: { $cond: [{ $eq: ['$paymentStatus', 'paid'] }, '$total', 0] } },
+        },
+      },
+    ]),
+    // User signups timeseries
+    User.aggregate([
+      { $match: { role: 'user', createdAt: { $gte: w.from, $lte: w.to } } },
+      {
+        $group: {
+          _id: { $dateToString: { date: '$createdAt', format: dateFormat } },
+          signups: { $sum: 1 },
+        },
+      },
+    ]),
+    // Commission collected timeseries — commission is stored as a negative
+    // wallet transaction (kind='commission'); we negate to get the platform's gain.
+    Wallet.aggregate([
+      { $unwind: '$transactions' },
+      { $match: { 'transactions.kind': 'commission', 'transactions.createdAt': { $gte: w.from, $lte: w.to } } },
+      {
+        $group: {
+          _id: { $dateToString: { date: '$transactions.createdAt', format: dateFormat } },
+          commission: { $sum: { $multiply: ['$transactions.amount', -1] } },
+        },
+      },
+    ]),
+    // Payment provider mix
+    Order.aggregate([
+      { $match: { createdAt: { $gte: w.from, $lte: w.to }, paymentStatus: 'paid' } },
+      {
+        $group: {
+          _id: { $ifNull: ['$paymentProvider', '$paymentMethod'] },
+          orders: { $sum: 1 },
+          revenue: { $sum: '$total' },
+        },
+      },
+      { $sort: { revenue: -1 } },
+    ]),
+    // Geographic breakdown — shippingAddress.country falls back to 'XX' when unset.
+    Order.aggregate([
+      { $match: { createdAt: { $gte: w.from, $lte: w.to }, paymentStatus: 'paid' } },
+      {
+        $group: {
+          _id: { $ifNull: ['$shippingAddress.country', 'XX'] },
+          orders: { $sum: 1 },
+          revenue: { $sum: '$total' },
+        },
+      },
+      { $sort: { revenue: -1 } },
+      { $limit: 12 },
+    ]),
+    // Top 8 stores in window
+    Order.aggregate([
+      { $match: { createdAt: { $gte: w.from, $lte: w.to }, paymentStatus: 'paid' } },
+      {
+        $group: {
+          _id: '$storeId',
+          orders: { $sum: 1 },
+          gmv: { $sum: '$total' },
+          currency: { $first: '$currency' },
+        },
+      },
+      { $sort: { gmv: -1 } },
+      { $limit: 8 },
+      { $lookup: { from: 'stores', localField: '_id', foreignField: '_id', as: 'store' } },
+      { $unwind: { path: '$store', preserveNullAndEmptyArrays: true } },
+      {
+        $project: {
+          _id: 1,
+          orders: 1,
+          gmv: 1,
+          currency: 1,
+          name: '$store.name',
+          slug: '$store.slug',
+          logo: '$store.logo',
+        },
+      },
+    ]),
+    Wallet.aggregate([
+      { $group: { _id: '$currency', totalBalance: { $sum: '$balance' }, totalAi: { $sum: '$aiBalance' }, count: { $sum: 1 } } },
+    ]),
+    Wallet.aggregate([
+      { $unwind: '$transactions' },
+      { $match: { 'transactions.kind': 'commission' } },
+      { $group: { _id: '$currency', total: { $sum: { $multiply: ['$transactions.amount', -1] } }, count: { $sum: 1 } } },
+    ]),
+    Complaint.countDocuments({ status: { $in: ['open', 'in_progress'] } }),
+    Complaint.countDocuments({ status: { $in: ['open', 'in_progress'] }, priority: 'urgent' }),
+    Order.find().populate('storeId', 'name slug').sort({ createdAt: -1 }).limit(8)
+      .select('orderNumber total currency paymentStatus fulfillmentStatus customerName email storeId createdAt')
+      .lean(),
+    User.find({ role: 'user' }).sort({ createdAt: -1 }).limit(8)
+      .select('email name createdAt emailVerified country')
+      .lean(),
+    Order.find({ paymentStatus: 'failed', createdAt: { $gte: w.from } })
+      .populate('storeId', 'name slug')
+      .sort({ createdAt: -1 })
+      .limit(5)
+      .select('orderNumber total currency paymentStatus storeId customerName email createdAt')
+      .lean(),
+  ]);
+
+  const revenueTs = denseSeries(
+    w.from, w.to, w.bucket,
+    revenueSeries as Array<Record<string, unknown> & { _id: string }>,
+    ['orders', 'paid', 'revenue'],
+  );
+  const signupTs = denseSeries(
+    w.from, w.to, w.bucket,
+    signupSeries as Array<Record<string, unknown> & { _id: string }>,
+    ['signups'],
+  );
+  const commissionTs = denseSeries(
+    w.from, w.to, w.bucket,
+    commissionSeries as Array<Record<string, unknown> & { _id: string }>,
+    ['commission'],
+  );
+
+  res.json({
+    range,
+    window: { from: w.from.toISOString(), to: w.to.toISOString() },
+    totals: {
+      users: userCount,
+      stores: storeCount,
+      products: productCount,
+      orders: { total: orderCount, paid: paidCount, delivered: deliveredCount, failed: failedCount },
+      complaints: { open: openComplaints, urgent: urgentComplaints },
+    },
+    walletsByCurrency: walletAgg,
+    commissionByCurrency: commissionTotalAgg,
+    timeseries: {
+      revenue: revenueTs,
+      signups: signupTs,
+      commission: commissionTs,
+    },
+    paymentMix,
+    geo: geoBreakdown,
+    topStores: topStoresRaw,
+    recentOrders,
+    recentUsers,
+    alerts: {
+      failedPayments: failingPayments,
+    },
+  });
+}
+
+/**
+ * GET /api/admin/stores/:storeId/analytics?range=...
+ *
+ * Drill-down into a single store from the admin overview. Returns the same
+ * rich payload owners get on /dashboard/analytics, plus the owner's identity.
+ */
+export async function getStoreDrilldown(req: AuthRequest, res: Response): Promise<void> {
+  const { storeId } = req.params;
+  if (!storeId) {
+    res.status(400).json({ error: 'storeId required' });
+    return;
+  }
+  const store = await Store.findById(storeId).populate('ownerId', 'email name').lean();
+  if (!store) {
+    res.status(404).json({ error: 'Store not found' });
+    return;
+  }
+  const { getStoreAnalyticsRich } = await import('../services/analytics.service');
+  const allowed = ['7d', '30d', '90d', '12m'] as const;
+  const raw = String(req.query.range || '30d');
+  const range = (allowed as readonly string[]).includes(raw) ? (raw as typeof allowed[number]) : '30d';
+  const analytics = await getStoreAnalyticsRich(storeId, range);
+  res.json({
+    store: {
+      _id: store._id,
+      name: store.name,
+      slug: store.slug,
+      logo: store.logo,
+      isPublished: store.isPublished,
+      storeType: store.storeType,
+      createdAt: store.createdAt,
+      owner: store.ownerId,
+      settings: { currency: store.settings?.currency, country: store.settings?.country },
+    },
+    analytics,
   });
 }
 

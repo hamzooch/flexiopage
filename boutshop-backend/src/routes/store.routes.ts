@@ -22,6 +22,7 @@ router.use('/:storeId', requireStoreAccess);
 router.get('/:storeId', storeController.getStore);
 router.patch('/:storeId', storeController.updateStore);
 router.get('/:storeId/analytics', storeController.getStoreAnalyticsController);
+router.get('/:storeId/analytics/rich', storeController.getStoreAnalyticsRichController);
 
 // Custom domain
 router.get('/:storeId/domain-target', storeController.getDomainTargetController);

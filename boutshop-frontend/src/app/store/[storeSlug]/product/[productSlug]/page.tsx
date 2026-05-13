@@ -11,6 +11,7 @@ import { CodOrderForm, type CodFormConfig } from '@/components/storefront/cod-or
 import { CodCtaButton } from '@/components/storefront/cod-cta-button';
 import { MarketingPixels, type MarketingConfig } from '@/components/storefront/MarketingPixels';
 import { TrackEvent } from '@/components/storefront/TrackEvent';
+import { StoreNavbar, type NavbarConfig } from '@/components/storefront/StoreNavbar';
 
 interface Props {
   params: Promise<{ storeSlug: string; productSlug: string }>;
@@ -51,6 +52,7 @@ interface StoreDoc {
   name: string;
   slug: string;
   storeType?: 'physical' | 'digital';
+  logo?: string;
   theme?: { templateId?: string };
   settings?: {
     currency?: string;
@@ -58,6 +60,7 @@ interface StoreDoc {
     direction?: 'ltr' | 'rtl';
     country?: string;
     codForm?: CodFormConfig;
+    storefront?: { navbar?: NavbarConfig };
   };
   integrations?: { marketing?: MarketingConfig };
 }
@@ -161,32 +164,17 @@ export default async function PublicProductPage({ params }: Props) {
         className="min-h-screen"
         style={tokensToCssVars(theme)}
       >
-        {/* Header */}
-        <header
-          className="sticky top-0 z-30 border-b backdrop-blur-xl"
-          style={{ borderColor: theme.border, backgroundColor: hexA(theme.background, 0.85) }}
-        >
-          <div className="mx-auto flex h-16 max-w-6xl items-center justify-between px-6">
-            <Link
-              href={`/store/${storeSlug}`}
-              className="text-xl font-bold tracking-tight"
-              style={{ fontFamily: theme.fontHeading, color: theme.foreground }}
-            >
-              {store?.name || storeSlug}
-            </Link>
-            <Link
-              href={`/store/${storeSlug}`}
-              className="text-sm transition-colors"
-              style={{ color: theme.muted }}
-            >
-              ← Retour
-            </Link>
-          </div>
-        </header>
+        <StoreNavbar
+          storeName={store?.name || storeSlug}
+          storeSlug={storeSlug}
+          storeLogo={store?.logo}
+          theme={theme}
+          config={store?.settings?.storefront?.navbar}
+        />
 
         {/* Main split */}
-        <main className="mx-auto max-w-6xl px-4 py-10 sm:px-6 sm:py-14">
-          <div className="grid gap-10 lg:grid-cols-[1fr_1fr]">
+        <main className="mx-auto max-w-6xl px-3 py-6 sm:px-6 sm:py-14">
+          <div className="grid gap-6 sm:gap-10 lg:grid-cols-[1fr_1fr]">
             {/* LEFT — gallery */}
             <div className="space-y-3">
               <div
@@ -249,24 +237,24 @@ export default async function PublicProductPage({ params }: Props) {
             </div>
 
             {/* RIGHT — sticky details */}
-            <div className="lg:sticky lg:top-24 lg:self-start space-y-6">
+            <div className="lg:sticky lg:top-24 lg:self-start space-y-5 sm:space-y-6">
               <div>
                 <h1
-                  className="text-3xl font-bold tracking-tight sm:text-4xl"
+                  className="text-2xl font-bold tracking-tight sm:text-3xl lg:text-4xl"
                   style={{ fontFamily: theme.fontHeading, color: theme.foreground }}
                 >
                   {product.name}
                 </h1>
                 {product.description && (
-                  <p className="mt-4 line-clamp-3 text-base leading-relaxed" style={{ color: theme.muted }}>
+                  <p className="mt-3 line-clamp-3 text-sm leading-relaxed sm:mt-4 sm:text-base" style={{ color: theme.muted }}>
                     {product.description.split(/\n\s*\n/)[0]}
                   </p>
                 )}
               </div>
 
               {/* Pricing block */}
-              <div className="flex flex-wrap items-baseline gap-3">
-                <span className="text-4xl font-extrabold tracking-tight" style={{ color: theme.primary }}>
+              <div className="flex flex-wrap items-baseline gap-2 sm:gap-3">
+                <span className="text-3xl font-extrabold tracking-tight sm:text-4xl" style={{ color: theme.primary }}>
                   {formatCurrency(product.price, currency)}
                 </span>
                 {hasDiscount && (

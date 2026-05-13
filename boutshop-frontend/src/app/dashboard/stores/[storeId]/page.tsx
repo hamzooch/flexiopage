@@ -7,9 +7,10 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { storesApi } from '@/lib/api';
-import { STORE_THEME_TEMPLATES, type StoreThemeTemplate } from '@/data/store-themes';
+import { STORE_THEME_TEMPLATES, themesForStoreType, type StoreThemeTemplate } from '@/data/store-themes';
 import { ThemePreviewGrid } from '@/components/dashboard/theme-preview-card';
-import { Check, ImageIcon, Plus, Trash2, GripVertical, ChevronUp, ChevronDown } from 'lucide-react';
+import { MediaPicker } from '@/components/dashboard/MediaPicker';
+import { Check, ImageIcon, Plus, Trash2, GripVertical, ChevronUp, ChevronDown, Star, MessageSquareQuote, Link2, Share2 } from 'lucide-react';
 
 interface DeliveryIntegration {
   provider?: 'mogadelivery' | 'manual' | 'other';
@@ -60,7 +61,52 @@ interface SliderSettings {
   slides?: SlideItem[];
 }
 
+interface NavMenuLink {
+  label: string;
+  url: string;
+}
+
+interface NavbarSettings {
+  showSearch?: boolean;
+  menuLinks?: NavMenuLink[];
+}
+
+interface TestimonialItem {
+  author: string;
+  role?: string;
+  rating?: number;
+  content: string;
+  avatar?: string;
+  productName?: string;
+  verified?: boolean;
+}
+
+interface TestimonialsSettings {
+  enabled?: boolean;
+  title?: string;
+  subtitle?: string;
+  items?: TestimonialItem[];
+}
+
+interface FooterSettings {
+  social?: {
+    instagram?: string;
+    facebook?: string;
+    tiktok?: string;
+    youtube?: string;
+    x?: string;
+    whatsapp?: string;
+  };
+  contact?: {
+    email?: string;
+    phone?: string;
+    address?: string;
+  };
+  links?: Array<{ label: string; url: string }>;
+}
+
 interface StorefrontSettings {
+  navbar?: NavbarSettings;
   showHero?: boolean;
   heroTitle?: string;
   heroSubtitle?: string;
@@ -68,8 +114,10 @@ interface StorefrontSettings {
   showProductsGrid?: boolean;
   productsGridTitle?: string;
   showFeatures?: boolean;
+  testimonials?: TestimonialsSettings;
   showFooter?: boolean;
   footerNote?: string;
+  footer?: FooterSettings;
   slider?: SliderSettings;
 }
 
@@ -82,6 +130,8 @@ interface StoreType {
   customDomain?: string;
   isPublished?: boolean;
   storeType?: 'physical' | 'digital';
+  logo?: string;
+  favicon?: string;
   theme?: Record<string, unknown>;
   settings?: {
     currency?: string;
@@ -193,6 +243,8 @@ export default function StoreSettingsPage() {
   const [description, setDescription] = useState('');
   const [customDomain, setCustomDomain] = useState('');
   const [isPublished, setIsPublished] = useState(false);
+  const [logo, setLogo] = useState<string | undefined>(undefined);
+  const [favicon, setFavicon] = useState<string | undefined>(undefined);
   const [selectedTheme, setSelectedTheme] = useState<StoreThemeTemplate | null>(null);
   // Locale settings — used as defaults for AI landing pages
   const [country, setCountry] = useState('');
@@ -232,6 +284,8 @@ export default function StoreSettingsPage() {
         setDescription(s.description || '');
         setCustomDomain(s.customDomain || '');
         setIsPublished(!!s.isPublished);
+        setLogo(s.logo || undefined);
+        setFavicon(s.favicon || undefined);
         setCountry(s.settings?.country || '');
         setLanguage(s.settings?.language || '');
         setCurrency(s.settings?.currency || 'USD');
@@ -281,6 +335,8 @@ export default function StoreSettingsPage() {
         description: description || undefined,
         customDomain: customDomain || undefined,
         isPublished,
+        logo: logo ?? '',
+        favicon: favicon ?? '',
         theme: selectedTheme ? (selectedTheme.theme as unknown as Record<string, unknown>) : undefined,
         settings: newSettings,
         integrations: newIntegrations,
@@ -293,6 +349,8 @@ export default function StoreSettingsPage() {
               description,
               customDomain,
               isPublished,
+              logo,
+              favicon,
               theme: selectedTheme ? (selectedTheme.theme as unknown as Record<string, unknown>) : undefined,
               settings: newSettings,
             }
@@ -721,6 +779,11 @@ export default function StoreSettingsPage() {
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-5">
+            <NavbarEditor
+              navbar={storefront.navbar}
+              onChange={(navbar) => setStorefront({ ...storefront, navbar })}
+            />
+
             <div className="space-y-3 rounded-xl border border-border/60 bg-muted/30 p-4">
               <FieldToggle
                 label="Bandeau d'accueil (hero)"
@@ -751,21 +814,21 @@ export default function StoreSettingsPage() {
                     <p className="text-[11px] text-muted-foreground">Vide = description de la boutique.</p>
                   </div>
                   <div className="space-y-1.5 sm:col-span-2">
-                    <Label htmlFor="hero-image">URL de l&apos;image de fond du hero (optionnel)</Label>
-                    <Input
-                      id="hero-image"
-                      type="url"
-                      placeholder="Ex: https://images.unsplash.com/photo-..."
-                      value={storefront.heroImage || ''}
-                      onChange={(e) => setStorefront({ ...storefront, heroImage: e.target.value })}
+                    <MediaPicker
+                      storeId={storeId}
+                      value={storefront.heroImage}
+                      onChange={(url) => setStorefront({ ...storefront, heroImage: url || '' })}
+                      label="Image de fond du hero (optionnel)"
+                      shape="wide"
+                      helper="Téléverse une image ou choisis-la dans ta galerie (1920×1080 recommandé)."
                     />
-                    <p className="text-[11px] text-muted-foreground">Lien direct vers une image (1920×1080 recommandé).</p>
                   </div>
                 </div>
               )}
             </div>
 
             <SliderEditor
+              storeId={storeId}
               slider={storefront.slider}
               onChange={(slider) => setStorefront({ ...storefront, slider })}
             />
@@ -791,6 +854,12 @@ export default function StoreSettingsPage() {
               )}
             </div>
 
+            <TestimonialsEditor
+              storeId={storeId}
+              testimonials={storefront.testimonials}
+              onChange={(testimonials) => setStorefront({ ...storefront, testimonials })}
+            />
+
             <div className="space-y-3 rounded-xl border border-border/60 bg-muted/30 p-4">
               <FieldToggle
                 label="Bandeau de réassurance"
@@ -805,16 +874,60 @@ export default function StoreSettingsPage() {
                 onChange={(v) => setStorefront({ ...storefront, showFooter: v })}
               />
               {storefront.showFooter !== false && (
-                <div className="space-y-1.5">
-                  <Label htmlFor="footer-note">Note légale du pied de page (optionnel)</Label>
-                  <Input
-                    id="footer-note"
-                    placeholder="Ex: © 2026 Ma Boutique · Tous droits réservés"
-                    value={storefront.footerNote || ''}
-                    onChange={(e) => setStorefront({ ...storefront, footerNote: e.target.value })}
+                <div className="space-y-3">
+                  <div className="space-y-1.5">
+                    <Label htmlFor="footer-note">Note légale du pied de page (optionnel)</Label>
+                    <Input
+                      id="footer-note"
+                      placeholder="Ex: © 2026 Ma Boutique · Tous droits réservés"
+                      value={storefront.footerNote || ''}
+                      onChange={(e) => setStorefront({ ...storefront, footerNote: e.target.value })}
+                    />
+                  </div>
+                  <FooterEditor
+                    footer={storefront.footer}
+                    onChange={(footer) => setStorefront({ ...storefront, footer })}
                   />
                 </div>
               )}
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="mt-6">
+          <CardHeader>
+            <CardTitle>Logo &amp; favicon</CardTitle>
+            <CardDescription>
+              Le logo est affiché dans la navbar de la boutique sur tous les thèmes. Téléverse une image
+              ou choisis depuis ta galerie.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="grid gap-6 sm:grid-cols-2">
+              <div className="rounded-xl border border-border/60 bg-muted/30 p-4">
+                <div className="max-w-[220px]">
+                  <MediaPicker
+                    storeId={storeId}
+                    value={logo}
+                    onChange={setLogo}
+                    label="Logo de la boutique"
+                    shape="square"
+                    helper="Format carré recommandé (PNG ou SVG, 512×512)."
+                  />
+                </div>
+              </div>
+              <div className="rounded-xl border border-border/60 bg-muted/30 p-4">
+                <div className="max-w-[160px]">
+                  <MediaPicker
+                    storeId={storeId}
+                    value={favicon}
+                    onChange={setFavicon}
+                    label="Favicon (onglet du navigateur)"
+                    shape="square"
+                    helper="32×32 ou 64×64. PNG ou ICO."
+                  />
+                </div>
+              </div>
             </div>
           </CardContent>
         </Card>
@@ -826,7 +939,7 @@ export default function StoreSettingsPage() {
           </CardHeader>
           <CardContent>
             <ThemePreviewGrid
-              templates={STORE_THEME_TEMPLATES}
+              templates={themesForStoreType(store.storeType === 'digital' ? 'digital' : 'physical')}
               selectedId={
                 selectedTheme?.id ||
                 (store.theme as { templateId?: string })?.templateId
@@ -892,9 +1005,11 @@ function emptySlide(): SlideItem {
 }
 
 function SliderEditor({
+  storeId,
   slider,
   onChange,
 }: {
+  storeId: string;
   slider?: SliderSettings;
   onChange: (s: SliderSettings) => void;
 }) {
@@ -1040,26 +1155,13 @@ function SliderEditor({
                       </div>
                     </div>
 
-                    <div className="grid gap-3 sm:grid-cols-[160px_1fr]">
-                      <div className="space-y-2">
-                        <div className="relative aspect-[4/3] overflow-hidden rounded-lg border border-border/60 bg-muted">
-                          {slide.image ? (
-                            // eslint-disable-next-line @next/next/no-img-element
-                            <img src={slide.image} alt="" className="h-full w-full object-cover" />
-                          ) : (
-                            <div className="grid h-full place-items-center text-muted-foreground">
-                              <ImageIcon className="h-7 w-7" />
-                            </div>
-                          )}
-                        </div>
-                        <Input
-                          type="url"
-                          placeholder="URL image"
-                          value={slide.image}
-                          onChange={(e) => updateSlide(i, { image: e.target.value })}
-                          className="h-9 text-xs"
-                        />
-                      </div>
+                    <div className="grid gap-3 sm:grid-cols-[200px_1fr]">
+                      <MediaPicker
+                        storeId={storeId}
+                        value={slide.image}
+                        onChange={(url) => updateSlide(i, { image: url || '' })}
+                        shape="wide"
+                      />
 
                       <div className="space-y-2">
                         <Input
@@ -1117,6 +1219,470 @@ function SliderEditor({
           </div>
         </>
       )}
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// NAVBAR EDITOR — menu links (label + URL)
+// ─────────────────────────────────────────────────────────────────────
+function NavbarEditor({
+  navbar,
+  onChange,
+}: {
+  navbar?: NavbarSettings;
+  onChange: (n: NavbarSettings) => void;
+}) {
+  const cfg: NavbarSettings = { menuLinks: [], ...(navbar || {}) };
+  const links = cfg.menuLinks || [];
+
+  function update(patch: Partial<NavbarSettings>) {
+    onChange({ ...cfg, ...patch });
+  }
+  function updateLink(i: number, patch: Partial<NavMenuLink>) {
+    const next = links.slice();
+    next[i] = { ...next[i], ...patch };
+    update({ menuLinks: next });
+  }
+  function addLink() {
+    update({ menuLinks: [...links, { label: '', url: '' }] });
+  }
+  function removeLink(i: number) {
+    const next = links.slice();
+    next.splice(i, 1);
+    update({ menuLinks: next });
+  }
+  function moveLink(i: number, dir: -1 | 1) {
+    const j = i + dir;
+    if (j < 0 || j >= links.length) return;
+    const next = links.slice();
+    [next[i], next[j]] = [next[j], next[i]];
+    update({ menuLinks: next });
+  }
+
+  return (
+    <div className="space-y-3 rounded-xl border border-border/60 bg-muted/30 p-4">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <h4 className="text-sm font-semibold">Menu de navigation (navbar)</h4>
+          <p className="text-[11px] text-muted-foreground">
+            Liens affichés dans la barre supérieure (Catalogue, À propos, Contact, etc.)
+          </p>
+        </div>
+        <Button type="button" size="sm" onClick={addLink} className="gap-1.5">
+          <Plus className="h-3.5 w-3.5" /> Ajouter un lien
+        </Button>
+      </div>
+
+      {links.length === 0 ? (
+        <div className="rounded-lg border border-dashed border-border/70 bg-card p-4 text-center text-xs text-muted-foreground">
+          Aucun lien. La barre affichera juste ton logo.
+        </div>
+      ) : (
+        <ul className="space-y-2">
+          {links.map((l, i) => (
+            <li key={i} className="grid grid-cols-[1fr_1fr_auto] gap-2 rounded-lg border border-border/60 bg-card p-2">
+              <Input
+                placeholder="Libellé (ex: Catalogue)"
+                value={l.label}
+                onChange={(e) => updateLink(i, { label: e.target.value })}
+                className="h-9 text-sm"
+              />
+              <Input
+                placeholder="/about, #section, https://..."
+                value={l.url}
+                onChange={(e) => updateLink(i, { url: e.target.value })}
+                className="h-9 text-xs font-mono"
+              />
+              <div className="flex items-center gap-1">
+                <button
+                  type="button"
+                  aria-label="Monter"
+                  disabled={i === 0}
+                  onClick={() => moveLink(i, -1)}
+                  className="grid h-7 w-7 place-items-center rounded-md hover:bg-muted disabled:opacity-30"
+                >
+                  <ChevronUp className="h-3.5 w-3.5" />
+                </button>
+                <button
+                  type="button"
+                  aria-label="Descendre"
+                  disabled={i === links.length - 1}
+                  onClick={() => moveLink(i, 1)}
+                  className="grid h-7 w-7 place-items-center rounded-md hover:bg-muted disabled:opacity-30"
+                >
+                  <ChevronDown className="h-3.5 w-3.5" />
+                </button>
+                <button
+                  type="button"
+                  aria-label="Supprimer"
+                  onClick={() => removeLink(i)}
+                  className="grid h-7 w-7 place-items-center rounded-md text-destructive hover:bg-destructive/10"
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                </button>
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// TESTIMONIALS EDITOR — toggle + add/remove/reorder
+// ─────────────────────────────────────────────────────────────────────
+function emptyTestimonial(): TestimonialItem {
+  return { author: '', content: '', rating: 5, verified: true };
+}
+
+function TestimonialsEditor({
+  storeId,
+  testimonials,
+  onChange,
+}: {
+  storeId: string;
+  testimonials?: TestimonialsSettings;
+  onChange: (t: TestimonialsSettings) => void;
+}) {
+  const cfg: TestimonialsSettings = {
+    enabled: false,
+    items: [],
+    ...(testimonials || {}),
+  };
+  const items = cfg.items || [];
+
+  function update(patch: Partial<TestimonialsSettings>) {
+    onChange({ ...cfg, ...patch });
+  }
+  function updateItem(i: number, patch: Partial<TestimonialItem>) {
+    const next = items.slice();
+    next[i] = { ...next[i], ...patch };
+    update({ items: next });
+  }
+  function addItem() {
+    update({ items: [...items, emptyTestimonial()] });
+  }
+  function removeItem(i: number) {
+    const next = items.slice();
+    next.splice(i, 1);
+    update({ items: next });
+  }
+  function moveItem(i: number, dir: -1 | 1) {
+    const j = i + dir;
+    if (j < 0 || j >= items.length) return;
+    const next = items.slice();
+    [next[i], next[j]] = [next[j], next[i]];
+    update({ items: next });
+  }
+
+  return (
+    <div className="space-y-4 rounded-xl border border-border/60 bg-muted/30 p-4">
+      <FieldToggle
+        label="Avis clients / Témoignages"
+        sublabel="Section avec témoignages, notes 5 étoiles, photos clients"
+        checked={!!cfg.enabled}
+        onChange={(v) => update({ enabled: v })}
+      />
+
+      {cfg.enabled && (
+        <>
+          <div className="grid gap-3 sm:grid-cols-2 pt-1">
+            <div>
+              <Label className="text-xs">Titre de la section</Label>
+              <Input
+                placeholder="Ex: Ils nous font confiance"
+                value={cfg.title || ''}
+                onChange={(e) => update({ title: e.target.value })}
+                className="mt-1 h-9"
+              />
+            </div>
+            <div>
+              <Label className="text-xs">Sous-titre (optionnel)</Label>
+              <Input
+                placeholder="Ex: Plus de 1000 clients satisfaits"
+                value={cfg.subtitle || ''}
+                onChange={(e) => update({ subtitle: e.target.value })}
+                className="mt-1 h-9"
+              />
+            </div>
+          </div>
+
+          <div>
+            <div className="mb-3 flex items-center justify-between">
+              <div>
+                <h4 className="flex items-center gap-1.5 text-sm font-semibold">
+                  <MessageSquareQuote className="h-3.5 w-3.5" />
+                  Témoignages ({items.length})
+                </h4>
+                <p className="text-[11px] text-muted-foreground">
+                  Ajoute les avis de tes vrais clients (3 à 9 recommandé).
+                </p>
+              </div>
+              <Button type="button" size="sm" onClick={addItem} className="gap-1.5">
+                <Plus className="h-3.5 w-3.5" />
+                Ajouter un témoignage
+              </Button>
+            </div>
+
+            {items.length === 0 ? (
+              <div className="rounded-lg border border-dashed border-border/70 bg-card p-6 text-center text-xs text-muted-foreground">
+                Aucun témoignage. Clique sur « Ajouter un témoignage » pour commencer.
+              </div>
+            ) : (
+              <ul className="space-y-3">
+                {items.map((t, i) => (
+                  <li key={i} className="rounded-xl border border-border/60 bg-card p-4">
+                    <div className="mb-3 flex items-center justify-between">
+                      <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                        Témoignage {i + 1}
+                      </span>
+                      <div className="flex items-center gap-1">
+                        <button
+                          type="button"
+                          aria-label="Monter"
+                          disabled={i === 0}
+                          onClick={() => moveItem(i, -1)}
+                          className="grid h-7 w-7 place-items-center rounded-md hover:bg-muted disabled:opacity-30"
+                        >
+                          <ChevronUp className="h-3.5 w-3.5" />
+                        </button>
+                        <button
+                          type="button"
+                          aria-label="Descendre"
+                          disabled={i === items.length - 1}
+                          onClick={() => moveItem(i, 1)}
+                          className="grid h-7 w-7 place-items-center rounded-md hover:bg-muted disabled:opacity-30"
+                        >
+                          <ChevronDown className="h-3.5 w-3.5" />
+                        </button>
+                        <button
+                          type="button"
+                          aria-label="Supprimer"
+                          onClick={() => removeItem(i)}
+                          className="grid h-7 w-7 place-items-center rounded-md text-destructive hover:bg-destructive/10"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="grid gap-3 sm:grid-cols-[140px_1fr]">
+                      <MediaPicker
+                        storeId={storeId}
+                        value={t.avatar}
+                        onChange={(url) => updateItem(i, { avatar: url || '' })}
+                        shape="round"
+                      />
+
+                      <div className="space-y-2">
+                        <div className="grid gap-2 sm:grid-cols-2">
+                          <Input
+                            placeholder="Nom client"
+                            value={t.author}
+                            onChange={(e) => updateItem(i, { author: e.target.value })}
+                            className="h-9"
+                          />
+                          <Input
+                            placeholder="Lieu / rôle (ex: Tunis · Cliente fidèle)"
+                            value={t.role || ''}
+                            onChange={(e) => updateItem(i, { role: e.target.value })}
+                            className="h-9 text-sm"
+                          />
+                        </div>
+                        <textarea
+                          placeholder="Témoignage du client…"
+                          value={t.content}
+                          onChange={(e) => updateItem(i, { content: e.target.value })}
+                          rows={3}
+                          className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
+                        />
+                        <div className="grid gap-2 sm:grid-cols-[1fr_1fr_auto]">
+                          <div className="inline-flex items-center gap-2">
+                            <Label className="text-xs whitespace-nowrap">Note</Label>
+                            <div className="flex items-center gap-0.5">
+                              {[1, 2, 3, 4, 5].map((n) => (
+                                <button
+                                  key={n}
+                                  type="button"
+                                  onClick={() => updateItem(i, { rating: n })}
+                                  className="rounded p-0.5 hover:bg-muted"
+                                  aria-label={`${n} étoiles`}
+                                >
+                                  <Star
+                                    className="h-4 w-4"
+                                    fill={n <= (t.rating || 5) ? '#fbbf24' : 'none'}
+                                    color={n <= (t.rating || 5) ? '#fbbf24' : 'currentColor'}
+                                  />
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                          <Input
+                            placeholder="Produit acheté (optionnel)"
+                            value={t.productName || ''}
+                            onChange={(e) => updateItem(i, { productName: e.target.value })}
+                            className="h-9 text-xs"
+                          />
+                          <label className="inline-flex items-center gap-1.5 text-xs whitespace-nowrap">
+                            <input
+                              type="checkbox"
+                              checked={!!t.verified}
+                              onChange={(e) => updateItem(i, { verified: e.target.checked })}
+                              className="h-4 w-4 rounded border-input"
+                            />
+                            Vérifié
+                          </label>
+                        </div>
+                      </div>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// FOOTER EDITOR — social links + contact + extra links
+// ─────────────────────────────────────────────────────────────────────
+const SOCIAL_FIELDS: Array<{ key: keyof NonNullable<FooterSettings['social']>; label: string; placeholder: string }> = [
+  { key: 'instagram', label: 'Instagram', placeholder: '@mabellestore' },
+  { key: 'facebook',  label: 'Facebook',  placeholder: '@MaBelleStore' },
+  { key: 'tiktok',    label: 'TikTok',    placeholder: '@mabellestore' },
+  { key: 'youtube',   label: 'YouTube',   placeholder: '@mabellestore' },
+  { key: 'x',         label: 'X',         placeholder: '@mabellestore' },
+  { key: 'whatsapp',  label: 'WhatsApp',  placeholder: '+216 99 999 999' },
+];
+
+function FooterEditor({
+  footer,
+  onChange,
+}: {
+  footer?: FooterSettings;
+  onChange: (f: FooterSettings) => void;
+}) {
+  const cfg: FooterSettings = {
+    social: {},
+    contact: {},
+    links: [],
+    ...(footer || {}),
+  };
+  const links = cfg.links || [];
+
+  function setSocial(key: string, value: string) {
+    onChange({ ...cfg, social: { ...(cfg.social || {}), [key]: value } });
+  }
+  function setContact(key: 'email' | 'phone' | 'address', value: string) {
+    onChange({ ...cfg, contact: { ...(cfg.contact || {}), [key]: value } });
+  }
+  function addLink() {
+    onChange({ ...cfg, links: [...links, { label: '', url: '' }] });
+  }
+  function updateLink(i: number, patch: Partial<{ label: string; url: string }>) {
+    const next = links.slice();
+    next[i] = { ...next[i], ...patch };
+    onChange({ ...cfg, links: next });
+  }
+  function removeLink(i: number) {
+    const next = links.slice();
+    next.splice(i, 1);
+    onChange({ ...cfg, links: next });
+  }
+
+  return (
+    <div className="space-y-4 rounded-lg border border-border/60 bg-card p-4">
+      <div>
+        <h4 className="flex items-center gap-1.5 text-sm font-semibold">
+          <Share2 className="h-3.5 w-3.5" /> Réseaux sociaux
+        </h4>
+        <p className="text-[11px] text-muted-foreground">
+          Colle le pseudo (@compte) ou l'URL complète.
+        </p>
+        <div className="mt-2 grid gap-2 sm:grid-cols-2">
+          {SOCIAL_FIELDS.map((f) => (
+            <Input
+              key={f.key}
+              placeholder={`${f.label} — ${f.placeholder}`}
+              value={cfg.social?.[f.key] || ''}
+              onChange={(e) => setSocial(f.key, e.target.value)}
+              className="h-9 text-sm"
+            />
+          ))}
+        </div>
+      </div>
+
+      <div>
+        <h4 className="text-sm font-semibold">Coordonnées</h4>
+        <div className="mt-2 grid gap-2 sm:grid-cols-2">
+          <Input
+            placeholder="Email de contact"
+            type="email"
+            value={cfg.contact?.email || ''}
+            onChange={(e) => setContact('email', e.target.value)}
+            className="h-9"
+          />
+          <Input
+            placeholder="Téléphone"
+            value={cfg.contact?.phone || ''}
+            onChange={(e) => setContact('phone', e.target.value)}
+            className="h-9"
+          />
+          <Input
+            placeholder="Adresse postale (optionnel)"
+            value={cfg.contact?.address || ''}
+            onChange={(e) => setContact('address', e.target.value)}
+            className="h-9 sm:col-span-2"
+          />
+        </div>
+      </div>
+
+      <div>
+        <div className="flex items-center justify-between">
+          <h4 className="flex items-center gap-1.5 text-sm font-semibold">
+            <Link2 className="h-3.5 w-3.5" /> Liens additionnels
+          </h4>
+          <Button type="button" size="sm" variant="outline" onClick={addLink} className="gap-1.5">
+            <Plus className="h-3 w-3" /> Ajouter
+          </Button>
+        </div>
+        <p className="text-[11px] text-muted-foreground">
+          Mentions légales, CGV, politique de retour, etc.
+        </p>
+        {links.length > 0 && (
+          <ul className="mt-2 space-y-2">
+            {links.map((l, i) => (
+              <li key={i} className="grid grid-cols-[1fr_1fr_auto] gap-2">
+                <Input
+                  placeholder="Libellé"
+                  value={l.label}
+                  onChange={(e) => updateLink(i, { label: e.target.value })}
+                  className="h-9 text-sm"
+                />
+                <Input
+                  placeholder="/legal/cgv"
+                  value={l.url}
+                  onChange={(e) => updateLink(i, { url: e.target.value })}
+                  className="h-9 text-xs font-mono"
+                />
+                <button
+                  type="button"
+                  onClick={() => removeLink(i)}
+                  aria-label="Supprimer"
+                  className="grid h-9 w-9 place-items-center rounded-md text-destructive hover:bg-destructive/10"
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
     </div>
   );
 }

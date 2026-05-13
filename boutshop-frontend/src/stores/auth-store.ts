@@ -49,7 +49,6 @@ export const useAuthStore = create<AuthState>()(
           set({ user: null, token: null, isAuthenticated: false });
         }
       },
-      isAuthenticated: false,
     }),
     { name: 'boutshop-auth', partialize: (s) => ({ token: s.token, user: s.user }) }
   )

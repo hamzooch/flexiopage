@@ -12,6 +12,7 @@ import helmet from 'helmet';
 import { connectDB } from './config/database';
 import { errorHandler } from './middleware/errorHandler';
 import { notFound } from './middleware/notFound';
+import { logger, httpLogger } from './lib/logger';
 import authRoutes from './routes/auth.routes';
 import userRoutes from './routes/user.routes';
 import storeRoutes from './routes/store.routes';
@@ -30,11 +31,15 @@ const PORT = process.env.PORT || 5000;
 const uploadPath = process.env.UPLOAD_PATH || path.join(process.cwd(), 'uploads');
 app.use('/uploads', express.static(uploadPath));
 
+// Structured request logging — must come before route handlers so every
+// request gets a logger attached at req.log.
+app.use(httpLogger);
+
 // Security & parsing
 app.use(helmet());
 // Accept either a single FRONTEND_URL or a comma-separated list (handy during
 // dev when the frontend is run on multiple ports).
-const corsOrigins = (process.env.FRONTEND_URL || 'http://localhost:3000,http://localhost:3001')
+const corsOrigins = (process.env.FRONTEND_URL || 'http://localhost:3000,http://localhost:3002')
   .split(',')
   .map((s) => s.trim())
   .filter(Boolean);
@@ -72,11 +77,11 @@ app.use(errorHandler);
 async function start() {
   await connectDB();
   app.listen(PORT, () => {
-    console.log(`BoutShop API running on http://localhost:${PORT}`);
+    logger.info({ port: PORT }, `BoutShop API running on http://localhost:${PORT}`);
   });
 }
 
 start().catch((err) => {
-  console.error('Failed to start server:', err);
+  logger.fatal({ err }, 'Failed to start server');
   process.exit(1);
 });

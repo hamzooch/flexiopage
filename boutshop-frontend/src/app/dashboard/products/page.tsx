@@ -13,6 +13,7 @@ interface StoreType {
   _id: string;
   name: string;
   slug: string;
+  storeType?: 'physical' | 'digital';
 }
 
 interface ProductType {
@@ -55,18 +56,28 @@ export default function DashboardProductsPage() {
       .finally(() => setLoading(false));
   }, [selectedStoreId]);
 
+  const activeStore = stores.find((s) => s._id === selectedStoreId);
+  const isDigitalStore = activeStore?.storeType === 'digital';
+  const newProductHref = selectedStoreId
+    ? (isDigitalStore
+        ? `/dashboard/products/new/digital?storeId=${selectedStoreId}`
+        : `/dashboard/products/new?storeId=${selectedStoreId}`)
+    : '#';
+
   return (
     <div className="space-y-8">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold">Products</h1>
-          <p className="text-muted-foreground">Manage your store products.</p>
+          <p className="text-muted-foreground">
+            {isDigitalStore ? 'Tes produits digitaux : téléchargements, cours, licences, abonnements.' : 'Manage your store products.'}
+          </p>
         </div>
         {selectedStoreId && (
-          <Link href={`/dashboard/products/new?storeId=${selectedStoreId}`}>
+          <Link href={newProductHref}>
             <Button>
               <Plus className="mr-2 h-4 w-4" />
-              Add product
+              {isDigitalStore ? 'Nouveau produit digital' : 'Add product'}
             </Button>
           </Link>
         )}
@@ -100,8 +111,8 @@ export default function DashboardProductsPage() {
           <CardContent className="flex flex-col items-center justify-center py-16">
             <Package className="h-12 w-12 text-muted-foreground" />
             <p className="mt-4 font-medium">No products</p>
-            <Link href={`/dashboard/products/new?storeId=${selectedStoreId}`}>
-              <Button className="mt-2">Add product</Button>
+            <Link href={newProductHref}>
+              <Button className="mt-2">{isDigitalStore ? 'Nouveau produit digital' : 'Add product'}</Button>
             </Link>
           </CardContent>
         </Card>

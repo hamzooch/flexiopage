@@ -1,15 +1,16 @@
 'use client';
 
 /**
- * Real, functional integrations page.
+ * Integrations page — store-level connections.
  *
- *   1. Domaine personnalisé — pointer un CNAME / A et vérifier le DNS
- *   2. Pixels marketing — Facebook Pixel, Google Analytics, TikTok Pixel
- *   3. Google Sheets — push automatique de chaque commande
- *   4. Livraison — provider, clé API, adresse de pickup, auto-dispatch
+ *   1. Domaine personnalisé — DNS verification (CNAME / A)
+ *   2. Pixels marketing — Facebook Pixel, GA4, TikTok Pixel, custom <head>
+ *   3. Livraison — split in two sub-tabs:
+ *        a. Société de livraison (last-mile carrier: MogaDelivery, Yalidine…)
+ *        b. Société de logistique (3PL fulfillment: ShipBob, Cubyn…)
  *
- * Toutes les actions visent la boutique active (currentStoreId) ou la
- * première boutique du compte si rien n'est sélectionné.
+ * Workflow apps (Google Sheets, Mailchimp, Slack) live under
+ * /dashboard/apps — this page is for store-level platform plumbing.
  */
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
@@ -30,14 +31,42 @@ import {
   Facebook,
   BarChart3,
   PlayCircle,
-  FileSpreadsheet,
   Truck,
+  Warehouse,
   RefreshCw,
-  ExternalLink,
   Plug,
 } from 'lucide-react';
 
-type TabId = 'domain' | 'pixels' | 'sheets' | 'shipping';
+type TabId = 'domain' | 'pixels' | 'shipping';
+type ShippingTab = 'carrier' | 'logistics';
+
+interface PickupAddress {
+  contactName?: string;
+  contactPhone?: string;
+  line1?: string;
+  city?: string;
+  state?: string;
+  postalCode?: string;
+  country?: string;
+}
+
+interface DeliveryConfig {
+  provider?: 'mogadelivery' | 'yalidine' | 'noest' | 'aramex' | 'manual' | 'other';
+  enabled?: boolean;
+  apiKey?: string;
+  baseUrl?: string;
+  autoDispatch?: boolean;
+  pickupAddress?: PickupAddress;
+}
+
+interface LogisticsConfig {
+  provider?: 'shipbob' | 'cubyn' | 'amazon-mcf' | 'sendcloud' | 'easyship' | 'manual' | 'other';
+  enabled?: boolean;
+  apiKey?: string;
+  baseUrl?: string;
+  warehouseId?: string;
+  autoForward?: boolean;
+}
 
 interface StoreDoc {
   _id: string;
@@ -50,27 +79,11 @@ interface StoreDoc {
   customDomainTarget?: string;
   settings?: { currency?: string };
   integrations?: {
-    delivery?: {
-      provider?: 'mogadelivery' | 'yalidine' | 'noest' | 'aramex' | 'manual' | 'other';
-      enabled?: boolean;
-      apiKey?: string;
-      baseUrl?: string;
-      autoDispatch?: boolean;
-      pickupAddress?: {
-        contactName?: string;
-        contactPhone?: string;
-        line1?: string;
-        city?: string;
-        state?: string;
-        postalCode?: string;
-        country?: string;
-      };
-    };
-    googleSheets?: { enabled?: boolean; webhookUrl?: string; lastSyncAt?: string; lastError?: string };
+    delivery?: DeliveryConfig;
+    logistics?: LogisticsConfig;
     marketing?: {
       facebookPixelId?: string;
       facebookConversionsApiToken?: string;
-      facebookTestEventCode?: string;
       googleAnalyticsId?: string;
       tiktokPixelId?: string;
       googleAdsConversionId?: string;
@@ -83,7 +96,6 @@ interface StoreDoc {
 const TABS: { id: TabId; label: string; icon: React.ComponentType<{ className?: string }> }[] = [
   { id: 'domain', label: 'Domaine', icon: Globe },
   { id: 'pixels', label: 'Pixels marketing', icon: BarChart3 },
-  { id: 'sheets', label: 'Google Sheets', icon: FileSpreadsheet },
   { id: 'shipping', label: 'Livraison', icon: Truck },
 ];
 
@@ -145,7 +157,10 @@ export default function IntegrationsPage() {
               Connecte ta boutique au monde
             </h1>
             <p className="mt-1 max-w-xl text-sm text-muted-foreground">
-              Domaine personnalisé, pixels Facebook et Google, export Google Sheets, sociétés de livraison.
+              Domaine personnalisé, pixels Facebook et Google, sociétés de livraison & de logistique.
+            </p>
+            <p className="mt-2 text-xs text-muted-foreground">
+              Les applications de productivité (Google Sheets, Slack…) sont dans <a href="/dashboard/apps" className="font-medium text-primary hover:underline">Applications →</a>
             </p>
           </div>
           {stores.length > 1 && (
@@ -200,14 +215,6 @@ export default function IntegrationsPage() {
           setSaving={(b) => setSavingTab(b ? 'pixels' : null)}
         />
       )}
-      {tab === 'sheets' && (
-        <SheetsPanel
-          store={activeStore}
-          onSaved={refreshStores}
-          saving={savingTab === 'sheets'}
-          setSaving={(b) => setSavingTab(b ? 'sheets' : null)}
-        />
-      )}
       {tab === 'shipping' && (
         <ShippingPanel
           store={activeStore}
@@ -251,9 +258,12 @@ function DomainPanel({ store, onSaved, saving, setSaving }: PanelProps) {
   }
 
   const verified = !!store.customDomainVerified;
+  // Build the dev preview URL from the current origin so it follows whichever
+  // port Next is running on (3000, 3002, etc.) instead of being pinned.
+  const devOrigin = typeof window !== 'undefined' ? window.location.origin : '';
   const previewUrl = store.customDomain && verified
     ? `https://${store.customDomain}`
-    : `http://localhost:3001/store/${store.slug}`;
+    : `${devOrigin}/store/${store.slug}`;
 
   return (
     <Card icon={<Globe className="h-5 w-5" />} title="Domaine personnalisé"
@@ -382,54 +392,42 @@ function PixelsPanel({ store, onSaved, saving, setSaving }: PanelProps) {
     <Card icon={<BarChart3 className="h-5 w-5" />} title="Pixels marketing"
       subtitle="On injecte les tags dans ta boutique et on déclenche PageView, ViewContent, InitiateCheckout, Purchase automatiquement.">
       <div className="space-y-5">
-        <PixelRow
-          icon={<Facebook className="h-5 w-5 text-blue-600" />}
+        <PixelRow icon={<Facebook className="h-5 w-5 text-blue-600" />}
           label="Facebook / Meta Pixel ID"
-          help="Found in Meta Events Manager. Ex: 1234567890123456"
-        >
+          help="Found in Meta Events Manager. Ex: 1234567890123456">
           <Input value={fb} onChange={(e) => setFb(e.target.value)} placeholder="1234567890123456" className="font-mono" />
         </PixelRow>
 
-        <PixelRow
-          icon={<Facebook className="h-5 w-5 text-blue-700" />}
+        <PixelRow icon={<Facebook className="h-5 w-5 text-blue-700" />}
           label="Meta Conversions API token (optionnel)"
-          help="Pour le tracking server-side (anti-iOS 14.5). Onglet Conversion API → Generate Access Token."
-        >
+          help="Pour le tracking server-side (anti-iOS 14.5). Onglet Conversion API → Generate Access Token.">
           <Input value={fbToken} onChange={(e) => setFbToken(e.target.value)} placeholder="EAAG..." className="font-mono" type="password" />
         </PixelRow>
 
-        <PixelRow
-          icon={<BarChart3 className="h-5 w-5 text-amber-600" />}
+        <PixelRow icon={<BarChart3 className="h-5 w-5 text-amber-600" />}
           label="Google Analytics 4 — Measurement ID"
-          help="Dans Admin GA4 → Data Streams. Ex: G-XXXXXXXXXX"
-        >
+          help="Dans Admin GA4 → Data Streams. Ex: G-XXXXXXXXXX">
           <Input value={ga} onChange={(e) => setGa(e.target.value)} placeholder="G-XXXXXXXXXX" className="font-mono" />
         </PixelRow>
 
-        <PixelRow
-          icon={<PlayCircle className="h-5 w-5 text-rose-600" />}
+        <PixelRow icon={<PlayCircle className="h-5 w-5 text-rose-600" />}
           label="TikTok Pixel ID"
-          help="TikTok Ads Manager → Assets → Events. Ex: CXXXXXXXXXXXXXXXX"
-        >
+          help="TikTok Ads Manager → Assets → Events. Ex: CXXXXXXXXXXXXXXXX">
           <Input value={tt} onChange={(e) => setTt(e.target.value)} placeholder="CXXXXXXXXXXXXXXXX" className="font-mono" />
         </PixelRow>
 
-        <PixelRow
-          icon={<Sparkles className="h-5 w-5 text-emerald-600" />}
+        <PixelRow icon={<Sparkles className="h-5 w-5 text-emerald-600" />}
           label="Google Ads (optionnel)"
-          help="AW-XXXXXXXXXX + label pour le conversion tracking."
-        >
+          help="AW-XXXXXXXXXX + label pour le conversion tracking.">
           <div className="grid gap-2 sm:grid-cols-2">
             <Input value={adsId} onChange={(e) => setAdsId(e.target.value)} placeholder="AW-XXXXXXXXXX" className="font-mono" />
             <Input value={adsLbl} onChange={(e) => setAdsLbl(e.target.value)} placeholder="conversion-label" className="font-mono" />
           </div>
         </PixelRow>
 
-        <PixelRow
-          icon={<Sparkles className="h-5 w-5 text-fuchsia-600" />}
+        <PixelRow icon={<Sparkles className="h-5 w-5 text-fuchsia-600" />}
           label="Code <head> personnalisé"
-          help="Pour Hotjar, Clarity, Snap Pixel, etc. Inséré tel quel dans la <head> de tes pages publiques."
-        >
+          help="Pour Hotjar, Clarity, Snap Pixel, etc. Inséré tel quel dans la <head> de tes pages publiques.">
           <textarea
             value={custom}
             onChange={(e) => setCustom(e.target.value)}
@@ -464,154 +462,77 @@ function PixelRow({ icon, label, help, children }: { icon: React.ReactNode; labe
 }
 
 // ─────────────────────────────────────────────────────────────────────
-// GOOGLE SHEETS
+// SHIPPING — sub-tabs: carrier (livraison) + logistics (3PL)
 // ─────────────────────────────────────────────────────────────────────
-const APPS_SCRIPT_SNIPPET = `function doPost(e) {
-  const data = JSON.parse(e.postData.contents);
-  const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('Orders')
-                || SpreadsheetApp.getActiveSpreadsheet().insertSheet('Orders');
-  if (sheet.getLastRow() === 0) {
-    sheet.appendRow(['Date', 'Order #', 'Status', 'Customer', 'Phone', 'Email',
-                     'Address', 'City', 'Country', 'Items', 'Total', 'Currency']);
-  }
-  const o = data.order || {};
-  const a = o.shippingAddress || {};
-  const items = (o.items || []).map(it => it.quantity + 'x ' + it.name).join(' | ');
-  sheet.appendRow([new Date(), o.orderNumber, o.paymentStatus,
-                   o.customer && o.customer.name, o.customer && o.customer.phone,
-                   o.customer && o.customer.email,
-                   [a.line1, a.line2].filter(Boolean).join(', '), a.city, a.country,
-                   items, o.total, o.currency]);
-  return ContentService.createTextOutput(JSON.stringify({ ok: true }))
-         .setMimeType(ContentService.MimeType.JSON);
-}`;
+const CARRIER_PROVIDERS = [
+  { id: 'mogadelivery', label: 'Moga Delivery (Afrique)', description: 'Last-mile scooter Afrique de l\'Ouest' },
+  { id: 'yalidine',     label: 'Yalidine (Algérie)',       description: 'Livraison nationale Algérie' },
+  { id: 'noest',        label: 'Noest Express (Algérie)',  description: 'Livraison express Algérie' },
+  { id: 'aramex',       label: 'Aramex (MENA)',            description: 'International MENA + Asie' },
+  { id: 'manual',       label: 'Manuel (sans API)',         description: 'Tu gères toi-même les expéditions' },
+  { id: 'other',        label: 'Autre',                     description: 'Autre transporteur' },
+] as const;
 
-function SheetsPanel({ store, onSaved, saving, setSaving }: PanelProps) {
-  const gs = store.integrations?.googleSheets || {};
-  const [enabled, setEnabled] = useState(!!gs.enabled);
-  const [url, setUrl] = useState(gs.webhookUrl || '');
-  const [testing, setTesting] = useState(false);
-  const [testResult, setTestResult] = useState<{ ok: boolean; error?: string } | null>(null);
+const LOGISTICS_PROVIDERS = [
+  { id: 'shipbob',      label: 'ShipBob',             description: '3PL global — entrepôts US, EU, AU, CA' },
+  { id: 'cubyn',        label: 'Cubyn',               description: '3PL européen rapide, SLA strict' },
+  { id: 'amazon-mcf',   label: 'Amazon MCF',          description: 'Utilise ton stock FBA pour commandes hors Amazon' },
+  { id: 'sendcloud',    label: 'Sendcloud',           description: 'Plateforme multi-carriers européenne' },
+  { id: 'easyship',     label: 'Easyship',            description: 'Comparateur 250+ transporteurs' },
+  { id: 'manual',       label: 'Manuel',              description: 'Pas de logistique externe' },
+  { id: 'other',        label: 'Autre',               description: 'Autre 3PL' },
+] as const;
 
-  async function handleSave() {
-    setSaving(true);
-    try {
-      await storesApi.update(store._id, {
-        integrations: {
-          ...store.integrations,
-          googleSheets: { enabled, webhookUrl: url.trim() || undefined },
-        },
-      });
-      await onSaved();
-    } finally { setSaving(false); }
-  }
-
-  async function handleTest() {
-    setTesting(true);
-    setTestResult(null);
-    try {
-      const res = await storesApi.testSheets(store._id, url.trim());
-      setTestResult(res.data);
-    } catch (err) {
-      setTestResult({ ok: false, error: (err as Error).message });
-    } finally { setTesting(false); }
-  }
+function ShippingPanel({ store, onSaved, saving, setSaving }: PanelProps) {
+  const [subTab, setSubTab] = useState<ShippingTab>('carrier');
 
   return (
-    <Card icon={<FileSpreadsheet className="h-5 w-5" />} title="Google Sheets"
-      subtitle="Chaque commande est envoyée dans une feuille Google Sheets — pas d'OAuth, juste un webhook Apps Script.">
-      <div className="space-y-5">
-        <div className="rounded-2xl border border-border/60 bg-card p-5">
-          <h4 className="mb-3 text-sm font-semibold">Étapes de configuration</h4>
-          <ol className="space-y-2 text-sm text-muted-foreground">
-            <li>1. Ouvre Google Sheets, menu <b>Extensions → Apps Script</b>.</li>
-            <li>2. Colle le code ci-dessous, sauvegarde.</li>
-            <li>3. Clique <b>Deploy → New deployment</b>, type <b>Web app</b>, accès <b>Anyone</b>.</li>
-            <li>4. Copie l'URL <code className="rounded bg-muted px-1 text-xs">/macros/s/.../exec</code> et colle-la ici.</li>
-          </ol>
-          <div className="relative mt-3">
-            <pre className="max-h-64 overflow-auto rounded-lg bg-zinc-950 p-3 text-[11px] leading-relaxed text-zinc-100 font-mono">
-              {APPS_SCRIPT_SNIPPET}
-            </pre>
-            <button
-              type="button"
-              onClick={() => navigator.clipboard.writeText(APPS_SCRIPT_SNIPPET)}
-              className="absolute right-2 top-2 inline-flex items-center gap-1 rounded-md bg-zinc-800 px-2 py-1 text-[10px] text-zinc-300 hover:bg-zinc-700"
-            >
-              <Copy className="h-3 w-3" /> Copier
-            </button>
-          </div>
-        </div>
-
-        <ToggleRow checked={enabled} onChange={setEnabled}
-          label="Activer le push vers Google Sheets"
-          sublabel="Désactivable à tout moment. Aucune commande envoyée si désactivé." />
-
-        <div>
-          <Label htmlFor="sheets-url">URL Apps Script</Label>
-          <Input
-            id="sheets-url"
-            value={url}
-            onChange={(e) => setUrl(e.target.value)}
-            placeholder="https://script.google.com/macros/s/AKfycb.../exec"
-            className="mt-1.5 h-11 font-mono text-xs"
-          />
-        </div>
-
-        {gs.lastSyncAt && (
-          <p className="text-xs text-muted-foreground">
-            Dernier envoi réussi : <span className="font-medium text-foreground">{new Date(gs.lastSyncAt).toLocaleString()}</span>
-          </p>
-        )}
-        {gs.lastError && (
-          <p className="text-xs text-destructive">
-            Dernière erreur : <span className="font-mono">{gs.lastError}</span>
-          </p>
-        )}
-
-        <div className="flex flex-wrap items-center gap-2">
-          <Button onClick={handleSave} disabled={saving} className="gap-2">
-            {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-            Enregistrer
-          </Button>
-          <Button variant="outline" onClick={handleTest} disabled={testing || !url.trim()} className="gap-2">
-            {testing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
-            Tester la connexion
-          </Button>
-          {testResult && (
-            <span className={cn(
-              'text-xs font-medium',
-              testResult.ok ? 'text-emerald-600' : 'text-destructive'
-            )}>
-              {testResult.ok ? '✓ Webhook accessible' : '✗ ' + (testResult.error || 'Erreur')}
-            </span>
+    <div className="space-y-5">
+      <div className="rounded-2xl border border-border/60 bg-card p-1.5 inline-flex">
+        <button
+          type="button"
+          onClick={() => setSubTab('carrier')}
+          className={cn(
+            'inline-flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-medium transition-all',
+            subTab === 'carrier' ? 'bg-gradient-to-br from-fuchsia-500 to-indigo-600 text-white shadow-md' : 'text-muted-foreground hover:text-foreground'
           )}
-        </div>
+        >
+          <Truck className="h-4 w-4" />
+          Société de livraison
+        </button>
+        <button
+          type="button"
+          onClick={() => setSubTab('logistics')}
+          className={cn(
+            'inline-flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-medium transition-all',
+            subTab === 'logistics' ? 'bg-gradient-to-br from-fuchsia-500 to-indigo-600 text-white shadow-md' : 'text-muted-foreground hover:text-foreground'
+          )}
+        >
+          <Warehouse className="h-4 w-4" />
+          Société de logistique
+        </button>
       </div>
-    </Card>
+
+      {subTab === 'carrier' ? (
+        <CarrierPanel store={store} onSaved={onSaved} saving={saving} setSaving={setSaving} />
+      ) : (
+        <LogisticsPanel store={store} onSaved={onSaved} saving={saving} setSaving={setSaving} />
+      )}
+    </div>
   );
 }
 
 // ─────────────────────────────────────────────────────────────────────
-// SHIPPING
+// Carrier (last-mile delivery company)
 // ─────────────────────────────────────────────────────────────────────
-const DELIVERY_PROVIDERS = [
-  { id: 'mogadelivery', label: 'Moga Delivery (Afrique)' },
-  { id: 'yalidine', label: 'Yalidine (Algérie)' },
-  { id: 'noest', label: 'Noest Express (Algérie)' },
-  { id: 'aramex', label: 'Aramex (MENA)' },
-  { id: 'manual', label: 'Manuel (sans API)' },
-  { id: 'other', label: 'Autre' },
-] as const;
-
-function ShippingPanel({ store, onSaved, saving, setSaving }: PanelProps) {
+function CarrierPanel({ store, onSaved, saving, setSaving }: PanelProps) {
   const d = store.integrations?.delivery || {};
   const [provider, setProvider] = useState<string>(d.provider || 'manual');
   const [enabled, setEnabled] = useState(!!d.enabled);
   const [apiKey, setApiKey] = useState(d.apiKey || '');
   const [baseUrl, setBaseUrl] = useState(d.baseUrl || '');
   const [autoDispatch, setAutoDispatch] = useState(d.autoDispatch ?? true);
-  const [pickup, setPickup] = useState(d.pickupAddress || {});
+  const [pickup, setPickup] = useState<PickupAddress>(d.pickupAddress || {});
 
   async function handleSave() {
     setSaving(true);
@@ -634,8 +555,8 @@ function ShippingPanel({ store, onSaved, saving, setSaving }: PanelProps) {
   }
 
   return (
-    <Card icon={<Truck className="h-5 w-5" />} title="Livraison & expédition"
-      subtitle="Connecte ton transporteur. Chaque commande est dispatchée automatiquement quand auto-dispatch est activé.">
+    <Card icon={<Truck className="h-5 w-5" />} title="Société de livraison"
+      subtitle="Transporteur last-mile qui prend en charge le colis chez toi et le livre au client.">
       <div className="space-y-5">
         <div>
           <Label>Transporteur</Label>
@@ -644,8 +565,8 @@ function ShippingPanel({ store, onSaved, saving, setSaving }: PanelProps) {
             onChange={(e) => setProvider(e.target.value)}
             className="mt-1.5 h-11 w-full rounded-lg border border-border bg-background px-3 text-sm"
           >
-            {DELIVERY_PROVIDERS.map((p) => (
-              <option key={p.id} value={p.id}>{p.label}</option>
+            {CARRIER_PROVIDERS.map((p) => (
+              <option key={p.id} value={p.id}>{p.label} — {p.description}</option>
             ))}
           </select>
         </div>
@@ -687,6 +608,87 @@ function ShippingPanel({ store, onSaved, saving, setSaving }: PanelProps) {
             <Input placeholder="Pays (TN, DZ, FR…)" value={pickup.country || ''}
               onChange={(e) => setPickup({ ...pickup, country: e.target.value })}
               className="sm:col-span-2" />
+          </div>
+        </div>
+
+        <Button onClick={handleSave} disabled={saving} className="gap-2">
+          {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+          Enregistrer
+        </Button>
+      </div>
+    </Card>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// Logistics (3PL fulfillment company)
+// ─────────────────────────────────────────────────────────────────────
+function LogisticsPanel({ store, onSaved, saving, setSaving }: PanelProps) {
+  const l = store.integrations?.logistics || {};
+  const [provider, setProvider] = useState<string>(l.provider || 'manual');
+  const [enabled, setEnabled] = useState(!!l.enabled);
+  const [apiKey, setApiKey] = useState(l.apiKey || '');
+  const [baseUrl, setBaseUrl] = useState(l.baseUrl || '');
+  const [warehouseId, setWarehouseId] = useState(l.warehouseId || '');
+  const [autoForward, setAutoForward] = useState(l.autoForward ?? true);
+
+  async function handleSave() {
+    setSaving(true);
+    try {
+      await storesApi.update(store._id, {
+        integrations: {
+          ...store.integrations,
+          logistics: {
+            provider,
+            enabled,
+            apiKey: apiKey.trim() || undefined,
+            baseUrl: baseUrl.trim() || undefined,
+            warehouseId: warehouseId.trim() || undefined,
+            autoForward,
+          },
+        },
+      });
+      await onSaved();
+    } finally { setSaving(false); }
+  }
+
+  return (
+    <Card icon={<Warehouse className="h-5 w-5" />} title="Société de logistique (3PL)"
+      subtitle="Externalise le stockage et la préparation des commandes. Le 3PL gère ton entrepôt et choisit le transporteur.">
+      <div className="space-y-5">
+        <div>
+          <Label>Prestataire 3PL</Label>
+          <select
+            value={provider}
+            onChange={(e) => setProvider(e.target.value)}
+            className="mt-1.5 h-11 w-full rounded-lg border border-border bg-background px-3 text-sm"
+          >
+            {LOGISTICS_PROVIDERS.map((p) => (
+              <option key={p.id} value={p.id}>{p.label} — {p.description}</option>
+            ))}
+          </select>
+        </div>
+
+        <ToggleRow checked={enabled} onChange={setEnabled}
+          label="Activer le 3PL"
+          sublabel="Les commandes seront forwardées au prestataire qui prépare et expédie." />
+
+        <ToggleRow checked={autoForward} onChange={setAutoForward}
+          label="Auto-forward des commandes"
+          sublabel="Envoie automatiquement chaque commande payée au 3PL." />
+
+        <div className="grid gap-3 sm:grid-cols-2">
+          <div>
+            <Label>Clé API</Label>
+            <Input type="password" value={apiKey} onChange={(e) => setApiKey(e.target.value)} className="mt-1.5 h-11 font-mono" />
+          </div>
+          <div>
+            <Label>ID entrepôt / centre</Label>
+            <Input value={warehouseId} onChange={(e) => setWarehouseId(e.target.value)} placeholder="warehouse_xyz" className="mt-1.5 h-11 font-mono text-xs" />
+          </div>
+          <div className="sm:col-span-2">
+            <Label>Base URL (optionnel)</Label>
+            <Input value={baseUrl} onChange={(e) => setBaseUrl(e.target.value)} placeholder="https://api.shipbob.com" className="mt-1.5 h-11 font-mono text-xs" />
           </div>
         </div>
 

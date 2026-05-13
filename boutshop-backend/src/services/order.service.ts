@@ -170,7 +170,7 @@ export async function createOrder(input: CreateOrderInput): Promise<IOrder> {
 
 /** Look up an order by its public download token (for the customer portal). */
 export async function getOrderByDownloadToken(token: string): Promise<IOrder | null> {
-  return Order.findOne({ downloadToken: token }).lean();
+  return Order.findOne({ downloadToken: token }).lean<IOrder | null>();
 }
 
 export async function updateOrderPayment(
@@ -206,12 +206,12 @@ export async function getOrdersByStore(
     .limit(options?.limit ?? 50)
     .skip(options?.skip ?? 0)
     .populate('customerId', 'email name phone')
-    .lean();
+    .lean<IOrder[]>();
 }
 
 export async function getOrderById(orderId: string, storeId: string): Promise<IOrder | null> {
   return Order.findOne({ _id: orderId, storeId })
     .populate('customerId')
     .populate('items.productId', 'name images')
-    .lean();
+    .lean<IOrder | null>();
 }

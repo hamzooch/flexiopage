@@ -20,7 +20,16 @@ export async function login(req: Request, res: Response): Promise<void> {
   try {
     const result = await authService.login({ email, password, ip });
     const maxAge = 7 * 24 * 60 * 60 * 1000;
-    res.cookie('token', result.token, { httpOnly: true, maxAge, sameSite: 'lax' });
+    // SameSite=strict in production blocks the cookie on ALL cross-site requests
+    // (CSRF defence). Dev uses lax so localhost ports can talk to each other.
+    const isProd = process.env.NODE_ENV === 'production';
+    res.cookie('token', result.token, {
+      httpOnly: true,
+      maxAge,
+      sameSite: isProd ? 'strict' : 'lax',
+      secure: isProd,
+      path: '/',
+    });
     res.json(result);
   } catch (err) {
     const e = err as Error & { statusCode?: number; code?: string };

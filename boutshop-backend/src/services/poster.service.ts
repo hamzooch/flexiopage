@@ -94,7 +94,7 @@ const THEME_GUIDANCE: Record<PosterTheme, string> = {
 function buildPrompt(input: PosterInput, theme: PosterTheme): string {
   const lang = (input.language || 'fr').toLowerCase();
   const country = input.country || 'SN';
-  const currency = input.currency || 'XOF';
+  const currency = input.currency || 'USD';
   const rtl = RTL_LANGS.has(lang.split('-')[0]);
 
   return `Tu es un copywriter d'ads pour le marché ${country}, langue ${lang}${rtl ? ' (RTL)' : ''}.
@@ -198,7 +198,7 @@ export async function generatePoster(input: PosterInput): Promise<PosterContent>
 
   // 3. Assemble
   const productImage = input.product.images?.[0];
-  const currency = input.currency || 'XOF';
+  const currency = input.currency || 'USD';
 
   const features: PosterFeature[] = (parsed.features || [])
     .slice(0, 3)

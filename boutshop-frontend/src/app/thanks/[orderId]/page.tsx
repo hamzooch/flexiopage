@@ -99,19 +99,19 @@ export default function ThanksPage() {
   const isMock = status?.mockMode || simulate;
 
   return (
-    <div className="grid min-h-screen place-items-center bg-gradient-to-br from-fuchsia-50 via-background to-indigo-50/30 px-4 py-10 dark:from-fuchsia-950/10 dark:via-background dark:to-indigo-950/10">
+    <div className="grid min-h-screen place-items-center bg-gradient-to-br from-fuchsia-50 via-background to-indigo-50/30 px-3 py-8 dark:from-fuchsia-950/10 dark:via-background dark:to-indigo-950/10 sm:px-4 sm:py-10">
       <div className="w-full max-w-md text-center">
         {isFailed ? (
           <FailedView orderId={orderId} />
         ) : (
           <>
-            <div className={`mx-auto grid h-20 w-20 place-items-center rounded-3xl text-4xl text-white shadow-2xl ${
+            <div className={`mx-auto grid h-16 w-16 place-items-center rounded-3xl text-3xl text-white shadow-2xl sm:h-20 sm:w-20 sm:text-4xl ${
               isPaid ? 'bg-gradient-to-br from-emerald-500 to-teal-600 shadow-emerald-500/30'
                      : 'bg-gradient-to-br from-fuchsia-500 to-indigo-600 shadow-primary/30 animate-pulse'
             }`}>
-              {isPaid ? <CheckCircle2 className="h-10 w-10" /> : <Loader2 className="h-10 w-10 animate-spin" />}
+              {isPaid ? <CheckCircle2 className="h-8 w-8 sm:h-10 sm:w-10" /> : <Loader2 className="h-8 w-8 animate-spin sm:h-10 sm:w-10" />}
             </div>
-            <h1 className="mt-6 text-3xl font-bold tracking-tight">
+            <h1 className="mt-5 text-2xl font-bold tracking-tight sm:mt-6 sm:text-3xl">
               {isPaid ? 'Paiement reçu !' : 'On confirme ton paiement…'}
             </h1>
             <p className="mt-3 text-sm text-muted-foreground sm:text-base">
@@ -172,10 +172,10 @@ export default function ThanksPage() {
 function FailedView({ orderId }: { orderId: string }) {
   return (
     <>
-      <div className="mx-auto grid h-20 w-20 place-items-center rounded-3xl bg-gradient-to-br from-red-500 to-rose-600 text-4xl text-white shadow-2xl shadow-red-500/30">
-        <AlertCircle className="h-10 w-10" />
+      <div className="mx-auto grid h-16 w-16 place-items-center rounded-3xl bg-gradient-to-br from-red-500 to-rose-600 text-3xl text-white shadow-2xl shadow-red-500/30 sm:h-20 sm:w-20 sm:text-4xl">
+        <AlertCircle className="h-8 w-8 sm:h-10 sm:w-10" />
       </div>
-      <h1 className="mt-6 text-3xl font-bold tracking-tight">Paiement non confirmé</h1>
+      <h1 className="mt-5 text-2xl font-bold tracking-tight sm:mt-6 sm:text-3xl">Paiement non confirmé</h1>
       <p className="mt-3 text-sm text-muted-foreground">
         Ton paiement n'a pas pu être validé. Tu n'as pas été débité — tu peux réessayer ou contacter le vendeur.
       </p>

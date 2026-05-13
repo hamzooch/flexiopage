@@ -115,14 +115,14 @@ export default function CodThanksPage() {
           items: order.items.map((it) => ({ id: it.sku || it.name, name: it.name, quantity: it.quantity, price: it.price })),
         }}
       />
-      <main className="mx-auto max-w-3xl px-4 py-12 sm:px-6 sm:py-16">
+      <main className="mx-auto max-w-3xl px-3 py-8 sm:px-6 sm:py-16">
         {/* Hero */}
         <div className="text-center">
-          <div className="mx-auto grid h-16 w-16 place-items-center rounded-full bg-emerald-500/10">
-            <CheckCircle2 className="h-9 w-9 text-emerald-600" />
+          <div className="mx-auto grid h-14 w-14 place-items-center rounded-full bg-emerald-500/10 sm:h-16 sm:w-16">
+            <CheckCircle2 className="h-7 w-7 text-emerald-600 sm:h-9 sm:w-9" />
           </div>
-          <h1 className="mt-4 text-3xl font-bold tracking-tight sm:text-4xl">Commande confirmée 🎉</h1>
-          <p className="mt-2 text-sm text-muted-foreground">
+          <h1 className="mt-4 text-2xl font-bold tracking-tight sm:text-3xl lg:text-4xl">Commande confirmée 🎉</h1>
+          <p className="mt-2 text-xs text-muted-foreground sm:text-sm">
             Merci {order.customerName || ''} ! Ta commande{' '}
             <span className="font-mono font-semibold">{order.orderNumber}</span> est enregistrée.
           </p>

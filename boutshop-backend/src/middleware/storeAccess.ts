@@ -26,6 +26,6 @@ export async function requireStoreAccess(
     res.status(403).json({ error: 'Access denied to this store' });
     return;
   }
-  (req as AuthRequest & { store: typeof store }).store = store;
+  req.store = store;
   next();
 }

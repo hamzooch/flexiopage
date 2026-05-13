@@ -18,6 +18,8 @@ import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import { Loader2, ShieldCheck, Zap, ArrowLeft, CreditCard } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { StoreNavbar, type NavbarConfig } from '@/components/storefront/StoreNavbar';
+import { STORE_THEME_TEMPLATES } from '@/data/store-themes';
 
 const API_BASE = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000').replace(/\/$/, '');
 
@@ -56,7 +58,13 @@ interface ProductDoc {
 interface StoreDoc {
   name: string;
   slug: string;
-  settings?: { currency?: string; country?: string };
+  logo?: string;
+  theme?: { templateId?: string };
+  settings?: {
+    currency?: string;
+    country?: string;
+    storefront?: { navbar?: NavbarConfig };
+  };
 }
 
 function fmtPrice(n: number, currency: string): string {
@@ -168,25 +176,33 @@ export default function CheckoutPage() {
     );
   }
 
-  const currency = store.settings?.currency || 'XOF';
+  const currency = store.settings?.currency || 'USD';
+  const themeTokens =
+    STORE_THEME_TEMPLATES.find((t) => t.id === store.theme?.templateId)?.theme ||
+    STORE_THEME_TEMPLATES[0].theme;
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-fuchsia-50 via-background to-indigo-50/30 dark:from-fuchsia-950/10 dark:via-background dark:to-indigo-950/10">
-      <header className="border-b border-border/60 bg-card/60 backdrop-blur-xl">
-        <div className="mx-auto flex h-16 max-w-5xl items-center justify-between px-6">
+      <StoreNavbar
+        storeName={store.name}
+        storeSlug={storeSlug}
+        storeLogo={store.logo}
+        theme={themeTokens}
+        config={store.settings?.storefront?.navbar}
+        trailing={
           <Link
             href={`/store/${storeSlug}/product/${productSlug}`}
-            className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground"
+            className="inline-flex items-center gap-1.5 text-xs hover:opacity-100 sm:text-sm"
+            style={{ color: themeTokens.muted }}
           >
             <ArrowLeft className="h-4 w-4" />
-            Retour
+            Retour au produit
           </Link>
-          <span className="text-sm font-semibold">{store.name}</span>
-        </div>
-      </header>
+        }
+      />
 
-      <main className="mx-auto max-w-5xl px-4 py-8 sm:px-6 sm:py-12">
-        <div className="grid gap-8 lg:grid-cols-[1fr_420px]">
+      <main className="mx-auto max-w-5xl px-3 py-6 sm:px-6 sm:py-12">
+        <div className="grid gap-6 lg:grid-cols-[1fr_420px] lg:gap-8">
           {/* Left — payment form */}
           <form onSubmit={handleSubmit} className="space-y-6">
             <div>

@@ -1,11 +1,14 @@
 import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
 import { User, IUser } from '../models/User.model';
+import type { IStore } from '../models/Store.model';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'change-me-in-production';
 
 export interface AuthRequest extends Request {
   user?: IUser;
+  /** Set by requireStoreAccess middleware — typed so controllers don't need casts. */
+  store?: IStore;
 }
 
 export interface JwtPayload {

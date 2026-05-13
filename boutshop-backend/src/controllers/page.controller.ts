@@ -74,7 +74,7 @@ export async function generateAiPage(req: AuthRequest, res: Response): Promise<v
 
 /** POST /api/stores/:storeId/pages/generate-from-product - fal.ai landing from a product */
 export async function generateFromProduct(req: AuthRequest, res: Response): Promise<void> {
-  const store = (req as AuthRequest & { store: { _id: unknown; name: string; settings?: { currency?: string } } }).store;
+  const store = req.store!;
   const body = req.body as {
     productId?: string;
     tone?: 'professional' | 'friendly' | 'minimal';
@@ -134,7 +134,7 @@ export async function generateFromProduct(req: AuthRequest, res: Response): Prom
 
 /** POST /api/stores/:storeId/pages/generate-from-image - fal.ai landing from an image URL */
 export async function generateFromImage(req: AuthRequest, res: Response): Promise<void> {
-  const store = (req as AuthRequest & { store: { _id: unknown; name: string; settings?: { currency?: string } } }).store;
+  const store = req.store!;
   const body = req.body as {
     imageUrl?: string;
     productId?: string;
@@ -208,7 +208,7 @@ export async function getSectionsFromTemplateId(req: AuthRequest, res: Response)
 }
 
 export async function createPage(req: AuthRequest, res: Response): Promise<void> {
-  const store = (req as AuthRequest & { store: { _id: unknown } }).store;
+  const store = req.store!;
   const storeId = store._id.toString();
   const { name, slug, sections, seoTitle, seoDescription, language, country, currency, direction } = req.body as {
     name?: string;
@@ -241,13 +241,13 @@ export async function createPage(req: AuthRequest, res: Response): Promise<void>
 }
 
 export async function listPages(req: AuthRequest, res: Response): Promise<void> {
-  const store = (req as AuthRequest & { store: { _id: unknown } }).store;
+  const store = req.store!;
   const pages = await pageService.getPagesByStore(store._id.toString());
   res.json({ pages });
 }
 
 export async function getPage(req: AuthRequest, res: Response): Promise<void> {
-  const store = (req as AuthRequest & { store: { _id: unknown } }).store;
+  const store = req.store!;
   const page = await pageService.getPageById(req.params.pageId, store._id.toString());
   if (!page) {
     res.status(404).json({ error: 'Page not found' });
@@ -257,7 +257,7 @@ export async function getPage(req: AuthRequest, res: Response): Promise<void> {
 }
 
 export async function updatePage(req: AuthRequest, res: Response): Promise<void> {
-  const store = (req as AuthRequest & { store: { _id: unknown } }).store;
+  const store = req.store!;
   const { name, slug, sections, seoTitle, seoDescription, ogImage, isPublished, language, country, currency, direction } = req.body;
   const updates: Record<string, unknown> = {};
   if (typeof name === 'string') updates.name = name.trim();
@@ -280,7 +280,7 @@ export async function updatePage(req: AuthRequest, res: Response): Promise<void>
 }
 
 export async function deletePage(req: AuthRequest, res: Response): Promise<void> {
-  const store = (req as AuthRequest & { store: { _id: unknown } }).store;
+  const store = req.store!;
   const deleted = await pageService.deletePage(req.params.pageId, store._id.toString());
   if (!deleted) {
     res.status(404).json({ error: 'Page not found' });
@@ -296,7 +296,7 @@ export async function deletePage(req: AuthRequest, res: Response): Promise<void>
 /** POST /api/stores/:storeId/pages/generate-from-product/async — kick off async job. */
 export async function generateFromProductAsync(req: AuthRequest, res: Response): Promise<void> {
   if (!req.user) { res.status(401).json({ error: 'Not authenticated' }); return; }
-  const store = (req as AuthRequest & { store: { _id: unknown; name: string; settings?: { currency?: string; language?: string; country?: string } } }).store;
+  const store = req.store!;
   const body = req.body as {
     productId?: string;
     tone?: 'professional' | 'friendly' | 'minimal';
@@ -353,7 +353,7 @@ export async function generateFromProductAsync(req: AuthRequest, res: Response):
 /** POST /api/stores/:storeId/pages/generate-from-image/async — kick off async job from inspiration image. */
 export async function generateFromImageAsync(req: AuthRequest, res: Response): Promise<void> {
   if (!req.user) { res.status(401).json({ error: 'Not authenticated' }); return; }
-  const store = (req as AuthRequest & { store: { _id: unknown; name: string; settings?: { currency?: string; language?: string; country?: string } } }).store;
+  const store = req.store!;
   const body = req.body as {
     imageUrl?: string;
     productId?: string;
@@ -433,7 +433,7 @@ export async function getGenerationJob(req: AuthRequest, res: Response): Promise
  * Synchronous (~30-60s : LLM + 2 avatars). Charges AI balance once on success.
  */
 export async function generatePosterPage(req: AuthRequest, res: Response): Promise<void> {
-  const store = (req as AuthRequest & { store: { _id: unknown; name: string; settings?: { currency?: string; country?: string; language?: string } } }).store;
+  const store = req.store!;
   const body = req.body as {
     productId?: string;
     theme?: PosterTheme;

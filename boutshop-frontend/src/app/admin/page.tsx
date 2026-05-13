@@ -2,24 +2,40 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { adminApi, type AdminOverview } from '@/lib/api';
-import { useAuthStore } from '@/stores/auth-store';
 import {
-  Users, Store, Package, ShoppingCart, CheckCircle2, TrendingUp, Wallet, Sparkles,
-  Loader2, MessageSquare, AlertTriangle, Plus, ArrowUpRight, Crown, ShieldAlert,
-  ShieldCheck, Eye, Activity, Trophy, BadgeCheck,
+  Activity,
+  AlertTriangle,
+  ArrowRight,
+  ArrowUpRight,
+  CheckCircle2,
+  Crown,
+  Eye,
+  Loader2,
+  MessageSquare,
+  Package,
+  RefreshCcw,
+  ShieldAlert,
+  ShieldCheck,
+  ShoppingCart,
+  Sparkles,
+  Store,
+  TrendingUp,
+  Users,
+  Wallet,
+  XCircle,
 } from 'lucide-react';
-
-function fmt(amount: number, currency: string): string {
-  try {
-    return new Intl.NumberFormat(undefined, { style: 'currency', currency, maximumFractionDigits: 0 }).format(amount);
-  } catch {
-    return `${amount} ${currency}`;
-  }
-}
-function shortDate(d?: string) { return d ? new Date(d).toLocaleDateString(undefined, { day: '2-digit', month: 'short' }) : ''; }
-function shortDateTime(d?: string) { return d ? new Date(d).toLocaleDateString(undefined, { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) : ''; }
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { adminApi } from '@/lib/api';
+import { useAuthStore } from '@/stores/auth-store';
+import { KpiCard } from '@/components/charts/KpiCard';
+import { RangeSwitcher } from '@/components/charts/RangeSwitcher';
+import { RevenueAreaChart } from '@/components/charts/RevenueAreaChart';
+import { SignupsBarChart } from '@/components/charts/SignupsBarChart';
+import { CommissionAreaChart } from '@/components/charts/CommissionAreaChart';
+import { PaymentDonutChart } from '@/components/charts/PaymentDonutChart';
+import { GeoBreakdownList } from '@/components/charts/GeoBreakdownList';
+import type { AdminOverviewRich } from '@/types/admin-analytics';
+import type { RangeKey } from '@/types/analytics';
 
 const ROLE_BADGE: Record<string, { label: string; tone: string; Icon: typeof Crown }> = {
   owner:      { label: 'Owner',       tone: 'from-violet-600 to-fuchsia-600', Icon: Crown },
@@ -28,399 +44,529 @@ const ROLE_BADGE: Record<string, { label: string; tone: string; Icon: typeof Cro
   supervisor: { label: 'Superviseur', tone: 'from-indigo-600 to-blue-600',   Icon: Eye },
 };
 
+function fmt(amount: number, currency: string): string {
+  try {
+    return new Intl.NumberFormat(undefined, { style: 'currency', currency, maximumFractionDigits: 0 }).format(amount);
+  } catch {
+    return `${amount} ${currency}`;
+  }
+}
+
+function timeAgo(iso: string): string {
+  const d = new Date(iso);
+  const diff = Date.now() - d.getTime();
+  const mins = Math.round(diff / 60_000);
+  if (mins < 1) return 'à l\'instant';
+  if (mins < 60) return `il y a ${mins} min`;
+  const hrs = Math.round(mins / 60);
+  if (hrs < 24) return `il y a ${hrs} h`;
+  const days = Math.round(hrs / 24);
+  if (days < 7) return `il y a ${days} j`;
+  return d.toLocaleDateString('fr-FR', { day: '2-digit', month: 'short' });
+}
+
 export default function AdminOverviewPage() {
-  const [data, setData] = useState<AdminOverview | null>(null);
+  const [range, setRange] = useState<RangeKey>('30d');
+  const [data, setData] = useState<AdminOverviewRich | null>(null);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const user = useAuthStore((s) => s.user);
   const role = (user?.role as string) || 'admin';
   const meta = ROLE_BADGE[role] || ROLE_BADGE.admin;
   const RoleIcon = meta.Icon;
-  const canCreate = role === 'owner' || role === 'superadmin';
 
   useEffect(() => {
-    adminApi.overview()
-      .then((res) => setData(res.data.overview))
+    setLoading(true);
+    adminApi.overviewRich(range)
+      .then((res) => setData(res.data))
+      .catch(() => setData(null))
       .finally(() => setLoading(false));
-  }, []);
+  }, [range]);
 
-  if (loading) {
-    return (
-      <div className="grid place-items-center py-24">
-        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-      </div>
-    );
+  async function refresh() {
+    setRefreshing(true);
+    try {
+      const res = await adminApi.overviewRich(range);
+      setData(res.data);
+    } catch {
+      // ignore — UI already shows the previous payload
+    } finally {
+      setRefreshing(false);
+    }
   }
-  if (!data) return <p className="text-sm text-destructive">Échec du chargement.</p>;
 
-  const stats = [
-    { label: 'Vendeurs',             value: data.users,             icon: Users,         tone: 'indigo',  href: '/admin/users' },
-    { label: 'Boutiques',            value: data.stores,            icon: Store,         tone: 'fuchsia', href: '/admin/stores' },
-    { label: 'Produits',             value: data.products,          icon: Package,       tone: 'amber',   href: '/admin/stores' },
-    { label: 'Commandes',            value: data.orders.total,      icon: ShoppingCart,  tone: 'emerald', href: '/admin/orders' },
-    { label: 'Commandes payées',     value: data.orders.paid,       icon: CheckCircle2,  tone: 'emerald', href: '/admin/orders' },
-    { label: 'Livraisons confirmées',value: data.orders.delivered,  icon: TrendingUp,    tone: 'rose',    href: '/admin/orders' },
-  ] as const;
+  // Primary currency to display monetary KPIs in. Picks the currency with the
+  // largest commission (best proxy for platform's "main" currency).
+  const primaryCurrency = useMemo(() => {
+    if (!data) return 'USD';
+    const ranked = [...data.commissionByCurrency].sort((a, b) => b.total - a.total);
+    return ranked[0]?._id || 'USD';
+  }, [data]);
 
-  const toneClasses: Record<string, { grad: string; bg: string; fg: string }> = {
-    indigo:  { grad: 'from-indigo-500/15 to-violet-500/10', bg: 'bg-indigo-500/15', fg: 'text-indigo-700' },
-    fuchsia: { grad: 'from-fuchsia-500/15 to-pink-500/10',  bg: 'bg-fuchsia-500/15', fg: 'text-fuchsia-700' },
-    amber:   { grad: 'from-amber-500/15 to-orange-500/10',  bg: 'bg-amber-500/15', fg: 'text-amber-700' },
-    emerald: { grad: 'from-emerald-500/15 to-teal-500/10',  bg: 'bg-emerald-500/15', fg: 'text-emerald-700' },
-    rose:    { grad: 'from-rose-500/15 to-pink-500/10',     bg: 'bg-rose-500/15', fg: 'text-rose-700' },
-  };
+  const monthly = range === '12m';
 
   return (
-    <div className="space-y-8">
-      {/* ── Hero ───────────────────────────────────────────────── */}
-      <section className="relative overflow-hidden rounded-3xl border border-border/60 bg-card p-7">
+    <div className="space-y-5 sm:space-y-6">
+      {/* Header */}
+      <section className="relative overflow-hidden rounded-2xl border border-border/60 bg-card p-4 sm:rounded-3xl sm:p-7">
         <div className="pointer-events-none absolute -right-16 -top-16 h-64 w-64 rounded-full bg-gradient-to-br from-rose-500/20 via-amber-500/10 to-transparent blur-3xl" aria-hidden />
-        <div className="relative flex flex-wrap items-start justify-between gap-4">
-          <div>
-            <div className={`inline-flex items-center gap-1.5 rounded-full bg-gradient-to-r ${meta.tone} px-3 py-1 text-xs font-bold text-white shadow-lg`}>
+        <div className="relative flex flex-col gap-3 sm:gap-4 lg:flex-row lg:items-end lg:justify-between">
+          <div className="min-w-0">
+            <div className={`inline-flex items-center gap-1.5 rounded-full bg-gradient-to-r ${meta.tone} px-3 py-1 text-[11px] font-bold text-white shadow-lg sm:text-xs`}>
               <RoleIcon className="h-3 w-3" /> {meta.label}
             </div>
-            <h1 className="mt-3 text-3xl font-bold tracking-tight sm:text-4xl">
-              Bonjour {user?.name?.split(' ')[0] || 'Admin'} 👋
+            <h1 className="mt-2 text-2xl font-bold tracking-tight sm:mt-3 sm:text-3xl lg:text-4xl">
+              Vue plateforme
             </h1>
-            <p className="mt-2 max-w-2xl text-sm text-muted-foreground">
-              Vue temps réel sur tous les vendeurs, boutiques, commandes et flux financiers de la plateforme.
+            <p className="mt-1.5 max-w-2xl text-xs text-muted-foreground sm:mt-2 sm:text-sm">
+              Bonjour {user?.name?.split(' ')[0] || 'Admin'} — vue temps réel sur la croissance, les revenus et la santé de la marketplace.
             </p>
           </div>
-          {canCreate && (
-            <div className="flex flex-wrap gap-2">
-              <Link
-                href="/admin/users"
-                className="inline-flex items-center gap-1.5 rounded-xl bg-foreground px-4 py-2 text-sm font-semibold text-background transition hover:opacity-90"
-              >
-                <Plus className="h-4 w-4" /> Créer un compte
-              </Link>
-            </div>
-          )}
+          <div className="flex flex-wrap items-center gap-2">
+            <RangeSwitcher value={range} onChange={setRange} />
+            <button
+              type="button"
+              onClick={refresh}
+              disabled={refreshing}
+              className="inline-flex h-9 items-center gap-1.5 rounded-xl border border-border/60 bg-card px-2.5 text-xs font-semibold shadow-sm transition-colors hover:bg-muted disabled:opacity-50 sm:px-3"
+            >
+              <RefreshCcw className={`h-3.5 w-3.5 ${refreshing ? 'animate-spin' : ''}`} />
+              <span className="hidden sm:inline">Actualiser</span>
+            </button>
+          </div>
         </div>
       </section>
 
-      {/* ── KPIs ───────────────────────────────────────────────── */}
-      <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        {stats.map((s) => {
-          const t = toneClasses[s.tone];
-          return (
-            <Link
-              key={s.label}
-              href={s.href}
-              className="group relative overflow-hidden rounded-2xl border border-border/60 bg-card p-5 transition-all hover:-translate-y-0.5 hover:shadow-xl"
-            >
-              <div className={`pointer-events-none absolute -right-10 -top-10 h-32 w-32 rounded-full bg-gradient-to-br ${t.grad} blur-3xl`} aria-hidden />
-              <div className="relative flex items-start justify-between">
-                <div>
-                  <div className="text-xs font-medium uppercase tracking-wider text-muted-foreground">{s.label}</div>
-                  <div className="mt-2 text-3xl font-bold tracking-tight">{s.value.toLocaleString()}</div>
-                </div>
-                <div className={`grid h-11 w-11 place-items-center rounded-xl ${t.bg} ${t.fg} transition-transform group-hover:scale-110`}>
-                  <s.icon className="h-[18px] w-[18px]" />
-                </div>
-              </div>
-              <div className="relative mt-3 inline-flex items-center gap-1 text-[11px] font-medium text-muted-foreground transition-colors group-hover:text-foreground">
-                Voir le détail <ArrowUpRight className="h-3 w-3" />
-              </div>
-            </Link>
-          );
-        })}
-      </section>
-
-      {/* ── Activity chart + Complaints ────────────────────────── */}
-      <div className="grid gap-6 lg:grid-cols-3">
-        <Card className="lg:col-span-2">
-          <CardHeader>
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <CardTitle className="flex items-center gap-2"><Activity className="h-4 w-4" /> Activité 30 jours</CardTitle>
-                <CardDescription>Commandes par jour (payées en rose).</CardDescription>
-              </div>
-              <ChartLegend />
-            </div>
-          </CardHeader>
-          <CardContent>
-            <OrdersChart data={data.ordersByDay30d} />
-          </CardContent>
-        </Card>
-
-        <Card className="lg:col-span-1">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2"><MessageSquare className="h-4 w-4" /> Réclamations</CardTitle>
-            <CardDescription>À traiter.</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            <ComplaintTile
-              tone={data.complaints.urgent > 0 ? 'rose' : 'amber'}
-              icon={data.complaints.urgent > 0 ? AlertTriangle : MessageSquare}
-              count={data.complaints.urgent}
-              label="Urgentes"
+      {loading && !data ? (
+        <LoadingSkeleton />
+      ) : !data ? (
+        <Card><CardContent className="py-16 text-center text-muted-foreground">Échec du chargement.</CardContent></Card>
+      ) : (
+        <>
+          {/* KPI grid — totals. 2 cols mobile, 4 cols desktop. */}
+          <div className="grid grid-cols-2 gap-2.5 sm:gap-3 lg:grid-cols-4">
+            <KpiCard
+              label="Vendeurs"
+              value={data.totals.users.toLocaleString()}
+              icon={Users}
+              accent="violet"
+              hint="comptes actifs"
             />
-            <ComplaintTile
-              tone="indigo"
-              icon={MessageSquare}
-              count={data.complaints.open}
-              label="Ouvertes ou en cours"
+            <KpiCard
+              label="Boutiques"
+              value={data.totals.stores.toLocaleString()}
+              icon={Store}
+              accent="pink"
+              hint="toutes confondues"
             />
-            <Link
-              href="/admin/complaints"
-              className="block w-full rounded-xl bg-foreground py-2.5 text-center text-xs font-semibold text-background transition hover:opacity-90"
-            >
-              Voir toutes les réclamations
-            </Link>
-          </CardContent>
-        </Card>
-      </div>
+            <KpiCard
+              label="Produits"
+              value={data.totals.products.toLocaleString()}
+              icon={Package}
+              accent="amber"
+            />
+            <KpiCard
+              label="Commandes totales"
+              value={data.totals.orders.total.toLocaleString()}
+              icon={ShoppingCart}
+              accent="sky"
+            />
+            <KpiCard
+              label="Payées"
+              value={data.totals.orders.paid.toLocaleString()}
+              icon={CheckCircle2}
+              accent="emerald"
+              hint={`${((data.totals.orders.paid / Math.max(data.totals.orders.total, 1)) * 100).toFixed(1)}% du total`}
+            />
+            <KpiCard
+              label="Livrées"
+              value={data.totals.orders.delivered.toLocaleString()}
+              icon={TrendingUp}
+              accent="emerald"
+            />
+            <KpiCard
+              label="Échecs paiement"
+              value={data.totals.orders.failed.toLocaleString()}
+              icon={XCircle}
+              accent="amber"
+              hint={`${((data.totals.orders.failed / Math.max(data.totals.orders.total, 1)) * 100).toFixed(1)}% du total`}
+            />
+            <KpiCard
+              label="Réclamations urgentes"
+              value={data.totals.complaints.urgent.toLocaleString()}
+              icon={AlertTriangle}
+              accent="amber"
+              hint={`${data.totals.complaints.open} ouvertes`}
+            />
+          </div>
 
-      {/* ── GMV / Wallets / Commission ─────────────────────────── */}
-      <div className="grid gap-6 lg:grid-cols-3">
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2"><TrendingUp className="h-4 w-4" /> GMV 30 j.</CardTitle>
-            <CardDescription>Valeur des commandes par devise.</CardDescription>
-          </CardHeader>
-          <CardContent>
-            {Object.keys(data.gmv30d).length === 0 ? (
-              <p className="text-sm text-muted-foreground">Aucune commande sur 30 jours.</p>
-            ) : (
-              <ul className="space-y-2">
-                {Object.entries(data.gmv30d).map(([cur, amount]) => (
-                  <li key={cur} className="flex items-center justify-between rounded-lg border border-border/60 bg-muted/20 p-3">
-                    <span className="font-mono text-xs uppercase tracking-wider text-muted-foreground">{cur}</span>
-                    <span className="text-lg font-bold tracking-tight">{fmt(amount, cur)}</span>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </CardContent>
-        </Card>
+          {/* Revenue chart full width */}
+          <Card>
+            <CardHeader className="flex flex-row items-start justify-between gap-3 pb-2">
+              <div className="min-w-0">
+                <CardTitle className="flex items-center gap-2 text-sm sm:text-base"><Activity className="h-4 w-4 shrink-0" /> GMV &amp; commandes</CardTitle>
+                <p className="mt-0.5 truncate text-[11px] text-muted-foreground sm:text-xs">
+                  {monthly ? 'Mensuel' : 'Quotidien'} · {primaryCurrency} ·{' '}
+                  {new Date(data.window.from).toLocaleDateString('fr-FR', { day: '2-digit', month: 'short' })} →{' '}
+                  {new Date(data.window.to).toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', year: 'numeric' })}
+                </p>
+              </div>
+              <div className="hidden items-center gap-4 text-xs text-muted-foreground md:flex">
+                <span className="inline-flex items-center gap-1.5">
+                  <span className="h-2 w-2 rounded-full bg-pink-500" /> Revenu
+                </span>
+                <span className="inline-flex items-center gap-1.5">
+                  <span className="h-2 w-2 rounded-full bg-violet-500" /> Commandes payées
+                </span>
+              </div>
+            </CardHeader>
+            <CardContent className="px-2 sm:px-6">
+              <RevenueAreaChart data={data.timeseries.revenue} currency={primaryCurrency} monthly={monthly} />
+            </CardContent>
+          </Card>
 
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2"><Wallet className="h-4 w-4" /> Wallets</CardTitle>
-            <CardDescription>Soldes vendeurs par devise.</CardDescription>
-          </CardHeader>
-          <CardContent>
-            {data.walletsByCurrency.length === 0 ? (
-              <p className="text-sm text-muted-foreground">Aucun wallet.</p>
-            ) : (
-              <ul className="space-y-2">
-                {data.walletsByCurrency.map((w) => (
-                  <li key={w._id} className="rounded-lg border border-border/60 bg-muted/20 p-3">
-                    <div className="flex items-center justify-between text-xs text-muted-foreground">
-                      <span className="font-mono uppercase tracking-wider">{w._id}</span>
-                      <span>{w.count} vendeur{w.count > 1 ? 's' : ''}</span>
-                    </div>
-                    <div className="mt-2 grid grid-cols-2 gap-2 text-sm">
-                      <div className="rounded-lg bg-emerald-500/10 p-2">
-                        <div className="text-[10px] font-bold uppercase text-emerald-700">Principal</div>
-                        <div className="font-bold tracking-tight">{fmt(w.totalBalance, w._id)}</div>
-                      </div>
-                      <div className="rounded-lg bg-fuchsia-500/10 p-2">
-                        <div className="text-[10px] font-bold uppercase text-fuchsia-700">IA</div>
-                        <div className="font-bold tracking-tight">{fmt(w.totalAi, w._id)}</div>
-                      </div>
-                    </div>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </CardContent>
-        </Card>
+          {/* Signups + Commission side by side */}
+          <div className="grid gap-3 sm:gap-4 lg:grid-cols-2">
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="flex items-center gap-2 text-sm sm:text-base"><Users className="h-4 w-4 shrink-0" /> Nouveaux vendeurs</CardTitle>
+                <p className="text-[11px] text-muted-foreground sm:text-xs">Inscriptions sur la période</p>
+              </CardHeader>
+              <CardContent className="px-2 sm:px-6">
+                <SignupsBarChart data={data.timeseries.signups} monthly={monthly} />
+              </CardContent>
+            </Card>
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="flex items-center gap-2 text-sm sm:text-base"><Sparkles className="h-4 w-4 shrink-0" /> Commission encaissée</CardTitle>
+                <p className="text-[11px] text-muted-foreground sm:text-xs">Marge plateforme · {primaryCurrency}</p>
+              </CardHeader>
+              <CardContent className="px-2 sm:px-6">
+                <CommissionAreaChart data={data.timeseries.commission} currency={primaryCurrency} monthly={monthly} />
+              </CardContent>
+            </Card>
+          </div>
 
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2"><Sparkles className="h-4 w-4 text-rose-500" /> Commission</CardTitle>
-            <CardDescription>Total prélevé à ce jour.</CardDescription>
-          </CardHeader>
-          <CardContent>
-            {data.commissionByCurrency.length === 0 ? (
-              <p className="text-sm text-muted-foreground">Aucune commission.</p>
-            ) : (
-              <ul className="space-y-2">
-                {data.commissionByCurrency.map((c) => (
-                  <li key={c._id} className="rounded-lg border border-border/60 bg-gradient-to-br from-rose-500/5 to-amber-500/5 p-3">
-                    <div className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
-                      {c._id} · {c.count} prélèvement{c.count > 1 ? 's' : ''}
-                    </div>
-                    <div className="mt-1 text-2xl font-bold tracking-tight text-rose-700">{fmt(c.total, c._id)}</div>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </CardContent>
-        </Card>
-      </div>
+          {/* Top stores + payment mix */}
+          <div className="grid gap-3 sm:gap-4 lg:grid-cols-3">
+            <Card className="lg:col-span-2">
+              <CardHeader className="pb-2">
+                <CardTitle className="flex items-center gap-2 text-sm sm:text-base"><Store className="h-4 w-4 shrink-0" /> Top boutiques</CardTitle>
+                <p className="text-[11px] text-muted-foreground sm:text-xs">Cliquer pour voir le détail</p>
+              </CardHeader>
+              <CardContent>
+                {data.topStores.length === 0 ? (
+                  <p className="py-6 text-center text-sm text-muted-foreground">Aucune vente sur la période.</p>
+                ) : (
+                  <TopStoresGrid stores={data.topStores} />
+                )}
+              </CardContent>
+            </Card>
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm sm:text-base">Méthodes de paiement</CardTitle>
+                <p className="text-[11px] text-muted-foreground sm:text-xs">Sur la période</p>
+              </CardHeader>
+              <CardContent>
+                <PaymentDonutChart data={data.paymentMix.map(p => ({ provider: p._id, orders: p.orders, revenue: p.revenue }))} currency={primaryCurrency} />
+              </CardContent>
+            </Card>
+          </div>
 
-      {/* ── Recent activity ────────────────────────────────────── */}
-      <div className="grid gap-6 lg:grid-cols-3">
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2"><ShoppingCart className="h-4 w-4" /> Dernières commandes</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-2">
-            {data.recentOrders.length === 0 ? (
-              <p className="text-sm text-muted-foreground">Aucune commande.</p>
-            ) : data.recentOrders.map((o) => (
-              <Link key={o._id} href="/admin/orders" className="block rounded-lg border border-border/60 p-2.5 transition hover:bg-muted/30">
-                <div className="flex items-center justify-between">
-                  <span className="font-mono text-[11px] text-muted-foreground">#{o.orderNumber || o._id.slice(-6)}</span>
-                  <span className="text-sm font-bold tracking-tight">{fmt(o.total, o.currency)}</span>
-                </div>
-                <div className="mt-1 flex flex-wrap items-center justify-between gap-2 text-[11px] text-muted-foreground">
-                  <span className="truncate">{o.storeId?.name || '—'}</span>
-                  <span className="shrink-0">{shortDateTime(o.createdAt)}</span>
-                </div>
-                <div className="mt-1.5 flex flex-wrap gap-1">
-                  <StatusPill tone={o.paymentStatus === 'paid' ? 'emerald' : 'amber'} label={o.paymentStatus} />
-                  <StatusPill tone={o.fulfillmentStatus === 'fulfilled' ? 'emerald' : 'indigo'} label={o.fulfillmentStatus} />
-                </div>
-              </Link>
-            ))}
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2"><Users className="h-4 w-4" /> Nouveaux vendeurs</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-2">
-            {data.recentUsers.length === 0 ? (
-              <p className="text-sm text-muted-foreground">Aucun nouveau vendeur.</p>
-            ) : data.recentUsers.map((u) => {
-              const initials = (u.name || u.email).split(/[\s@]/).map((s) => s[0]).filter(Boolean).slice(0, 2).join('').toUpperCase();
-              return (
-                <Link key={u._id} href={`/admin/users/${u._id}`} className="flex items-center gap-3 rounded-lg border border-border/60 p-2.5 transition hover:bg-muted/30">
-                  <div className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-gradient-to-br from-indigo-500 to-violet-500 text-[10px] font-semibold text-white shadow-md">
-                    {initials}
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-1.5 text-sm font-semibold">
-                      <span className="truncate">{u.name || '—'}</span>
-                      {u.emailVerified && <BadgeCheck className="h-3 w-3 shrink-0 text-emerald-600" />}
-                    </div>
-                    <div className="truncate text-[11px] text-muted-foreground">{u.email}</div>
-                  </div>
-                  <span className="shrink-0 text-[11px] text-muted-foreground">{shortDate(u.createdAt)}</span>
-                </Link>
-              );
-            })}
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2"><Trophy className="h-4 w-4 text-amber-500" /> Top boutiques 30 j.</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-2">
-            {data.topStores30d.length === 0 ? (
-              <p className="text-sm text-muted-foreground">Pas encore de classement.</p>
-            ) : data.topStores30d.map((s, i) => {
-              const medal = ['🥇', '🥈', '🥉', '4.', '5.'][i];
-              return (
-                <Link key={s._id} href={`/store/${s.slug}`} target="_blank" className="flex items-center gap-3 rounded-lg border border-border/60 p-2.5 transition hover:bg-muted/30">
-                  <span className="text-lg">{medal}</span>
-                  <div className="min-w-0 flex-1">
-                    <div className="truncate text-sm font-semibold">{s.name || '(boutique supprimée)'}</div>
-                    <div className="text-[11px] text-muted-foreground">{s.orders} commande{s.orders > 1 ? 's' : ''} payée{s.orders > 1 ? 's' : ''}</div>
-                  </div>
-                  <div className="shrink-0 text-right">
-                    <div className="text-sm font-bold tracking-tight">{fmt(s.gmv, s.currency || 'XOF')}</div>
-                  </div>
-                </Link>
-              );
-            })}
-          </CardContent>
-        </Card>
-      </div>
-    </div>
-  );
-}
-
-// ─────────────────────────────────────────────────────────────────────
-// ORDERS CHART — minimal inline SVG bar chart, no dependency
-// ─────────────────────────────────────────────────────────────────────
-function OrdersChart({ data }: { data: AdminOverview['ordersByDay30d'] }) {
-  const max = useMemo(() => Math.max(1, ...data.map((d) => d.orders)), [data]);
-  const barWidth = 100 / data.length;
-  return (
-    <div className="space-y-2">
-      <svg viewBox="0 0 100 40" preserveAspectRatio="none" className="h-32 w-full">
-        {data.map((d, i) => {
-          const h = (d.orders / max) * 36;
-          return (
-            <g key={d.date}>
-              <rect
-                x={i * barWidth + 0.4}
-                y={40 - h}
-                width={barWidth - 0.8}
-                height={h}
-                rx={0.6}
-                className="fill-indigo-500/30"
-              />
-              {d.revenue > 0 && (
-                <rect
-                  x={i * barWidth + 0.4}
-                  y={40 - h}
-                  width={barWidth - 0.8}
-                  height={Math.max(0.5, (d.revenue > 0 ? Math.min(h, 36) : 0))}
-                  rx={0.6}
-                  className="fill-rose-500/70"
+          {/* Geo + Alerts */}
+          <div className="grid gap-3 sm:gap-4 lg:grid-cols-2">
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-base">Top pays acheteurs</CardTitle>
+                <p className="text-xs text-muted-foreground">Top 12 par revenu</p>
+              </CardHeader>
+              <CardContent>
+                <GeoBreakdownList data={data.geo} currency={primaryCurrency} />
+              </CardContent>
+            </Card>
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="flex items-center gap-2 text-base">
+                  <AlertTriangle className="h-4 w-4 text-amber-600" />
+                  Alertes
+                </CardTitle>
+                <p className="text-xs text-muted-foreground">Paiements échoués + réclamations</p>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <AlertTile
+                  tone={data.totals.complaints.urgent > 0 ? 'rose' : 'amber'}
+                  icon={data.totals.complaints.urgent > 0 ? AlertTriangle : MessageSquare}
+                  count={data.totals.complaints.urgent}
+                  label="Réclamations urgentes"
+                  href="/admin/complaints"
                 />
-              )}
-            </g>
-          );
-        })}
-      </svg>
-      <div className="flex justify-between text-[10px] text-muted-foreground">
-        <span>{shortDate(data[0]?.date)}</span>
-        <span>{shortDate(data[Math.floor(data.length / 2)]?.date)}</span>
-        <span>{shortDate(data[data.length - 1]?.date)}</span>
-      </div>
-    </div>
-  );
-}
-function ChartLegend() {
-  return (
-    <div className="flex items-center gap-3 text-[10px] text-muted-foreground">
-      <span className="inline-flex items-center gap-1"><span className="inline-block h-2 w-2 rounded-sm bg-indigo-500/30" /> Total</span>
-      <span className="inline-flex items-center gap-1"><span className="inline-block h-2 w-2 rounded-sm bg-rose-500/70" /> Payées</span>
+                <AlertTile
+                  tone="indigo"
+                  icon={MessageSquare}
+                  count={data.totals.complaints.open}
+                  label="Réclamations ouvertes / en cours"
+                  href="/admin/complaints"
+                />
+
+                {data.alerts.failedPayments.length > 0 ? (
+                  <div>
+                    <div className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                      Derniers paiements échoués
+                    </div>
+                    <ul className="divide-y divide-border/50">
+                      {data.alerts.failedPayments.map((o) => {
+                        const storeName = typeof o.storeId === 'object' ? o.storeId?.name : undefined;
+                        return (
+                          <li key={o._id} className="flex items-center gap-2 py-2 sm:gap-3">
+                            <span className="grid h-7 w-7 shrink-0 place-items-center rounded-lg bg-rose-500/10 text-rose-600">
+                              <XCircle className="h-3.5 w-3.5" />
+                            </span>
+                            <div className="min-w-0 flex-1">
+                              <div className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5">
+                                <span className="font-mono text-[11px] font-semibold sm:text-xs">#{o.orderNumber}</span>
+                                {storeName && <span className="truncate text-[10px] text-muted-foreground sm:text-[11px]">· {storeName}</span>}
+                              </div>
+                              <div className="truncate text-[10px] text-muted-foreground sm:text-[11px]">
+                                {o.email} · {timeAgo(o.createdAt)}
+                              </div>
+                            </div>
+                            <div className="shrink-0 text-right text-[11px] font-semibold tabular-nums sm:text-xs">{fmt(o.total, o.currency)}</div>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  </div>
+                ) : (
+                  <p className="text-center text-xs text-muted-foreground">Aucun paiement échoué récent ✓</p>
+                )}
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* Wallets / Commission totals */}
+          <div className="grid gap-3 sm:gap-4 lg:grid-cols-2">
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="flex items-center gap-2 text-sm sm:text-base"><Wallet className="h-4 w-4 shrink-0" /> Wallets vendeurs</CardTitle>
+                <p className="text-[11px] text-muted-foreground sm:text-xs">Soldes cumulés par devise</p>
+              </CardHeader>
+              <CardContent>
+                {data.walletsByCurrency.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">Aucun wallet actif.</p>
+                ) : (
+                  <ul className="space-y-2">
+                    {data.walletsByCurrency.map((w) => (
+                      <li key={w._id} className="rounded-xl border border-border/60 bg-muted/20 p-3">
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="font-mono text-[11px] uppercase tracking-wider text-muted-foreground sm:text-xs">{w._id}</span>
+                          <span className="text-[10px] text-muted-foreground sm:text-[11px]">{w.count} compte{w.count > 1 ? 's' : ''}</span>
+                        </div>
+                        <div className="mt-1.5 flex flex-wrap items-baseline justify-between gap-2">
+                          <span className="break-all text-base font-bold sm:text-lg">{fmt(w.totalBalance, w._id)}</span>
+                          {w.totalAi > 0 && (
+                            <span className="text-[10px] text-muted-foreground sm:text-[11px]">+ {fmt(w.totalAi, w._id)} IA</span>
+                          )}
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </CardContent>
+            </Card>
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="flex items-center gap-2 text-sm sm:text-base"><TrendingUp className="h-4 w-4 shrink-0" /> Commission totale</CardTitle>
+                <p className="text-[11px] text-muted-foreground sm:text-xs">Depuis le début</p>
+              </CardHeader>
+              <CardContent>
+                {data.commissionByCurrency.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">Aucune commission encaissée.</p>
+                ) : (
+                  <ul className="space-y-2">
+                    {data.commissionByCurrency.map((c) => (
+                      <li key={c._id} className="rounded-xl border border-emerald-500/30 bg-emerald-500/5 p-3">
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="font-mono text-[11px] uppercase tracking-wider text-emerald-700 sm:text-xs">{c._id}</span>
+                          <span className="text-[10px] text-emerald-700 sm:text-[11px]">{c.count} prélèv.</span>
+                        </div>
+                        <div className="mt-1.5 break-all text-base font-bold text-emerald-900 sm:text-lg">{fmt(c.total, c._id)}</div>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* Recent activity */}
+          <div className="grid gap-3 sm:gap-4 lg:grid-cols-2">
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm sm:text-base">Commandes récentes</CardTitle>
+                <p className="text-[11px] text-muted-foreground sm:text-xs">8 dernières · toutes boutiques</p>
+              </CardHeader>
+              <CardContent>
+                {data.recentOrders.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">Aucune commande.</p>
+                ) : (
+                  <ul className="divide-y divide-border/50">
+                    {data.recentOrders.map((o) => {
+                      const storeName = typeof o.storeId === 'object' ? o.storeId?.name : undefined;
+                      const storeSlug = typeof o.storeId === 'object' ? o.storeId?.slug : undefined;
+                      const payClass = o.paymentStatus === 'paid' ? 'bg-emerald-500/10 text-emerald-700'
+                        : o.paymentStatus === 'failed' ? 'bg-rose-500/10 text-rose-700'
+                        : 'bg-amber-500/10 text-amber-700';
+                      return (
+                        <li key={o._id} className="flex items-center gap-2 py-2.5 sm:gap-3">
+                          <div className="min-w-0 flex-1">
+                            <div className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5 sm:gap-2">
+                              <span className="font-mono text-[11px] font-semibold sm:text-xs">#{o.orderNumber}</span>
+                              <span className={`rounded-full px-1.5 py-0.5 text-[10px] font-semibold ${payClass}`}>
+                                {o.paymentStatus}
+                              </span>
+                              {storeName && (
+                                <Link href={storeSlug ? `/store/${storeSlug}` : '#'} target="_blank" className="truncate text-[10px] text-muted-foreground hover:text-foreground sm:text-[11px]">
+                                  · {storeName}
+                                </Link>
+                              )}
+                            </div>
+                            <div className="truncate text-[10px] text-muted-foreground sm:text-[11px]">
+                              {o.customerName || o.email} · {timeAgo(o.createdAt)}
+                            </div>
+                          </div>
+                          <div className="shrink-0 text-xs font-bold tabular-nums sm:text-sm">{fmt(o.total, o.currency)}</div>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                )}
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm sm:text-base">Nouveaux vendeurs</CardTitle>
+                <p className="text-[11px] text-muted-foreground sm:text-xs">8 inscriptions les plus récentes</p>
+              </CardHeader>
+              <CardContent>
+                {data.recentUsers.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">Aucune inscription récente.</p>
+                ) : (
+                  <ul className="divide-y divide-border/50">
+                    {data.recentUsers.map((u) => (
+                      <li key={u._id} className="flex items-center gap-2 py-2.5 sm:gap-3">
+                        <span className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-gradient-to-br from-violet-500/15 to-pink-500/10 text-violet-700 text-sm font-bold">
+                          {(u.name || u.email)[0].toUpperCase()}
+                        </span>
+                        <div className="min-w-0 flex-1">
+                          <div className="truncate text-xs font-semibold sm:text-sm">{u.name || u.email}</div>
+                          <div className="truncate text-[10px] text-muted-foreground sm:text-[11px]">
+                            {u.email} · {timeAgo(u.createdAt)}
+                          </div>
+                        </div>
+                        <Link href={`/admin/users/${u._id}`} className="shrink-0 text-[11px] font-semibold text-violet-700 hover:underline sm:text-xs">
+                          Détail
+                        </Link>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </CardContent>
+            </Card>
+          </div>
+        </>
+      )}
     </div>
   );
 }
 
-function ComplaintTile({
-  tone, icon: Icon, count, label,
+function TopStoresGrid({
+  stores,
 }: {
-  tone: 'rose' | 'amber' | 'indigo';
-  icon: typeof MessageSquare;
-  count: number;
-  label: string;
+  stores: AdminOverviewRich['topStores'];
 }) {
-  const tones = {
-    rose:   { bg: 'bg-rose-500/10',    fg: 'text-rose-700',    ring: 'ring-rose-500/20' },
-    amber:  { bg: 'bg-amber-500/10',   fg: 'text-amber-700',   ring: 'ring-amber-500/20' },
-    indigo: { bg: 'bg-indigo-500/10',  fg: 'text-indigo-700',  ring: 'ring-indigo-500/20' },
-  }[tone];
+  const max = Math.max(...stores.map((s) => s.gmv), 1);
   return (
-    <div className={`flex items-center gap-3 rounded-xl ${tones.bg} p-3 ring-1 ${tones.ring}`}>
-      <div className={`grid h-10 w-10 shrink-0 place-items-center rounded-lg bg-background ${tones.fg}`}>
-        <Icon className="h-4 w-4" />
-      </div>
-      <div className="min-w-0 flex-1">
-        <div className="text-2xl font-bold tracking-tight">{count}</div>
-        <div className="text-[11px] uppercase tracking-wider text-muted-foreground">{label}</div>
-      </div>
-    </div>
+    <ul className="space-y-2">
+      {stores.map((s, i) => {
+        const w = (s.gmv / max) * 100;
+        const cur = s.currency || 'USD';
+        return (
+          <li key={s._id}>
+            <Link
+              href={`/admin/stores/${s._id}/analytics`}
+              className="group relative flex items-center gap-2 overflow-hidden rounded-xl border border-border/60 bg-card/60 p-2.5 transition-all hover:border-primary/40 hover:shadow-sm sm:gap-3 sm:p-3"
+            >
+              <div
+                className="pointer-events-none absolute inset-y-0 left-0 bg-gradient-to-r from-rose-500/10 via-amber-500/5 to-transparent"
+                style={{ width: `${w}%` }}
+              />
+              <span className="relative grid h-6 w-6 shrink-0 place-items-center rounded-full bg-muted text-[10px] font-bold text-muted-foreground sm:h-7 sm:w-7 sm:text-[11px]">
+                {i + 1}
+              </span>
+              {s.logo ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={s.logo} alt="" className="relative h-8 w-8 shrink-0 rounded-lg object-cover ring-1 ring-border/60 sm:h-9 sm:w-9" />
+              ) : (
+                <span className="relative grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-gradient-to-br from-rose-500/15 to-amber-500/10 text-rose-700 sm:h-9 sm:w-9">
+                  <Store className="h-4 w-4" />
+                </span>
+              )}
+              <div className="relative min-w-0 flex-1">
+                <div className="truncate text-xs font-semibold sm:text-sm">{s.name || '(boutique supprimée)'}</div>
+                <div className="text-[10px] text-muted-foreground sm:text-[11px]">
+                  {s.orders} commande{s.orders > 1 ? 's' : ''}
+                </div>
+              </div>
+              <div className="relative shrink-0 text-right">
+                <div className="text-xs font-bold tabular-nums sm:text-sm">{fmt(s.gmv, cur)}</div>
+              </div>
+              <ArrowRight className="relative hidden h-4 w-4 shrink-0 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100 sm:block" />
+            </Link>
+          </li>
+        );
+      })}
+    </ul>
   );
 }
 
-function StatusPill({ tone, label }: { tone: 'emerald' | 'amber' | 'indigo'; label?: string }) {
-  if (!label) return null;
-  const cls = {
-    emerald: 'bg-emerald-500/10 text-emerald-700',
-    amber:   'bg-amber-500/10 text-amber-700',
-    indigo:  'bg-indigo-500/10 text-indigo-700',
-  }[tone];
-  return <span className={`inline-block rounded-full px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider ${cls}`}>{label}</span>;
+function AlertTile({
+  tone, icon: Icon, count, label, href,
+}: {
+  tone: 'rose' | 'amber' | 'indigo'; icon: typeof MessageSquare; count: number; label: string; href: string;
+}) {
+  const cls =
+    tone === 'rose' ? 'border-rose-500/30 bg-rose-500/5 text-rose-700' :
+    tone === 'amber' ? 'border-amber-500/30 bg-amber-500/5 text-amber-700' :
+    'border-indigo-500/30 bg-indigo-500/5 text-indigo-700';
+  return (
+    <Link
+      href={href}
+      className={`group flex items-center gap-2.5 rounded-xl border p-2.5 transition-colors hover:bg-card sm:gap-3 sm:p-3 ${cls}`}
+    >
+      <Icon className="h-5 w-5 shrink-0" />
+      <div className="min-w-0 flex-1">
+        <div className="text-[10px] font-semibold uppercase tracking-wider opacity-80 sm:text-xs">{label}</div>
+        <div className="text-xl font-bold tracking-tight sm:text-2xl">{count}</div>
+      </div>
+      <ArrowUpRight className="h-4 w-4 shrink-0 opacity-60 transition-transform group-hover:translate-x-0.5" />
+    </Link>
+  );
+}
+
+function LoadingSkeleton() {
+  return (
+    <div className="space-y-6">
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        {Array.from({ length: 8 }).map((_, i) => (
+          <div key={i} className="h-[110px] animate-pulse rounded-2xl border border-border/60 bg-card" />
+        ))}
+      </div>
+      <div className="h-[380px] animate-pulse rounded-xl border border-border/60 bg-card" />
+      <div className="grid gap-4 lg:grid-cols-2">
+        <div className="h-[280px] animate-pulse rounded-xl border border-border/60 bg-card" />
+        <div className="h-[280px] animate-pulse rounded-xl border border-border/60 bg-card" />
+      </div>
+    </div>
+  );
 }

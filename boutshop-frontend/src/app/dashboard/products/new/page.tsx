@@ -95,8 +95,15 @@ export default function NewProductPage() {
   const [error, setError] = useState('');
 
   useEffect(() => {
-    if (!storeId) setError('No store selected');
-  }, [storeId]);
+    if (!storeId) { setError('No store selected'); return; }
+    // If the store is digital, redirect to the dedicated digital form (better UX).
+    storesApi.get(storeId).then((res) => {
+      const s = (res.data as { store?: { storeType?: string } }).store;
+      if (s?.storeType === 'digital') {
+        router.replace(`/dashboard/products/new/digital?storeId=${storeId}`);
+      }
+    }).catch(() => { /* non-blocking */ });
+  }, [storeId, router]);
 
   function addVariant() {
     setVariants((prev) => [
@@ -350,12 +357,12 @@ export default function NewProductPage() {
   }
 
   return (
-    <div className="mx-auto max-w-4xl space-y-8">
-      <div className="flex items-center gap-4">
-        <Button variant="ghost" size="sm" onClick={() => router.push('/dashboard/products')}>
-          ← Back
+    <div className="mx-auto max-w-4xl space-y-5 sm:space-y-8">
+      <div className="flex items-center gap-2 sm:gap-4">
+        <Button variant="ghost" size="sm" onClick={() => router.push('/dashboard/products')} className="shrink-0 px-2 sm:px-3">
+          ← <span className="hidden sm:inline ml-1">Back</span>
         </Button>
-        <h1 className="text-3xl font-bold">New product</h1>
+        <h1 className="truncate text-xl font-bold sm:text-3xl">Nouveau produit</h1>
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-6">
@@ -581,9 +588,9 @@ export default function NewProductPage() {
             {variants.map((v, index) => (
               <div
                 key={index}
-                className="flex flex-wrap items-end gap-3 rounded-lg border bg-muted/30 p-4"
+                className="grid grid-cols-2 gap-2.5 rounded-lg border bg-muted/30 p-3 sm:flex sm:flex-wrap sm:items-end sm:gap-3 sm:p-4"
               >
-                <div className="flex-1 min-w-[140px] space-y-1">
+                <div className="col-span-2 space-y-1 sm:flex-1 sm:min-w-[140px]">
                   <Label className="text-xs">Nom de la variante</Label>
                   <Input
                     value={v.name}
@@ -591,7 +598,7 @@ export default function NewProductPage() {
                     placeholder="Ex: Taille S / Rouge"
                   />
                 </div>
-                <div className="w-32 space-y-1">
+                <div className="space-y-1 sm:w-32">
                   <Label className="text-xs">SKU variante</Label>
                   <Input
                     value={v.sku}
@@ -599,7 +606,7 @@ export default function NewProductPage() {
                     placeholder="Ex: BS-CAFTAN-S"
                   />
                 </div>
-                <div className="w-24 space-y-1">
+                <div className="space-y-1 sm:w-24">
                   <Label className="text-xs">Prix</Label>
                   <Input
                     type="number"
@@ -610,7 +617,7 @@ export default function NewProductPage() {
                     placeholder="Ex: 45000"
                   />
                 </div>
-                <div className="w-24 space-y-1">
+                <div className="space-y-1 sm:w-24">
                   <Label className="text-xs">Prix barré</Label>
                   <Input
                     type="number"
@@ -622,7 +629,7 @@ export default function NewProductPage() {
                   />
                 </div>
                 {type === 'physical' && (
-                  <div className="w-20 space-y-1">
+                  <div className="space-y-1 sm:w-20">
                     <Label className="text-xs">Stock</Label>
                     <Input
                       type="number"
@@ -633,9 +640,12 @@ export default function NewProductPage() {
                     />
                   </div>
                 )}
-                <Button type="button" variant="ghost" size="icon" onClick={() => removeVariant(index)} aria-label="Supprimer la variante">
-                  <Trash2 className="h-4 w-4" />
-                </Button>
+                <div className="col-span-2 flex justify-end sm:col-auto sm:w-auto">
+                  <Button type="button" variant="ghost" size="sm" onClick={() => removeVariant(index)} aria-label="Supprimer la variante" className="text-destructive hover:bg-destructive/10">
+                    <Trash2 className="mr-1.5 h-4 w-4" />
+                    <span className="sm:hidden">Supprimer</span>
+                  </Button>
+                </div>
               </div>
             ))}
             <Button type="button" variant="outline" size="sm" onClick={addVariant}>
@@ -673,7 +683,7 @@ export default function NewProductPage() {
               onDragLeave={() => setDragOver(false)}
               onDrop={handleDrop}
               className={cn(
-                'group relative flex cursor-pointer flex-col items-center justify-center gap-2 rounded-2xl border-2 border-dashed px-6 py-10 text-center transition-all',
+                'group relative flex cursor-pointer flex-col items-center justify-center gap-2 rounded-2xl border-2 border-dashed px-4 py-8 text-center transition-all sm:px-6 sm:py-10',
                 dragOver ? 'border-primary bg-primary/5' : 'border-border/60 bg-muted/20 hover:border-primary/40 hover:bg-muted/40',
                 uploading && 'pointer-events-none opacity-70'
               )}
@@ -917,8 +927,8 @@ function DigitalProductSection(props: DigitalProductSectionProps) {
         </div>
       </CardHeader>
       <CardContent className="space-y-6">
-        {/* Kind picker */}
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+        {/* Kind picker — 2 cols mobile (last item spans 2 if odd), 2 sm, 5 lg. */}
+        <div className="grid grid-cols-2 gap-2.5 sm:gap-3 lg:grid-cols-5">
           {DIGITAL_KINDS.map((k) => {
             const Icon = k.icon;
             const active = kind === k.id;

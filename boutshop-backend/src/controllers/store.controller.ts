@@ -1,7 +1,7 @@
 import { Response } from 'express';
 import { AuthRequest } from '../middleware/auth.middleware';
 import * as storeService from '../services/store.service';
-import { getStoreAnalytics } from '../services/analytics.service';
+import { getStoreAnalytics, getStoreAnalyticsRich, type RangeKey } from '../services/analytics.service';
 import { verifyAndSaveDomain, getDomainTarget, checkDomain } from '../services/domain.service';
 import { testSheetsWebhook } from '../services/sheets.service';
 
@@ -57,7 +57,7 @@ export async function listStores(req: AuthRequest, res: Response): Promise<void>
 }
 
 export async function getStore(req: AuthRequest, res: Response): Promise<void> {
-  const store = (req as AuthRequest & { store: Awaited<ReturnType<typeof storeService.getStoreById>> }).store;
+  const store = req.store;
   if (!store) {
     res.status(404).json({ error: 'Store not found' });
     return;
@@ -66,7 +66,7 @@ export async function getStore(req: AuthRequest, res: Response): Promise<void> {
 }
 
 export async function updateStore(req: AuthRequest, res: Response): Promise<void> {
-  const store = (req as AuthRequest & { store: { _id: unknown } }).store;
+  const store = req.store!;
   const { name, description, logo, favicon, customDomain, theme, settings, integrations, isPublished } = req.body;
   const updates: Record<string, unknown> = {};
   if (typeof name === 'string') updates.name = name.trim();
@@ -83,8 +83,18 @@ export async function updateStore(req: AuthRequest, res: Response): Promise<void
 }
 
 export async function getStoreAnalyticsController(req: AuthRequest, res: Response): Promise<void> {
-  const store = (req as AuthRequest & { store: { _id: unknown } }).store;
+  const store = req.store!;
   const analytics = await getStoreAnalytics(store._id.toString());
+  res.json(analytics);
+}
+
+/** GET /api/stores/:storeId/analytics/rich?range=7d|30d|90d|12m — full dashboard payload. */
+export async function getStoreAnalyticsRichController(req: AuthRequest, res: Response): Promise<void> {
+  const store = req.store!;
+  const allowed: RangeKey[] = ['7d', '30d', '90d', '12m'];
+  const raw = String(req.query.range || '30d');
+  const range = (allowed as string[]).includes(raw) ? (raw as RangeKey) : '30d';
+  const analytics = await getStoreAnalyticsRich(store._id.toString(), range);
   res.json(analytics);
 }
 
@@ -95,7 +105,7 @@ export async function getDomainTargetController(_req: AuthRequest, res: Response
 
 /** POST /api/stores/:storeId/verify-domain — re-check DNS for the saved customDomain. */
 export async function verifyDomainController(req: AuthRequest, res: Response): Promise<void> {
-  const store = (req as AuthRequest & { store: { _id: unknown } }).store;
+  const store = req.store!;
   const result = await verifyAndSaveDomain(store._id!.toString());
   res.json(result);
 }
@@ -113,7 +123,7 @@ export async function previewDomainController(req: AuthRequest, res: Response): 
 
 /** POST /api/stores/:storeId/integrations/sheets/test — ping the Apps Script webhook. */
 export async function testSheetsController(req: AuthRequest, res: Response): Promise<void> {
-  const store = (req as AuthRequest & { store: { _id: unknown; name: string; integrations?: { googleSheets?: { webhookUrl?: string } } } }).store;
+  const store = req.store!;
   const { webhookUrl } = req.body as { webhookUrl?: string };
   const url = webhookUrl?.trim() || store.integrations?.googleSheets?.webhookUrl?.trim() || '';
   if (!url) {

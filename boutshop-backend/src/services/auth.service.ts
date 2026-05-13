@@ -1,10 +1,10 @@
 import bcrypt from 'bcryptjs';
-import jwt from 'jsonwebtoken';
+import jwt, { type SignOptions } from 'jsonwebtoken';
 import { User, IUser } from '../models/User.model';
 import { Subscription } from '../models/Subscription.model';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'change-me-in-production';
-const JWT_EXPIRES = process.env.JWT_EXPIRES || '7d';
+const JWT_EXPIRES = (process.env.JWT_EXPIRES || '7d') as SignOptions['expiresIn'];
 const SALT_ROUNDS = 12;
 
 export interface RegisterInput {
@@ -53,7 +53,7 @@ export async function register(input: RegisterInput): Promise<AuthResult> {
   );
   const sub = await Subscription.findOne({ userId: user._id });
   return {
-    user: user.toJSON ? user.toJSON() : (user as unknown as Omit<IUser, 'password'>),
+    user: (user.toJSON ? user.toJSON() : user) as unknown as Omit<IUser, 'password'>,
     token,
     subscription: sub
       ? { plan: sub.plan, storeLimit: sub.storeLimit }
@@ -98,7 +98,7 @@ export async function login(input: LoginInput): Promise<AuthResult> {
   const sub = await Subscription.findOne({ userId: user._id });
   const { password: _p, ...safeUser } = user.toObject();
   return {
-    user: safeUser as Omit<IUser, 'password'>,
+    user: safeUser as unknown as Omit<IUser, 'password'>,
     token,
     subscription: sub
       ? { plan: sub.plan, storeLimit: sub.storeLimit }

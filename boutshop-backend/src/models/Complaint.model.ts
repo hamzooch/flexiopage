@@ -17,7 +17,7 @@ export interface IComplaintMessage {
   authorId: mongoose.Types.ObjectId;
   /** Display label, captured at write time so it survives a rename. */
   authorName: string;
-  authorRole: 'user' | 'admin' | 'superadmin';
+  authorRole: 'user' | 'supervisor' | 'admin' | 'superadmin' | 'owner';
   body: string;
   createdAt: Date;
 }
@@ -46,7 +46,7 @@ const MessageSchema = new Schema<IComplaintMessage>(
   {
     authorId: { type: Schema.Types.ObjectId, ref: 'User', required: true },
     authorName: { type: String, required: true },
-    authorRole: { type: String, enum: ['user', 'admin', 'superadmin'], required: true },
+    authorRole: { type: String, enum: ['user', 'supervisor', 'admin', 'superadmin', 'owner'], required: true },
     body: { type: String, required: true },
     createdAt: { type: Date, default: Date.now },
   },

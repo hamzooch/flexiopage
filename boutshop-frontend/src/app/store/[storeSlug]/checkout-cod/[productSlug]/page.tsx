@@ -28,6 +28,7 @@ import {
 } from '@/data/store-themes';
 import { MarketingPixels, type MarketingConfig } from '@/components/storefront/MarketingPixels';
 import { TrackEvent } from '@/components/storefront/TrackEvent';
+import { StoreNavbar, type NavbarConfig } from '@/components/storefront/StoreNavbar';
 
 const API_BASE = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5001').replace(/\/$/, '');
 
@@ -49,9 +50,15 @@ interface ProductDoc {
 interface StoreDoc {
   name: string;
   slug: string;
+  logo?: string;
   storeType?: 'physical' | 'digital';
   theme?: { templateId?: string };
-  settings?: { currency?: string; country?: string; direction?: 'ltr' | 'rtl' };
+  settings?: {
+    currency?: string;
+    country?: string;
+    direction?: 'ltr' | 'rtl';
+    storefront?: { navbar?: NavbarConfig };
+  };
   integrations?: { marketing?: MarketingConfig };
 }
 
@@ -134,7 +141,7 @@ export default function CodCheckoutPage() {
   const cssVars = tokensToCssVars(theme);
   const fontsHref = googleFontsHref(theme);
 
-  const currency = store?.settings?.currency || 'XOF';
+  const currency = store?.settings?.currency || 'USD';
   const subtotal = (product?.price || 0) * quantity;
   const shippingDisplay = '—'; // courier-set on delivery
   const total = subtotal;
@@ -242,31 +249,34 @@ export default function CodCheckoutPage() {
         className="min-h-screen"
         style={{ ...cssVars, backgroundColor: theme.background, color: theme.foreground, fontFamily: theme.fontBody }}
       >
-        <header className="border-b" style={{ borderColor: theme.border, backgroundColor: theme.surface }}>
-          <div className="mx-auto flex h-16 max-w-5xl items-center justify-between px-6">
+        <StoreNavbar
+          storeName={store.name}
+          storeSlug={storeSlug}
+          storeLogo={store.logo}
+          theme={theme}
+          config={store.settings?.storefront?.navbar}
+          trailing={
             <Link
               href={`/store/${storeSlug}/product/${productSlug}`}
-              className="inline-flex items-center gap-1.5 text-sm opacity-70 hover:opacity-100"
+              className="inline-flex items-center gap-1.5 text-xs opacity-70 hover:opacity-100 sm:text-sm"
+              style={{ color: theme.muted }}
             >
               <ArrowLeft className="h-4 w-4" />
-              Retour
+              Retour au produit
             </Link>
-            <span className="text-sm font-semibold" style={{ fontFamily: theme.fontHeading }}>
-              {store.name}
-            </span>
-          </div>
-        </header>
+          }
+        />
 
-        <main className="mx-auto max-w-5xl px-4 py-8 sm:px-6 sm:py-12">
-          <div className="grid gap-8 lg:grid-cols-[1fr_400px]">
+        <main className="mx-auto max-w-5xl px-3 py-6 sm:px-6 sm:py-12">
+          <div className="grid gap-6 lg:grid-cols-[1fr_400px] lg:gap-8">
             {/* ── Left: form ────────────────────────────────────────── */}
-            <form onSubmit={handleSubmit} className="space-y-6">
+            <form onSubmit={handleSubmit} className="space-y-5 sm:space-y-6">
               <div>
-                <h1 className="text-3xl font-bold tracking-tight" style={{ fontFamily: theme.fontHeading }}>
-                  Commander · Paiement à la livraison
+                <h1 className="text-xl font-bold tracking-tight sm:text-3xl" style={{ fontFamily: theme.fontHeading }}>
+                  Paiement à la livraison
                 </h1>
-                <p className="mt-1.5 text-sm opacity-70">
-                  Remplis tes coordonnées — tu paies en espèces au livreur quand tu reçois le colis.
+                <p className="mt-1.5 text-xs opacity-70 sm:text-sm">
+                  Remplis tes coordonnées — tu paies en espèces au livreur.
                 </p>
               </div>
 

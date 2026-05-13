@@ -23,6 +23,13 @@ import {
   Truck,
   Heart,
   ArrowRight,
+  Code2,
+  GraduationCap,
+  Palette,
+  BookOpen,
+  Download,
+  Zap,
+  Clock,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -40,6 +47,10 @@ const NICHE_ICON: Record<string, typeof Cpu> = {
   fashion: Shirt,
   beauty: Sparkles,
   general: Sparkles,
+  saas: Code2,
+  coaching: GraduationCap,
+  creators: Palette,
+  ebooks: BookOpen,
 };
 
 export function ThemePreviewCard({ template, selected, onUse, onPreview }: CardProps) {
@@ -281,6 +292,38 @@ const MOCK_PRODUCTS: Record<string, Array<{ name: string; price: string; before?
     { name: 'Nouveauté', price: '79 €', tag: 'NEW' },
     { name: 'Édition limitée', price: '199 €' },
   ],
+  saas: [
+    { name: 'Bundle Pro · 12 mois',  price: '149 €', before: '299 €', tag: '–50%' },
+    { name: 'Lifetime Access',        price: '299 €', tag: 'POPULAIRE' },
+    { name: 'Plugin Power Pack',      price: '49 €' },
+    { name: 'API Starter',            price: '29 €/mois' },
+    { name: 'Team License · 5 sièges',price: '199 €' },
+    { name: 'Cloud Sync Add-on',      price: '19 €' },
+  ],
+  coaching: [
+    { name: 'Masterclass · 12 modules', price: '197 €', before: '297 €', tag: '–33%' },
+    { name: 'Coaching 1-on-1 · 3 mois', price: '997 €' },
+    { name: 'Bootcamp · 30 jours',      price: '247 €', tag: 'NEW' },
+    { name: 'Membre Premium · 1 an',    price: '397 €' },
+    { name: 'Audit stratégique',        price: '149 €' },
+    { name: 'Workshop en direct',       price: '79 €' },
+  ],
+  creators: [
+    { name: 'Pack Notion · 24 templates', price: '49 €', before: '99 €', tag: '–50%' },
+    { name: 'Figma UI Kit Pro',           price: '79 €' },
+    { name: 'Lightroom Presets · 60',     price: '29 €', tag: 'NEW' },
+    { name: 'Bundle Pinterest · 100',     price: '39 €' },
+    { name: 'Prompts ChatGPT · 250',      price: '19 €' },
+    { name: 'Webflow Template · SaaS',    price: '89 €' },
+  ],
+  ebooks: [
+    { name: 'Le Guide Complet (PDF)',    price: '19 €', before: '39 €', tag: '–50%' },
+    { name: 'Workbook · 80 pages',        price: '14 €' },
+    { name: 'Bundle 3 ebooks',            price: '39 €', tag: 'POPULAIRE' },
+    { name: 'Audio + PDF · 2h',           price: '24 €' },
+    { name: 'Notion Tracker',             price: '9 €' },
+    { name: 'Pack Checklist · 12',        price: '12 €' },
+  ],
 };
 
 const STORE_NAMES: Record<string, string> = {
@@ -288,6 +331,10 @@ const STORE_NAMES: Record<string, string> = {
   fashion: 'Atelier 12',
   beauty: 'Maison Pétale',
   general: 'Ma boutique',
+  saas: 'Pulse Lab',
+  coaching: 'Académie Sage',
+  creators: 'Studio Indigo',
+  ebooks: 'Lumen Books',
 };
 
 export function ThemePreviewModal({ template, onClose, onUse }: ModalProps) {
@@ -472,12 +519,20 @@ export function ThemePreviewModal({ template, onClose, onUse }: ModalProps) {
             {/* TRUST STRIP */}
             <section className="border-y" style={{ borderColor: t.border, backgroundColor: t.surfaceMuted }}>
               <div className="mx-auto grid max-w-5xl grid-cols-2 gap-6 px-6 py-6 text-xs sm:grid-cols-4">
-                {[
-                  { Icon: Truck, label: 'Livraison gratuite' },
-                  { Icon: ShieldCheck, label: 'Paiement sécurisé' },
-                  { Icon: Heart, label: 'Retours 30 jours' },
-                  { Icon: Star, label: 'Note 4.9 / 5' },
-                ].map((it, i) => (
+                {(template.forStoreTypes.includes('digital')
+                  ? [
+                      { Icon: Zap,          label: 'Accès instantané' },
+                      { Icon: ShieldCheck,  label: 'Paiement sécurisé' },
+                      { Icon: Clock,        label: 'Accès à vie' },
+                      { Icon: Star,         label: 'Note 4.9 / 5' },
+                    ]
+                  : [
+                      { Icon: Truck,        label: 'Livraison gratuite' },
+                      { Icon: ShieldCheck,  label: 'Paiement sécurisé' },
+                      { Icon: Heart,        label: 'Retours 30 jours' },
+                      { Icon: Star,         label: 'Note 4.9 / 5' },
+                    ]
+                ).map((it, i) => (
                   <div key={i} className="flex items-center gap-2.5" style={{ color: t.muted }}>
                     <span
                       className="grid h-8 w-8 shrink-0 place-items-center rounded-full"
@@ -630,6 +685,10 @@ function nicheHeadline(niche: string): string {
     case 'electronics': return 'Tech qui fait la différence.';
     case 'fashion':     return 'L\'élégance au quotidien.';
     case 'beauty':      return 'Révèle ton éclat.';
+    case 'saas':        return 'Ship faster. Build better.';
+    case 'coaching':    return 'Apprends. Progresse. Transforme.';
+    case 'creators':    return 'Outils premium pour créateurs.';
+    case 'ebooks':      return 'Lis, applique, transforme.';
     default:            return 'Bienvenue.';
   }
 }
@@ -638,6 +697,10 @@ function nicheSub(niche: string): string {
     case 'electronics': return 'Smartphones, audio, gaming.';
     case 'fashion':     return 'Nouvelle collection automne.';
     case 'beauty':      return 'Soin · Parfum · Maquillage';
+    case 'saas':        return 'Apps · API · automatisations.';
+    case 'coaching':    return 'Cours · coaching · communauté.';
+    case 'creators':    return 'Templates · presets · packs.';
+    case 'ebooks':      return 'Ebooks · guides · PDF.';
     default:            return 'Une boutique propre.';
   }
 }
@@ -649,6 +712,14 @@ function nicheLongSub(niche: string): string {
       return 'Des pièces taillées pour durer. Coupes essentielles, tissus nobles, fabrication soignée — la nouvelle saison est arrivée.';
     case 'beauty':
       return 'Des formulations propres, des textures qui font du bien. Soin, maquillage, parfum — pensés pour ta routine quotidienne.';
+    case 'saas':
+      return 'Des outils pensés pour les makers : automatisations, intégrations, accès API. Mise à jour à vie, support prioritaire.';
+    case 'coaching':
+      return 'Des programmes structurés pour passer du blocage au résultat. Vidéos, sessions live, communauté privée — tout pour avancer.';
+    case 'creators':
+      return 'Des templates et packs créatifs prêts à l\'emploi. Notion, Figma, Lightroom — gain de temps garanti.';
+    case 'ebooks':
+      return 'Des ebooks et guides PDF concrets, conçus pour l\'action. Téléchargement instantané, accès à vie, mises à jour incluses.';
     default:
       return 'Une sélection soigneusement choisie pour t\'inspirer chaque jour.';
   }

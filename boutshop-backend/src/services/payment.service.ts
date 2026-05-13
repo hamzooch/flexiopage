@@ -2,16 +2,19 @@
  * Payment service - Stripe integration ready.
  * Set STRIPE_SECRET_KEY to enable Stripe; otherwise manual payments only.
  */
+import type StripeNS from 'stripe';
 
 const STRIPE_SECRET = process.env.STRIPE_SECRET_KEY;
-let stripe: typeof import('stripe') | null = null;
+let stripe: StripeNS | null = null;
 
-async function getStripe(): Promise<typeof import('stripe') | null> {
+async function getStripe(): Promise<StripeNS | null> {
   if (!STRIPE_SECRET) return null;
   if (!stripe) {
     try {
       const Stripe = (await import('stripe')).default;
-      stripe = new Stripe(STRIPE_SECRET, { apiVersion: '2024-11-20.acacia' });
+      // apiVersion left undefined → uses the account default; avoids tight coupling
+      // to a single Stripe API version (otherwise TS pins us to a stale literal).
+      stripe = new Stripe(STRIPE_SECRET);
     } catch {
       return null;
     }

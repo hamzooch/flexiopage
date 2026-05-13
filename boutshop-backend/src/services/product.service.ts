@@ -71,15 +71,15 @@ export async function getProductsByStore(
 ): Promise<IProduct[]> {
   const q: Record<string, unknown> = { storeId };
   if (options?.publishedOnly) q.isPublished = true;
-  return Product.find(q).sort({ updatedAt: -1 }).lean();
+  return Product.find(q).sort({ updatedAt: -1 }).lean<IProduct[]>();
 }
 
 export async function getProductById(productId: string, storeId: string): Promise<IProduct | null> {
-  return Product.findOne({ _id: productId, storeId }).lean();
+  return Product.findOne({ _id: productId, storeId }).lean<IProduct | null>();
 }
 
 export async function getProductBySlug(storeId: string, slug: string): Promise<IProduct | null> {
-  return Product.findOne({ storeId, slug, isPublished: true }).lean();
+  return Product.findOne({ storeId, slug, isPublished: true }).lean<IProduct | null>();
 }
 
 export async function deleteProduct(productId: string, storeId: string): Promise<boolean> {

@@ -48,7 +48,7 @@ async function main(): Promise<void> {
   console.log('────────────────────────────────────────────────────────');
   console.log(`    email    : ${EMAIL}`);
   console.log(`    password : ${PASSWORD}`);
-  console.log(`    URL      : http://localhost:3001/admin`);
+  console.log(`    URL      : http://localhost:3002/admin`);
   console.log('────────────────────────────────────────────────────────');
   await mongoose.disconnect();
 }

@@ -1,18 +1,21 @@
 /**
  * AI image generation via fal.ai.
  *
- * Used by the landing-page generator to fill hero, gallery, and testimonial
- * avatar slots with photorealistic lifestyle images that match the target
- * country and product niche — same approach as ayor.ia / tryad.app.
+ * Per-slot model strategy (the right model for the right job):
+ *   • HERO    → FLUX pro 1.1   ($0.04/img)  — premium photoreal hero shot
+ *   • GALLERY → FLUX schnell   ($0.003/img) — cheap & fast, 8-10 images
+ *   • AVATAR  → FLUX realism   ($0.025/img) — photoreal humans for testimonials
+ *   • BANNER  → Ideogram v3    ($0.06/img)  — best at LEGIBLE text in image
+ *                                              (−50%, NEW, etc.)
  *
- * Default model: Google's Nano Banana (gemini-2.5-flash-image) — best at
- * prompt-following and producing clean, photoreal lifestyle scenes.
- * Override with FAL_IMAGE_MODEL:
- *   - "fal-ai/nano-banana"      — DEFAULT (Google, fast, sharp prompts)
- *   - "fal-ai/flux/schnell"     — ultra-cheap FLUX
- *   - "fal-ai/flux/dev"         — better quality FLUX
- *   - "fal-ai/flux-pro/v1.1"    — premium FLUX
- *   - "fal-ai/flux-realism"     — photoreal humans (avatars)
+ * Overrides via env vars (each defaults shown above):
+ *   - FAL_HERO_MODEL     (default 'fal-ai/flux-pro/v1.1')
+ *   - FAL_GALLERY_MODEL  (default 'fal-ai/flux/schnell')
+ *   - FAL_AVATAR_MODEL   (default 'fal-ai/flux-realism')
+ *   - FAL_BANNER_MODEL   (default 'fal-ai/ideogram/v3')
+ *
+ * Legacy: FAL_IMAGE_MODEL still works — it becomes the GALLERY default and
+ * the global fallback when nothing else is set.
  */
 const FAL_BASE = 'https://fal.run';
 
@@ -53,6 +56,14 @@ const NANO_ASPECT: Record<ImageAspect, { ratio: string; width: number; height: n
   wide:      { ratio: '16:9', width: 1280, height: 720 },
 };
 
+/** Ideogram v3 uses Ideogram-style aspect tokens (ASPECT_*). */
+const IDEOGRAM_ASPECT: Record<ImageAspect, { token: string; width: number; height: number }> = {
+  square:    { token: 'ASPECT_1_1',  width: 1024, height: 1024 },
+  portrait:  { token: 'ASPECT_3_4',  width: 768,  height: 1024 },
+  landscape: { token: 'ASPECT_4_3',  width: 1024, height: 768 },
+  wide:      { token: 'ASPECT_16_9', width: 1280, height: 720 },
+};
+
 function getFalKey(): string {
   const key = process.env.FAL_KEY;
   if (!key) {
@@ -63,11 +74,21 @@ function getFalKey(): string {
   return key;
 }
 
-const DEFAULT_MODEL = process.env.FAL_IMAGE_MODEL || 'fal-ai/nano-banana';
-const AVATAR_MODEL = process.env.FAL_AVATAR_MODEL || DEFAULT_MODEL;
+/** Global fallback — kept for backwards-compatibility with FAL_IMAGE_MODEL. */
+const DEFAULT_MODEL = process.env.FAL_IMAGE_MODEL || 'fal-ai/flux/schnell';
+
+/** Per-kind models. Defaults follow the recommended cost/quality split. */
+const HERO_MODEL    = process.env.FAL_HERO_MODEL    || 'fal-ai/flux-pro/v1.1';
+const GALLERY_MODEL = process.env.FAL_GALLERY_MODEL || DEFAULT_MODEL; // schnell by default
+const AVATAR_MODEL  = process.env.FAL_AVATAR_MODEL  || 'fal-ai/flux-realism';
+const BANNER_MODEL  = process.env.FAL_BANNER_MODEL  || 'fal-ai/ideogram/v3';
 
 function isNanoBanana(model: string): boolean {
   return /nano-banana/i.test(model);
+}
+
+function isIdeogram(model: string): boolean {
+  return /ideogram/i.test(model);
 }
 
 /**
@@ -111,6 +132,20 @@ function buildBody(endpoint: string, input: ImageGenInput): Record<string, unkno
     };
   }
 
+  // Ideogram v3 — text-rendering specialist for banners / promo overlays.
+  if (isIdeogram(endpoint)) {
+    const a = IDEOGRAM_ASPECT[aspect];
+    return {
+      prompt: input.prompt,
+      aspect_ratio: a.token,
+      rendering_speed: 'BALANCED',
+      style: 'AUTO',
+      // Useful flags supported by Ideogram for transactional banners:
+      magic_prompt_option: 'AUTO',
+      num_images: 1,
+    };
+  }
+
   // FLUX family (text-to-image only here; img2img variants would use a separate endpoint)
   const a = FLUX_ASPECT[aspect];
   const body: Record<string, unknown> = {
@@ -125,7 +160,9 @@ function buildBody(endpoint: string, input: ImageGenInput): Record<string, unkno
 }
 
 function defaultDimsFor(model: string, aspect: ImageAspect): { width: number; height: number } {
-  return isNanoBanana(model) ? NANO_ASPECT[aspect] : FLUX_ASPECT[aspect];
+  if (isNanoBanana(model)) return NANO_ASPECT[aspect];
+  if (isIdeogram(model))   return IDEOGRAM_ASPECT[aspect];
+  return FLUX_ASPECT[aspect];
 }
 
 /**
@@ -196,6 +233,14 @@ export function isAvatarPrompt(prompt: string): boolean {
   return /\b(avatar|portrait|headshot|face of|person looking|smiling person)\b/i.test(prompt);
 }
 
-export function getAvatarModel(): string {
-  return AVATAR_MODEL;
+/** Heuristic — does this prompt ask for legible text inside the image? */
+export function isBannerPrompt(prompt: string): boolean {
+  // Look for explicit text directives or common promo/banner cues. The LLM
+  // emits prompts like: `banner with the text "−50%"` or `promo card reading SOLDES`.
+  return /(\btext\s+["“][^"”]+["”])|(\b(banner|promo|sale|sticker|badge|label|étiquette|bannière|affiche)\b.*\b(reading|saying|with the text|que dit|écrit))|(["“][−\-]?\d{1,3}\s*%["”])/i.test(prompt);
 }
+
+export function getHeroModel(): string    { return HERO_MODEL; }
+export function getGalleryModel(): string { return GALLERY_MODEL; }
+export function getAvatarModel(): string  { return AVATAR_MODEL; }
+export function getBannerModel(): string  { return BANNER_MODEL; }

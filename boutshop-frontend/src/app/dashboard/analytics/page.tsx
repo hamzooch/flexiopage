@@ -1,128 +1,358 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import {
+  Activity,
+  BarChart3,
+  Clock,
+  DollarSign,
+  Download,
+  RefreshCcw,
+  RotateCcw,
+  ShoppingCart,
+  Sparkles,
+  TrendingUp,
+  Users,
+} from 'lucide-react';
 import { storesApi } from '@/lib/api';
 import { formatCurrency } from '@/lib/utils';
-import { BarChart3, DollarSign, ShoppingCart, TrendingUp } from 'lucide-react';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { KpiCard } from '@/components/charts/KpiCard';
+import { RangeSwitcher } from '@/components/charts/RangeSwitcher';
+import { RevenueAreaChart } from '@/components/charts/RevenueAreaChart';
+import { PaymentDonutChart } from '@/components/charts/PaymentDonutChart';
+import { FunnelChart } from '@/components/charts/FunnelChart';
+import { TopProductsList } from '@/components/charts/TopProductsList';
+import { RecentOrdersPanel } from '@/components/charts/RecentOrdersPanel';
+import type { RangeKey, StoreAnalyticsRich } from '@/types/analytics';
 
 interface StoreType {
   _id: string;
   name: string;
 }
 
-interface AnalyticsType {
-  totalOrders: number;
-  totalRevenue: number;
-  ordersThisMonth: number;
-  revenueThisMonth: number;
+function toCsv(data: StoreAnalyticsRich): string {
+  const header = ['date', 'revenue', 'orders', 'paid'].join(',');
+  const rows = data.timeseries.map((p) => [p.date, p.revenue, p.orders, p.paid].join(','));
+  return [header, ...rows].join('\n');
+}
+
+function downloadCsv(filename: string, content: string) {
+  const blob = new Blob([content], { type: 'text/csv;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
 }
 
 export default function DashboardAnalyticsPage() {
   const searchParams = useSearchParams();
   const storeIdParam = searchParams.get('storeId');
   const [stores, setStores] = useState<StoreType[]>([]);
-  const [analytics, setAnalytics] = useState<AnalyticsType | null>(null);
   const [selectedStoreId, setSelectedStoreId] = useState<string | null>(storeIdParam);
+  const [range, setRange] = useState<RangeKey>('30d');
+  const [data, setData] = useState<StoreAnalyticsRich | null>(null);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
 
   useEffect(() => {
-    storesApi.list().then((res) => {
-      const list = (res.data as { stores: StoreType[] }).stores;
-      setStores(list);
-      if (!selectedStoreId && list.length) setSelectedStoreId(list[0]._id);
-    }).catch(() => setStores([]));
+    storesApi
+      .list()
+      .then((res) => {
+        const list = (res.data as { stores: StoreType[] }).stores;
+        setStores(list);
+        if (!selectedStoreId && list.length) setSelectedStoreId(list[0]._id);
+      })
+      .catch(() => setStores([]));
   }, []);
 
   useEffect(() => {
     if (!selectedStoreId) {
-      setAnalytics(null);
+      setData(null);
       setLoading(false);
       return;
     }
     setLoading(true);
     storesApi
-      .getAnalytics(selectedStoreId)
-      .then((res) => setAnalytics(res.data as AnalyticsType))
-      .catch(() => setAnalytics(null))
+      .getAnalyticsRich(selectedStoreId, range)
+      .then((res) => setData(res.data))
+      .catch(() => setData(null))
       .finally(() => setLoading(false));
-  }, [selectedStoreId]);
+  }, [selectedStoreId, range]);
+
+  const refresh = async () => {
+    if (!selectedStoreId) return;
+    setRefreshing(true);
+    try {
+      const res = await storesApi.getAnalyticsRich(selectedStoreId, range);
+      setData(res.data);
+    } catch {
+      // swallow — error state already shown via empty data
+    } finally {
+      setRefreshing(false);
+    }
+  };
+
+  const currency = data?.currency || 'USD';
+  const monthly = range === '12m';
+  const selectedStore = useMemo(() => stores.find((s) => s._id === selectedStoreId), [stores, selectedStoreId]);
 
   return (
-    <div className="space-y-8">
-      <div>
-        <h1 className="text-3xl font-bold">Analytics</h1>
-        <p className="text-muted-foreground">Store performance and sales stats.</p>
+    <div className="space-y-5 sm:space-y-6">
+      {/* Header */}
+      <div className="flex flex-col gap-3 sm:gap-4 lg:flex-row lg:items-end lg:justify-between">
+        <div className="min-w-0">
+          <div className="inline-flex items-center gap-2 rounded-full bg-gradient-to-r from-pink-500/10 to-violet-500/10 px-3 py-1 text-[11px] font-semibold uppercase tracking-wider text-violet-700">
+            <Sparkles className="h-3 w-3" />
+            Tableau de bord
+          </div>
+          <h1 className="mt-2 text-2xl font-bold tracking-tight sm:text-3xl">Analytics</h1>
+          <p className="truncate text-xs text-muted-foreground sm:text-sm">
+            Performance de {selectedStore?.name || 'ta boutique'} en temps réel.
+          </p>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <RangeSwitcher value={range} onChange={setRange} />
+          <button
+            type="button"
+            onClick={refresh}
+            disabled={!selectedStoreId || refreshing}
+            className="inline-flex h-9 items-center gap-1.5 rounded-xl border border-border/60 bg-card px-2.5 text-xs font-semibold shadow-sm transition-colors hover:bg-muted disabled:opacity-50 sm:px-3"
+            title="Rafraîchir"
+          >
+            <RefreshCcw className={`h-3.5 w-3.5 ${refreshing ? 'animate-spin' : ''}`} />
+            <span className="hidden sm:inline">Actualiser</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => data && downloadCsv(`analytics-${selectedStore?.name || 'store'}-${range}.csv`, toCsv(data))}
+            disabled={!data}
+            className="inline-flex h-9 items-center gap-1.5 rounded-xl border border-border/60 bg-card px-2.5 text-xs font-semibold shadow-sm transition-colors hover:bg-muted disabled:opacity-50 sm:px-3"
+          >
+            <Download className="h-3.5 w-3.5" />
+            CSV
+          </button>
+        </div>
       </div>
 
-      {stores.length > 0 && (
-        <div className="flex gap-2">
-          {stores.map((s) => (
-            <button
-              key={s._id}
-              type="button"
-              onClick={() => setSelectedStoreId(s._id)}
-              className={`rounded-md border px-4 py-2 text-sm font-medium ${
-                selectedStoreId === s._id
-                  ? 'border-primary bg-primary text-primary-foreground'
-                  : 'border-input hover:bg-muted'
-              }`}
-            >
-              {s.name}
-            </button>
-          ))}
+      {/* Store switcher — horizontal scroll on mobile so it doesn't wrap into
+          a multi-row jumble when the seller has many stores. */}
+      {stores.length > 1 && (
+        <div className="-mx-3 overflow-x-auto pb-1 sm:mx-0">
+          <div className="flex w-max gap-2 px-3 sm:flex-wrap sm:px-0">
+            {stores.map((s) => (
+              <button
+                key={s._id}
+                type="button"
+                onClick={() => setSelectedStoreId(s._id)}
+                className={`shrink-0 rounded-full border px-3 py-1.5 text-xs font-semibold transition-all sm:px-3.5 ${
+                  selectedStoreId === s._id
+                    ? 'border-transparent bg-gradient-to-r from-pink-500 to-violet-600 text-white shadow-md'
+                    : 'border-border/60 bg-card text-muted-foreground hover:border-foreground/30 hover:text-foreground'
+                }`}
+              >
+                {s.name}
+              </button>
+            ))}
+          </div>
         </div>
       )}
 
       {!selectedStoreId ? (
         <Card>
           <CardContent className="py-16 text-center text-muted-foreground">
-            Select a store to view analytics.
+            Sélectionne une boutique pour voir les statistiques.
           </CardContent>
         </Card>
-      ) : loading ? (
-        <p className="text-muted-foreground">Loading...</p>
-      ) : analytics ? (
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      ) : loading && !data ? (
+        <LoadingSkeleton />
+      ) : !data ? (
+        <Card>
+          <CardContent className="py-16 text-center text-muted-foreground">
+            Aucune donnée pour cette boutique pour le moment.
+          </CardContent>
+        </Card>
+      ) : (
+        <>
+          {/* KPI grid — 2 cols mobile (8 cards stack as 4 rows of 2), 4 cols desktop. */}
+          <div className="grid grid-cols-2 gap-2.5 sm:gap-3 lg:grid-cols-4">
+            <KpiCard
+              label="Revenu"
+              value={formatCurrency(data.kpis.revenue.value, currency)}
+              delta={data.kpis.revenue.deltaPct}
+              icon={DollarSign}
+              accent="pink"
+              hint="vs période précédente"
+            />
+            <KpiCard
+              label="Commandes payées"
+              value={String(data.kpis.paidOrders.value)}
+              delta={data.kpis.paidOrders.deltaPct}
+              icon={ShoppingCart}
+              accent="violet"
+              hint="vs période précédente"
+            />
+            <KpiCard
+              label="Panier moyen"
+              value={formatCurrency(data.kpis.averageOrderValue.value, currency)}
+              delta={data.kpis.averageOrderValue.deltaPct}
+              icon={TrendingUp}
+              accent="emerald"
+              hint="par commande payée"
+            />
+            <KpiCard
+              label="Clients uniques"
+              value={String(data.kpis.uniqueCustomers.value)}
+              delta={data.kpis.uniqueCustomers.deltaPct}
+              icon={Users}
+              accent="sky"
+              hint="emails distincts"
+            />
+            <KpiCard
+              label="Commandes totales"
+              value={String(data.kpis.orders.value)}
+              delta={data.kpis.orders.deltaPct}
+              icon={BarChart3}
+              accent="slate"
+            />
+            <KpiCard
+              label="Taux de livraison"
+              value={`${data.kpis.fulfillmentRate.value.toFixed(1)}%`}
+              delta={data.kpis.fulfillmentRate.deltaPct}
+              icon={Activity}
+              accent="emerald"
+            />
+            <KpiCard
+              label="Taux de remboursement"
+              value={`${data.kpis.refundRate.value.toFixed(1)}%`}
+              delta={data.kpis.refundRate.deltaPct}
+              invertDelta
+              icon={RotateCcw}
+              accent="amber"
+            />
+            <KpiCard
+              label="Paiements en attente"
+              value={String(data.kpis.pendingOrders.value)}
+              icon={Clock}
+              accent="amber"
+              hint="à confirmer"
+            />
+          </div>
+
+          {/* Revenue chart (full width) */}
           <Card>
-            <CardHeader className="flex flex-row items-center justify-between pb-2">
-              <CardTitle className="text-sm font-medium">Total revenue</CardTitle>
-              <DollarSign className="h-4 w-4 text-muted-foreground" />
+            <CardHeader className="flex flex-row items-start justify-between gap-3 pb-2">
+              <div className="min-w-0">
+                <CardTitle className="text-sm sm:text-base">Revenu &amp; commandes</CardTitle>
+                <p className="mt-0.5 truncate text-[11px] text-muted-foreground sm:text-xs">
+                  {monthly ? 'Mensuel' : 'Quotidien'} ·{' '}
+                  {new Date(data.window.from).toLocaleDateString('fr-FR', { day: '2-digit', month: 'short' })} →{' '}
+                  {new Date(data.window.to).toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', year: 'numeric' })}
+                </p>
+              </div>
+              <Legend />
             </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">{formatCurrency(analytics.totalRevenue)}</div>
+            <CardContent className="px-2 sm:px-6">
+              <RevenueAreaChart data={data.timeseries} currency={currency} monthly={monthly} />
             </CardContent>
           </Card>
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between pb-2">
-              <CardTitle className="text-sm font-medium">Total orders</CardTitle>
-              <ShoppingCart className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">{analytics.totalOrders}</div>
+
+          {/* Top products + funnel + payment mix */}
+          <div className="grid gap-3 sm:gap-4 lg:grid-cols-3">
+            <Card className="lg:col-span-2">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm sm:text-base">Top produits</CardTitle>
+                <p className="text-[11px] text-muted-foreground sm:text-xs">Classés par revenu sur la période</p>
+              </CardHeader>
+              <CardContent>
+                <TopProductsList products={data.topProducts} currency={currency} />
+              </CardContent>
+            </Card>
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm sm:text-base">Tunnel de conversion</CardTitle>
+                <p className="text-[11px] text-muted-foreground sm:text-xs">Créée → payée → livrée</p>
+              </CardHeader>
+              <CardContent>
+                <FunnelChart funnel={data.funnel} />
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* Payment mix + Recent orders */}
+          <div className="grid gap-3 sm:gap-4 lg:grid-cols-2">
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm sm:text-base">Méthodes de paiement</CardTitle>
+                <p className="text-[11px] text-muted-foreground sm:text-xs">Répartition par fournisseur sur la période</p>
+              </CardHeader>
+              <CardContent>
+                <PaymentDonutChart data={data.paymentBreakdown} currency={currency} />
+              </CardContent>
+            </Card>
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm sm:text-base">Commandes récentes</CardTitle>
+                <p className="text-[11px] text-muted-foreground sm:text-xs">8 dernières commandes</p>
+              </CardHeader>
+              <CardContent>
+                <RecentOrdersPanel orders={data.recentOrders} />
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* Totals footer */}
+          <Card className="bg-gradient-to-br from-pink-500/5 via-violet-500/5 to-transparent">
+            <CardContent className="grid grid-cols-1 gap-4 py-5 sm:grid-cols-3 sm:py-6">
+              <FooterStat label="Revenu total (depuis le début)" value={formatCurrency(data.totals.totalRevenue, currency)} />
+              <FooterStat label="Commandes totales" value={String(data.totals.totalOrders)} />
+              <FooterStat label="Clients totaux" value={String(data.totals.totalCustomers)} />
             </CardContent>
           </Card>
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between pb-2">
-              <CardTitle className="text-sm font-medium">Revenue this month</CardTitle>
-              <TrendingUp className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">{formatCurrency(analytics.revenueThisMonth)}</div>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between pb-2">
-              <CardTitle className="text-sm font-medium">Orders this month</CardTitle>
-              <BarChart3 className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">{analytics.ordersThisMonth}</div>
-            </CardContent>
-          </Card>
-        </div>
-      ) : null}
+        </>
+      )}
+    </div>
+  );
+}
+
+function Legend() {
+  return (
+    <div className="hidden items-center gap-4 text-xs text-muted-foreground sm:flex">
+      <span className="inline-flex items-center gap-1.5">
+        <span className="h-2 w-2 rounded-full bg-pink-500" /> Revenu
+      </span>
+      <span className="inline-flex items-center gap-1.5">
+        <span className="h-2 w-2 rounded-full bg-violet-500" /> Commandes payées
+      </span>
+    </div>
+  );
+}
+
+function FooterStat({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="min-w-0">
+      <div className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground sm:text-[11px]">{label}</div>
+      <div className="mt-1 break-words text-lg font-bold sm:text-xl">{value}</div>
+    </div>
+  );
+}
+
+function LoadingSkeleton() {
+  return (
+    <div className="space-y-6">
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        {Array.from({ length: 8 }).map((_, i) => (
+          <div key={i} className="h-[110px] animate-pulse rounded-2xl border border-border/60 bg-card" />
+        ))}
+      </div>
+      <div className="h-[380px] animate-pulse rounded-xl border border-border/60 bg-card" />
+      <div className="grid gap-4 lg:grid-cols-3">
+        <div className="h-[280px] animate-pulse rounded-xl border border-border/60 bg-card lg:col-span-2" />
+        <div className="h-[280px] animate-pulse rounded-xl border border-border/60 bg-card" />
+      </div>
     </div>
   );
 }

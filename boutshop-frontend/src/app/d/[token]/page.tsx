@@ -106,8 +106,8 @@ export default async function DownloadPortalPage({ params }: Props) {
 
   if (errorState || !data) {
     return (
-      <div className="grid min-h-screen place-items-center bg-muted/30 p-6">
-        <div className="w-full max-w-md rounded-3xl border border-border/60 bg-card p-8 text-center shadow-sm">
+      <div className="grid min-h-screen place-items-center bg-muted/30 p-4 sm:p-6">
+        <div className="w-full max-w-md rounded-2xl border border-border/60 bg-card p-6 text-center shadow-sm sm:rounded-3xl sm:p-8">
           <div className="mx-auto mb-4 grid h-14 w-14 place-items-center rounded-2xl bg-destructive/10 text-destructive">
             <Clock className="h-6 w-6" />
           </div>
@@ -135,29 +135,29 @@ export default async function DownloadPortalPage({ params }: Props) {
     <div className="min-h-screen bg-gradient-to-b from-fuchsia-500/5 via-background to-background">
       {/* Header */}
       <header className="border-b border-border/60 bg-card/80 backdrop-blur-xl">
-        <div className="mx-auto flex h-16 max-w-4xl items-center justify-between px-6">
-          <Link href={store ? `/store/${store.slug}` : '/'} className="text-base font-bold tracking-tight">
+        <div className="mx-auto flex h-14 max-w-4xl items-center justify-between gap-3 px-3 sm:h-16 sm:px-6">
+          <Link href={store ? `/store/${store.slug}` : '/'} className="truncate text-sm font-bold tracking-tight sm:text-base">
             {store?.name || 'BoutShop'}
           </Link>
-          <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-500/10 px-2.5 py-1 text-xs font-semibold text-emerald-700">
+          <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-emerald-500/10 px-2 py-1 text-[11px] font-semibold text-emerald-700 sm:gap-1.5 sm:px-2.5 sm:text-xs">
             <ShieldCheck className="h-3 w-3" />
-            Lien sécurisé
+            <span className="hidden sm:inline">Lien</span> sécurisé
           </span>
         </div>
       </header>
 
-      <main className="mx-auto max-w-4xl px-6 py-10">
+      <main className="mx-auto max-w-4xl px-3 py-6 sm:px-6 sm:py-10">
         {/* Confirmation banner */}
-        <div className="rounded-3xl border border-border/60 bg-card p-7 shadow-sm">
-          <div className="flex items-start gap-4">
-            <span className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-emerald-500/10 text-emerald-600">
-              <CheckCircle2 className="h-6 w-6" strokeWidth={2.5} />
+        <div className="rounded-2xl border border-border/60 bg-card p-4 shadow-sm sm:rounded-3xl sm:p-7">
+          <div className="flex items-start gap-3 sm:gap-4">
+            <span className="grid h-10 w-10 shrink-0 place-items-center rounded-2xl bg-emerald-500/10 text-emerald-600 sm:h-12 sm:w-12">
+              <CheckCircle2 className="h-5 w-5 sm:h-6 sm:w-6" strokeWidth={2.5} />
             </span>
             <div className="min-w-0 flex-1">
-              <h1 className="text-2xl font-bold tracking-tight">
+              <h1 className="text-xl font-bold tracking-tight sm:text-2xl">
                 Merci pour ta commande{order.customerName ? `, ${order.customerName}` : ''} !
               </h1>
-              <p className="mt-1 text-sm text-muted-foreground">
+              <p className="mt-1 text-xs text-muted-foreground sm:text-sm">
                 Commande{' '}
                 <span className="font-mono font-semibold text-foreground">{order.orderNumber}</span>
                 {' '}· {created.toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', year: 'numeric' })}
@@ -218,29 +218,29 @@ function ItemCard({ item }: { item: Item }) {
   const isMembership = item.digitalKind === 'membership';
 
   return (
-    <section className="overflow-hidden rounded-3xl border border-border/60 bg-card shadow-sm">
-      <header className="flex items-start gap-4 border-b border-border/60 bg-muted/30 p-5">
+    <section className="overflow-hidden rounded-2xl border border-border/60 bg-card shadow-sm sm:rounded-3xl">
+      <header className="flex items-start gap-3 border-b border-border/60 bg-muted/30 p-4 sm:gap-4 sm:p-5">
         {item.productImage ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img
             src={absUrl(item.productImage)}
             alt={item.name}
-            className="h-16 w-16 shrink-0 rounded-xl object-cover ring-1 ring-border/60"
+            className="h-14 w-14 shrink-0 rounded-xl object-cover ring-1 ring-border/60 sm:h-16 sm:w-16"
           />
         ) : (
-          <span className="grid h-16 w-16 shrink-0 place-items-center rounded-xl bg-card text-muted-foreground ring-1 ring-border/60">
-            <FileText className="h-6 w-6" />
+          <span className="grid h-14 w-14 shrink-0 place-items-center rounded-xl bg-card text-muted-foreground ring-1 ring-border/60 sm:h-16 sm:w-16">
+            <FileText className="h-5 w-5 sm:h-6 sm:w-6" />
           </span>
         )}
         <div className="min-w-0 flex-1">
-          <h2 className="truncate text-lg font-semibold tracking-tight">{item.name}</h2>
-          <span className="mt-1 inline-flex items-center gap-1.5 rounded-full bg-fuchsia-500/10 px-2.5 py-0.5 text-[11px] font-semibold text-fuchsia-700">
+          <h2 className="break-words text-base font-semibold tracking-tight sm:text-lg">{item.name}</h2>
+          <span className="mt-1 inline-flex items-center gap-1.5 rounded-full bg-fuchsia-500/10 px-2 py-0.5 text-[10px] font-semibold text-fuchsia-700 sm:px-2.5 sm:text-[11px]">
             {KIND_LABEL[item.digitalKind]}
           </span>
         </div>
       </header>
 
-      <div className="space-y-5 p-5">
+      <div className="space-y-4 p-4 sm:space-y-5 sm:p-5">
         {/* License key */}
         {isLicense && item.licenseKey && (
           <div className="flex flex-col items-start gap-3 rounded-2xl border border-amber-500/30 bg-amber-500/5 p-5 sm:flex-row sm:items-center sm:gap-4">

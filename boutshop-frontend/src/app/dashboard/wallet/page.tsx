@@ -96,7 +96,7 @@ export default function WalletPage() {
         setError('Cette référence de paiement a déjà été utilisée.');
       } else {
         const newBal = target === 'ai' ? res.data.aiBalance : res.data.balance;
-        setSuccess(`+${fmt(value, wallet?.currency || 'XOF')} crédités sur le solde ${target === 'ai' ? 'IA' : 'principal'}. Nouveau solde : ${fmt(newBal, wallet?.currency || 'XOF')}`);
+        setSuccess(`+${fmt(value, wallet?.currency || 'USD')} crédités sur le solde ${target === 'ai' ? 'IA' : 'principal'}. Nouveau solde : ${fmt(newBal, wallet?.currency || 'USD')}`);
         setTopupAmount(''); setTopupRef('');
         await load();
       }
