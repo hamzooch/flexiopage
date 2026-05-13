@@ -34,12 +34,12 @@ export default function HomePage() {
       {/* Soft mesh background — subtle drift for life */}
       <div className="pointer-events-none absolute inset-0 -z-10 overflow-hidden" aria-hidden>
         <motion.div
-          className="absolute -left-32 -top-40 h-[480px] w-[480px] rounded-full bg-fuchsia-500/20 blur-3xl"
+          className="absolute -left-32 -top-40 h-[480px] w-[480px] rounded-full bg-amber-400/25 blur-3xl"
           animate={{ x: [0, 30, 0], y: [0, 20, 0] }}
           transition={{ duration: 14, repeat: Infinity, ease: 'easeInOut' }}
         />
         <motion.div
-          className="absolute -right-24 top-32 h-[420px] w-[420px] rounded-full bg-indigo-500/20 blur-3xl"
+          className="absolute -right-24 top-32 h-[420px] w-[420px] rounded-full bg-orange-500/25 blur-3xl"
           animate={{ x: [0, -25, 0], y: [0, 25, 0] }}
           transition={{ duration: 16, repeat: Infinity, ease: 'easeInOut', delay: 2 }}
         />
@@ -101,7 +101,7 @@ function Header() {
             <Button variant="ghost" size="sm">Se connecter</Button>
           </Link>
           <Link href="/register">
-            <Button size="sm" className="gap-1.5 bg-gradient-to-r from-fuchsia-600 to-indigo-600 hover:from-fuchsia-700 hover:to-indigo-700">
+            <Button size="sm" className="gap-1.5 bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-600 hover:to-orange-700">
               <span className="hidden sm:inline">Créer ma boutique</span>
               <span className="sm:hidden">Commencer</span>
               <ArrowRight className="h-3.5 w-3.5" />
@@ -142,7 +142,7 @@ function Hero() {
           className="text-balance text-3xl font-bold leading-[1.05] tracking-tight sm:text-5xl md:text-6xl lg:text-7xl"
         >
           Crée ta boutique en ligne.{' '}
-          <span className="bg-gradient-to-r from-fuchsia-600 via-indigo-600 to-amber-500 bg-clip-text text-transparent">
+          <span className="bg-gradient-to-r from-amber-400 via-orange-500 to-orange-700 bg-clip-text text-transparent">
             Vends dès aujourd&apos;hui.
           </span>
         </motion.h1>
@@ -160,7 +160,7 @@ function Hero() {
           className="mt-8 flex flex-wrap items-center justify-center gap-3 sm:mt-10"
         >
           <Link href="/register">
-            <Button size="lg" className="h-12 gap-2 bg-gradient-to-r from-fuchsia-600 to-indigo-600 px-7 text-base font-semibold shadow-xl shadow-indigo-500/30 transition-all hover:scale-[1.02] hover:from-fuchsia-700 hover:to-indigo-700">
+            <Button size="lg" className="h-12 gap-2 bg-gradient-to-r from-amber-500 to-orange-600 px-7 text-base font-semibold shadow-xl shadow-orange-500/30 transition-all hover:scale-[1.02] hover:from-amber-600 hover:to-orange-700">
               Démarrer gratuitement
               <ArrowRight className="h-4 w-4" />
             </Button>
@@ -202,7 +202,7 @@ function HeroScreenMock() {
   const reduceMotion = useReducedMotion();
   return (
     <div className="relative">
-      <div className="absolute -inset-4 -z-10 rounded-3xl bg-gradient-to-br from-fuchsia-500/30 via-indigo-500/20 to-amber-300/20 blur-3xl" aria-hidden />
+      <div className="absolute -inset-4 -z-10 rounded-3xl bg-gradient-to-br from-amber-400/30 via-orange-500/25 to-orange-700/20 blur-3xl" aria-hidden />
       <div className="overflow-hidden rounded-2xl border border-border/60 bg-card shadow-2xl ring-1 ring-black/5">
         {/* Browser chrome */}
         <div className="flex items-center gap-2 border-b border-border/60 bg-muted/40 px-3 py-2 sm:px-4 sm:py-2.5">
@@ -216,7 +216,7 @@ function HeroScreenMock() {
 
         <div className="grid gap-4 p-4 sm:grid-cols-[1.05fr_1fr] sm:gap-8 sm:p-10">
           {/* Mock product image */}
-          <div className="relative aspect-[4/5] overflow-hidden rounded-xl bg-gradient-to-br from-amber-100 via-fuchsia-100 to-indigo-100">
+          <div className="relative aspect-[4/5] overflow-hidden rounded-xl bg-gradient-to-br from-amber-50 via-orange-100 to-orange-200">
             <motion.div
               initial={{ y: -30, opacity: 0 }}
               animate={{ y: 0, opacity: 1 }}
@@ -258,7 +258,7 @@ function HeroScreenMock() {
               <motion.span
                 animate={reduceMotion ? undefined : { scale: [1, 1.04, 1] }}
                 transition={{ duration: 2.5, repeat: Infinity, ease: 'easeInOut', delay: 2 }}
-                className="text-2xl font-extrabold text-fuchsia-600 sm:text-3xl"
+                className="text-2xl font-extrabold text-orange-600 sm:text-3xl"
               >
                 45 000 F CFA
               </motion.span>
@@ -278,7 +278,7 @@ function HeroScreenMock() {
                   '0 0 0 0 rgba(217, 70, 239, 0)',
                 ] }}
                 transition={{ duration: 2, repeat: Infinity, ease: 'easeOut', delay: 2.5 }}
-                className="grid h-9 place-items-center rounded-md bg-gradient-to-r from-fuchsia-600 to-indigo-600 text-xs font-bold text-white"
+                className="grid h-9 place-items-center rounded-md bg-gradient-to-r from-amber-500 to-orange-600 text-xs font-bold text-white"
               >
                 Commander
               </motion.div>
@@ -331,7 +331,7 @@ function StatBlock({
       transition={{ duration: 0.5, delay }}
       className="text-center"
     >
-      <div className="bg-gradient-to-br from-fuchsia-600 via-indigo-600 to-amber-500 bg-clip-text text-2xl font-extrabold tracking-tight text-transparent sm:text-4xl">
+      <div className="bg-gradient-to-br from-amber-400 via-orange-500 to-orange-700 bg-clip-text text-2xl font-extrabold tracking-tight text-transparent sm:text-4xl">
         {customFormat(n)}
       </div>
       <div className="mt-1 text-[10px] font-medium uppercase tracking-wider text-muted-foreground sm:text-[11px]">{label}</div>
@@ -393,7 +393,7 @@ function Features() {
       >
         <motion.div
           variants={fadeUp}
-          className="mb-3 inline-flex items-center gap-1.5 rounded-full bg-fuchsia-500/10 px-3 py-1 text-xs font-semibold text-fuchsia-700"
+          className="mb-3 inline-flex items-center gap-1.5 rounded-full bg-orange-500/10 px-3 py-1 text-xs font-semibold text-orange-700"
         >
           <Sparkles className="h-3 w-3" /> Une stack complète
         </motion.div>
@@ -474,7 +474,7 @@ function HowItWorks() {
       >
         <motion.div
           variants={fadeUp}
-          className="mb-3 inline-flex items-center gap-1.5 rounded-full bg-indigo-500/10 px-3 py-1 text-xs font-semibold text-indigo-700"
+          className="mb-3 inline-flex items-center gap-1.5 rounded-full bg-amber-500/10 px-3 py-1 text-xs font-semibold text-amber-700"
         >
           <Zap className="h-3 w-3" /> 3 étapes
         </motion.div>
@@ -499,7 +499,7 @@ function HowItWorks() {
             variants={fadeUp}
             className="relative rounded-2xl border border-border/60 bg-card p-5 sm:p-7"
           >
-            <div className="bg-gradient-to-br from-fuchsia-600 via-indigo-600 to-amber-500 bg-clip-text text-4xl font-black leading-none tracking-tighter text-transparent sm:text-5xl">
+            <div className="bg-gradient-to-br from-amber-400 via-orange-500 to-orange-700 bg-clip-text text-4xl font-black leading-none tracking-tighter text-transparent sm:text-5xl">
               {step.n}
             </div>
             <h3 className="mt-4 text-lg font-bold tracking-tight sm:mt-5 sm:text-xl">{step.title}</h3>
@@ -535,7 +535,7 @@ function CommissionPanel() {
         transition={{ duration: 0.6 }}
         className="relative overflow-hidden rounded-3xl border border-border/60 bg-gradient-to-br from-card via-card to-card/40 p-6 sm:p-10 lg:p-14"
       >
-        <div className="pointer-events-none absolute -right-24 top-1/2 h-[420px] w-[420px] -translate-y-1/2 rounded-full bg-gradient-to-br from-fuchsia-500/20 via-indigo-500/15 to-amber-300/10 blur-3xl" aria-hidden />
+        <div className="pointer-events-none absolute -right-24 top-1/2 h-[420px] w-[420px] -translate-y-1/2 rounded-full bg-gradient-to-br from-amber-400/25 via-orange-500/20 to-orange-700/10 blur-3xl" aria-hidden />
 
         <div className="grid gap-8 lg:grid-cols-[1.1fr_1fr] lg:gap-12">
           <div className="relative">
@@ -543,7 +543,7 @@ function CommissionPanel() {
               <Wallet className="h-3 w-3" /> Tarification équitable
             </div>
             <h2 className="text-balance text-2xl font-bold tracking-tight sm:text-3xl md:text-4xl lg:text-5xl">
-              Tu paies <span className="bg-gradient-to-r from-fuchsia-600 to-indigo-600 bg-clip-text text-transparent">seulement quand tu vends</span>.
+              Tu paies <span className="bg-gradient-to-r from-amber-500 to-orange-600 bg-clip-text text-transparent">seulement quand tu vends</span>.
             </h2>
             <p className="mt-4 text-sm leading-relaxed text-muted-foreground sm:mt-5 sm:text-base lg:text-lg">
               Pas d&apos;abonnement, pas de carte bancaire à la création, pas de frais cachés.
@@ -567,7 +567,7 @@ function CommissionPanel() {
 
             <div className="mt-6 flex flex-wrap gap-3">
               <Link href="/register">
-                <Button size="lg" className="h-12 gap-2 bg-gradient-to-r from-fuchsia-600 to-indigo-600 px-7 font-semibold">
+                <Button size="lg" className="h-12 gap-2 bg-gradient-to-r from-amber-500 to-orange-600 px-7 font-semibold">
                   Créer ma boutique
                   <ArrowRight className="h-4 w-4" />
                 </Button>
@@ -688,7 +688,7 @@ function FinalCta() {
         whileInView={{ opacity: 1, scale: 1, y: 0 }}
         viewport={{ once: true, margin: '-80px' }}
         transition={{ duration: 0.7, ease: [0.21, 0.61, 0.35, 1] }}
-        className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-fuchsia-600 via-indigo-600 to-amber-500 p-6 text-center text-white sm:p-10 lg:p-16"
+        className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-amber-400 via-orange-500 to-orange-700 p-6 text-center text-white sm:p-10 lg:p-16"
       >
         <div className="absolute inset-0 -z-0 opacity-30" aria-hidden style={{ backgroundImage: 'radial-gradient(white 1px, transparent 1px)', backgroundSize: '32px 32px' }} />
         <div className="relative mx-auto max-w-2xl">

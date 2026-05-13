@@ -148,7 +148,7 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
           {canSwitchToOwner ? (
             <Link
               href="/dashboard"
-              className="group flex items-center gap-2.5 rounded-xl bg-gradient-to-r from-violet-600 via-fuchsia-600 to-pink-600 px-3 py-2.5 text-sm font-semibold text-white shadow-md shadow-fuchsia-500/30 transition-transform hover:scale-[1.02]"
+              className="group flex items-center gap-2.5 rounded-xl bg-gradient-to-r from-amber-500 via-orange-500 to-orange-600 px-3 py-2.5 text-sm font-semibold text-white shadow-md shadow-orange-500/30 transition-transform hover:scale-[1.02]"
             >
               <Briefcase className="h-4 w-4" />
               <span className="flex-1">Dashboard Owner</span>
@@ -214,7 +214,7 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
               <Link
                 href="/dashboard"
                 title="Aller au dashboard vendeur"
-                className="group hidden h-9 items-center gap-2 rounded-xl bg-gradient-to-r from-violet-600 via-fuchsia-600 to-pink-600 px-3.5 text-xs font-bold text-white shadow-md shadow-fuchsia-500/30 transition-transform hover:scale-[1.03] sm:inline-flex"
+                className="group hidden h-9 items-center gap-2 rounded-xl bg-gradient-to-r from-amber-500 via-orange-500 to-orange-600 px-3.5 text-xs font-bold text-white shadow-md shadow-orange-500/30 transition-transform hover:scale-[1.03] sm:inline-flex"
               >
                 <Briefcase className="h-3.5 w-3.5" />
                 Dashboard Owner

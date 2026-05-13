@@ -221,8 +221,8 @@ function absUrl(u?: string): string {
 function GradientMesh({ className }: { className?: string }) {
   return (
     <div className={cn('pointer-events-none absolute inset-0 -z-10 overflow-hidden', className)} aria-hidden>
-      <div className="absolute -top-40 left-1/4 h-[480px] w-[480px] rounded-full bg-fuchsia-500/30 blur-[120px]" />
-      <div className="absolute top-20 right-1/4 h-[420px] w-[420px] rounded-full bg-indigo-500/25 blur-[120px]" />
+      <div className="absolute -top-40 left-1/4 h-[480px] w-[480px] rounded-full bg-amber-400/30 blur-[120px]" />
+      <div className="absolute top-20 right-1/4 h-[420px] w-[420px] rounded-full bg-orange-500/25 blur-[120px]" />
       <div className="absolute bottom-0 left-1/2 h-[360px] w-[360px] -translate-x-1/2 rounded-full bg-amber-300/20 blur-[120px]" />
       <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-transparent via-background/40 to-background" />
     </div>
@@ -250,10 +250,10 @@ function HeroSection({ p }: { p: Record<string, unknown> }) {
           <div className="space-y-5 sm:space-y-6">
             <div className="inline-flex items-center gap-2 rounded-full border border-border/60 bg-card/80 px-3 py-1 text-xs font-semibold backdrop-blur">
               <span className="relative grid h-1.5 w-1.5 place-items-center">
-                <span className="absolute inset-0 animate-ping rounded-full bg-fuchsia-500/60" />
-                <span className="relative h-1.5 w-1.5 rounded-full bg-fuchsia-500" />
+                <span className="absolute inset-0 animate-ping rounded-full bg-orange-500/60" />
+                <span className="relative h-1.5 w-1.5 rounded-full bg-orange-500" />
               </span>
-              <span className="bg-gradient-to-r from-fuchsia-600 to-indigo-600 bg-clip-text text-transparent">
+              <span className="bg-gradient-to-r from-amber-500 to-orange-600 bg-clip-text text-transparent">
                 {badge}
               </span>
             </div>
@@ -292,7 +292,7 @@ function HeroSection({ p }: { p: Record<string, unknown> }) {
             )}
           </div>
           <div className="relative">
-            <div className="absolute -inset-3 sm:-inset-4 -z-10 rounded-[28px] sm:rounded-[36px] bg-gradient-to-br from-fuchsia-500/20 via-indigo-500/15 to-amber-300/10 blur-2xl" />
+            <div className="absolute -inset-3 sm:-inset-4 -z-10 rounded-[28px] sm:rounded-[36px] bg-gradient-to-br from-amber-400/25 via-orange-500/20 to-orange-700/10 blur-2xl" />
             <div className="relative aspect-[4/5] sm:aspect-[5/6] overflow-hidden rounded-2xl sm:rounded-3xl border border-white/40 bg-muted shadow-2xl ring-1 ring-black/5">
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img src={imageUrl} alt={title} className="h-full w-full object-cover" />
@@ -309,8 +309,8 @@ function HeroSection({ p }: { p: Record<string, unknown> }) {
       <GradientMesh />
       <div className="mx-auto max-w-5xl px-4 py-16 text-center sm:px-6 sm:py-24 md:py-32">
         <div className="mx-auto mb-6 inline-flex items-center gap-2 rounded-full border border-border/60 bg-card/70 px-3 py-1 text-xs font-semibold backdrop-blur">
-          <Sparkles className="h-3 w-3 text-fuchsia-500" />
-          <span className="bg-gradient-to-r from-fuchsia-600 to-indigo-600 bg-clip-text text-transparent">{badge}</span>
+          <Sparkles className="h-3 w-3 text-orange-500" />
+          <span className="bg-gradient-to-r from-amber-500 to-orange-600 bg-clip-text text-transparent">{badge}</span>
         </div>
         <h1 className="text-balance text-3xl font-bold leading-[1.1] tracking-tight sm:text-5xl md:text-6xl lg:text-7xl">
           {title}
@@ -378,7 +378,7 @@ function FeaturesSection({ p }: { p: Record<string, unknown> }) {
                 key={i}
                 className="group relative overflow-hidden rounded-2xl border border-border/60 bg-card p-7 transition-all hover:-translate-y-1 hover:border-primary/30 hover:shadow-xl"
               >
-                <div className="pointer-events-none absolute -right-12 -top-12 h-32 w-32 rounded-full bg-gradient-to-br from-fuchsia-500/10 to-indigo-500/10 opacity-0 blur-2xl transition-opacity duration-500 group-hover:opacity-100" />
+                <div className="pointer-events-none absolute -right-12 -top-12 h-32 w-32 rounded-full bg-gradient-to-br from-amber-500/10 to-orange-500/10 opacity-0 blur-2xl transition-opacity duration-500 group-hover:opacity-100" />
                 <div className="relative grid h-12 w-12 place-items-center rounded-xl gradient-brand text-white shadow-md shadow-primary/25 transition-transform group-hover:scale-110">
                   <Icon className="h-5 w-5" strokeWidth={2.2} />
                 </div>
@@ -404,7 +404,7 @@ function StatsSection({ p }: { p: Record<string, unknown> }) {
         <div className={cn('grid gap-6', items.length === 3 ? 'sm:grid-cols-3' : 'sm:grid-cols-2 lg:grid-cols-4')}>
           {items.map((it, i) => (
             <div key={i} className="rounded-2xl border border-border/60 bg-card p-7 text-center transition-transform hover:-translate-y-0.5">
-              <div className="bg-gradient-to-br from-fuchsia-600 via-indigo-600 to-amber-500 bg-clip-text text-4xl font-extrabold leading-none tracking-tight text-transparent sm:text-5xl">
+              <div className="bg-gradient-to-br from-amber-400 via-orange-500 to-orange-700 bg-clip-text text-4xl font-extrabold leading-none tracking-tight text-transparent sm:text-5xl">
                 {String(it.value ?? '')}
               </div>
               <div className="mt-2 text-sm font-medium text-muted-foreground">{str(it.label)}</div>
@@ -720,7 +720,7 @@ function VideoSection({ p }: { p: Record<string, unknown> }) {
               </div>
             </div>
           ) : (
-            <div className="grid aspect-video w-full place-items-center bg-gradient-to-br from-fuchsia-500/20 to-indigo-500/20">
+            <div className="grid aspect-video w-full place-items-center bg-gradient-to-br from-amber-400/25 to-orange-500/25">
               <PlayCircle className="h-14 w-14 text-foreground/70" />
             </div>
           )}
@@ -824,7 +824,7 @@ function TestimonialsSection({ p }: { p: Record<string, unknown> }) {
                 key={i}
                 className="group relative overflow-hidden rounded-3xl border border-border/60 bg-card p-7 shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-xl"
               >
-                <Quote className="h-6 w-6 text-fuchsia-500/40" />
+                <Quote className="h-6 w-6 text-orange-500/40" />
                 <div className="mt-3 flex items-center gap-0.5 text-amber-500">
                   {Array.from({ length: 5 }).map((_, j) => (
                     <Star
@@ -842,10 +842,10 @@ function TestimonialsSection({ p }: { p: Record<string, unknown> }) {
                       <img
                         src={avatar}
                         alt={str(it.author)}
-                        className="h-12 w-12 shrink-0 rounded-full object-cover ring-2 ring-fuchsia-500/30"
+                        className="h-12 w-12 shrink-0 rounded-full object-cover ring-2 ring-orange-500/30"
                       />
                     ) : (
-                      <span className="grid h-12 w-12 shrink-0 place-items-center rounded-full bg-gradient-to-br from-fuchsia-500 to-indigo-600 text-base font-semibold text-white">
+                      <span className="grid h-12 w-12 shrink-0 place-items-center rounded-full bg-gradient-to-br from-amber-500 to-orange-600 text-base font-semibold text-white">
                         {str(it.author).charAt(0).toUpperCase()}
                       </span>
                     )}
@@ -891,7 +891,7 @@ function StepsSection({ p }: { p: Record<string, unknown> }) {
                   <span className="grid h-12 w-12 place-items-center rounded-xl gradient-brand text-white shadow-md shadow-primary/25">
                     <Icon className="h-5 w-5" strokeWidth={2.2} />
                   </span>
-                  <span className="bg-gradient-to-br from-fuchsia-500 to-indigo-600 bg-clip-text text-5xl font-extrabold tracking-tight text-transparent opacity-30">
+                  <span className="bg-gradient-to-br from-amber-500 to-orange-600 bg-clip-text text-5xl font-extrabold tracking-tight text-transparent opacity-30">
                     0{i + 1}
                   </span>
                 </div>
@@ -1010,7 +1010,7 @@ function FooterSection({ p }: { p: Record<string, unknown> }) {
       <div className="mx-auto max-w-6xl px-6 py-14">
         <div className="flex flex-col items-start justify-between gap-10 lg:flex-row lg:items-center">
           <div>
-            <div className="bg-gradient-to-br from-fuchsia-600 via-indigo-600 to-amber-500 bg-clip-text text-xl font-extrabold tracking-tight text-transparent">
+            <div className="bg-gradient-to-br from-amber-400 via-orange-500 to-orange-700 bg-clip-text text-xl font-extrabold tracking-tight text-transparent">
               {brandName}
             </div>
             {tagline && <p className="mt-2 max-w-md text-sm text-muted-foreground">{tagline}</p>}
