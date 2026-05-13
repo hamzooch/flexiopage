@@ -17,8 +17,8 @@ Live: <https://flexiopage.com>. See [DEPLOY.md](./DEPLOY.md) for the VPS deploym
 - **Multi-tenant**: Each user can create multiple stores.
 - **Stores** have: custom domain or subdomain, products, landing pages, orders, analytics.
 - Two main folders:
-  - **`/boutshop-frontend`** – Next.js SaaS dashboard and public storefronts.
-  - **`/boutshop-backend`** – Express REST API.
+  - **`/flexiopage-frontend`** – Next.js SaaS dashboard and public storefronts.
+  - **`/flexiopage-backend`** – Express REST API.
 
 ## Quick Start
 
@@ -31,7 +31,7 @@ Live: <https://flexiopage.com>. See [DEPLOY.md](./DEPLOY.md) for the VPS deploym
 ### 1. Backend
 
 ```bash
-cd boutshop-backend
+cd flexiopage-backend
 cp .env.example .env
 # Edit .env: set MONGODB_URI, JWT_SECRET, etc.
 npm install
@@ -43,7 +43,7 @@ API runs at **http://localhost:5000**.
 ### 2. Frontend
 
 ```bash
-cd boutshop-frontend
+cd flexiopage-frontend
 cp .env.example .env.local
 # Set NEXT_PUBLIC_API_URL=http://localhost:5000
 npm install

@@ -137,7 +137,7 @@ Add this line:
 | Watch logs (all services) | `docker compose -f docker-compose.prod.yml logs -f` |
 | Watch only the backend | `docker compose -f docker-compose.prod.yml logs -f backend` |
 | Restart one service | `docker compose -f docker-compose.prod.yml restart backend` |
-| Mongo shell | `docker compose -f docker-compose.prod.yml exec mongodb mongosh boutshop` |
+| Mongo shell | `docker compose -f docker-compose.prod.yml exec mongodb mongosh flexiopage` |
 | Backup Mongo | `docker compose -f docker-compose.prod.yml exec mongodb mongodump --archive --gzip > /opt/backups/$(date +%F).archive.gz` |
 | Storage backup | `tar czf /opt/backups/uploads-$(date +%F).tgz $(docker volume inspect flexiopage_backend_uploads -f '{{ .Mountpoint }}')` |
 

@@ -15,11 +15,11 @@ services:
     volumes:
       - mongodb_data:/data/db
     environment:
-      MONGO_INITDB_DATABASE: boutshop
+      MONGO_INITDB_DATABASE: flexiopage
 
   backend:
     build:
-      context: ./boutshop-backend
+      context: ./flexiopage-backend
       dockerfile: Dockerfile
     restart: unless-stopped
     ports:
@@ -27,7 +27,7 @@ services:
     environment:
       NODE_ENV: production
       PORT: 5000
-      MONGODB_URI: mongodb://mongodb:27017/boutshop
+      MONGODB_URI: mongodb://mongodb:27017/flexiopage
       JWT_SECRET: ${JWT_SECRET:-change-me-in-production}
       FRONTEND_URL: ${FRONTEND_URL:-http://localhost:3000}
       STORAGE_DRIVER: local
@@ -39,7 +39,7 @@ services:
 
   frontend:
     build:
-      context: ./boutshop-frontend
+      context: ./flexiopage-frontend
       dockerfile: Dockerfile
       args:
         NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:5000}
