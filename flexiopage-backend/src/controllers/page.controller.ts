@@ -4,7 +4,7 @@ import * as pageService from '../services/page.service';
 import { LANDING_TEMPLATES } from '../data/landing-templates';
 import { getSectionsFromTemplate, generateLandingWithAI } from '../services/ai-landing.service';
 import { generateLandingFromProduct, generateLandingFromImage } from '../services/fal-landing.service';
-import { generatePoster, type PosterTheme } from '../services/poster.service';
+import { generatePoster, type PosterTheme, type PosterFormat } from '../services/poster.service';
 import { Product } from '../models/Product.model';
 import * as jobService from '../services/generation-job.service';
 import { chargeAiGeneration, aiCostInCurrency } from '../services/wallet.service';
@@ -446,6 +446,7 @@ export async function generatePosterPage(req: AuthRequest, res: Response): Promi
   const body = req.body as {
     productId?: string;
     theme?: PosterTheme;
+    format?: PosterFormat;
     language?: string;
     country?: string;
     currency?: string;
@@ -472,6 +473,7 @@ export async function generatePosterPage(req: AuthRequest, res: Response): Promi
         compareAtPrice: product.compareAtPrice,
       },
       theme: body.theme,
+      format: body.format,
       language: body.language || store.settings?.language,
       country: body.country || store.settings?.country,
       currency: body.currency || store.settings?.currency,

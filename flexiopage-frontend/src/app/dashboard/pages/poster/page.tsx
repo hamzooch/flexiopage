@@ -18,7 +18,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import Link from 'next/link';
-import { storesApi, type PosterContent, type PosterTheme } from '@/lib/api';
+import { storesApi, type PosterContent, type PosterTheme, type PosterFormat } from '@/lib/api';
 import { PosterCanvas } from '@/components/poster/poster-canvas';
 import { useWalletStore } from '@/stores/wallet-store';
 import { useAuthStore } from '@/stores/auth-store';
@@ -30,6 +30,30 @@ const THEMES: { value: PosterTheme; label: string; description: string; preview:
   { value: 'gold-dark', label: 'Or & Noir',   description: 'Luxury · accents dorés sur fond sombre', preview: 'linear-gradient(135deg,#0d0a08 0%,#1a1410 50%,#d9b56a 100%)' },
   { value: 'cinema',    label: 'Cinéma',      description: 'Noir profond + jaune cinéma',           preview: 'linear-gradient(135deg,#050505 0%,#141416 50%,#f5d76e 100%)' },
   { value: 'warm-tan',  label: 'Sable',       description: 'Beige chaud, artisanat éditorial',      preview: 'linear-gradient(135deg,#f5ebd9 0%,#e8d5b4 50%,#a8743a 100%)' },
+];
+
+const FORMATS: { value: PosterFormat; label: string; size: string; description: string; aspect: string }[] = [
+  {
+    value: 'story',
+    label: 'Affiche / Story',
+    size: '768 × 2200',
+    description: 'Vertical · landing page, TikTok, Instagram Story',
+    aspect: '9/26',
+  },
+  {
+    value: 'square',
+    label: 'Post Facebook / Insta',
+    size: '1080 × 1080',
+    description: 'Carré · fil Facebook ou Instagram',
+    aspect: '1/1',
+  },
+  {
+    value: 'landscape',
+    label: 'Lien Facebook / LinkedIn',
+    size: '1200 × 630',
+    description: 'Paysage · partage en lien, OG card',
+    aspect: '40/21',
+  },
 ];
 
 const LANGS = [
@@ -48,6 +72,7 @@ export default function PosterGenerationPage() {
   const [products, setProducts] = useState<ProductLite[]>([]);
   const [productId, setProductId] = useState('');
   const [theme, setTheme] = useState<PosterTheme>('gold-dark');
+  const [format, setFormat] = useState<PosterFormat>('story');
   const [language, setLanguage] = useState<string>('fr');
 
   const [generating, setGenerating] = useState(false);
@@ -95,7 +120,7 @@ export default function PosterGenerationPage() {
     }
     setGenerating(true);
     try {
-      const res = await storesApi.generatePoster(storeId, { productId, theme, language });
+      const res = await storesApi.generatePoster(storeId, { productId, theme, format, language });
       setPoster(res.data.poster);
       refreshWallet();
     } catch (err) {
@@ -181,6 +206,40 @@ export default function PosterGenerationPage() {
                   <option value="">— Choisir —</option>
                   {products.map((p) => <option key={p._id} value={p._id}>{p.name}</option>)}
                 </select>
+              </div>
+            </div>
+
+            {/* Format */}
+            <div>
+              <Label className="text-xs">Format de sortie</Label>
+              <p className="mt-0.5 text-[11px] text-muted-foreground">
+                Choisis selon où tu vas publier — le canevas s&apos;adapte automatiquement.
+              </p>
+              <div className="mt-1.5 grid gap-3 sm:grid-cols-3">
+                {FORMATS.map((opt) => {
+                  const active = format === opt.value;
+                  return (
+                    <button
+                      key={opt.value}
+                      type="button"
+                      onClick={() => setFormat(opt.value)}
+                      className={`overflow-hidden rounded-xl border-2 p-3 text-left transition-all ${
+                        active ? 'border-primary ring-4 ring-primary/15' : 'border-border hover:border-primary/30'
+                      }`}
+                    >
+                      {/* Tiny preview of the aspect ratio so the user sees the shape */}
+                      <div className="mb-2 grid place-items-center rounded-md bg-muted/40 p-2">
+                        <div
+                          className="rounded-sm bg-gradient-to-br from-amber-400 to-orange-600"
+                          style={{ aspectRatio: opt.aspect, width: '60%', maxHeight: 48 }}
+                        />
+                      </div>
+                      <div className="text-sm font-semibold">{opt.label}</div>
+                      <div className="mt-0.5 text-[11px] text-muted-foreground">{opt.size}</div>
+                      <div className="mt-1 text-[11px] text-muted-foreground">{opt.description}</div>
+                    </button>
+                  );
+                })}
               </div>
             </div>
 

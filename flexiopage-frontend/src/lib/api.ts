@@ -92,6 +92,7 @@ export const walletApi = {
 // Poster generation — single tall ad-style image (TryAd-like)
 // ─────────────────────────────────────────────────────────────────────
 export type PosterTheme = 'gold-dark' | 'cinema' | 'warm-tan';
+export type PosterFormat = 'story' | 'square' | 'landscape';
 export interface PosterFeature {
   icon: 'check' | 'shield' | 'truck' | 'clock' | 'star' | 'sparkles' | 'zap' | 'gift' | 'crown' | 'lock' | 'refresh';
   title: string;
@@ -106,6 +107,7 @@ export interface PosterTestimonial {
 }
 export interface PosterContent {
   theme: PosterTheme;
+  format: PosterFormat;
   direction: 'ltr' | 'rtl';
   language: string;
   hero: {
@@ -481,7 +483,14 @@ export const storesApi = {
   ) => api.post<{ jobId: string }>(`/stores/${storeId}/pages/generate-from-image/async`, data),
   generatePoster: (
     storeId: string,
-    data: { productId: string; theme?: PosterTheme; language?: string; country?: string; currency?: string }
+    data: {
+      productId: string;
+      theme?: PosterTheme;
+      format?: PosterFormat;
+      language?: string;
+      country?: string;
+      currency?: string;
+    }
   ) => api.post<{ poster: PosterContent; charge: { amount: number; balanceAfter: number; currency: string } }>(
     `/stores/${storeId}/pages/generate-poster`,
     data

@@ -111,7 +111,17 @@ interface Props {
 export function PosterCanvas({ content, exportRef }: Props) {
   const t = THEMES[content.theme];
   const isRtl = content.direction === 'rtl';
+  const format = content.format || 'story';
 
+  // Compact formats (square / landscape) get their own dedicated layouts.
+  if (format === 'square') {
+    return <SquarePoster content={content} t={t} isRtl={isRtl} exportRef={exportRef} />;
+  }
+  if (format === 'landscape') {
+    return <LandscapePoster content={content} t={t} isRtl={isRtl} exportRef={exportRef} />;
+  }
+
+  // Default 'story' layout — full 768×~2200 vertical canvas
   return (
     <div
       ref={exportRef as React.Ref<HTMLDivElement>}
@@ -453,6 +463,353 @@ export function PosterCanvas({ content, exportRef }: Props) {
           </div>
         )}
       </section>
+    </div>
+  );
+}
+
+// ─── Compact layouts ────────────────────────────────────────────────────
+// Square (1080×1080) and landscape (1200×630) only render hero + price +
+// CTA so the layout breathes at small canvas sizes. Features and
+// testimonials are omitted on purpose — they're poster-only signals.
+
+interface CompactProps {
+  content: PosterContent;
+  t: ThemeStyle;
+  isRtl: boolean;
+  exportRef?: React.RefObject<HTMLDivElement | null>;
+}
+
+/**
+ * 1080 × 1080 — Facebook / Instagram feed post.
+ * Layout: badge + title (top), product image (center, large), price + CTA (bottom).
+ */
+function SquarePoster({ content, t, isRtl, exportRef }: CompactProps) {
+  return (
+    <div
+      ref={exportRef as React.Ref<HTMLDivElement>}
+      dir={content.direction}
+      lang={content.language}
+      style={{
+        width: 1080,
+        height: 1080,
+        background: t.background,
+        color: t.primaryText,
+        fontFamily: t.fontBody,
+        position: 'relative',
+        overflow: 'hidden',
+        padding: 64,
+        display: 'flex',
+        flexDirection: 'column',
+        textAlign: isRtl ? 'right' : 'left',
+      }}
+    >
+      {/* Decorative glow */}
+      <div
+        aria-hidden
+        style={{
+          position: 'absolute',
+          top: -200,
+          [isRtl ? 'left' : 'right']: -200,
+          width: 600,
+          height: 600,
+          borderRadius: 999,
+          background: t.accent,
+          opacity: 0.15,
+          filter: 'blur(140px)',
+          pointerEvents: 'none',
+        }}
+      />
+
+      {/* Top: badge + headline */}
+      <div style={{ position: 'relative' }}>
+        {content.hero.badge && (
+          <div
+            style={{
+              display: 'inline-block',
+              padding: '8px 18px',
+              borderRadius: 999,
+              background: t.accentSoft,
+              border: `1px solid ${t.border}`,
+              color: t.accent,
+              fontSize: 14,
+              fontWeight: 700,
+              letterSpacing: 1.5,
+              textTransform: 'uppercase',
+              marginBottom: 20,
+            }}
+          >
+            {content.hero.badge}
+          </div>
+        )}
+        <h1
+          style={{
+            fontFamily: t.fontHeading,
+            fontSize: 64,
+            fontWeight: 800,
+            lineHeight: 1.05,
+            letterSpacing: -1.5,
+            margin: 0,
+            color: t.primaryText,
+          }}
+        >
+          {content.hero.title}
+        </h1>
+      </div>
+
+      {/* Middle: product image */}
+      <div style={{ flex: 1, display: 'grid', placeItems: 'center', padding: '32px 0' }}>
+        {content.hero.productImageUrl ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={content.hero.productImageUrl}
+            alt=""
+            crossOrigin="anonymous"
+            style={{
+              maxWidth: '100%',
+              maxHeight: 460,
+              objectFit: 'contain',
+              borderRadius: 24,
+              filter: 'drop-shadow(0 24px 48px rgba(0,0,0,0.4))',
+            }}
+          />
+        ) : (
+          <div
+            style={{
+              width: 460,
+              height: 460,
+              borderRadius: 24,
+              background: t.surface,
+              display: 'grid',
+              placeItems: 'center',
+              color: t.mutedText,
+              fontSize: 16,
+              border: `1px solid ${t.border}`,
+            }}
+          >
+            Photo produit
+          </div>
+        )}
+      </div>
+
+      {/* Bottom: price + CTA pill */}
+      <div
+        style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          gap: 24,
+          flexDirection: isRtl ? 'row-reverse' : 'row',
+          position: 'relative',
+        }}
+      >
+        <div>
+          <div style={{ fontSize: 13, color: t.mutedText, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 1.5 }}>
+            {content.pricing.discountBadge || 'Prix promo'}
+          </div>
+          <div style={{ display: 'flex', alignItems: 'baseline', gap: 14, marginTop: 6 }}>
+            <span style={{ fontFamily: t.fontHeading, fontSize: 58, fontWeight: 800, color: t.accent, lineHeight: 1 }}>
+              {fmtCurrency(content.pricing.priceAfter, content.pricing.currency)}
+            </span>
+            {content.pricing.priceBefore && content.pricing.priceBefore > content.pricing.priceAfter && (
+              <span style={{ color: t.mutedText, fontSize: 22, textDecoration: 'line-through' }}>
+                {fmtCurrency(content.pricing.priceBefore, content.pricing.currency)}
+              </span>
+            )}
+          </div>
+        </div>
+        <div
+          style={{
+            padding: '22px 36px',
+            borderRadius: 999,
+            background: t.ctaBg,
+            color: t.ctaText,
+            fontSize: 24,
+            fontWeight: 800,
+            letterSpacing: 1.5,
+            textTransform: 'uppercase',
+            boxShadow: '0 12px 32px rgba(0,0,0,0.4)',
+            whiteSpace: 'nowrap',
+          }}
+        >
+          {content.cta.label}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * 1200 × 630 — Facebook link card, LinkedIn, Twitter card, OG image.
+ * Layout: 2 columns — text + price + CTA on one side, product image on the other.
+ */
+function LandscapePoster({ content, t, isRtl, exportRef }: CompactProps) {
+  return (
+    <div
+      ref={exportRef as React.Ref<HTMLDivElement>}
+      dir={content.direction}
+      lang={content.language}
+      style={{
+        width: 1200,
+        height: 630,
+        background: t.background,
+        color: t.primaryText,
+        fontFamily: t.fontBody,
+        position: 'relative',
+        overflow: 'hidden',
+        display: 'grid',
+        gridTemplateColumns: isRtl ? '1fr 1.2fr' : '1.2fr 1fr',
+      }}
+    >
+      {/* Decorative glow */}
+      <div
+        aria-hidden
+        style={{
+          position: 'absolute',
+          top: -150,
+          [isRtl ? 'left' : 'right']: -150,
+          width: 480,
+          height: 480,
+          borderRadius: 999,
+          background: t.accent,
+          opacity: 0.15,
+          filter: 'blur(120px)',
+          pointerEvents: 'none',
+        }}
+      />
+
+      {/* Text side */}
+      <div
+        style={{
+          padding: 56,
+          display: 'flex',
+          flexDirection: 'column',
+          justifyContent: 'space-between',
+          gridColumn: isRtl ? 2 : 1,
+          textAlign: isRtl ? 'right' : 'left',
+        }}
+      >
+        <div>
+          {content.hero.badge && (
+            <div
+              style={{
+                display: 'inline-block',
+                padding: '6px 14px',
+                borderRadius: 999,
+                background: t.accentSoft,
+                border: `1px solid ${t.border}`,
+                color: t.accent,
+                fontSize: 12,
+                fontWeight: 700,
+                letterSpacing: 1.5,
+                textTransform: 'uppercase',
+                marginBottom: 14,
+              }}
+            >
+              {content.hero.badge}
+            </div>
+          )}
+          <h1
+            style={{
+              fontFamily: t.fontHeading,
+              fontSize: 52,
+              fontWeight: 800,
+              lineHeight: 1.05,
+              letterSpacing: -1.5,
+              margin: 0,
+              color: t.primaryText,
+            }}
+          >
+            {content.hero.title}
+          </h1>
+          <p
+            style={{
+              color: t.mutedText,
+              fontSize: 18,
+              lineHeight: 1.45,
+              marginTop: 14,
+              ...(isRtl ? { marginLeft: 'auto' } : {}),
+            }}
+          >
+            {content.hero.subtitle}
+          </p>
+        </div>
+
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 20,
+            flexDirection: isRtl ? 'row-reverse' : 'row',
+          }}
+        >
+          <div>
+            <div style={{ display: 'flex', alignItems: 'baseline', gap: 10 }}>
+              <span style={{ fontFamily: t.fontHeading, fontSize: 42, fontWeight: 800, color: t.accent, lineHeight: 1 }}>
+                {fmtCurrency(content.pricing.priceAfter, content.pricing.currency)}
+              </span>
+              {content.pricing.priceBefore && content.pricing.priceBefore > content.pricing.priceAfter && (
+                <span style={{ color: t.mutedText, fontSize: 18, textDecoration: 'line-through' }}>
+                  {fmtCurrency(content.pricing.priceBefore, content.pricing.currency)}
+                </span>
+              )}
+            </div>
+          </div>
+          <div
+            style={{
+              padding: '16px 28px',
+              borderRadius: 999,
+              background: t.ctaBg,
+              color: t.ctaText,
+              fontSize: 18,
+              fontWeight: 800,
+              letterSpacing: 1.2,
+              textTransform: 'uppercase',
+              boxShadow: '0 10px 28px rgba(0,0,0,0.35)',
+              whiteSpace: 'nowrap',
+            }}
+          >
+            {content.cta.label}
+          </div>
+        </div>
+      </div>
+
+      {/* Image side */}
+      <div
+        style={{
+          position: 'relative',
+          gridColumn: isRtl ? 1 : 2,
+          overflow: 'hidden',
+        }}
+      >
+        {content.hero.productImageUrl ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={content.hero.productImageUrl}
+            alt=""
+            crossOrigin="anonymous"
+            style={{
+              width: '100%',
+              height: '100%',
+              objectFit: 'cover',
+              filter: 'drop-shadow(0 20px 40px rgba(0,0,0,0.4))',
+            }}
+          />
+        ) : (
+          <div
+            style={{
+              width: '100%',
+              height: '100%',
+              background: t.surface,
+              display: 'grid',
+              placeItems: 'center',
+              color: t.mutedText,
+              fontSize: 16,
+            }}
+          >
+            Photo produit
+          </div>
+        )}
+      </div>
     </div>
   );
 }

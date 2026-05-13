@@ -18,6 +18,15 @@ import { generateImagesParallel } from './image-generation.service';
 
 export type PosterTheme = 'gold-dark' | 'cinema' | 'warm-tan';
 
+/**
+ * Output canvas format. Same LLM content; the frontend canvas adapts
+ * its dimensions and layout based on this flag.
+ *   - story     → 768 × ~2200 (vertical ad, landing page hero, TikTok)
+ *   - square    → 1080 × 1080 (Facebook / Instagram feed post)
+ *   - landscape → 1200 × 630  (Facebook link card, LinkedIn, Twitter)
+ */
+export type PosterFormat = 'story' | 'square' | 'landscape';
+
 export interface PosterFeature {
   /** Short title — 3-6 words. */
   title: string;
@@ -38,6 +47,8 @@ export interface PosterTestimonial {
 
 export interface PosterContent {
   theme: PosterTheme;
+  /** Canvas size + layout adaptation hint, default 'story'. */
+  format: PosterFormat;
   /** RTL when language is ar/he/fa/ur, otherwise ltr. */
   direction: 'ltr' | 'rtl';
   language: string;
@@ -78,6 +89,7 @@ interface PosterInput {
     compareAtPrice?: number;
   };
   theme?: PosterTheme;
+  format?: PosterFormat;
   language?: string;
   country?: string;
   currency?: string;
@@ -176,6 +188,7 @@ export async function generatePoster(input: PosterInput): Promise<PosterContent>
   const lang = (input.language || 'fr').toLowerCase();
   const direction: 'ltr' | 'rtl' = RTL_LANGS.has(lang.split('-')[0]) ? 'rtl' : 'ltr';
   const theme: PosterTheme = input.theme || 'gold-dark';
+  const format: PosterFormat = input.format || 'story';
 
   // 1. LLM call
   const prompt = buildPrompt(input, theme);
@@ -221,6 +234,7 @@ export async function generatePoster(input: PosterInput): Promise<PosterContent>
 
   return {
     theme,
+    format,
     direction,
     language: lang,
     hero: {
