@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -174,18 +175,18 @@ const TYPE_OPTIONS: {
 }[] = [
   {
     id: 'physical',
-    title: 'Physical products',
-    desc: 'Sell tangible goods that are shipped to your customers.',
-    bullets: ['Inventory tracking', 'Shipping & weight', 'Variants (size, color)'],
+    title: 'Produits physiques',
+    desc: 'Vends des produits tangibles livrés à tes clients.',
+    bullets: ['Suivi de stock', 'Livraison & poids', 'Variantes (taille, couleur)'],
     icon: Package,
     accent: 'from-indigo-500 to-violet-600',
     glow: 'shadow-indigo-500/30',
   },
   {
     id: 'digital',
-    title: 'Digital products',
-    desc: 'Sell downloadable files: ebooks, templates, music, software, courses.',
-    bullets: ['Instant delivery', 'No inventory', 'Secure download links'],
+    title: 'Produits digitaux',
+    desc: 'Vends des fichiers téléchargeables : ebooks, templates, musique, logiciels, cours.',
+    bullets: ['Livraison instantanée', 'Pas de stock', 'Liens de téléchargement sécurisés'],
     icon: Cloud,
     accent: 'from-fuchsia-500 to-pink-600',
     glow: 'shadow-fuchsia-500/30',
@@ -193,6 +194,7 @@ const TYPE_OPTIONS: {
 ];
 
 export default function DashboardStoresPage() {
+  const router = useRouter();
   const [stores, setStores] = useState<StoreType_Doc[]>([]);
   const [loading, setLoading] = useState(true);
   const [step, setStep] = useState<Step>('list');
@@ -246,17 +248,17 @@ export default function DashboardStoresPage() {
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault();
     if (!newName.trim()) {
-      setError('Store name is required');
+      setError('Le nom de la boutique est obligatoire');
       return;
     }
     if (!selectedType) {
-      setError('Store type is required');
+      setError('Le type de boutique est obligatoire');
       return;
     }
     setCreating(true);
     setError('');
     try {
-      await storesApi.create({
+      const res = await storesApi.create({
         name: newName.trim(),
         description: newDescription.trim() || undefined,
         storeType: selectedType,
@@ -265,14 +267,21 @@ export default function DashboardStoresPage() {
         language: newLanguage || undefined,
         currency: newCurrency || undefined,
       });
-      setStep('list');
-      loadStores();
+      // Drop the seller straight into the store hub for the newly-created
+      // store so they can immediately configure sections / upload a logo.
+      const newId = (res.data as { store?: { _id?: string } }).store?._id;
+      if (newId) {
+        router.push(`/dashboard/stores/${newId}`);
+      } else {
+        setStep('list');
+        loadStores();
+      }
     } catch (err: unknown) {
       const msg =
         err && typeof err === 'object' && 'response' in err
           ? (err as { response?: { data?: { error?: string } } }).response?.data?.error
-          : 'Failed to create store';
-      setError(msg || 'Failed to create store');
+          : 'La création a échoué';
+      setError(msg || 'La création a échoué');
     } finally {
       setCreating(false);
     }
@@ -286,8 +295,8 @@ export default function DashboardStoresPage() {
           step={1}
           total={3}
           back={() => setStep('list')}
-          title="What will you sell?"
-          subtitle="Choose the type of products for this store. You can change it later."
+          title="Que vends-tu ?"
+          subtitle="Choisis le type de produits pour cette boutique."
         />
         <div className="grid gap-5 md:grid-cols-2">
           {TYPE_OPTIONS.map((opt) => {
@@ -339,7 +348,7 @@ export default function DashboardStoresPage() {
                   ))}
                 </ul>
                 <div className="relative mt-5 inline-flex items-center gap-1 text-sm font-medium text-primary">
-                  Choose
+                  Choisir
                   <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
                 </div>
               </button>
@@ -379,8 +388,8 @@ export default function DashboardStoresPage() {
           step={3}
           total={3}
           back={() => setStep('choose-theme')}
-          title="Name your store"
-          subtitle="Almost there — just a name and an optional description."
+          title="Nomme ta boutique"
+          subtitle="Plus qu'à choisir un nom et une description — on s'occupe du reste."
         />
 
         <div className="overflow-hidden rounded-2xl border border-border/60 bg-card">
@@ -390,14 +399,14 @@ export default function DashboardStoresPage() {
                 <TypeIcon className="h-5 w-5" />
               </div>
               <div>
-                <div className="text-xs uppercase tracking-wider text-muted-foreground">Selection</div>
+                <div className="text-xs uppercase tracking-wider text-muted-foreground">Ton choix</div>
                 <div className="text-sm font-medium">
-                  {selectedType === 'physical' ? 'Physical' : 'Digital'} · {selectedTheme.name} theme
+                  {selectedType === 'physical' ? 'Physique' : 'Digital'} · thème {selectedTheme.name}
                 </div>
               </div>
             </div>
             <Button type="button" variant="ghost" size="sm" onClick={() => setStep('choose-type')}>
-              Change
+              Changer
             </Button>
           </div>
 
@@ -408,10 +417,10 @@ export default function DashboardStoresPage() {
               </div>
             )}
             <div className="space-y-2">
-              <Label htmlFor="store-name">Store name *</Label>
+              <Label htmlFor="store-name">Nom de la boutique *</Label>
               <Input
                 id="store-name"
-                placeholder="My awesome store"
+                placeholder="Ex: Caftans Marrakech, Bijoux Sahel, Tech Tunisia"
                 value={newName}
                 onChange={(e) => setNewName(e.target.value)}
                 required
@@ -419,10 +428,10 @@ export default function DashboardStoresPage() {
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="store-desc">Description (optional)</Label>
+              <Label htmlFor="store-desc">Description (optionnel)</Label>
               <textarea
                 id="store-desc"
-                placeholder="Short description shown on your storefront"
+                placeholder="Courte description affichée sur ta vitrine"
                 value={newDescription}
                 onChange={(e) => setNewDescription(e.target.value)}
                 className="flex min-h-[90px] w-full rounded-xl border border-input bg-background px-3 py-2 text-sm transition-colors focus:border-primary/40 focus:outline-none focus:ring-4 focus:ring-primary/10"
@@ -524,7 +533,7 @@ export default function DashboardStoresPage() {
                 className="h-11 gap-2 rounded-xl gradient-brand text-white shadow-lg shadow-primary/25 hover:opacity-95"
               >
                 <Sparkles className="h-4 w-4" />
-                {creating ? 'Creating...' : 'Create store'}
+                {creating ? 'Création…' : 'Créer la boutique'}
               </Button>
               <Button
                 type="button"
@@ -532,7 +541,7 @@ export default function DashboardStoresPage() {
                 className="h-11 rounded-xl"
                 onClick={() => setStep('choose-theme')}
               >
-                Change theme
+                Changer le thème
               </Button>
             </div>
           </form>
@@ -700,11 +709,11 @@ function WizardHeader({
   return (
     <div className="space-y-4">
       <Button variant="ghost" size="sm" onClick={back} className="-ml-2 gap-1.5 text-muted-foreground hover:text-foreground">
-        <ArrowLeft className="h-4 w-4" /> Back
+        <ArrowLeft className="h-4 w-4" /> Retour
       </Button>
       <div className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
-        <span className="rounded-full bg-primary/10 px-2 py-0.5 text-primary">Step {step}</span>
-        <span>of {total}</span>
+        <span className="rounded-full bg-primary/10 px-2 py-0.5 text-primary">Étape {step}</span>
+        <span>sur {total}</span>
         <div className="ml-2 flex flex-1 max-w-[120px] gap-1">
           {Array.from({ length: total }).map((_, i) => (
             <div
