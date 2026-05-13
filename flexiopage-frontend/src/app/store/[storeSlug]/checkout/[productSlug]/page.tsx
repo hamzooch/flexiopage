@@ -106,7 +106,7 @@ export default function CheckoutPage() {
         if (pRes.ok) {
           const p: ProductDoc = (await pRes.json()).product;
           if (p?.type === 'physical') {
-            router.replace(`/store/${storeSlug}/product/${productSlug}#cod-order-form`);
+            router.replace(`/${storeSlug}/product/${productSlug}#cod-order-form`);
             return;
           }
           setProduct(p);
@@ -168,7 +168,7 @@ export default function CheckoutPage() {
       <div className="grid min-h-screen place-items-center px-6 text-center">
         <div>
           <h1 className="text-2xl font-bold">Produit introuvable</h1>
-          <Link href={`/store/${storeSlug}`} className="mt-4 inline-block text-sm text-primary hover:underline">
+          <Link href={`/${storeSlug}`} className="mt-4 inline-block text-sm text-primary hover:underline">
             ← Retour à la boutique
           </Link>
         </div>
@@ -191,7 +191,7 @@ export default function CheckoutPage() {
         config={store.settings?.storefront?.navbar}
         trailing={
           <Link
-            href={`/store/${storeSlug}/product/${productSlug}`}
+            href={`/${storeSlug}/product/${productSlug}`}
             className="inline-flex items-center gap-1.5 text-xs hover:opacity-100 sm:text-sm"
             style={{ color: themeTokens.muted }}
           >

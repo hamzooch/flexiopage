@@ -400,7 +400,7 @@ export default function AdminUserDetailPage() {
                   }`}>
                     {s.isPublished ? 'Live' : 'Draft'}
                   </span>
-                  <Link href={`/store/${s.slug}`} target="_blank" className="inline-flex items-center gap-1 text-xs text-primary hover:underline">
+                  <Link href={`/${s.slug}`} target="_blank" className="inline-flex items-center gap-1 text-xs text-primary hover:underline">
                     Voir <ExternalLink className="h-3 w-3" />
                   </Link>
                 </li>

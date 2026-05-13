@@ -151,7 +151,7 @@ export default function StoreHubPage() {
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
-          <Link href={`/store/${store.slug}`} target="_blank" rel="noopener">
+          <Link href={`/${store.slug}`} target="_blank" rel="noopener">
             <Button variant="outline" size="sm" className="gap-1.5">
               <ExternalLink className="h-3.5 w-3.5" />
               Voir la boutique
@@ -255,7 +255,7 @@ export default function StoreHubPage() {
         <CardContent>
           <div className="overflow-hidden rounded-xl border border-border/60 bg-muted/30">
             <iframe
-              src={`/store/${store.slug}`}
+              src={`/${store.slug}`}
               title="Aperçu de la boutique"
               className="h-[420px] w-full"
               loading="lazy"

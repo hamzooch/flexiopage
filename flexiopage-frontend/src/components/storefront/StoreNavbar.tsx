@@ -42,7 +42,7 @@ function resolveHref(url: string, storeSlug: string): string {
   if (url.startsWith('/')) return url;
   if (/^https?:\/\//.test(url)) return url;
   // Bare slug — assume internal storefront page (`about`, `contact`).
-  return `/store/${storeSlug}/${url.replace(/^\/+/, '')}`;
+  return `/${storeSlug}/${url.replace(/^\/+/, '')}`;
 }
 
 export function StoreNavbar({ storeName, storeSlug, storeLogo, theme, config, trailing }: Props) {
@@ -60,7 +60,7 @@ export function StoreNavbar({ storeName, storeSlug, storeLogo, theme, config, tr
       <div className="mx-auto flex h-14 max-w-6xl items-center justify-between gap-3 px-3 sm:h-16 sm:gap-6 sm:px-6">
         {/* Brand */}
         <Link
-          href={`/store/${storeSlug}`}
+          href={`/${storeSlug}`}
           className="inline-flex min-w-0 items-center gap-2 text-base font-bold tracking-tight sm:text-xl"
           style={{ fontFamily: theme.fontHeading, color: theme.foreground }}
         >

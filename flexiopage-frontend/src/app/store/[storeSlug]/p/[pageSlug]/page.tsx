@@ -85,7 +85,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const description =
     data.page.seoDescription ||
     `Découvre les produits de ${data.store.name}. Commande facilement, paiement à la livraison.`;
-  const canonical = `/store/${storeSlug}/p/${pageSlug}`;
+  const canonical = `/${storeSlug}/p/${pageSlug}`;
   const ogImage = data.store.logo || '/opengraph-image';
 
   return {
@@ -120,7 +120,7 @@ export default async function PublicLandingPage({ params }: Props) {
       <div className="grid min-h-screen place-items-center">
         <div className="space-y-3 text-center">
           <h1 className="text-2xl font-bold">Page not found</h1>
-          <Link href={`/store/${storeSlug}`} className="text-primary hover:underline">
+          <Link href={`/${storeSlug}`} className="text-primary hover:underline">
             Back to store
           </Link>
         </div>

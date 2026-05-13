@@ -95,7 +95,7 @@ export function StoreFooter({ storeName, storeSlug, footerNote, config, theme }:
             {/* Brand block */}
             <div className="lg:col-span-2">
               <Link
-                href={`/store/${storeSlug}`}
+                href={`/${storeSlug}`}
                 className="text-lg font-bold tracking-tight"
                 style={{ fontFamily: theme.fontHeading, color: theme.foreground }}
               >
@@ -190,7 +190,7 @@ export function StoreFooter({ storeName, storeSlug, footerNote, config, theme }:
                   {links.map((l, i) => (
                     <li key={i}>
                       <a
-                        href={l.url.startsWith('http') || l.url.startsWith('/') ? l.url : `/store/${storeSlug}/${l.url.replace(/^\/+/, '')}`}
+                        href={l.url.startsWith('http') || l.url.startsWith('/') ? l.url : `/${storeSlug}/${l.url.replace(/^\/+/, '')}`}
                         className="hover:underline"
                         style={{ color: theme.muted }}
                       >

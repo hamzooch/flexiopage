@@ -221,7 +221,7 @@ export default function CodCheckoutPage() {
               ? 'Cet article est digital — utilise le checkout en ligne.'
               : ''}
           </p>
-          <Link href={`/store/${storeSlug}`} className="mt-4 inline-block text-sm underline">
+          <Link href={`/${storeSlug}`} className="mt-4 inline-block text-sm underline">
             ← Retour à la boutique
           </Link>
         </div>
@@ -257,7 +257,7 @@ export default function CodCheckoutPage() {
           config={store.settings?.storefront?.navbar}
           trailing={
             <Link
-              href={`/store/${storeSlug}/product/${productSlug}`}
+              href={`/${storeSlug}/product/${productSlug}`}
               className="inline-flex items-center gap-1.5 text-xs opacity-70 hover:opacity-100 sm:text-sm"
               style={{ color: theme.muted }}
             >

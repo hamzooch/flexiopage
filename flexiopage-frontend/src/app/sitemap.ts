@@ -59,7 +59,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   for (const s of stores) {
     if (!s.slug) continue;
     dynamicRoutes.push({
-      url: `${SITE}/store/${s.slug}`,
+      url: `${SITE}/${s.slug}`,
       lastModified: s.updatedAt ? new Date(s.updatedAt) : now,
       changeFrequency: 'weekly',
       priority: 0.7,
@@ -67,7 +67,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     for (const p of s.pages ?? []) {
       if (!p.slug || p.isPublished === false) continue;
       dynamicRoutes.push({
-        url: `${SITE}/store/${s.slug}/p/${p.slug}`,
+        url: `${SITE}/${s.slug}/p/${p.slug}`,
         lastModified: p.updatedAt ? new Date(p.updatedAt) : now,
         changeFrequency: 'weekly',
         priority: 0.6,

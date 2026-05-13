@@ -669,7 +669,7 @@ export default function DashboardStoresPage() {
                       Products
                     </Button>
                   </Link>
-                  <Link href={`/store/${store.slug}`} target="_blank" rel="noopener">
+                  <Link href={`/${store.slug}`} target="_blank" rel="noopener">
                     <Button
                       variant="outline"
                       size="sm"

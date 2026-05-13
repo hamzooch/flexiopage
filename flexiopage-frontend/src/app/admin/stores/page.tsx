@@ -83,7 +83,7 @@ export default function AdminStoresPage() {
                       </td>
                       <td className="py-3 text-right">
                         <Link
-                          href={`/store/${s.slug}`}
+                          href={`/${s.slug}`}
                           target="_blank"
                           className="inline-flex items-center gap-1 text-xs text-primary hover:underline"
                         >

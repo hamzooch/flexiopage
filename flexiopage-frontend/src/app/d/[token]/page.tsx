@@ -136,7 +136,7 @@ export default async function DownloadPortalPage({ params }: Props) {
       {/* Header */}
       <header className="border-b border-border/60 bg-card/80 backdrop-blur-xl">
         <div className="mx-auto flex h-14 max-w-4xl items-center justify-between gap-3 px-3 sm:h-16 sm:px-6">
-          <Link href={store ? `/store/${store.slug}` : '/'} className="truncate text-sm font-bold tracking-tight sm:text-base">
+          <Link href={store ? `/${store.slug}` : '/'} className="truncate text-sm font-bold tracking-tight sm:text-base">
             {store?.name || 'FlexioPage'}
           </Link>
           <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-emerald-500/10 px-2 py-1 text-[11px] font-semibold text-emerald-700 sm:gap-1.5 sm:px-2.5 sm:text-xs">

@@ -227,7 +227,7 @@ export default function CodThanksPage() {
         <div className="mt-8 flex flex-col items-center gap-3 sm:flex-row sm:justify-center">
           {storeSlug && (
             <Link
-              href={`/store/${storeSlug}`}
+              href={`/${storeSlug}`}
               className="inline-flex h-11 items-center gap-2 rounded-full border border-border bg-card px-5 text-sm font-semibold hover:bg-muted"
             >
               <Home className="h-4 w-4" /> Continuer sur {storeName}

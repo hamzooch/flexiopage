@@ -263,7 +263,7 @@ function DomainPanel({ store, onSaved, saving, setSaving }: PanelProps) {
   const devOrigin = typeof window !== 'undefined' ? window.location.origin : '';
   const previewUrl = store.customDomain && verified
     ? `https://${store.customDomain}`
-    : `${devOrigin}/store/${store.slug}`;
+    : `${devOrigin}/${store.slug}`;
 
   return (
     <Card icon={<Globe className="h-5 w-5" />} title="Domaine personnalisé"

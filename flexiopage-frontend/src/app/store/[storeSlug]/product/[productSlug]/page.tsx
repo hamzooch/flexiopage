@@ -120,7 +120,7 @@ export default async function PublicProductPage({ params }: Props) {
       <div className="flex min-h-screen items-center justify-center">
         <div className="text-center">
           <h1 className="text-2xl font-bold">Produit introuvable</h1>
-          <Link href={`/store/${storeSlug}`} className="mt-4 inline-block text-primary hover:underline">
+          <Link href={`/${storeSlug}`} className="mt-4 inline-block text-primary hover:underline">
             Retour à la boutique
           </Link>
         </div>
@@ -276,7 +276,7 @@ export default async function PublicProductPage({ params }: Props) {
                   products use the inline COD form rendered below. */}
               {isDigital ? (
                 <Link
-                  href={`/store/${storeSlug}/checkout/${product.slug}`}
+                  href={`/${storeSlug}/checkout/${product.slug}`}
                   className="inline-flex h-14 w-full items-center justify-center gap-2 px-7 text-base font-semibold transition-all hover:scale-[1.01]"
                   style={{
                     background: theme.style === 'tech'

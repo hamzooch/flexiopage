@@ -188,7 +188,7 @@ function Header({ store, theme }: { store: StoreDoc; theme: ThemeTokens }) {
     >
       <div className="mx-auto flex h-14 max-w-6xl items-center justify-between gap-3 px-3 sm:h-16 sm:px-6">
         <Link
-          href={`/store/${store.slug}`}
+          href={`/${store.slug}`}
           className="truncate text-base font-bold tracking-tight sm:text-xl"
           style={{ fontFamily: theme.fontHeading, color: theme.foreground }}
         >
@@ -392,7 +392,7 @@ function ProductsGrid({
               return (
                 <Link
                   key={p._id}
-                  href={`/store/${storeSlug}/product/${p.slug}`}
+                  href={`/${storeSlug}/product/${p.slug}`}
                   className="group block overflow-hidden border transition-all hover:-translate-y-1"
                   style={{
                     backgroundColor: theme.surface,

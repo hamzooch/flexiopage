@@ -145,7 +145,7 @@ export default function DashboardPagesPage() {
                       </Button>
                     </Link>
                     {p.isPublished && storeSlug && (
-                      <Link href={`/store/${storeSlug}/p/${p.slug}`} target="_blank">
+                      <Link href={`/${storeSlug}/p/${p.slug}`} target="_blank">
                         <Button size="sm" className="gap-1.5 gradient-brand text-white">
                           <ExternalLink className="h-3.5 w-3.5" />
                           View live

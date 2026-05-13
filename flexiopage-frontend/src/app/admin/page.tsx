@@ -425,7 +425,7 @@ export default function AdminOverviewPage() {
                                 {o.paymentStatus}
                               </span>
                               {storeName && (
-                                <Link href={storeSlug ? `/store/${storeSlug}` : '#'} target="_blank" className="truncate text-[10px] text-muted-foreground hover:text-foreground sm:text-[11px]">
+                                <Link href={storeSlug ? `/${storeSlug}` : '#'} target="_blank" className="truncate text-[10px] text-muted-foreground hover:text-foreground sm:text-[11px]">
                                   · {storeName}
                                 </Link>
                               )}
