@@ -412,16 +412,119 @@ async function captionProductImages(images: string[], max = 3): Promise<string> 
 const LLM_MODEL = process.env.FAL_LLM_MODEL || 'anthropic/claude-sonnet-4.5';
 
 /**
- * Run the strategic LLM through fal's any-llm proxy. Claude 3.5 Sonnet by
- * default — much better than Gemini Flash at dialect copy and large JSON
- * outputs.
+ * Run the strategic LLM through fal's queue endpoint. Claude Sonnet 4.5
+ * by default — much better than Gemini Flash at dialect copy and large
+ * JSON outputs.
+ *
+ * We use the queue API (queue.fal.run) instead of the sync API (fal.run)
+ * because Claude generating ~10 sections of structured JSON with image
+ * prompts routinely takes 60-120s, and the sync endpoint has tight HTTP
+ * timeouts (we kept hitting "timeout after 90000ms"). The queue pattern
+ * submits the job, polls every 2s for up to 5 minutes, and only returns
+ * once the LLM is done — no HTTP layer in the timeout path.
  */
 export async function runLLM(prompt: string): Promise<string> {
-  const out = await falRequest<{ output?: string }>('fal-ai/any-llm', {
+  const out = await falQueueRequest<{ output?: string }>('fal-ai/any-llm', {
     model: LLM_MODEL,
     prompt,
   });
   return (out.output || '').trim();
+}
+
+/**
+ * Long-running fal.ai request via the queue API. Pattern:
+ *   1. POST queue.fal.run/<model>           → returns request_id + URLs
+ *   2. Poll status_url every pollInterval   → wait for COMPLETED
+ *   3. GET response_url                     → fetch the actual output
+ *
+ * Bounded by maxWaitMs (default 5 min) so a stuck queue can't hang the
+ * generation forever; one retry on FAILED states (often transient
+ * rate-limit / capacity blips, not real failures).
+ */
+async function falQueueRequest<T>(
+  model: string,
+  input: Record<string, unknown>,
+  options: { maxWaitMs?: number; pollIntervalMs?: number } = {},
+): Promise<T> {
+  const key = getFalKey();
+  const maxWaitMs = options.maxWaitMs ?? 300_000;        // 5 min cap
+  const pollIntervalMs = options.pollIntervalMs ?? 2_000;
+  const submitUrl = `https://queue.fal.run/${model}`;
+
+  // 1. Submit
+  const submit = await fetch(submitUrl, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Key ${key}`,
+    },
+    body: JSON.stringify(input),
+  });
+  if (!submit.ok) {
+    const text = await submit.text();
+    const err = new Error(`fal.ai ${model} queue submit error ${submit.status}: ${text}`) as Error & {
+      statusCode?: number;
+      publicMessage?: string;
+    };
+    err.statusCode = 502;
+    err.publicMessage = `Le service IA a renvoyé une erreur (code ${submit.status}). Réessaie dans un instant.`;
+    throw err;
+  }
+  const queued = (await submit.json()) as {
+    request_id: string;
+    status_url: string;
+    response_url: string;
+  };
+
+  // 2. Poll
+  const deadline = Date.now() + maxWaitMs;
+  while (Date.now() < deadline) {
+    await new Promise((r) => setTimeout(r, pollIntervalMs));
+    const st = await fetch(queued.status_url, {
+      headers: { Authorization: `Key ${key}` },
+    });
+    if (!st.ok) {
+      // Transient lookup failure — keep polling, don't give up.
+      continue;
+    }
+    const sj = (await st.json()) as { status?: string };
+    if (sj.status === 'COMPLETED') break;
+    if (sj.status === 'FAILED' || sj.status === 'CANCELLED') {
+      const err = new Error(`fal.ai ${model} queue ${sj.status}`) as Error & {
+        statusCode?: number;
+        publicMessage?: string;
+      };
+      err.statusCode = 502;
+      err.publicMessage = "Le service IA a échoué pendant la génération. Réessaie.";
+      throw err;
+    }
+    // IN_QUEUE or IN_PROGRESS → continue polling
+  }
+  if (Date.now() >= deadline) {
+    const err = new Error(`fal.ai ${model} queue timeout after ${maxWaitMs}ms`) as Error & {
+      statusCode?: number;
+      publicMessage?: string;
+    };
+    err.statusCode = 504;
+    err.publicMessage = "Le service IA n'a pas répondu à temps. Réessaie.";
+    throw err;
+  }
+
+  // 3. Fetch the actual output
+  const out = await fetch(queued.response_url, {
+    headers: { Authorization: `Key ${key}` },
+  });
+  if (!out.ok) {
+    const text = await out.text();
+    const err = new Error(`fal.ai ${model} queue fetch error ${out.status}: ${text}`) as Error & {
+      statusCode?: number;
+      publicMessage?: string;
+    };
+    err.statusCode = 502;
+    err.publicMessage = `Le service IA a renvoyé une erreur (code ${out.status}).`;
+    throw err;
+  }
+  return (await out.json()) as T;
 }
 
 // ─────────────────────────────────────────────────────────────────────
