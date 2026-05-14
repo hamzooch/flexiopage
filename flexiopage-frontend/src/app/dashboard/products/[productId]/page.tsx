@@ -21,6 +21,14 @@ export default function EditProductPage() {
   const [type, setType] = useState<'physical' | 'digital'>('physical');
   const [stock, setStock] = useState('0');
   const [isPublished, setIsPublished] = useState(false);
+  // Per-product storefront page customization. Toggles default to "shown".
+  const [pageSettings, setPageSettings] = useState({
+    showGallery: true,
+    showDescription: true,
+    showTrustBadges: true,
+    codFormTitle: '',
+    reassuranceText: '',
+  });
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
@@ -37,6 +45,14 @@ export default function EditProductPage() {
         setType((p.type as 'physical' | 'digital') || 'physical');
         setStock(String(p.stock ?? '0'));
         setIsPublished(!!p.isPublished);
+        const ps = (p.pageSettings as Record<string, unknown>) || {};
+        setPageSettings({
+          showGallery: ps.showGallery !== false,
+          showDescription: ps.showDescription !== false,
+          showTrustBadges: ps.showTrustBadges !== false,
+          codFormTitle: (ps.codFormTitle as string) || '',
+          reassuranceText: (ps.reassuranceText as string) || '',
+        });
       })
       .catch(() => setError('Product not found'))
       .finally(() => setLoading(false));
@@ -55,6 +71,13 @@ export default function EditProductPage() {
         type,
         stock: parseInt(stock, 10) || 0,
         isPublished,
+        pageSettings: {
+          showGallery: pageSettings.showGallery,
+          showDescription: pageSettings.showDescription,
+          showTrustBadges: pageSettings.showTrustBadges,
+          codFormTitle: pageSettings.codFormTitle.trim() || undefined,
+          reassuranceText: pageSettings.reassuranceText.trim() || undefined,
+        },
       });
       router.push(`/dashboard/products?storeId=${storeId}`);
       router.refresh();
@@ -86,7 +109,7 @@ export default function EditProductPage() {
         <h1 className="text-3xl font-bold">Edit product</h1>
       </div>
 
-      <form onSubmit={handleSubmit}>
+      <form onSubmit={handleSubmit} className="space-y-6">
         <Card>
           <CardHeader>
             <CardTitle>Product details</CardTitle>
@@ -163,12 +186,72 @@ export default function EditProductPage() {
               <Label htmlFor="published">Published</Label>
             </div>
           </CardContent>
-          <CardContent>
-            <Button type="submit" disabled={saving}>
-              {saving ? 'Saving...' : 'Save changes'}
-            </Button>
+        </Card>
+
+        {/* Per-product storefront page customization */}
+        <Card>
+          <CardHeader>
+            <CardTitle>Page produit</CardTitle>
+            <CardDescription>
+              Personnalise la page publique de ce produit — sections affichées et textes du
+              formulaire de commande.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="space-y-2.5">
+              {[
+                { key: 'showGallery' as const, label: 'Afficher la galerie de miniatures' },
+                { key: 'showDescription' as const, label: 'Afficher la section description' },
+                { key: 'showTrustBadges' as const, label: 'Afficher les badges de confiance' },
+              ].map((opt) => (
+                <label key={opt.key} className="flex cursor-pointer items-center gap-2">
+                  <input
+                    type="checkbox"
+                    checked={pageSettings[opt.key]}
+                    onChange={(e) =>
+                      setPageSettings((s) => ({ ...s, [opt.key]: e.target.checked }))
+                    }
+                    className="h-4 w-4 rounded border-input"
+                  />
+                  <span className="text-sm">{opt.label}</span>
+                </label>
+              ))}
+            </div>
+
+            {type === 'physical' && (
+              <div className="grid gap-4 border-t border-border/60 pt-4 sm:grid-cols-2">
+                <div className="space-y-2">
+                  <Label htmlFor="codFormTitle">Titre du formulaire de commande</Label>
+                  <Input
+                    id="codFormTitle"
+                    value={pageSettings.codFormTitle}
+                    onChange={(e) =>
+                      setPageSettings((s) => ({ ...s, codFormTitle: e.target.value }))
+                    }
+                    placeholder="Ex: Commander — paiement à la livraison"
+                  />
+                  <p className="text-[11px] text-muted-foreground">Vide = titre par défaut de la boutique.</p>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="reassuranceText">Ligne de réassurance</Label>
+                  <Input
+                    id="reassuranceText"
+                    value={pageSettings.reassuranceText}
+                    onChange={(e) =>
+                      setPageSettings((s) => ({ ...s, reassuranceText: e.target.value }))
+                    }
+                    placeholder="Ex: Aucun prépaiement · livraison 48h"
+                  />
+                  <p className="text-[11px] text-muted-foreground">Affichée sous le formulaire de commande.</p>
+                </div>
+              </div>
+            )}
           </CardContent>
         </Card>
+
+        <Button type="submit" disabled={saving}>
+          {saving ? 'Saving...' : 'Save changes'}
+        </Button>
       </form>
     </div>
   );

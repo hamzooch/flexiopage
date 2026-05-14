@@ -56,6 +56,11 @@ export function BrandLogo({
       width={w}
       height={h}
       priority={priority}
+      // Tailwind's preflight sets `height: auto` on every <img>. Pinning the
+      // width here too keeps both dimensions governed by CSS, which silences
+      // Next.js' "width or height modified, but not the other" warning while
+      // preserving the variant's aspect ratio.
+      style={{ width: w, height: 'auto' }}
       className={cn('select-none', className)}
     />
   );

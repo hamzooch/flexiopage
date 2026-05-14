@@ -32,6 +32,8 @@ import {
   ArrowRight,
   UsersRound,
   LayoutTemplate,
+  Layers,
+  Activity,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAuthStore, type TeamRole } from '@/stores/auth-store';
@@ -60,10 +62,12 @@ const TEAM_ALLOWED: Record<TeamRole, string[]> = {
     '/dashboard/stores',
     '/dashboard/analytics',
     '/dashboard/products',
+    '/dashboard/offers',
     '/dashboard/pages',
     '/dashboard/pages/landing-image',
     '/dashboard/pages/poster',
     '/dashboard/orders',
+    '/dashboard/tracking',
     '/dashboard/customers',
     '/dashboard/profile',
   ],
@@ -82,10 +86,12 @@ const SECTIONS: { title: string; items: NavItem[] }[] = [
     title: 'Vente',
     items: [
       { href: '/dashboard/products', label: 'Produits', icon: Package },
+      { href: '/dashboard/offers', label: 'Offres', icon: Layers },
       { href: '/dashboard/pages', label: 'Landing pages', icon: FileText },
       { href: '/dashboard/pages/landing-image', label: 'Landing IA', icon: LayoutTemplate },
       { href: '/dashboard/pages/poster', label: 'Affiche IA', icon: ImageIcon },
       { href: '/dashboard/orders', label: 'Commandes', icon: ShoppingCart },
+      { href: '/dashboard/tracking', label: 'Suivi', icon: Activity },
       { href: '/dashboard/customers', label: 'Clients', icon: Users },
     ],
   },

@@ -13,12 +13,19 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
   const token = useAuthStore((s) => s.token);
   const [hydrated, setHydrated] = useState(false);
 
-  // Wait for Zustand persist to rehydrate from localStorage before checking auth
+  // Wait for Zustand persist to rehydrate from localStorage before checking auth.
+  // hasHydrated()/onFinishHydration cover the normal paths; the timeout is a
+  // hard fallback because persist with sync storage can finish before this
+  // effect subscribes, leaving onFinishHydration with nothing to fire.
   useEffect(() => {
     if (typeof window === 'undefined') return;
-    const unsub = useAuthStore.persist?.onFinishHydration?.(() => setHydrated(true));
-    // Fallback: consider hydrated after short delay (in case onFinishHydration already ran)
-    const t = setTimeout(() => setHydrated(true), 300);
+    const markHydrated = () => setHydrated(true);
+    if (useAuthStore.persist?.hasHydrated?.()) {
+      markHydrated();
+      return;
+    }
+    const unsub = useAuthStore.persist?.onFinishHydration?.(markHydrated);
+    const t = setTimeout(markHydrated, 200);
     return () => {
       clearTimeout(t);
       if (typeof unsub === 'function') unsub();

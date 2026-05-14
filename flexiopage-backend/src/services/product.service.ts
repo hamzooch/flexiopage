@@ -1,4 +1,4 @@
-import { Product, IProduct, IProductVariant } from '../models/Product.model';
+import { Product, IProduct, IProductVariant, IProductPageSettings, IProductBundle } from '../models/Product.model';
 import mongoose from 'mongoose';
 
 function slugify(text: string): string {
@@ -30,6 +30,8 @@ export interface CreateProductInput {
   isPublished?: boolean;
   seoTitle?: string;
   seoDescription?: string;
+  pageSettings?: IProductPageSettings;
+  bundle?: IProductBundle;
 }
 
 export async function createProduct(input: CreateProductInput): Promise<IProduct> {

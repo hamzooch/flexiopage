@@ -18,11 +18,13 @@ export default function StoreCheckoutPage() {
   const [status, setStatus] = useState<SaveStatus>('idle');
   const [errorMessage, setErrorMessage] = useState<string>('');
   const [codForm, setCodForm] = useState<CodFormSettings>({
-    showEmail: true,
+    showEmail: false,
     requireEmail: false,
+    showAddressLine2: false,
+    showCity: false,
     showPostalCode: false,
     showState: false,
-    showNotes: true,
+    showNotes: false,
     showQuantity: true,
   });
 
@@ -40,11 +42,13 @@ export default function StoreCheckoutPage() {
         }
         if (s.settings?.codForm) {
           setCodForm({
-            showEmail: true,
+            showEmail: false,
             requireEmail: false,
+            showAddressLine2: false,
+            showCity: false,
             showPostalCode: false,
             showState: false,
-            showNotes: true,
+            showNotes: false,
             showQuantity: true,
             ...s.settings.codForm,
           });
@@ -149,6 +153,18 @@ export default function StoreCheckoutPage() {
               onChange={(v) => setCodForm({ ...codForm, requireEmail: v })}
             />
             <FieldToggle
+              label="Ville"
+              sublabel="Demande la ville de livraison"
+              checked={!!codForm.showCity}
+              onChange={(v) => setCodForm({ ...codForm, showCity: v })}
+            />
+            <FieldToggle
+              label="Complément d'adresse"
+              sublabel="Étage, repère, appartement…"
+              checked={!!codForm.showAddressLine2}
+              onChange={(v) => setCodForm({ ...codForm, showAddressLine2: v })}
+            />
+            <FieldToggle
               label="Code postal"
               sublabel="Recommandé pour Maroc / Tunisie"
               checked={!!codForm.showPostalCode}
@@ -174,7 +190,7 @@ export default function StoreCheckoutPage() {
             />
           </div>
           <p className="mt-4 text-xs text-muted-foreground">
-            Nom, téléphone et adresse sont toujours obligatoires (livreur en a besoin).
+            Nom complet, téléphone (avec code pays) et adresse sont toujours affichés et obligatoires. Tous les autres champs sont masqués par défaut — active-les ici si tu en as besoin.
           </p>
         </CardContent>
       </Card>

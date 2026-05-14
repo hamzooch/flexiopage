@@ -34,14 +34,12 @@ export const useAuthStore = create<AuthState>()(
         return !!get().token && !!get().user;
       },
       setAuth: (user, token) => {
-        if (typeof window !== 'undefined' && token) localStorage.setItem('token', token);
         set({ user, token, isAuthenticated: !!(user && token) });
       },
       logout: async () => {
         try {
           await authApi.logout();
         } catch {}
-        if (typeof window !== 'undefined') localStorage.removeItem('token');
         set({ user: null, token: null, isAuthenticated: false });
       },
       fetchUser: async () => {

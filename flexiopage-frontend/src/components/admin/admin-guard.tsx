@@ -25,8 +25,13 @@ export function AdminGuard({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
-    const unsub = useAuthStore.persist?.onFinishHydration?.(() => setHydrated(true));
-    const t = setTimeout(() => setHydrated(true), 300);
+    const markHydrated = () => setHydrated(true);
+    if (useAuthStore.persist?.hasHydrated?.()) {
+      markHydrated();
+      return;
+    }
+    const unsub = useAuthStore.persist?.onFinishHydration?.(markHydrated);
+    const t = setTimeout(markHydrated, 200);
     return () => {
       clearTimeout(t);
       if (typeof unsub === 'function') unsub();

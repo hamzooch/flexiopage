@@ -98,8 +98,51 @@ export interface IProduct extends Document {
   isPublished: boolean;
   seoTitle?: string;
   seoDescription?: string;
+  /** Per-product storefront page customization (set by the seller). */
+  pageSettings?: IProductPageSettings;
+  /** Quantity-tier bundle offer ("buy 2 for X"). */
+  bundle?: IProductBundle;
   createdAt: Date;
   updatedAt: Date;
+}
+
+/**
+ * Seller-editable options for the public product page. Every toggle defaults
+ * to "shown" — the storefront treats `undefined` / `true` the same.
+ */
+export interface IProductPageSettings {
+  /** Thumbnail image strip under the main photo. */
+  showGallery?: boolean;
+  /** Full "Description" section below the fold. */
+  showDescription?: boolean;
+  /** Trust badges row. */
+  showTrustBadges?: boolean;
+  /** Overrides the COD form title for this product. */
+  codFormTitle?: string;
+  /** Overrides the reassurance line under the COD form for this product. */
+  reassuranceText?: string;
+}
+
+/**
+ * Quantity-tier bundle — "buy more, save more". The seller defines tiers
+ * (quantity -> total price). Quantity 1 is implicit and always `product.price`.
+ * Tiers cover quantity >= 2. The order's effective unit price for a matched
+ * tier is `totalPrice / quantity`.
+ */
+export interface IProductBundleTier {
+  /** Quantity that unlocks this price (>= 2). */
+  quantity: number;
+  /** Total price for that whole quantity, in the store currency. */
+  totalPrice: number;
+  /** Optional badge text, e.g. "−15%" or "الأكثر طلباً". */
+  label?: string;
+}
+
+export interface IProductBundle {
+  enabled: boolean;
+  /** Block title shown on the storefront, e.g. "Offre spéciale". */
+  title?: string;
+  tiers: IProductBundleTier[];
 }
 
 const ProductVariantSchema = new Schema<IProductVariant>(
@@ -171,6 +214,25 @@ const ProductSchema = new Schema<IProduct>(
     isPublished: { type: Boolean, default: false },
     seoTitle: { type: String },
     seoDescription: { type: String },
+    pageSettings: {
+      showGallery: { type: Boolean },
+      showDescription: { type: Boolean },
+      showTrustBadges: { type: Boolean },
+      codFormTitle: { type: String, trim: true },
+      reassuranceText: { type: String, trim: true },
+    },
+    bundle: {
+      enabled: { type: Boolean, default: false },
+      title: { type: String, trim: true },
+      tiers: [
+        {
+          _id: false,
+          quantity: { type: Number, required: true },
+          totalPrice: { type: Number, required: true },
+          label: { type: String, trim: true },
+        },
+      ],
+    },
   },
   { timestamps: true }
 );

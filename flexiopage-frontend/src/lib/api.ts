@@ -3,6 +3,7 @@
  * Uses credentials for cookies (JWT). Base URL from env.
  */
 import axios, { type AxiosInstance } from 'axios';
+import { useAuthStore } from '@/stores/auth-store';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
 
@@ -11,10 +12,13 @@ export const api: AxiosInstance = axios.create({
   withCredentials: true,
 });
 
-// Attach token from localStorage if present (for SSR we might pass token differently)
+// Attach the auth token to every request. The Zustand auth store (persisted
+// under `flexiopage-auth`) is the single source of truth — it rehydrates
+// synchronously from localStorage on load, so the token is available before
+// any request fires, even right after a page refresh.
 api.interceptors.request.use((config) => {
   if (typeof window !== 'undefined') {
-    const token = localStorage.getItem('token');
+    const token = useAuthStore.getState().token;
     if (token) config.headers.Authorization = `Bearer ${token}`;
   }
   return config;
@@ -24,8 +28,6 @@ api.interceptors.response.use(
   (res) => res,
   (err) => {
     if (err.response?.status === 401 && typeof window !== 'undefined') {
-      localStorage.removeItem('token');
-      const { useAuthStore } = require('@/stores/auth-store');
       useAuthStore.setState({ user: null, token: null, isAuthenticated: false });
     }
     return Promise.reject(err);
@@ -172,6 +174,44 @@ export interface LandingImageResult {
   width: number;
   height: number;
   copy: LandingImageCopy;
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// Storefront funnel tracking — "Suivi" dashboard
+// ─────────────────────────────────────────────────────────────────────
+export type TrackingRange = '7d' | '30d' | '90d';
+export interface TrackingStats {
+  range: TrackingRange;
+  totals: {
+    productViews: number;
+    addToCart: number;
+    purchases: number;
+    abandonedCarts: number;
+    viewToCartRate: number;
+    cartToPurchaseRate: number;
+    conversionRate: number;
+  };
+  products: Array<{
+    productId: string;
+    name: string;
+    views: number;
+    addToCart: number;
+    purchases: number;
+  }>;
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// Product bundle — quantity-tier offer ("buy 2 for X")
+// ─────────────────────────────────────────────────────────────────────
+export interface ProductBundleTier {
+  quantity: number;
+  totalPrice: number;
+  label?: string;
+}
+export interface ProductBundle {
+  enabled: boolean;
+  title?: string;
+  tiers: ProductBundleTier[];
 }
 
 // ─────────────────────────────────────────────────────────────────────
@@ -546,6 +586,8 @@ export const storesApi = {
     `/stores/${storeId}/pages/generate-landing-image`,
     data
   ),
+  getTracking: (storeId: string, range: TrackingRange = '30d') =>
+    api.get<TrackingStats>(`/stores/${storeId}/tracking`, { params: { range } }),
   getSectionsFromTemplate: (storeId: string, templateId: string) =>
     api.post<{ sections: unknown[] }>(`/stores/${storeId}/pages/from-template`, { templateId }),
   createPage: (storeId: string, data: Record<string, unknown>) =>

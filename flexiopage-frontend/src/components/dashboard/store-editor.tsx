@@ -39,6 +39,8 @@ export interface CodFormSettings {
   submitLabel?: string;
   showEmail?: boolean;
   requireEmail?: boolean;
+  showAddressLine2?: boolean;
+  showCity?: boolean;
   showPostalCode?: boolean;
   showState?: boolean;
   showNotes?: boolean;

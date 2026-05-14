@@ -207,62 +207,65 @@ export default function StoreHubPage() {
         </Button>
       </div>
 
-      {/* Sub-page cards */}
-      <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
-        {visibleCards.map((c) => {
-          const Icon = c.icon;
-          const tone = TONE_CLASSES[c.tone];
-          return (
-            <Link
-              key={c.href}
-              href={`/dashboard/stores/${storeId}/${c.href}`}
-              className="group relative overflow-hidden rounded-2xl border border-border/60 bg-card p-5 transition-all duration-300 hover:-translate-y-1 hover:border-primary/30 hover:shadow-xl"
-            >
-              <div
-                className={cn('pointer-events-none absolute -right-10 -top-10 h-32 w-32 rounded-full bg-gradient-to-br opacity-10 blur-2xl transition-opacity duration-300 group-hover:opacity-25', tone.iconBg)}
-                aria-hidden
-              />
-              <div className="relative flex items-start gap-3">
-                <div className={cn('grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-gradient-to-br text-white shadow-md', tone.iconBg, tone.glow)}>
-                  <Icon className="h-5 w-5" />
+      {/* Two-column on PC: section cards stacked vertically (left) + live preview (right) */}
+      <div className="grid gap-6 lg:grid-cols-[minmax(0,380px)_minmax(0,1fr)]">
+        {/* LEFT — section cards aligned vertically */}
+        <div className="space-y-4">
+          {visibleCards.map((c) => {
+            const Icon = c.icon;
+            const tone = TONE_CLASSES[c.tone];
+            return (
+              <Link
+                key={c.href}
+                href={`/dashboard/stores/${storeId}/${c.href}`}
+                className="group relative block overflow-hidden rounded-2xl border border-border/60 bg-card p-5 transition-all duration-300 hover:-translate-y-1 hover:border-primary/30 hover:shadow-xl"
+              >
+                <div
+                  className={cn('pointer-events-none absolute -right-10 -top-10 h-32 w-32 rounded-full bg-gradient-to-br opacity-10 blur-2xl transition-opacity duration-300 group-hover:opacity-25', tone.iconBg)}
+                  aria-hidden
+                />
+                <div className="relative flex items-start gap-3">
+                  <div className={cn('grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-gradient-to-br text-white shadow-md', tone.iconBg, tone.glow)}>
+                    <Icon className="h-5 w-5" />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <h3 className="text-base font-semibold tracking-tight">{c.title}</h3>
+                    <p className="mt-1 text-xs text-muted-foreground leading-relaxed">{c.description}</p>
+                  </div>
                 </div>
-                <div className="min-w-0 flex-1">
-                  <h3 className="text-base font-semibold tracking-tight">{c.title}</h3>
-                  <p className="mt-1 text-xs text-muted-foreground leading-relaxed">{c.description}</p>
+                <div className="mt-3 flex items-center gap-1.5 text-xs font-medium text-primary opacity-0 transition-opacity group-hover:opacity-100">
+                  Ouvrir <ArrowLeft className="h-3 w-3 rotate-180" />
                 </div>
-              </div>
-              <div className="mt-3 flex items-center gap-1.5 text-xs font-medium text-primary opacity-0 transition-opacity group-hover:opacity-100">
-                Ouvrir <ArrowLeft className="h-3 w-3 rotate-180" />
-              </div>
-            </Link>
-          );
-        })}
-      </div>
+              </Link>
+            );
+          })}
+        </div>
 
-      {/* Quick stats footer */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">
-            <span className="inline-flex items-center gap-2">
-              <ImageIcon className="h-4 w-4" />
-              Aperçu visuel
-            </span>
-          </CardTitle>
-          <CardDescription className="text-xs">
-            Le logo, le thème et les sections de la vitrine ci-dessous tels que les voient tes clients.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="overflow-hidden rounded-xl border border-border/60 bg-muted/30">
-            <iframe
-              src={`/${store.slug}`}
-              title="Aperçu de la boutique"
-              className="h-[420px] w-full"
-              loading="lazy"
-            />
-          </div>
-        </CardContent>
-      </Card>
+        {/* RIGHT — live visual preview */}
+        <Card className="lg:sticky lg:top-6 lg:self-start">
+          <CardHeader>
+            <CardTitle className="text-base">
+              <span className="inline-flex items-center gap-2">
+                <ImageIcon className="h-4 w-4" />
+                Aperçu visuel
+              </span>
+            </CardTitle>
+            <CardDescription className="text-xs">
+              Le logo, le thème et les sections de la vitrine tels que les voient tes clients.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="overflow-hidden rounded-xl border border-border/60 bg-muted/30">
+              <iframe
+                src={`/${store.slug}`}
+                title="Aperçu de la boutique"
+                className="h-[480px] w-full lg:h-[calc(100vh-260px)]"
+                loading="lazy"
+              />
+            </div>
+          </CardContent>
+        </Card>
+      </div>
     </div>
   );
 }

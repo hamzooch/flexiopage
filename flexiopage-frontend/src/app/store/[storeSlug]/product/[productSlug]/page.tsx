@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import { formatCurrency } from '@/lib/utils';
+import type { ProductBundle } from '@/lib/api';
 import {
   STORE_THEME_TEMPLATES,
   RADIUS_PX,
@@ -8,9 +9,9 @@ import {
   type ThemeTokens,
 } from '@/data/store-themes';
 import { CodOrderForm, type CodFormConfig } from '@/components/storefront/cod-order-form';
-import { CodCtaButton } from '@/components/storefront/cod-cta-button';
 import { MarketingPixels, type MarketingConfig } from '@/components/storefront/MarketingPixels';
 import { TrackEvent } from '@/components/storefront/TrackEvent';
+import { StoreTracker } from '@/components/storefront/StoreTracker';
 import { StoreNavbar, type NavbarConfig } from '@/components/storefront/StoreNavbar';
 
 interface Props {
@@ -45,6 +46,14 @@ interface ProductDoc {
   licenseKeyTemplate?: string;
   seoTitle?: string;
   seoDescription?: string;
+  pageSettings?: {
+    showGallery?: boolean;
+    showDescription?: boolean;
+    showTrustBadges?: boolean;
+    codFormTitle?: string;
+    reassuranceText?: string;
+  };
+  bundle?: ProductBundle;
 }
 
 interface StoreDoc {
@@ -143,10 +152,23 @@ export default async function PublicProductPage({ params }: Props) {
   const kindMeta = product.digitalKind ? KIND_META[product.digitalKind] : null;
   const assets = (product.digitalAssets || []).filter((a) => a && a.name);
 
+  // Per-product page customization — every toggle defaults to "shown".
+  const ps = product.pageSettings || {};
+  const showGallery = ps.showGallery !== false;
+  const showDescription = ps.showDescription !== false;
+  const showTrustBadges = ps.showTrustBadges !== false;
+  // Per-product overrides merged over the store-level COD form config.
+  const codConfig: CodFormConfig = {
+    ...(store?.settings?.codForm || {}),
+    ...(ps.codFormTitle ? { headline: ps.codFormTitle } : {}),
+    ...(ps.reassuranceText ? { reassurance: ps.reassuranceText } : {}),
+  };
+
   return (
     <>
       {fontsUrl && <link rel="stylesheet" href={fontsUrl} />}
       <MarketingPixels config={store?.integrations?.marketing} />
+      <StoreTracker storeId={store?._id} productId={product._id} type="product_view" />
       <TrackEvent
         payload={{
           event: 'ViewContent',
@@ -220,7 +242,7 @@ export default async function PublicProductPage({ params }: Props) {
                   </span>
                 )}
               </div>
-              {(product.images || []).slice(1, 5).length > 0 && (
+              {showGallery && (product.images || []).slice(1, 5).length > 0 && (
                 <div className="grid grid-cols-4 gap-2">
                   {(product.images || []).slice(1, 5).map((img, i) => (
                     <div
@@ -272,8 +294,9 @@ export default async function PublicProductPage({ params }: Props) {
                 )}
               </div>
 
-              {/* CTA — digital products redirect to online checkout; physical
-                  products use the inline COD form rendered below. */}
+              {/* Buy action — digital products redirect to online checkout;
+                  physical products get the inline COD form right after the
+                  price so customers can order without scrolling. */}
               {isDigital ? (
                 <Link
                   href={`/${storeSlug}/checkout/${product.slug}`}
@@ -295,24 +318,25 @@ export default async function PublicProductPage({ params }: Props) {
                   ⚡ Acheter — accès immédiat
                 </Link>
               ) : (
-                <CodCtaButton
-                  className="inline-flex h-14 w-full items-center justify-center gap-2 px-7 text-base font-semibold transition-all hover:scale-[1.01]"
-                  style={{
-                    background: theme.style === 'tech'
-                      ? `linear-gradient(135deg, ${theme.gradientFrom}, ${theme.gradientTo})`
-                      : theme.primary,
-                    color: theme.primaryFg,
-                    borderRadius: theme.borderRadius === 'none' ? '0' : '999px',
-                    boxShadow:
-                      theme.shadow === 'glow'
-                        ? `0 8px 32px ${hexA(theme.primary, 0.45)}`
-                        : theme.shadow === 'soft'
-                          ? `0 12px 28px ${hexA(theme.primary, 0.25)}`
-                          : `0 2px 0 ${theme.primary}`,
-                  }}
-                >
-                  🛒 Commander · Paiement à la livraison
-                </CodCtaButton>
+                <div className="scroll-mt-24" id="cod-form">
+                  <CodOrderForm
+                    storeSlug={storeSlug}
+                    storeId={store?._id}
+                    productId={product._id}
+                    productSlug={product.slug}
+                    productName={product.name}
+                    productPrice={product.price}
+                    productStock={product.stock ?? 0}
+                    trackInventory={!!product.trackInventory}
+                    allowBackorder={!!product.allowBackorder}
+                    currency={currency}
+                    defaultCountry={store?.settings?.country}
+                    config={codConfig}
+                    bundle={product.bundle}
+                    theme={theme}
+                    radius={radius}
+                  />
+                </div>
               )}
 
               {/* Stock indicator (physical only) */}
@@ -391,7 +415,7 @@ export default async function PublicProductPage({ params }: Props) {
               )}
 
               {/* Trust badges */}
-              {isDigital && (
+              {isDigital && showTrustBadges && (
                 <div className="flex flex-wrap gap-2">
                   {[
                     { icon: '⚡', label: 'Livraison instantanée' },
@@ -417,7 +441,7 @@ export default async function PublicProductPage({ params }: Props) {
           </div>
 
           {/* Description — full section below the gallery + details grid */}
-          {product.description && (
+          {showDescription && product.description && (
             <section className="mt-16 max-w-3xl">
               <div className="mb-5 flex items-center gap-3">
                 <span
@@ -470,25 +494,6 @@ export default async function PublicProductPage({ params }: Props) {
             </section>
           )}
 
-          {/* COD inline form — physical products only */}
-          {!isDigital && (
-            <section className="mt-14 max-w-2xl scroll-mt-24">
-              <CodOrderForm
-                storeSlug={storeSlug}
-                productSlug={product.slug}
-                productName={product.name}
-                productPrice={product.price}
-                productStock={product.stock ?? 0}
-                trackInventory={!!product.trackInventory}
-                allowBackorder={!!product.allowBackorder}
-                currency={currency}
-                defaultCountry={store?.settings?.country}
-                config={store?.settings?.codForm}
-                theme={theme}
-                radius={radius}
-              />
-            </section>
-          )}
         </main>
       </div>
     </>

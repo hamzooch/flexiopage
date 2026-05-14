@@ -14,6 +14,9 @@ import { LandingPage } from '../models/LandingPage.model';
 import { initOrderPayment, isMockMode, type Channel } from '../services/mobile-money.service';
 import { dispatchOrder } from '../services/delivery.service';
 import { pushOrderToSheets } from '../services/sheets.service';
+import { resolveBundlePricing } from '../lib/bundle';
+import { recordEvent } from '../services/tracking.service';
+import mongoose from 'mongoose';
 
 const router = Router();
 
@@ -34,6 +37,7 @@ function publicSafeStore<T extends { integrations?: Record<string, unknown> }>(s
       facebookPixelId: m.facebookPixelId,
       googleAnalyticsId: m.googleAnalyticsId,
       tiktokPixelId: m.tiktokPixelId,
+      snapchatPixelId: m.snapchatPixelId,
       googleAdsConversionId: m.googleAdsConversionId,
       googleAdsConversionLabel: m.googleAdsConversionLabel,
       customHeadCode: m.customHeadCode,
@@ -41,6 +45,32 @@ function publicSafeStore<T extends { integrations?: Record<string, unknown> }>(s
   }
   return { ...store, integrations: safe } as T;
 }
+
+/**
+ * POST /api/public/track — anonymous storefront funnel event ingest.
+ * Body: { storeId, productId?, type: 'product_view'|'add_to_cart', sessionId }
+ * Fire-and-forget — always 204, never blocks the storefront. `purchase`
+ * events are recorded server-side at order creation, not here.
+ */
+router.post('/track', (req: Request, res: Response): void => {
+  const body = req.body as {
+    storeId?: string;
+    productId?: string;
+    type?: string;
+    sessionId?: string;
+  };
+  const type = body.type === 'add_to_cart' ? 'add_to_cart' : body.type === 'product_view' ? 'product_view' : null;
+  const validStore = body.storeId && mongoose.Types.ObjectId.isValid(body.storeId);
+  if (type && validStore && body.sessionId) {
+    void recordEvent({
+      storeId: body.storeId!,
+      productId: body.productId && mongoose.Types.ObjectId.isValid(body.productId) ? body.productId : undefined,
+      type,
+      sessionId: body.sessionId,
+    });
+  }
+  res.status(204).end();
+});
 
 /**
  * GET /api/public/stores — minimal index used by the frontend sitemap.ts
@@ -360,6 +390,8 @@ router.post('/checkout/cod', async (req: Request, res: Response): Promise<void> 
       country?: string;
     };
     notes?: string;
+    /** Anonymous funnel session id — correlates the purchase to add_to_cart. */
+    sessionId?: string;
   };
 
   // ── Validate input ────────────────────────────────────────────────
@@ -372,8 +404,10 @@ router.post('/checkout/cod', async (req: Request, res: Response): Promise<void> 
     return;
   }
   const ship = body.shippingAddress || {};
-  if (!ship.line1 || !ship.city || !ship.country) {
-    res.status(400).json({ error: 'shippingAddress.line1, .city, .country required' });
+  // City is optional — sellers can hide it from the COD form. Line1 + country
+  // are the minimum the courier needs to attempt a delivery.
+  if (!ship.line1 || !ship.country) {
+    res.status(400).json({ error: 'shippingAddress.line1, .country required' });
     return;
   }
 
@@ -426,12 +460,16 @@ router.post('/checkout/cod', async (req: Request, res: Response): Promise<void> 
       });
       return;
     }
+    // Apply the quantity-tier bundle: when qty matches a tier, the effective
+    // unit price becomes tier.totalPrice / qty. Computed server-side — the
+    // client's price is never trusted.
+    const pricing = resolveBundlePricing(product.price, product.bundle, qty);
     resolved.push({
       productId: product._id.toString(),
       variantId: it.variantId,
       name: product.name,
       quantity: qty,
-      price: product.price,
+      price: pricing.unitPrice,
       sku: product.sku,
       productDoc: {
         _id: product._id,
@@ -456,7 +494,7 @@ router.post('/checkout/cod', async (req: Request, res: Response): Promise<void> 
       shippingAddress: {
         line1: ship.line1!.trim(),
         line2: ship.line2?.trim(),
-        city: ship.city!.trim(),
+        city: ship.city?.trim(),
         state: ship.state?.trim(),
         postalCode: ship.postalCode?.trim(),
         country: ship.country!.trim(),
@@ -490,6 +528,18 @@ router.post('/checkout/cod', async (req: Request, res: Response): Promise<void> 
         Product.updateOne({ _id: it.productDoc._id }, { $inc: { stock: -it.quantity } })
       )
   );
+
+  // ── Funnel tracking: record the purchase server-side (reliable) ──
+  if (body.sessionId) {
+    void recordEvent({
+      storeId: store._id.toString(),
+      productId: resolved[0]?.productId,
+      type: 'purchase',
+      sessionId: body.sessionId,
+      value: subtotal,
+      currency: store.settings?.currency || 'USD',
+    });
+  }
 
   // ── Best-effort push to Google Sheets ────────────────────────────
   try {

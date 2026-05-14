@@ -82,6 +82,8 @@ export async function updateProduct(req: AuthRequest, res: Response): Promise<vo
     isPublished: body.isPublished,
     seoTitle: body.seoTitle,
     seoDescription: body.seoDescription,
+    pageSettings: body.pageSettings,
+    bundle: body.bundle,
   });
   if (!updated) {
     res.status(404).json({ error: 'Product not found' });

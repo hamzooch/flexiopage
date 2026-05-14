@@ -3,6 +3,7 @@ import validator from 'validator';
 import { AuthRequest } from '../middleware/auth.middleware';
 import * as storeService from '../services/store.service';
 import { getStoreAnalytics, getStoreAnalyticsRich, type RangeKey } from '../services/analytics.service';
+import { getTrackingStats, type TrackingRange } from '../services/tracking.service';
 import { verifyAndSaveDomain, getDomainTarget, checkDomain } from '../services/domain.service';
 import { testSheetsWebhook } from '../services/sheets.service';
 import { effectiveOwnerId, isTeamMember } from '../lib/owner';
@@ -105,6 +106,16 @@ export async function getStoreAnalyticsRichController(req: AuthRequest, res: Res
   const range = (allowed as string[]).includes(raw) ? (raw as RangeKey) : '30d';
   const analytics = await getStoreAnalyticsRich(store._id.toString(), range);
   res.json(analytics);
+}
+
+/** GET /api/stores/:storeId/tracking?range=7d|30d|90d — storefront funnel stats. */
+export async function getStoreTrackingController(req: AuthRequest, res: Response): Promise<void> {
+  const store = req.store!;
+  const allowed: TrackingRange[] = ['7d', '30d', '90d'];
+  const raw = String(req.query.range || '30d');
+  const range = (allowed as string[]).includes(raw) ? (raw as TrackingRange) : '30d';
+  const stats = await getTrackingStats(store._id.toString(), range);
+  res.json(stats);
 }
 
 /** GET /api/stores/:storeId/domain-target — DNS values the seller must configure. */
