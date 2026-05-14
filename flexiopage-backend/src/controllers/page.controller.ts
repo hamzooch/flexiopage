@@ -5,6 +5,7 @@ import { LANDING_TEMPLATES } from '../data/landing-templates';
 import { getSectionsFromTemplate, generateLandingWithAI } from '../services/ai-landing.service';
 import { generateLandingFromProduct, generateLandingFromImage } from '../services/fal-landing.service';
 import { generatePoster, type PosterTheme, type PosterFormat } from '../services/poster.service';
+import { generateLandingImage } from '../services/landing-image.service';
 import { Product } from '../models/Product.model';
 import * as jobService from '../services/generation-job.service';
 import { chargeAiGeneration, aiCostInCurrency } from '../services/wallet.service';
@@ -482,5 +483,53 @@ export async function generatePosterPage(req: AuthRequest, res: Response): Promi
   } catch (err) {
     const e = err as Error & { statusCode?: number };
     res.status(e.statusCode || 500).json({ error: e.message || 'Poster generation failed' });
+  }
+}
+
+/**
+ * POST /api/stores/:storeId/pages/generate-landing-image
+ * Generates a single tall 9:16 landing-page DESIGN mockup as an image
+ * (TryAd-style): LLM writes the real copy, then an image model composes the
+ * full designed page with the seller's product photo as a reference.
+ * Body: { productId, language?, country?, currency? }
+ * Synchronous (~30-90s). Charges AI balance once on success.
+ */
+export async function generateLandingImagePage(req: AuthRequest, res: Response): Promise<void> {
+  const store = req.store!;
+  const body = req.body as {
+    productId?: string;
+    language?: string;
+    country?: string;
+    currency?: string;
+  };
+  if (!body.productId) {
+    res.status(400).json({ error: 'productId is required' });
+    return;
+  }
+  const product = await Product.findOne({ _id: body.productId, storeId: store._id }).lean();
+  if (!product) {
+    res.status(404).json({ error: 'Product not found in this store' });
+    return;
+  }
+  const charge = await chargeOrFail(req, res, 'landing');
+  if (!charge) return;
+  try {
+    const result = await generateLandingImage({
+      storeName: store.name,
+      product: {
+        name: product.name,
+        description: product.description,
+        images: product.images,
+        price: product.price,
+        compareAtPrice: product.compareAtPrice,
+      },
+      language: body.language || store.settings?.language,
+      country: body.country || store.settings?.country,
+      currency: body.currency || store.settings?.currency,
+    });
+    res.json({ result, charge });
+  } catch (err) {
+    const e = err as Error & { statusCode?: number };
+    res.status(e.statusCode || 500).json({ error: e.message || 'Landing image generation failed' });
   }
 }

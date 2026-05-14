@@ -32,6 +32,7 @@ import {
   Check,
   AlertTriangle,
   ArrowLeft,
+  Plug,
 } from 'lucide-react';
 
 interface StoreDoc {
@@ -265,14 +266,36 @@ function AppCard({ app, connected, onOpen }: { app: AppDef; connected: boolean; 
       </div>
 
       <div className="relative mt-5">
-        <Button
-          size="sm"
-          variant={connected ? 'outline' : 'default'}
-          className={cn('w-full', !connected && 'gradient-brand text-white')}
-          onClick={onOpen}
-        >
-          {connected ? 'Configurer' : app.available ? 'Connecter' : 'En savoir plus'}
-        </Button>
+        {connected ? (
+          <Button
+            size="sm"
+            variant="outline"
+            className="w-full gap-1.5"
+            onClick={onOpen}
+          >
+            <Check className="h-3.5 w-3.5" strokeWidth={3} />
+            Gérer l&apos;intégration
+          </Button>
+        ) : app.available ? (
+          <Button
+            size="sm"
+            className="w-full gap-1.5 gradient-brand text-white"
+            onClick={onOpen}
+          >
+            <Plug className="h-3.5 w-3.5" />
+            Intégrer
+          </Button>
+        ) : (
+          <Button
+            size="sm"
+            variant="outline"
+            className="w-full gap-1.5"
+            disabled
+          >
+            <Plug className="h-3.5 w-3.5" />
+            Bientôt disponible
+          </Button>
+        )}
       </div>
     </div>
   );

@@ -17,11 +17,28 @@ import mongoose, { Document, Schema } from 'mongoose';
  */
 export type UserRole = 'owner' | 'superadmin' | 'admin' | 'supervisor' | 'user';
 
+/**
+ * Seller-team roles. A team member is a `role: 'user'` account whose
+ * `parentUserId` points at the seller who invited them. They operate inside
+ * that seller's account (stores, orders) with a scoped view of the dashboard:
+ *   - 'manager'            : broad access — products, orders, customers, pages.
+ *   - 'confirmation_agent' : calls customers to confirm COD orders; sees and
+ *                            updates orders only.
+ */
+export type TeamRole = 'manager' | 'confirmation_agent';
+
 export interface IUser extends Document {
   email: string;
   password: string;
   name: string;
   role: UserRole;
+  /**
+   * When set, this account is a team member of the seller with this id.
+   * Their effective "owner" for store/order scoping is `parentUserId`.
+   */
+  parentUserId?: mongoose.Types.ObjectId;
+  /** Role within the parent seller's team. Only meaningful when parentUserId is set. */
+  teamRole?: TeamRole;
   avatar?: string;
   emailVerified: boolean;
   /** When true, login is rejected. Set by an admin via /api/admin/users/:id. */
@@ -59,6 +76,8 @@ const UserSchema = new Schema<IUser>(
     password: { type: String, required: true, select: false },
     name: { type: String, required: true, trim: true },
     role: { type: String, enum: ['owner', 'superadmin', 'admin', 'supervisor', 'user'], default: 'user' },
+    parentUserId: { type: Schema.Types.ObjectId, ref: 'User', index: true },
+    teamRole: { type: String, enum: ['manager', 'confirmation_agent'] },
     avatar: { type: String },
     emailVerified: { type: Boolean, default: false },
     suspended: { type: Boolean, default: false },

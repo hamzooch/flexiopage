@@ -191,6 +191,7 @@ export interface IStore extends Document {
       facebookTestEventCode?: string;
       googleAnalyticsId?: string;
       tiktokPixelId?: string;
+      snapchatPixelId?: string;
       googleAdsConversionId?: string;
       googleAdsConversionLabel?: string;
       /** Arbitrary HTML/JS injected into <head> (use with caution). */
@@ -352,6 +353,7 @@ const StoreSchema = new Schema<IStore>(
         facebookTestEventCode: { type: String, trim: true },
         googleAnalyticsId: { type: String, trim: true },
         tiktokPixelId: { type: String, trim: true },
+        snapchatPixelId: { type: String, trim: true },
         googleAdsConversionId: { type: String, trim: true },
         googleAdsConversionLabel: { type: String, trim: true },
         customHeadCode: { type: String },

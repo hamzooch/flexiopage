@@ -1,12 +1,16 @@
 /**
- * Three niche-specific professional store themes. Each one is a complete
- * design system (color tokens, font stacks, radius, accent gradient, layout
- * style) so the storefront can apply it via CSS variables and still feel
- * coherent end-to-end — header, hero, product cards, footer.
+ * Seven niche-specific store themes — each a complete design system
+ * (colors, fonts, radius, layout structure) so the storefront feels
+ * coherent end-to-end. Unlike before, every theme now also carries a
+ * `layout` block that drives a genuinely different page structure
+ * (hero shape, product card style, grid density, navbar style) so the
+ * themes don't just differ in color — they differ in *form*.
  *
- * 1. Volt    — Electronics, premium dark / neon
- * 2. Atelier — Fashion, editorial, light / serif
- * 3. Bloom   — Beauty & wellness, soft pastels
+ * Physical:  Volt · Atelier · Bloom
+ * Digital:   Pulse · Sage · Studio · Lumen
+ *
+ * Each one is loosely modelled on a well-known Shopify theme family
+ * (Ride, Publisher, Sense, Studio, Crave, Colorblock, Dawn).
  *
  * Backwards-compat: the old shape exposed `primaryColor` etc.; we keep
  * those keys aliased on the new theme object so existing callers don't break.
@@ -27,6 +31,31 @@ export type ThemeStyle = 'editorial' | 'tech' | 'soft' | 'minimal' | 'glass';
 export type StoreKind = 'physical' | 'digital';
 export type ThemeRadius = 'none' | 'small' | 'medium' | 'large' | 'xl';
 export type ThemeSpacing = 'tight' | 'normal' | 'relaxed';
+
+// ── Structural layout variants — what makes each theme feel different ──
+export type HeroLayout =
+  | 'centered'    // type stack centered, badge + CTA
+  | 'split'       // text left, visual panel right
+  | 'editorial'   // big asymmetric serif headline, left-aligned
+  | 'fullbleed'   // edge-to-edge color block, oversized type
+  | 'minimal';    // stark, type-only, lots of whitespace
+export type ProductCardStyle =
+  | 'classic'     // image, then padded text block below
+  | 'editorial'   // flat image, serif name, no border
+  | 'overlay'     // text overlaid on the image, dark gradient
+  | 'minimal';    // tight, borderless, text hugs the image
+export type NavStyle =
+  | 'standard'    // logo left, links right
+  | 'centered'    // logo centered, links split below/around
+  | 'bold';       // chunky uppercase, thick divider
+export type GridColumns = 2 | 3 | 4;
+
+export interface ThemeLayout {
+  hero: HeroLayout;
+  productCard: ProductCardStyle;
+  gridColumns: GridColumns;
+  nav: NavStyle;
+}
 
 export interface ThemeTokens {
   templateId: string;
@@ -51,6 +80,8 @@ export interface ThemeTokens {
   borderRadius: ThemeRadius;
   spacing: ThemeSpacing;
   style: ThemeStyle;
+  /** Structural layout variants — drives distinct page shapes per theme. */
+  layout: ThemeLayout;
   // ── Visual extras applied by the storefront ──
   pattern: 'mesh' | 'grid' | 'noise' | 'none';
   shadow: 'sharp' | 'soft' | 'glow';
@@ -80,7 +111,9 @@ export interface StoreThemeTemplate {
   theme: ThemeTokens;
 }
 
-function makeTheme(t: Omit<ThemeTokens, 'primaryColor' | 'secondaryColor' | 'backgroundColor' | 'textColor'>): ThemeTokens {
+function makeTheme(
+  t: Omit<ThemeTokens, 'primaryColor' | 'secondaryColor' | 'backgroundColor' | 'textColor'>
+): ThemeTokens {
   return {
     ...t,
     primaryColor: t.primary,
@@ -90,39 +123,133 @@ function makeTheme(t: Omit<ThemeTokens, 'primaryColor' | 'secondaryColor' | 'bac
   };
 }
 
+// ═════════════════════════════════════════════════════════════════════
+// COLOR UTILITIES — used by deriveTheme so the simplified 3-color editor
+// can regenerate a full, contrast-safe token set from just primary +
+// accent + background.
+// ═════════════════════════════════════════════════════════════════════
+
+function clampByte(n: number): number {
+  return Math.max(0, Math.min(255, Math.round(n)));
+}
+
+function hexToRgb(hex: string): [number, number, number] {
+  const m = hex.replace('#', '').match(/^([0-9a-f]{6})$/i);
+  if (!m) return [0, 0, 0];
+  const n = parseInt(m[1], 16);
+  return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+}
+
+function rgbToHex(r: number, g: number, b: number): string {
+  return (
+    '#' +
+    [r, g, b]
+      .map((v) => clampByte(v).toString(16).padStart(2, '0'))
+      .join('')
+  );
+}
+
+/** Linear blend between two hex colors. t=0 → a, t=1 → b. */
+export function mixHex(a: string, b: string, t: number): string {
+  const [ar, ag, ab] = hexToRgb(a);
+  const [br, bg, bb] = hexToRgb(b);
+  return rgbToHex(ar + (br - ar) * t, ag + (bg - ag) * t, ab + (bb - ab) * t);
+}
+
+/** WCAG relative luminance (0 = black, 1 = white). */
+function relLuminance(hex: string): number {
+  const [r, g, b] = hexToRgb(hex).map((v) => {
+    const s = v / 255;
+    return s <= 0.03928 ? s / 12.92 : Math.pow((s + 0.055) / 1.055, 2.4);
+  });
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+}
+
+export function isLightColor(hex: string): boolean {
+  return relLuminance(hex) > 0.42;
+}
+
+/** Pick black or white text for readable contrast on a given fill. */
+export function contrastText(hex: string): string {
+  return isLightColor(hex) ? '#0b0b0b' : '#ffffff';
+}
+
+/**
+ * Regenerate a complete, contrast-safe theme from a base theme plus up to
+ * three overridden colors. The base supplies fonts, radius, layout and
+ * style; the three colors drive everything else (surfaces, text, borders,
+ * gradient) so the simplified editor only ever needs 3 inputs.
+ */
+export function deriveTheme(
+  base: ThemeTokens,
+  overrides: { primary?: string; accent?: string; background?: string }
+): ThemeTokens {
+  const primary = (overrides.primary || base.primary).toLowerCase();
+  const accent = (overrides.accent || base.accent).toLowerCase();
+  const background = (overrides.background || base.background).toLowerCase();
+  const dark = !isLightColor(background);
+
+  const foreground = dark
+    ? mixHex('#ffffff', background, 0.12)
+    : mixHex('#0a0a0a', background, 0.06);
+  const surface = dark ? mixHex(background, '#ffffff', 0.07) : '#ffffff';
+  const surfaceMuted = dark
+    ? mixHex(background, '#ffffff', 0.045)
+    : mixHex(background, foreground, 0.05);
+  const muted = mixHex(foreground, background, 0.42);
+  const border = mixHex(foreground, background, dark ? 0.8 : 0.86);
+
+  return makeTheme({
+    ...base,
+    primary,
+    accent,
+    background,
+    primaryFg: contrastText(primary),
+    foreground,
+    surface,
+    surfaceMuted,
+    muted,
+    border,
+    gradientFrom: primary,
+    gradientTo: accent,
+    dark,
+  });
+}
+
 // ─────────────────────────────────────────────────────────────────────
-// 1. VOLT — Electronics
-// Deep navy + electric cyan, geometric sans, sharp corners, glow shadows.
-// Inspired by Apple / Nothing / Samsung product pages.
+// 1. VOLT — Electronics  ·  Shopify "Ride"-inspired
+// Pure black, volt-lime accent, oversized geometric type, sharp corners,
+// full-bleed hero, image-overlay product cards. Loud and high-energy.
 // ─────────────────────────────────────────────────────────────────────
 const volt: StoreThemeTemplate = {
   id: 'volt',
   name: 'Volt',
-  tagline: 'Tech, premium, electric',
+  tagline: 'Tech, brut, haute énergie',
   description:
-    'Sombre, géométrique, accent cyan électrique. Idéal pour smartphones, accessoires, gaming, audio.',
+    'Noir absolu, accent vert volt, typo géante, angles vifs. Hero plein cadre, cartes en surimpression. Pour smartphones, gaming, audio.',
   niche: 'electronics',
   nicheLabel: 'Électronique',
   forStoreTypes: ['physical'],
   theme: makeTheme({
     templateId: 'volt',
-    primary: '#06b6d4',         // electric cyan
-    primaryFg: '#0a0e1a',
-    accent: '#a78bfa',
-    background: '#0a0e1a',      // deep navy black
-    surface: '#111827',
-    surfaceMuted: '#0f172a',
-    foreground: '#e5e7eb',
-    muted: '#94a3b8',
-    border: '#1f2937',
-    gradientFrom: '#06b6d4',
-    gradientTo: '#7c3aed',
+    primary: '#ccff00',          // volt lime
+    primaryFg: '#0a0a0a',
+    accent: '#ff4d00',           // blaze orange
+    background: '#0a0a0a',       // pure black
+    surface: '#161616',
+    surfaceMuted: '#121212',
+    foreground: '#f4f4f4',
+    muted: '#8a8a8a',
+    border: '#2a2a2a',
+    gradientFrom: '#ccff00',
+    gradientTo: '#ff4d00',
     fontHeading: '"Space Grotesk", "Inter", system-ui, sans-serif',
     fontBody: '"Inter", system-ui, -apple-system, sans-serif',
     fontDisplaySize: 'xlarge',
-    borderRadius: 'small',
+    borderRadius: 'none',
     spacing: 'normal',
     style: 'tech',
+    layout: { hero: 'fullbleed', productCard: 'overlay', gridColumns: 3, nav: 'bold' },
     pattern: 'grid',
     shadow: 'glow',
     dark: true,
@@ -130,38 +257,40 @@ const volt: StoreThemeTemplate = {
 };
 
 // ─────────────────────────────────────────────────────────────────────
-// 2. ATELIER — Fashion
-// Editorial magazine, warm cream + charcoal, big serif headlines,
-// flat (no rounded corners), generous whitespace. COS / Aritzia / & Other Stories.
+// 2. ATELIER — Fashion  ·  Shopify "Publisher"-inspired
+// Warm paper, ink black, oversized Playfair serif, flat corners, an
+// asymmetric editorial hero and borderless serif product cards in a
+// roomy 2-column grid. Quiet luxury.
 // ─────────────────────────────────────────────────────────────────────
 const atelier: StoreThemeTemplate = {
   id: 'atelier',
   name: 'Atelier',
-  tagline: 'Editorial, élégant, intemporel',
+  tagline: 'Éditorial, élégant, intemporel',
   description:
-    'Magazine de mode : sérif large, crème chaud, lignes droites. Parfait pour vêtements, maroquinerie, accessoires.',
+    'Papier chaud, encre noire, sérif Playfair surdimensionné, lignes droites. Hero magazine, cartes sans bordure, grille 2 colonnes. Pour mode, maroquinerie.',
   niche: 'fashion',
   nicheLabel: 'Mode & vêtements',
   forStoreTypes: ['physical'],
   theme: makeTheme({
     templateId: 'atelier',
-    primary: '#1c1917',
-    primaryFg: '#fafaf9',
-    accent: '#a16207',           // warm gold
-    background: '#fafaf6',       // warm cream
+    primary: '#1a1714',
+    primaryFg: '#f7f4ee',
+    accent: '#9a7b4f',           // antique brass
+    background: '#f3efe7',       // warm paper
     surface: '#ffffff',
-    surfaceMuted: '#f5f5f0',
-    foreground: '#1c1917',
-    muted: '#78716c',
-    border: '#e7e5e4',
-    gradientFrom: '#a16207',
-    gradientTo: '#1c1917',
+    surfaceMuted: '#e9e4d8',
+    foreground: '#1a1714',
+    muted: '#76706a',
+    border: '#ddd6c8',
+    gradientFrom: '#9a7b4f',
+    gradientTo: '#1a1714',
     fontHeading: '"Playfair Display", "Cormorant Garamond", Georgia, serif',
     fontBody: '"Inter", "Helvetica Neue", system-ui, sans-serif',
     fontDisplaySize: 'xlarge',
     borderRadius: 'none',
     spacing: 'relaxed',
     style: 'editorial',
+    layout: { hero: 'editorial', productCard: 'editorial', gridColumns: 2, nav: 'centered' },
     pattern: 'none',
     shadow: 'sharp',
     dark: false,
@@ -169,39 +298,39 @@ const atelier: StoreThemeTemplate = {
 };
 
 // ─────────────────────────────────────────────────────────────────────
-// 3. BLOOM — Beauty & wellness (third pick — huge niche in MENA market)
-// Soft pastels, blush + dusty rose, very rounded corners, large display
-// sans, gentle shadows. Glossier-meets-Maghreb feel. Great for cosmetics,
-// perfumes, skincare, jewelry.
+// 3. BLOOM — Beauty & wellness  ·  Shopify "Sense"-inspired
+// Blush cream, berry rose, very rounded geometry, soft mesh glows,
+// centered hero, plump classic cards. Glossier-meets-Maghreb.
 // ─────────────────────────────────────────────────────────────────────
 const bloom: StoreThemeTemplate = {
   id: 'bloom',
   name: 'Bloom',
-  tagline: 'Doux, premium, pétale',
+  tagline: 'Doux, pétale, premium',
   description:
-    'Pastels chauds, rose poudré, formes très arrondies. Idéal pour cosmétiques, parfums, soin, bien-être, bijoux.',
+    'Crème rosée, rose baie, formes très arrondies, halos doux. Hero centré, cartes rebondies. Pour cosmétiques, parfums, soin, bijoux.',
   niche: 'beauty',
   nicheLabel: 'Beauté & bien-être',
   forStoreTypes: ['physical'],
   theme: makeTheme({
     templateId: 'bloom',
-    primary: '#be185d',          // berry rose
+    primary: '#c81d6b',          // berry rose
     primaryFg: '#ffffff',
-    accent: '#f472b6',
-    background: '#fdf2f8',       // pale blush
+    accent: '#f59ec4',           // petal pink
+    background: '#fdeef3',       // pale blush
     surface: '#ffffff',
-    surfaceMuted: '#fce7f3',
-    foreground: '#3f3354',
-    muted: '#9d8aa8',
-    border: '#f9d6e6',
-    gradientFrom: '#f9a8d4',
-    gradientTo: '#a78bfa',
+    surfaceMuted: '#fbdce8',
+    foreground: '#3f2436',
+    muted: '#9a7f8d',
+    border: '#f6cdde',
+    gradientFrom: '#f59ec4',
+    gradientTo: '#c81d6b',
     fontHeading: '"Outfit", "DM Serif Display", "Inter", sans-serif',
     fontBody: '"Inter", system-ui, sans-serif',
     fontDisplaySize: 'large',
     borderRadius: 'xl',
     spacing: 'relaxed',
     style: 'soft',
+    layout: { hero: 'centered', productCard: 'classic', gridColumns: 3, nav: 'centered' },
     pattern: 'mesh',
     shadow: 'soft',
     dark: false,
@@ -210,43 +339,42 @@ const bloom: StoreThemeTemplate = {
 
 // ═════════════════════════════════════════════════════════════════════
 // DIGITAL THEMES — courses, ebooks, SaaS, templates, downloads
-// All four are tuned for shipping pixels and earning trust on a digital
-// product (no shipping address, instant delivery, refund guarantee).
 // ═════════════════════════════════════════════════════════════════════
 
 // ─────────────────────────────────────────────────────────────────────
-// 4. PULSE — SaaS / software / digital tools
-// Dark gradient hero, violet→cyan accent, geometric sans, tight radius.
-// Inspired by Linear / Vercel / Stripe.
+// 4. PULSE — SaaS / software  ·  Shopify "Studio"-inspired (dark)
+// Deep indigo-black, violet→cyan, geometric sans, medium radius, a
+// split hero (copy left, visual panel right) and minimal product cards.
 // ─────────────────────────────────────────────────────────────────────
 const pulse: StoreThemeTemplate = {
   id: 'pulse',
   name: 'Pulse',
   tagline: 'SaaS · outils · tech',
   description:
-    'Sombre, gradient violet-cyan, géométrique. Pour logiciels, outils SaaS, scripts, plugins, abonnements.',
+    'Indigo nuit, dégradé violet-cyan, géométrique, hero scindé copy/visuel, cartes minimalistes. Pour logiciels, SaaS, plugins, abonnements.',
   niche: 'saas',
   nicheLabel: 'SaaS & outils',
   forStoreTypes: ['digital'],
   theme: makeTheme({
     templateId: 'pulse',
-    primary: '#8b5cf6',           // violet 500
+    primary: '#7c5cff',          // violet
     primaryFg: '#ffffff',
-    accent: '#22d3ee',            // cyan 400
-    background: '#0b1020',        // deep night
-    surface: '#111827',
-    surfaceMuted: '#0f172a',
-    foreground: '#e2e8f0',
-    muted: '#94a3b8',
-    border: '#1f2937',
-    gradientFrom: '#8b5cf6',
-    gradientTo: '#22d3ee',
+    accent: '#1fd5c8',           // teal-cyan
+    background: '#0c0a1d',       // indigo night
+    surface: '#16142c',
+    surfaceMuted: '#110f24',
+    foreground: '#e6e4f5',
+    muted: '#8e8aa8',
+    border: '#272447',
+    gradientFrom: '#7c5cff',
+    gradientTo: '#1fd5c8',
     fontHeading: '"Space Grotesk", "Inter", system-ui, sans-serif',
     fontBody: '"Inter", system-ui, sans-serif',
     fontDisplaySize: 'xlarge',
     borderRadius: 'medium',
     spacing: 'normal',
     style: 'tech',
+    layout: { hero: 'split', productCard: 'minimal', gridColumns: 3, nav: 'standard' },
     pattern: 'mesh',
     shadow: 'glow',
     dark: true,
@@ -254,38 +382,39 @@ const pulse: StoreThemeTemplate = {
 };
 
 // ─────────────────────────────────────────────────────────────────────
-// 5. SAGE — coaching / courses / memberships
-// Warm cream + sage green, soft serif headlines, generous breathing room.
-// Inspired by Teachable / Mighty Networks / On Deck.
+// 5. SAGE — coaching / courses  ·  Shopify "Crave"-inspired
+// Warm oat background, terracotta + sage green, DM Serif headlines,
+// large soft radius, split hero, generous classic cards in a 2-col grid.
 // ─────────────────────────────────────────────────────────────────────
 const sage: StoreThemeTemplate = {
   id: 'sage',
   name: 'Sage',
   tagline: 'Coaching · cours · communauté',
   description:
-    'Crème chaud, vert sauge, sérif doux. Idéal pour formations en ligne, coaching, masterclasses, communautés privées.',
+    'Avoine chaud, terracotta & vert sauge, sérif DM, formes douces. Hero scindé, grandes cartes en grille 2 colonnes. Pour formations, coaching, communautés.',
   niche: 'coaching',
   nicheLabel: 'Coaching & cours',
   forStoreTypes: ['digital'],
   theme: makeTheme({
     templateId: 'sage',
-    primary: '#3f6c51',            // sage deep
-    primaryFg: '#fafaf5',
-    accent: '#b08c4f',              // warm brass
-    background: '#faf8f1',          // cream
+    primary: '#b5512f',           // terracotta
+    primaryFg: '#fdf6ef',
+    accent: '#5c7a5c',            // sage green
+    background: '#f4efe4',        // warm oat
     surface: '#ffffff',
-    surfaceMuted: '#f4f1e8',
-    foreground: '#1f2a24',
-    muted: '#6b6b62',
-    border: '#e6e1d3',
-    gradientFrom: '#3f6c51',
-    gradientTo: '#b08c4f',
+    surfaceMuted: '#ebe4d3',
+    foreground: '#2c2820',
+    muted: '#766f5f',
+    border: '#ddd4bf',
+    gradientFrom: '#b5512f',
+    gradientTo: '#5c7a5c',
     fontHeading: '"DM Serif Display", "Cormorant Garamond", Georgia, serif',
     fontBody: '"Inter", system-ui, sans-serif',
     fontDisplaySize: 'xlarge',
-    borderRadius: 'medium',
+    borderRadius: 'large',
     spacing: 'relaxed',
-    style: 'editorial',
+    style: 'soft',
+    layout: { hero: 'split', productCard: 'classic', gridColumns: 2, nav: 'standard' },
     pattern: 'none',
     shadow: 'soft',
     dark: false,
@@ -293,38 +422,39 @@ const sage: StoreThemeTemplate = {
 };
 
 // ─────────────────────────────────────────────────────────────────────
-// 6. STUDIO — creators / templates / portfolios
-// Monochrome black/white, a single bold accent, geometric sans, sharp lines.
-// Inspired by Notion / Substack / Cosmos.
+// 6. STUDIO — creators / templates  ·  Shopify "Colorblock"-inspired
+// Stark white, ink black + one electric accent, heavy Inter, zero radius,
+// a minimal type-driven hero and a dense, borderless 4-column grid.
 // ─────────────────────────────────────────────────────────────────────
 const studio: StoreThemeTemplate = {
   id: 'studio',
   name: 'Studio',
   tagline: 'Créateurs · templates · portfolio',
   description:
-    'Noir & blanc minimaliste, un seul accent vif. Parfait pour templates Notion/Figma, packs créatifs, presets, prompts.',
+    'Blanc cru, encre noire, un seul accent électrique, Inter gras, zéro arrondi. Hero typographique, grille dense 4 colonnes sans bordure. Pour templates, presets, packs.',
   niche: 'creators',
   nicheLabel: 'Créateurs',
   forStoreTypes: ['digital'],
   theme: makeTheme({
     templateId: 'studio',
-    primary: '#111111',
-    primaryFg: '#fafafa',
-    accent: '#f97316',              // bold orange accent
-    background: '#fafafa',
+    primary: '#0b0b0b',
+    primaryFg: '#ffffff',
+    accent: '#2f5cff',            // electric blue
+    background: '#ffffff',
     surface: '#ffffff',
-    surfaceMuted: '#f4f4f5',
-    foreground: '#0a0a0a',
-    muted: '#71717a',
-    border: '#e4e4e7',
-    gradientFrom: '#111111',
-    gradientTo: '#f97316',
+    surfaceMuted: '#f0f0f0',
+    foreground: '#0b0b0b',
+    muted: '#6e6e6e',
+    border: '#e2e2e2',
+    gradientFrom: '#0b0b0b',
+    gradientTo: '#2f5cff',
     fontHeading: '"Inter", system-ui, sans-serif',
     fontBody: '"Inter", system-ui, sans-serif',
     fontDisplaySize: 'xlarge',
     borderRadius: 'none',
     spacing: 'normal',
     style: 'minimal',
+    layout: { hero: 'minimal', productCard: 'minimal', gridColumns: 4, nav: 'bold' },
     pattern: 'none',
     shadow: 'sharp',
     dark: false,
@@ -332,30 +462,31 @@ const studio: StoreThemeTemplate = {
 };
 
 // ─────────────────────────────────────────────────────────────────────
-// 7. LUMEN — ebooks / digital downloads / PDFs
-// Clean white + indigo, rounded radius, modern sans + occasional serif accent.
-// Inspired by Gumroad / Stripe Press / Lemon Squeezy.
+// 7. LUMEN — ebooks / downloads  ·  Shopify "Dawn"-inspired
+// Clean white, indigo, amber accent, Outfit, large rounded radius,
+// centered hero, classic cards in a comfortable 3-col grid. The calm,
+// trustworthy baseline.
 // ─────────────────────────────────────────────────────────────────────
 const lumen: StoreThemeTemplate = {
   id: 'lumen',
   name: 'Lumen',
   tagline: 'Ebooks · PDF · téléchargements',
   description:
-    'Lumineux, indigo profond, formes arrondies douces. Pour ebooks, guides PDF, packs téléchargeables.',
+    'Blanc lumineux, indigo profond, accent ambre, Outfit, coins arrondis. Hero centré, cartes classiques en grille 3 colonnes. Pour ebooks, guides PDF, packs.',
   niche: 'ebooks',
   nicheLabel: 'Ebooks & téléchargements',
   forStoreTypes: ['digital'],
   theme: makeTheme({
     templateId: 'lumen',
-    primary: '#4f46e5',            // indigo 600
+    primary: '#4f46e5',           // indigo
     primaryFg: '#ffffff',
-    accent: '#f59e0b',              // amber 500
-    background: '#fafbff',
+    accent: '#f59e0b',            // amber
+    background: '#ffffff',
     surface: '#ffffff',
-    surfaceMuted: '#eef0ff',
-    foreground: '#101935',
-    muted: '#5b6584',
-    border: '#dfe3f6',
+    surfaceMuted: '#f1f2fb',
+    foreground: '#10153a',
+    muted: '#5b6184',
+    border: '#e3e4f4',
     gradientFrom: '#4f46e5',
     gradientTo: '#f59e0b',
     fontHeading: '"Outfit", "Inter", system-ui, sans-serif',
@@ -364,6 +495,7 @@ const lumen: StoreThemeTemplate = {
     borderRadius: 'large',
     spacing: 'relaxed',
     style: 'glass',
+    layout: { hero: 'centered', productCard: 'classic', gridColumns: 3, nav: 'standard' },
     pattern: 'mesh',
     shadow: 'soft',
     dark: false,
@@ -387,6 +519,17 @@ export function themesForStoreType(kind: StoreKind): StoreThemeTemplate[] {
 
 export function getThemeById(id: string): StoreThemeTemplate | undefined {
   return STORE_THEME_TEMPLATES.find((t) => t.id === id);
+}
+
+/**
+ * Normalize a stored theme object. Stores saved before the `layout` block
+ * existed (or fully custom palettes) won't carry it — fall back to the
+ * matching template's layout, or Lumen's as a safe default.
+ */
+export function withLayoutFallback(theme: ThemeTokens): ThemeTokens {
+  if (theme.layout && theme.layout.hero) return theme;
+  const base = getThemeById(theme.templateId)?.theme || lumen.theme;
+  return { ...theme, layout: base.layout };
 }
 
 // Tailwind-friendly radius mapping (used by storefront)
@@ -432,11 +575,11 @@ export function googleFontsHref(t: ThemeTokens): string | null {
   const families: string[] = [];
   const all = `${t.fontHeading} ${t.fontBody}`;
   if (/Space Grotesk/i.test(all)) families.push('Space+Grotesk:wght@400;500;600;700');
-  if (/Playfair Display/i.test(all)) families.push('Playfair+Display:wght@400;600;700;800');
+  if (/Playfair Display/i.test(all)) families.push('Playfair+Display:wght@400;600;700;800;900');
   if (/Cormorant Garamond/i.test(all)) families.push('Cormorant+Garamond:wght@400;500;700');
   if (/DM Serif Display/i.test(all)) families.push('DM+Serif+Display:wght@400');
   if (/Outfit/i.test(all)) families.push('Outfit:wght@400;500;600;700;800');
-  if (/Inter/i.test(all)) families.push('Inter:wght@400;500;600;700');
+  if (/Inter/i.test(all)) families.push('Inter:wght@400;500;600;700;800;900');
   if (families.length === 0) return null;
   return `https://fonts.googleapis.com/css2?${families.map((f) => `family=${f}`).join('&')}&display=swap`;
 }

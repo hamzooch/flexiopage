@@ -4,8 +4,15 @@ import { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { storesApi } from '@/lib/api';
-import { STORE_THEME_TEMPLATES, themesForStoreType, type StoreThemeTemplate } from '@/data/store-themes';
+import {
+  STORE_THEME_TEMPLATES,
+  themesForStoreType,
+  withLayoutFallback,
+  type StoreThemeTemplate,
+  type ThemeTokens,
+} from '@/data/store-themes';
 import { ThemePreviewGrid } from '@/components/dashboard/theme-preview-card';
+import { ThemePaletteEditor } from '@/components/dashboard/theme-palette-editor';
 import { MediaPicker } from '@/components/dashboard/MediaPicker';
 import { StoreSubPageShell, type SaveStatus } from '@/components/dashboard/store-sub-page';
 import type { StoreType } from '@/components/dashboard/store-editor';
@@ -19,7 +26,9 @@ export default function StoreAppearancePage() {
   const [errorMessage, setErrorMessage] = useState<string>('');
   const [logo, setLogo] = useState<string | undefined>(undefined);
   const [favicon, setFavicon] = useState<string | undefined>(undefined);
-  const [selectedTheme, setSelectedTheme] = useState<StoreThemeTemplate | null>(null);
+  // The full theme tokens to be saved — selecting a template seeds these,
+  // the palette editor mutates them in place.
+  const [themeTokens, setThemeTokens] = useState<ThemeTokens | null>(null);
 
   useEffect(() => {
     if (!storeId) return;
@@ -30,15 +39,25 @@ export default function StoreAppearancePage() {
         setStore(s);
         setLogo(s.logo || undefined);
         setFavicon(s.favicon || undefined);
-        const themeId = (s.theme as { templateId?: string })?.templateId;
-        if (themeId) {
-          const t = STORE_THEME_TEMPLATES.find((x) => x.id === themeId);
-          if (t) setSelectedTheme(t);
+        const saved = s.theme as Partial<ThemeTokens> | undefined;
+        if (saved?.templateId) {
+          const tpl = STORE_THEME_TEMPLATES.find((x) => x.id === saved.templateId);
+          // A saved theme may pre-date the `layout` block or be fully
+          // customized — backfill missing structural tokens.
+          if (saved.primary && saved.background) {
+            setThemeTokens(withLayoutFallback(saved as ThemeTokens));
+          } else if (tpl) {
+            setThemeTokens(tpl.theme);
+          }
         }
       })
       .catch(() => setStore(null))
       .finally(() => setLoading(false));
   }, [storeId]);
+
+  function handleSelectTemplate(tpl: StoreThemeTemplate) {
+    setThemeTokens(tpl.theme);
+  }
 
   async function handleSave() {
     if (!store) return;
@@ -48,13 +67,13 @@ export default function StoreAppearancePage() {
       await storesApi.update(storeId, {
         logo: logo ?? '',
         favicon: favicon ?? '',
-        theme: selectedTheme ? (selectedTheme.theme as unknown as Record<string, unknown>) : undefined,
+        theme: themeTokens ? (themeTokens as unknown as Record<string, unknown>) : undefined,
       });
       setStore({
         ...store,
         logo,
         favicon,
-        theme: selectedTheme ? (selectedTheme.theme as unknown as Record<string, unknown>) : undefined,
+        theme: themeTokens ? (themeTokens as unknown as Record<string, unknown>) : undefined,
       });
       setStatus('saved');
       setTimeout(() => setStatus('idle'), 2400);
@@ -123,16 +142,34 @@ export default function StoreAppearancePage() {
       <Card>
         <CardHeader>
           <CardTitle>Thème</CardTitle>
-          <CardDescription>Choisis un template pour ta boutique. Affecte les couleurs, polices et style général.</CardDescription>
+          <CardDescription>
+            Chaque thème a sa propre structure de page, ses polices et son style. Choisis-en un,
+            puis personnalise ses couleurs juste en dessous.
+          </CardDescription>
         </CardHeader>
         <CardContent>
           <ThemePreviewGrid
             templates={themesForStoreType(store.storeType === 'digital' ? 'digital' : 'physical')}
-            selectedId={selectedTheme?.id || (store.theme as { templateId?: string })?.templateId}
-            onSelect={setSelectedTheme}
+            selectedId={themeTokens?.templateId}
+            onSelect={handleSelectTemplate}
           />
         </CardContent>
       </Card>
+
+      {themeTokens && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Palette de couleurs</CardTitle>
+            <CardDescription>
+              Personnalise les couleurs du thème sélectionné. Tu peux toujours revenir à la palette
+              d&apos;origine.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <ThemePaletteEditor theme={themeTokens} onChange={setThemeTokens} />
+          </CardContent>
+        </Card>
+      )}
     </StoreSubPageShell>
   );
 }

@@ -5,6 +5,7 @@
  *   - Facebook / Meta Pixel  (fbq)
  *   - Google Analytics 4     (gtag)
  *   - TikTok Pixel           (ttq)
+ *   - Snapchat Pixel         (snaptr)
  *   - Custom HTML in <head>  (use with caution — owner-supplied)
  *
  * Events emitted automatically:
@@ -22,6 +23,7 @@ export interface MarketingConfig {
   facebookPixelId?: string;
   googleAnalyticsId?: string;
   tiktokPixelId?: string;
+  snapchatPixelId?: string;
   googleAdsConversionId?: string;
   customHeadCode?: string;
 }
@@ -32,7 +34,7 @@ interface Props {
 
 export function MarketingPixels({ config }: Props) {
   if (!config) return null;
-  const { facebookPixelId, googleAnalyticsId, tiktokPixelId, googleAdsConversionId, customHeadCode } = config;
+  const { facebookPixelId, googleAnalyticsId, tiktokPixelId, snapchatPixelId, googleAdsConversionId, customHeadCode } = config;
 
   return (
     <>
@@ -96,6 +98,22 @@ export function MarketingPixels({ config }: Props) {
               ttq.load('${tiktokPixelId}');
               ttq.page();
             }(window, document, 'ttq');
+          `}
+        </Script>
+      )}
+
+      {/* Snapchat Pixel */}
+      {snapchatPixelId && (
+        <Script id="snap-pixel" strategy="afterInteractive">
+          {`
+            (function(e,t,n){if(e.snaptr)return;var a=e.snaptr=function()
+            {a.handleRequest?a.handleRequest.apply(a,arguments):a.queue.push(arguments)};
+            a.queue=[];var s='script';r=t.createElement(s);r.async=!0;
+            r.src=n;var u=t.getElementsByTagName(s)[0];
+            u.parentNode.insertBefore(r,u);})(window,document,
+            'https://sc-static.net/scevent.min.js');
+            snaptr('init', '${snapchatPixelId}');
+            snaptr('track', 'PAGE_VIEW');
           `}
         </Script>
       )}

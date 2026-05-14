@@ -32,3 +32,20 @@ export function storeUrl(storeSlug: string, subPath?: string): string {
   const clean = subPath.replace(/^\/+/, '');
   return `/${slug}/${clean}`;
 }
+
+/**
+ * Resolve a stored media path to a browser-loadable URL.
+ *
+ * Uploads are saved with a relative `/uploads/...` path that points at the
+ * API server, not the Next.js origin. Rendering them raw breaks the image,
+ * so prefix relative paths with the API base. Absolute URLs and data URIs
+ * are returned untouched.
+ */
+export function mediaUrl(url?: string | null): string | undefined {
+  if (!url) return undefined;
+  if (/^(https?:)?\/\//.test(url) || url.startsWith('data:') || url.startsWith('blob:')) {
+    return url;
+  }
+  const apiBase = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000').replace(/\/$/, '');
+  return `${apiBase}${url.startsWith('/') ? '' : '/'}${url}`;
+}

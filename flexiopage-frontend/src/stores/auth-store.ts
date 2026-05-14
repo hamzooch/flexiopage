@@ -2,12 +2,18 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { authApi } from '@/lib/api';
 
+export type TeamRole = 'manager' | 'confirmation_agent';
+
 export interface User {
   _id: string;
   email: string;
   name: string;
   role?: string;
   avatar?: string;
+  /** Set when this account is a team member of a seller. */
+  parentUserId?: string;
+  /** Role within the parent seller's team. */
+  teamRole?: TeamRole;
 }
 
 interface AuthState {

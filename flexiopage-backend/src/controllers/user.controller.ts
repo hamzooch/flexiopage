@@ -6,6 +6,7 @@ import { Wallet } from '../models/Wallet.model';
 import { Subscription } from '../models/Subscription.model';
 import * as storeService from '../services/store.service';
 import { currencyForCountry, isKnownCountry } from '../data/countries';
+import { effectiveOwnerId } from '../lib/owner';
 
 export async function getProfile(req: AuthRequest, res: Response): Promise<void> {
   if (!req.user) {
@@ -139,6 +140,6 @@ export async function getStores(req: AuthRequest, res: Response): Promise<void> 
     res.status(401).json({ error: 'Not authenticated' });
     return;
   }
-  const stores = await storeService.getStoresByOwner(req.user._id.toString());
+  const stores = await storeService.getStoresByOwner(effectiveOwnerId(req.user));
   res.json({ stores });
 }

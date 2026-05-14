@@ -19,7 +19,7 @@
  */
 const FAL_BASE = 'https://fal.run';
 
-export type ImageAspect = 'square' | 'portrait' | 'landscape' | 'wide';
+export type ImageAspect = 'square' | 'portrait' | 'landscape' | 'wide' | 'tall';
 
 export interface ImageGenInput {
   prompt: string;
@@ -47,6 +47,8 @@ const FLUX_ASPECT: Record<ImageAspect, { width: number; height: number; label: s
   portrait:  { width: 768,  height: 1024, label: 'portrait_4_3' },
   landscape: { width: 1024, height: 768,  label: 'landscape_4_3' },
   wide:      { width: 1280, height: 720,  label: 'landscape_16_9' },
+  // 9:16 — tall vertical, e.g. a full long-scroll landing-page mockup.
+  tall:      { width: 768,  height: 1365, label: 'portrait_16_9' },
 };
 
 const NANO_ASPECT: Record<ImageAspect, { ratio: string; width: number; height: number }> = {
@@ -54,6 +56,7 @@ const NANO_ASPECT: Record<ImageAspect, { ratio: string; width: number; height: n
   portrait:  { ratio: '3:4',  width: 768,  height: 1024 },
   landscape: { ratio: '4:3',  width: 1024, height: 768 },
   wide:      { ratio: '16:9', width: 1280, height: 720 },
+  tall:      { ratio: '9:16', width: 768,  height: 1365 },
 };
 
 /** Ideogram v3 uses Ideogram-style aspect tokens (ASPECT_*). */
@@ -62,6 +65,7 @@ const IDEOGRAM_ASPECT: Record<ImageAspect, { token: string; width: number; heigh
   portrait:  { token: 'ASPECT_3_4',  width: 768,  height: 1024 },
   landscape: { token: 'ASPECT_4_3',  width: 1024, height: 768 },
   wide:      { token: 'ASPECT_16_9', width: 1280, height: 720 },
+  tall:      { token: 'ASPECT_9_16', width: 768,  height: 1365 },
 };
 
 function getFalKey(): string {

@@ -28,4 +28,4 @@ yarn-error.log*
 *.swp
 
 # Local uploads
-boutshop-backend/uploads/
+flexiopage-backend/uploads/

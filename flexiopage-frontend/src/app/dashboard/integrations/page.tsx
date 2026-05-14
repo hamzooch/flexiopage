@@ -31,6 +31,7 @@ import {
   Facebook,
   BarChart3,
   PlayCircle,
+  Ghost,
   Truck,
   Warehouse,
   RefreshCw,
@@ -86,6 +87,7 @@ interface StoreDoc {
       facebookConversionsApiToken?: string;
       googleAnalyticsId?: string;
       tiktokPixelId?: string;
+      snapchatPixelId?: string;
       googleAdsConversionId?: string;
       googleAdsConversionLabel?: string;
       customHeadCode?: string;
@@ -363,6 +365,7 @@ function PixelsPanel({ store, onSaved, saving, setSaving }: PanelProps) {
   const [fbToken, setFbToken] = useState(m.facebookConversionsApiToken || '');
   const [ga, setGa] = useState(m.googleAnalyticsId || '');
   const [tt, setTt] = useState(m.tiktokPixelId || '');
+  const [snap, setSnap] = useState(m.snapchatPixelId || '');
   const [adsId, setAdsId] = useState(m.googleAdsConversionId || '');
   const [adsLbl, setAdsLbl] = useState(m.googleAdsConversionLabel || '');
   const [custom, setCustom] = useState(m.customHeadCode || '');
@@ -378,6 +381,7 @@ function PixelsPanel({ store, onSaved, saving, setSaving }: PanelProps) {
             facebookConversionsApiToken: fbToken.trim() || undefined,
             googleAnalyticsId: ga.trim() || undefined,
             tiktokPixelId: tt.trim() || undefined,
+            snapchatPixelId: snap.trim() || undefined,
             googleAdsConversionId: adsId.trim() || undefined,
             googleAdsConversionLabel: adsLbl.trim() || undefined,
             customHeadCode: custom.trim() || undefined,
@@ -414,6 +418,12 @@ function PixelsPanel({ store, onSaved, saving, setSaving }: PanelProps) {
           label="TikTok Pixel ID"
           help="TikTok Ads Manager → Assets → Events. Ex: CXXXXXXXXXXXXXXXX">
           <Input value={tt} onChange={(e) => setTt(e.target.value)} placeholder="CXXXXXXXXXXXXXXXX" className="font-mono" />
+        </PixelRow>
+
+        <PixelRow icon={<Ghost className="h-5 w-5 text-yellow-500" />}
+          label="Snapchat Pixel ID"
+          help="Snapchat Ads Manager → Events Manager → ton Pixel. Format UUID (ex: 12a3b4c5-...).">
+          <Input value={snap} onChange={(e) => setSnap(e.target.value)} placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" className="font-mono" />
         </PixelRow>
 
         <PixelRow icon={<Sparkles className="h-5 w-5 text-emerald-600" />}
@@ -559,16 +569,22 @@ function CarrierPanel({ store, onSaved, saving, setSaving }: PanelProps) {
       subtitle="Transporteur last-mile qui prend en charge le colis chez toi et le livre au client.">
       <div className="space-y-5">
         <div>
-          <Label>Transporteur</Label>
-          <select
-            value={provider}
-            onChange={(e) => setProvider(e.target.value)}
-            className="mt-1.5 h-11 w-full rounded-lg border border-border bg-background px-3 text-sm"
-          >
+          <Label>Sociétés de livraison disponibles</Label>
+          <p className="mt-0.5 text-xs text-muted-foreground">
+            Clique sur « Intégrer » pour choisir ton transporteur, puis configure-le ci-dessous.
+          </p>
+          <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
             {CARRIER_PROVIDERS.map((p) => (
-              <option key={p.id} value={p.id}>{p.label} — {p.description}</option>
+              <ProviderCard
+                key={p.id}
+                name={p.label}
+                description={p.description}
+                icon={<Truck className="h-5 w-5" />}
+                selected={provider === p.id}
+                onSelect={() => setProvider(p.id)}
+              />
             ))}
-          </select>
+          </div>
         </div>
 
         <ToggleRow checked={enabled} onChange={setEnabled}
@@ -657,16 +673,22 @@ function LogisticsPanel({ store, onSaved, saving, setSaving }: PanelProps) {
       subtitle="Externalise le stockage et la préparation des commandes. Le 3PL gère ton entrepôt et choisit le transporteur.">
       <div className="space-y-5">
         <div>
-          <Label>Prestataire 3PL</Label>
-          <select
-            value={provider}
-            onChange={(e) => setProvider(e.target.value)}
-            className="mt-1.5 h-11 w-full rounded-lg border border-border bg-background px-3 text-sm"
-          >
+          <Label>Prestataires 3PL disponibles</Label>
+          <p className="mt-0.5 text-xs text-muted-foreground">
+            Clique sur « Intégrer » pour choisir ton prestataire logistique, puis configure-le ci-dessous.
+          </p>
+          <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
             {LOGISTICS_PROVIDERS.map((p) => (
-              <option key={p.id} value={p.id}>{p.label} — {p.description}</option>
+              <ProviderCard
+                key={p.id}
+                name={p.label}
+                description={p.description}
+                icon={<Warehouse className="h-5 w-5" />}
+                selected={provider === p.id}
+                onSelect={() => setProvider(p.id)}
+              />
             ))}
-          </select>
+          </div>
         </div>
 
         <ToggleRow checked={enabled} onChange={setEnabled}
@@ -725,6 +747,65 @@ function Card({ icon, title, subtitle, children }: { icon: React.ReactNode; titl
       </header>
       {children}
     </section>
+  );
+}
+
+/** A pickable provider card — "Disponible" badge + "Intégrer" button. */
+function ProviderCard({
+  name,
+  description,
+  icon,
+  selected,
+  onSelect,
+}: {
+  name: string;
+  description: string;
+  icon: React.ReactNode;
+  selected: boolean;
+  onSelect: () => void;
+}) {
+  return (
+    <div
+      className={cn(
+        'group relative flex flex-col rounded-2xl border bg-card p-4 transition-all duration-300',
+        selected
+          ? 'border-primary ring-2 ring-primary/15'
+          : 'border-border/60 hover:-translate-y-0.5 hover:border-primary/30 hover:shadow-lg'
+      )}
+    >
+      <div className="flex items-start justify-between gap-2">
+        <span className="grid h-10 w-10 place-items-center rounded-xl bg-gradient-to-br from-fuchsia-500 to-indigo-600 text-white shadow-md">
+          {icon}
+        </span>
+        {selected ? (
+          <span className="inline-flex items-center gap-1 rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-semibold text-primary">
+            <CheckCircle2 className="h-3 w-3" /> Sélectionné
+          </span>
+        ) : (
+          <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/10 px-2 py-0.5 text-[10px] font-semibold text-emerald-700">
+            <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" /> Disponible
+          </span>
+        )}
+      </div>
+      <h4 className="mt-3 text-sm font-semibold tracking-tight">{name}</h4>
+      <p className="mt-0.5 line-clamp-2 text-xs text-muted-foreground">{description}</p>
+      <Button
+        size="sm"
+        variant={selected ? 'outline' : 'default'}
+        onClick={onSelect}
+        className={cn('mt-3 w-full gap-1.5', !selected && 'gradient-brand text-white')}
+      >
+        {selected ? (
+          <>
+            <CheckCircle2 className="h-3.5 w-3.5" /> Intégré
+          </>
+        ) : (
+          <>
+            <Plug className="h-3.5 w-3.5" /> Intégrer
+          </>
+        )}
+      </Button>
+    </div>
   );
 }
 

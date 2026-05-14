@@ -126,3 +126,20 @@ html {
   background-clip: padding-box;
   border: 2px solid transparent;
 }
+
+/* Storefront announcement bar — continuous scrolling ticker ("animated" mode) */
+@keyframes flexio-marquee {
+  0% { transform: translateX(0); }
+  100% { transform: translateX(-50%); }
+}
+.flexio-marquee-track {
+  display: inline-flex;
+  white-space: nowrap;
+  will-change: transform;
+  animation: flexio-marquee linear infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .flexio-marquee-track {
+    animation: none;
+  }
+}

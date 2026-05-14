@@ -1,6 +1,7 @@
 import { Response, NextFunction } from 'express';
 import { Store } from '../models/Store.model';
 import { AuthRequest } from './auth.middleware';
+import { effectiveOwnerId } from '../lib/owner';
 
 /** Ensure user owns the store or is admin. req.params.storeId must be set. */
 export async function requireStoreAccess(
@@ -22,7 +23,9 @@ export async function requireStoreAccess(
     res.status(404).json({ error: 'Store not found' });
     return;
   }
-  if (store.ownerId.toString() !== req.user._id.toString() && req.user.role !== 'admin') {
+  // Team members operate inside their seller's account — match on the
+  // effective owner (seller id) rather than the team member's own id.
+  if (store.ownerId.toString() !== effectiveOwnerId(req.user) && req.user.role !== 'admin') {
     res.status(403).json({ error: 'Access denied to this store' });
     return;
   }

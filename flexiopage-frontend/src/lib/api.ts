@@ -52,6 +52,30 @@ export const usersApi = {
   getStores: () => api.get<{ stores: unknown[] }>('/users/stores'),
 };
 
+// Team — seller invites staff (managers, confirmation agents)
+export type TeamRole = 'manager' | 'confirmation_agent';
+
+export interface TeamMember {
+  _id: string;
+  name: string;
+  email: string;
+  teamRole: TeamRole;
+  suspended?: boolean;
+  createdAt?: string;
+  lastLoginAt?: string;
+}
+
+export const teamApi = {
+  list: () => api.get<{ members: TeamMember[] }>('/team'),
+  create: (data: { name: string; email: string; password: string; teamRole: TeamRole }) =>
+    api.post<{ member: TeamMember }>('/team', data),
+  update: (
+    id: string,
+    data: { name?: string; teamRole?: TeamRole; suspended?: boolean; password?: string }
+  ) => api.patch<{ member: TeamMember }>(`/team/${id}`, data),
+  remove: (id: string) => api.delete<{ ok: boolean }>(`/team/${id}`),
+};
+
 // Wallet — main balance (commission per sale) + AI balance (generation cost)
 export type WalletBucket = 'main' | 'ai';
 export interface WalletTransaction {
@@ -128,6 +152,26 @@ export interface PosterContent {
   features: PosterFeature[];
   testimonials: PosterTestimonial[];
   cta: { label: string; reassurance?: string };
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// Landing-page-as-image — full 9:16 designed mockup (TryAd-style)
+// ─────────────────────────────────────────────────────────────────────
+export interface LandingImageCopy {
+  headline: string;
+  subheadline?: string;
+  reassurance: string[];
+  benefits: Array<{ title: string; body: string }>;
+  socialProof: string;
+  testimonials: Array<{ quote: string; author: string }>;
+  cta: string;
+  ctaReassurance: string;
+}
+export interface LandingImageResult {
+  imageUrl: string;
+  width: number;
+  height: number;
+  copy: LandingImageCopy;
 }
 
 // ─────────────────────────────────────────────────────────────────────
@@ -493,6 +537,13 @@ export const storesApi = {
     }
   ) => api.post<{ poster: PosterContent; charge: { amount: number; balanceAfter: number; currency: string } }>(
     `/stores/${storeId}/pages/generate-poster`,
+    data
+  ),
+  generateLandingImage: (
+    storeId: string,
+    data: { productId: string; language?: string; country?: string; currency?: string }
+  ) => api.post<{ result: LandingImageResult; charge: { amount: number; balanceAfter: number; currency: string } }>(
+    `/stores/${storeId}/pages/generate-landing-image`,
     data
   ),
   getSectionsFromTemplate: (storeId: string, templateId: string) =>

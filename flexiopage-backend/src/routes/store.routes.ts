@@ -47,6 +47,7 @@ router.post('/:storeId/pages/generate-from-product/async', pageController.genera
 router.post('/:storeId/pages/generate-from-image', pageController.generateFromImage);
 router.post('/:storeId/pages/generate-from-image/async', pageController.generateFromImageAsync);
 router.post('/:storeId/pages/generate-poster', pageController.generatePosterPage);
+router.post('/:storeId/pages/generate-landing-image', pageController.generateLandingImagePage);
 router.post('/:storeId/pages/from-template', pageController.getSectionsFromTemplateId);
 router.post('/:storeId/pages', pageController.createPage);
 router.get('/:storeId/pages/:pageId', pageController.getPage);

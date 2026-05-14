@@ -69,9 +69,21 @@ export interface NavMenuLink {
   url: string;
 }
 
+export type BrandDisplay = 'logo+name' | 'logo' | 'name';
+
 export interface NavbarSettings {
   showSearch?: boolean;
   menuLinks?: NavMenuLink[];
+  /** How the brand shows in the navbar: logo + name, logo only, or name only. */
+  brandDisplay?: BrandDisplay;
+}
+
+export interface AnnouncementBarSettings {
+  enabled?: boolean;
+  /** Short promo lines: "Livraison gratuite", "Promo −40%", … */
+  messages?: string[];
+  /** fixed — static centered text · animated — scrolling ticker. */
+  mode?: 'fixed' | 'animated';
 }
 
 export interface TestimonialItem {
@@ -109,6 +121,7 @@ export interface FooterSettings {
 }
 
 export interface StorefrontSettings {
+  announcementBar?: AnnouncementBarSettings;
   navbar?: NavbarSettings;
   showHero?: boolean;
   heroTitle?: string;
@@ -448,6 +461,136 @@ export function SliderEditor({
 }
 
 // ─────────────────────────────────────────────────────────────────────
+// ANNOUNCEMENT BAR EDITOR — promo lines above the navbar (fixed / animated)
+// ─────────────────────────────────────────────────────────────────────
+export function AnnouncementBarEditor({
+  bar,
+  onChange,
+}: {
+  bar?: AnnouncementBarSettings;
+  onChange: (b: AnnouncementBarSettings) => void;
+}) {
+  const cfg: AnnouncementBarSettings = { enabled: false, mode: 'fixed', messages: [], ...(bar || {}) };
+  const messages = cfg.messages || [];
+
+  function update(patch: Partial<AnnouncementBarSettings>) {
+    onChange({ ...cfg, ...patch });
+  }
+  function updateMessage(i: number, value: string) {
+    const next = messages.slice();
+    next[i] = value;
+    update({ messages: next });
+  }
+  function addMessage() {
+    update({ messages: [...messages, ''] });
+  }
+  function removeMessage(i: number) {
+    const next = messages.slice();
+    next.splice(i, 1);
+    update({ messages: next });
+  }
+  function moveMessage(i: number, dir: -1 | 1) {
+    const j = i + dir;
+    if (j < 0 || j >= messages.length) return;
+    const next = messages.slice();
+    [next[i], next[j]] = [next[j], next[i]];
+    update({ messages: next });
+  }
+
+  const MODE_OPTIONS: { value: NonNullable<AnnouncementBarSettings['mode']>; label: string; hint: string }[] = [
+    { value: 'fixed', label: 'Fixe', hint: 'Texte statique, centré' },
+    { value: 'animated', label: 'Animé', hint: 'Bandeau défilant en continu' },
+  ];
+
+  return (
+    <div className="space-y-4 rounded-xl border border-border/60 bg-muted/30 p-4">
+      <FieldToggle
+        label="Bandeau d'annonce"
+        sublabel="Bande fine au-dessus du menu — promos, livraison gratuite, remises…"
+        checked={!!cfg.enabled}
+        onChange={(v) => update({ enabled: v })}
+      />
+
+      {cfg.enabled && (
+        <>
+          {/* Mode — fixed vs animated */}
+          <div>
+            <h4 className="text-sm font-semibold">Affichage</h4>
+            <div className="mt-2 grid grid-cols-2 gap-2">
+              {MODE_OPTIONS.map((opt) => {
+                const active = (cfg.mode || 'fixed') === opt.value;
+                return (
+                  <button
+                    key={opt.value}
+                    type="button"
+                    onClick={() => update({ mode: opt.value })}
+                    title={opt.hint}
+                    className={
+                      'rounded-lg border p-2 text-center text-xs font-medium transition-colors ' +
+                      (active
+                        ? 'border-primary bg-primary/10 text-primary'
+                        : 'border-border/60 bg-card text-muted-foreground hover:border-primary/40')
+                    }
+                  >
+                    {opt.label}
+                    <span className="mt-0.5 block text-[10px] font-normal opacity-70">{opt.hint}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Messages */}
+          <div className="space-y-2">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <h4 className="text-sm font-semibold">Messages</h4>
+                <p className="text-[11px] text-muted-foreground">
+                  Une phrase courte par ligne (ex: « Livraison gratuite dès 50€ »).
+                </p>
+              </div>
+              <Button type="button" size="sm" onClick={addMessage} className="gap-1.5">
+                <Plus className="h-3.5 w-3.5" /> Ajouter
+              </Button>
+            </div>
+
+            {messages.length === 0 ? (
+              <div className="rounded-lg border border-dashed border-border/70 bg-card p-4 text-center text-xs text-muted-foreground">
+                Aucun message. Clique sur « Ajouter » pour écrire ta première annonce.
+              </div>
+            ) : (
+              <ul className="space-y-2">
+                {messages.map((m, i) => (
+                  <li key={i} className="grid grid-cols-[1fr_auto] gap-2 rounded-lg border border-border/60 bg-card p-2">
+                    <Input
+                      placeholder="Ex: Promo −40% sur tout le catalogue"
+                      value={m}
+                      onChange={(e) => updateMessage(i, e.target.value)}
+                      className="h-9 text-sm"
+                    />
+                    <div className="flex items-center gap-1">
+                      <button type="button" aria-label="Monter" disabled={i === 0} onClick={() => moveMessage(i, -1)} className="grid h-7 w-7 place-items-center rounded-md hover:bg-muted disabled:opacity-30">
+                        <ChevronUp className="h-3.5 w-3.5" />
+                      </button>
+                      <button type="button" aria-label="Descendre" disabled={i === messages.length - 1} onClick={() => moveMessage(i, 1)} className="grid h-7 w-7 place-items-center rounded-md hover:bg-muted disabled:opacity-30">
+                        <ChevronDown className="h-3.5 w-3.5" />
+                      </button>
+                      <button type="button" aria-label="Supprimer" onClick={() => removeMessage(i)} className="grid h-7 w-7 place-items-center rounded-md text-destructive hover:bg-destructive/10">
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────
 // NAVBAR EDITOR — menu links (label + URL)
 // ─────────────────────────────────────────────────────────────────────
 export function NavbarEditor({
@@ -484,9 +627,45 @@ export function NavbarEditor({
     update({ menuLinks: next });
   }
 
+  const brandDisplay: BrandDisplay = cfg.brandDisplay || 'logo+name';
+  const BRAND_OPTIONS: { value: BrandDisplay; label: string; hint: string }[] = [
+    { value: 'logo+name', label: 'Logo + nom', hint: 'Logo et nom de la boutique' },
+    { value: 'logo', label: 'Logo seul', hint: 'Affiche uniquement le logo' },
+    { value: 'name', label: 'Nom seul', hint: 'Affiche uniquement le nom' },
+  ];
+
   return (
     <div className="space-y-3 rounded-xl border border-border/60 bg-muted/30 p-4">
-      <div className="flex items-start justify-between gap-3">
+      {/* Brand display — logo / name / both */}
+      <div>
+        <h4 className="text-sm font-semibold">Affichage de la marque</h4>
+        <p className="text-[11px] text-muted-foreground">
+          Ce qui apparaît à gauche de la navbar.
+        </p>
+        <div className="mt-2 grid grid-cols-3 gap-2">
+          {BRAND_OPTIONS.map((opt) => {
+            const active = brandDisplay === opt.value;
+            return (
+              <button
+                key={opt.value}
+                type="button"
+                onClick={() => update({ brandDisplay: opt.value })}
+                title={opt.hint}
+                className={
+                  'rounded-lg border p-2 text-center text-xs font-medium transition-colors ' +
+                  (active
+                    ? 'border-primary bg-primary/10 text-primary'
+                    : 'border-border/60 bg-card text-muted-foreground hover:border-primary/40')
+                }
+              >
+                {opt.label}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      <div className="flex items-start justify-between gap-3 border-t border-border/50 pt-3">
         <div>
           <h4 className="text-sm font-semibold">Menu de navigation (navbar)</h4>
           <p className="text-[11px] text-muted-foreground">
@@ -500,7 +679,8 @@ export function NavbarEditor({
 
       {links.length === 0 ? (
         <div className="rounded-lg border border-dashed border-border/70 bg-card p-4 text-center text-xs text-muted-foreground">
-          Aucun lien. La barre affichera juste ton logo.
+          Aucun lien personnalisé. La barre affichera le menu par défaut :
+          <span className="font-medium text-foreground"> Accueil · Catalogue · Contact</span>.
         </div>
       ) : (
         <ul className="space-y-2">

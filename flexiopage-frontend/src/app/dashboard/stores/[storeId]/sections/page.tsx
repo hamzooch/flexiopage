@@ -9,6 +9,7 @@ import { storesApi } from '@/lib/api';
 import { MediaPicker } from '@/components/dashboard/MediaPicker';
 import { StoreSubPageShell, type SaveStatus } from '@/components/dashboard/store-sub-page';
 import {
+  AnnouncementBarEditor,
   FieldToggle,
   FooterEditor,
   NavbarEditor,
@@ -88,6 +89,19 @@ export default function StoreSectionsPage() {
       errorMessage={errorMessage}
       onSave={handleSave}
     >
+      <Card>
+        <CardHeader>
+          <CardTitle>Bandeau d&apos;annonce</CardTitle>
+          <CardDescription>Bande fine au-dessus du menu — promos, livraison gratuite, remises. Texte fixe ou défilant.</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <AnnouncementBarEditor
+            bar={storefront.announcementBar}
+            onChange={(announcementBar) => setStorefront({ ...storefront, announcementBar })}
+          />
+        </CardContent>
+      </Card>
+
       <Card>
         <CardHeader>
           <CardTitle>Navbar</CardTitle>

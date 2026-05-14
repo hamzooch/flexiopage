@@ -1,13 +1,21 @@
 import { Response } from 'express';
+import validator from 'validator';
 import { AuthRequest } from '../middleware/auth.middleware';
 import * as storeService from '../services/store.service';
 import { getStoreAnalytics, getStoreAnalyticsRich, type RangeKey } from '../services/analytics.service';
 import { verifyAndSaveDomain, getDomainTarget, checkDomain } from '../services/domain.service';
 import { testSheetsWebhook } from '../services/sheets.service';
+import { effectiveOwnerId, isTeamMember } from '../lib/owner';
 
 export async function createStore(req: AuthRequest, res: Response): Promise<void> {
   if (!req.user) {
     res.status(401).json({ error: 'Not authenticated' });
+    return;
+  }
+  // Team members work inside an existing seller account — they can't spin up
+  // new stores. Store creation stays a seller-only action.
+  if (isTeamMember(req.user)) {
+    res.status(403).json({ error: 'Les membres d’équipe ne peuvent pas créer de boutique.' });
     return;
   }
   const { name, slug, description, theme, storeType, currency, language, country } = req.body as {
@@ -52,7 +60,7 @@ export async function listStores(req: AuthRequest, res: Response): Promise<void>
     res.status(401).json({ error: 'Not authenticated' });
     return;
   }
-  const stores = await storeService.getStoresByOwner(req.user._id.toString());
+  const stores = await storeService.getStoresByOwner(effectiveOwnerId(req.user));
   res.json({ stores });
 }
 
@@ -71,8 +79,9 @@ export async function updateStore(req: AuthRequest, res: Response): Promise<void
   const updates: Record<string, unknown> = {};
   if (typeof name === 'string') updates.name = name.trim();
   if (description !== undefined) updates.description = description;
-  if (typeof logo === 'string') updates.logo = logo;
-  if (typeof favicon === 'string') updates.favicon = favicon;
+  // sanitizeMiddleware escapes "/" -> "&#x2F;"; reverse it for URL fields
+  if (typeof logo === 'string') updates.logo = validator.unescape(logo);
+  if (typeof favicon === 'string') updates.favicon = validator.unescape(favicon);
   if (typeof customDomain === 'string') updates.customDomain = customDomain || undefined;
   if (theme && typeof theme === 'object') updates.theme = theme;
   if (settings && typeof settings === 'object') updates.settings = settings;

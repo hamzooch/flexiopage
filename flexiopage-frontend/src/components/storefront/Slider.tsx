@@ -18,7 +18,7 @@
 
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
-import { cn } from '@/lib/utils';
+import { cn, mediaUrl } from '@/lib/utils';
 
 export interface SliderSlide {
   image: string;
@@ -137,7 +137,7 @@ export function StorefrontSlider({ config, primary = '#0ea5e9', primaryFg = '#ff
           >
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
-              src={s.image}
+              src={mediaUrl(s.image)}
               alt={s.title || ''}
               className="absolute inset-0 h-full w-full object-cover"
               loading={i === 0 ? 'eager' : 'lazy'}

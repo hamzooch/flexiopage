@@ -586,22 +586,28 @@ function buildPrompt(input: FalGenerateInput, language: string, direction: 'ltr'
   const sectionsSchema = `
 Return between 9 and 14 sections in this preferred order: hero, features, steps, stats, gallery, product, brands, testimonials, video, pricing, cod-form, faq, cta, footer.
 
-For sections that need images, output an "imagePrompt" field — a short ENGLISH description (under 35 words) of a photorealistic, editorial-grade scene. The pipeline turns each imagePrompt into an actual image via FLUX. NEVER write Arabic text inside imagePrompt — image models do that poorly. Describe the scene visually only.
+For sections that need images, output an "imagePrompt" field — a short ENGLISH description (under 35 words) of ONE scene. NEVER write Arabic text inside imagePrompt — image models do that poorly. Describe the scene visually only.
 
-# Image direction — MAKE THE PHOTOS MODERN, BOLD AND CINEMATIC
+# Image direction — ONE COHERENT, PREMIUM PHOTOSHOOT
 Cultural anchor: ${photoCulture}.
 
-Quality bar — these images are a 2026 luxury-brand landing page (think Apple
-product page, Aesop, Le Labo, Loewe campaign). Every shot should feel
-hand-art-directed, not AI-generated. The viewer should pause on each image.
+Quality bar — every image on this page belongs to the SAME 2026 luxury-brand
+shoot (think Apple product page, Aesop, Le Labo, Loewe campaign). The viewer
+should feel one art director shot the whole page in one afternoon.
 
-Universal modifiers (append to EVERY imagePrompt unless contradicted):
-  "shot on Sony A7 IV with 50mm prime, f/1.4, golden hour soft light OR
-   moody single-source sidelight, editorial fashion photography, magazine
-   cover composition, rich shadows, cinematic color grade with one
-   dominant accent color, shallow depth of field, 8k, ultra detailed,
-   sharp focus on subject, organic film grain, no text, no logos,
-   no watermark, no extra fingers, no warped hands".
+🎯 WRITE THE SCENE ONLY — describe the SUBJECT, the SETTING, the ACTION and the
+COMPOSITION. Do NOT write camera names, f-stops, lens specs, lighting jargon,
+"4k", "8k", "photorealistic", "no text" or "cinematic" — the pipeline appends a
+fixed, consistent house photography style to every prompt automatically.
+Adding your own conflicting style words BREAKS the page's visual coherence.
+
+Good imagePrompt:  "a young Tunisian woman in a sunlit kitchen using the product, warm morning light through a window, off-center on the left third"
+Bad imagePrompt:   "product shot, 8k, photorealistic, cinematic, shot on Sony A7, no text" ← style words forbidden
+
+Keep ONE consistent world across all images: same kind of light (e.g. soft
+morning daylight), same palette family, same level of realism. If the hero is a
+warm sunlit home, the gallery and CTA stay in that same warm sunlit world — not
+a neon studio, not a dark moody set.
 
 Vary scene types across the page — NEVER use the same composition twice.
 Pick a different bucket for each image:
@@ -632,9 +638,9 @@ Composition rules — break the stock-photo defaults:
 
 Per-section schema:
 
-- "hero" props: { "title", "subtitle", "ctaText", "ctaSecondary"?, "badge"?, "layout": "split", "imagePrompt": "lifestyle scene of someone using/wearing/holding the product, ${photoCulture}, photorealistic, no text" }
+- "hero" props: { "title", "subtitle", "ctaText", "ctaSecondary"?, "badge"?, "layout": "split", "imagePrompt": "scene only — someone using/wearing/holding the product in ${photoCulture}, subject off-center, warm daylight" }
   Title 6–11 words, benefit-driven. Subtitle 1–2 sentences.
-  ${productImagesProvided ? 'IMPORTANT: a product photo is provided — set hero.imageUrl to "__PRODUCT_IMAGE_0__" (literal placeholder) AND keep imagePrompt for a fallback lifestyle hero.' : ''}
+  ${productImagesProvided ? 'IMPORTANT: a product photo is provided — DO NOT set hero.imageUrl. Write a scene-only "imagePrompt": the pipeline regenerates the hero from the real product photo (image-to-image), keeping the SAME product in a premium styled scene.' : ''}
 
 - "features" props: { "title", "subtitle", "items": [{ "title", "description", "icon" }] }
   4–6 items. Icon ∈ {"check","shield","truck","clock","star","heart","sparkles","zap","gift","leaf","award","crown","lock","refresh","headphones"}.
@@ -648,16 +654,17 @@ Per-section schema:
     "name", "tagline", "priceBefore"?, "priceAfter"?, "currency"?, "discountPct"?,
     "highlights": [4–6 short bullets, 4–8 words each],
     "ctaText", "trustBadges"?: [...] (e.g. "دفع عند الاستلام", "شحن مجاني" for AR markets),
-    "rating"?: 4.7, "reviewCount"?: 1240
-    ${productImagesProvided ? ',\n    "imageUrl": "__PRODUCT_IMAGE_0__", "gallery": ["__PRODUCT_IMAGE_0__", "__PRODUCT_IMAGE_1__", ...]' : ',\n    "imagePrompt": "close-up product hero shot, studio lighting, premium feel, no text"'}
+    "rating"?: 4.7, "reviewCount"?: 1240,
+    "imagePrompt": "scene only — the product as a clean premium hero still life on a soft warm backdrop, slightly off-center"${productImagesProvided ? ',\n    "gallery": ["__PRODUCT_IMAGE_0__", "__PRODUCT_IMAGE_1__", ...]' : ''}
   }
+  ${productImagesProvided ? 'IMPORTANT: a product photo is provided — DO NOT set product.imageUrl. Always write a scene-only "imagePrompt": the pipeline regenerates the main product shot from the real photo (image-to-image) so it shows the SAME product in a premium styled scene. The raw photos only feed the small "gallery" thumbnail strip.' : ''}
 
 - "brands" props: { "title"?, "items": [{ "name" }] } — 4–6 plausible local media outlet names.
 
-- "testimonials" props: { "title", "items": [{ "quote", "author", "role"?, "rating"?, "imagePrompt": "headshot of a smiling [age range] [gender] [country origin], natural light, photorealistic, no text" }] }
+- "testimonials" props: { "title", "items": [{ "quote", "author", "role"?, "rating"?, "imagePrompt": "scene only — a warm friendly [age range] [gender] [country origin], relaxed at home" }] }
   3 items. Authors must be plausible names for ${country || 'the target country'}. Quotes 2–3 sentences, specific.
 
-- "video" props: { "title"?, "subtitle"?, "imagePrompt": "cinematic lifestyle still as video poster, ${photoCulture}, photorealistic" } — optional.
+- "video" props: { "title"?, "subtitle"?, "imagePrompt": "scene only — a lifestyle still that works as a video poster, set in ${photoCulture}" } — optional.
 
 - "steps" props: { "title", "subtitle"?, "items": [{ "title", "description", "icon" }] }
   3 numbered steps explaining how the product / service works — e.g. "Choose your size", "Place your order with cash on delivery", "Receive in 48h". Use the same icon set as "features".
@@ -1009,17 +1016,37 @@ function modelForKind(kind: ImageSlot['kind']): string | undefined {
   }
 }
 
+/**
+ * House visual style — appended to EVERY product / lifestyle image prompt so
+ * the whole page reads as one art-directed photoshoot instead of 12 unrelated
+ * stock photos. This is the single biggest lever for visual COHERENCE and a
+ * premium feel: same camera, same light, same color grade everywhere.
+ */
+const HOUSE_STYLE =
+  ', premium editorial ecommerce photography, shot on a full-frame camera with a 50mm prime lens at f/2.0, ' +
+  'soft directional natural light from one side, refined neutral color grade with a single warm accent tone, ' +
+  'subtle organic film grain, crisp focus on the subject, shallow depth of field, generous intentional negative space, ' +
+  'clean modern 2026 brand campaign look, high dynamic range, ultra detailed, sharp, 4k, ' +
+  'no text, no typography, no logos, no watermark, no UI elements, no borders';
+
+/** Portrait style for testimonial avatars — real people, not products. */
+const PORTRAIT_STYLE =
+  ', natural candid headshot, soft window light, warm neutral out-of-focus background, ' +
+  'authentic genuine smile, sharp catchlight in the eyes, subtle film grain, editorial portrait photography, ' +
+  '85mm lens, shallow depth of field, ultra detailed, 4k, no text, no logos, no watermark';
+
 async function buildImageGenInput(slot: ImageSlot): Promise<ImageGenInput> {
   const aspect = ASPECT_FOR_KIND[slot.kind];
 
-  // Banner prompts ASK for text in the image — don't append "no text" to them
-  // and don't add the lifestyle-photo suffix.
+  // Banner prompts ASK for legible text in the image — leave them untouched.
+  // Every other slot gets the shared house style so the whole page is one
+  // coherent shoot; avatars get the people-specific portrait style instead.
   const isBanner = slot.kind === 'banner';
-  const styleSuffix = ', photorealistic, natural daylight, shallow depth of field, lifestyle photography, no text, no logos, no watermark';
-  const promptLooksClean = /no text|photoreal/i.test(slot.prompt);
+  const isAvatar = slot.kind === 'avatar';
+  const cleanScene = slot.prompt.trim().replace(/[.,;\s]+$/, '');
   let finalPrompt = isBanner
     ? slot.prompt
-    : (promptLooksClean ? slot.prompt : slot.prompt + styleSuffix);
+    : cleanScene + (isAvatar ? PORTRAIT_STYLE : HOUSE_STYLE);
 
   // If reference image is a relative /uploads/... path, fal.ai cannot fetch
   // localhost — convert it to a base64 data URL so fal receives the bytes.
@@ -1248,25 +1275,34 @@ function injectProductImagesFirst(
   productImages: string[]
 ): void {
   if (productImages.length === 0) return;
-  const first = productImages[0];
+  const productSet = new Set(productImages);
 
   for (const sec of sections) {
     const p = sec.props;
     if (!p || typeof p !== 'object') continue;
 
-    // Product detail: shows the unaltered photo (left side of the section).
+    // Hero & product images are REGENERATED from the real product photo
+    // (image-to-image, Nano Banana Edit) — never shown as the raw catalog
+    // photo. If the LLM pinned a raw product URL onto imageUrl, clear it so
+    // a generation slot is created with that photo as the *reference*.
+    if (sec.type === 'hero' || sec.type === 'product') {
+      if (typeof p.imageUrl === 'string' && productSet.has(p.imageUrl)) {
+        delete p.imageUrl;
+      }
+      if (typeof p.imagePrompt !== 'string' || !p.imagePrompt.trim()) {
+        p.imagePrompt = sec.type === 'hero'
+          ? 'someone using the product as the main subject of a wide lifestyle scene, subject off-center, warm daylight'
+          : 'the product as a clean premium hero still life on a soft warm backdrop, slightly off-center';
+      }
+      if (sec.type === 'hero' && !p.layout) p.layout = 'split';
+    }
+
+    // The raw uploaded photos still feed the product section's thumbnail strip.
     if (sec.type === 'product') {
-      if (!p.imageUrl) p.imageUrl = first;
       const existing = Array.isArray(p.gallery)
         ? (p.gallery as unknown[]).filter((u) => typeof u === 'string' && u) as string[]
         : [];
       if (existing.length === 0) p.gallery = productImages;
-      delete p.imagePrompt;
-    }
-
-    // Hero: ensure split layout when we'll have an image (AI-generated)
-    if (sec.type === 'hero' && !p.layout) {
-      p.layout = 'split';
     }
   }
 }
@@ -1297,44 +1333,42 @@ function synthesizeMissingPrompts(
     const p = sec.props;
     if (!p || typeof p !== 'object') continue;
 
+    // Fallback prompts describe the SCENE ONLY — the pipeline appends the
+    // shared house photography style (HOUSE_STYLE), so every fallback image
+    // lands in the same coherent, premium world. The reference-image variants
+    // tell Nano Banana Edit to keep the exact product.
+    const refLock = hasRef
+      ? `the exact product from the reference image, kept visually identical (same shape, color, material, branding)`
+      : '';
+
     // HERO — wide lifestyle scene featuring the product
     if (sec.type === 'hero' && !p.imagePrompt && !p.imageUrl) {
       p.imagePrompt = hasRef
-        ? `Place ${productPhrase} as the main subject in a wide lifestyle scene: ${culture}. Keep the product visually identical (same shape, color, materials, branding). A person ${culture.includes('Mediterranean') || culture.includes('Tunisian') ? 'enjoying it' : 'happily using it'}. Cinematic composition, photorealistic, soft natural daylight, shallow depth of field, no text, no watermark.`
-        : `lifestyle hero shot of someone happily using a ${subject}, ${culture}, photorealistic, natural daylight, shallow depth of field, no text, no watermark`;
+        ? `A person happily using ${refLock} as the main subject of a wide lifestyle scene set in ${culture}, subject off-center on the left third, warm morning daylight`
+        : `A person happily using a ${subject} in a bright real-world setting (${culture}), subject off-center on the left third, warm morning daylight`;
       if (!p.layout) p.layout = 'split';
     }
 
-    // GALLERY — 4 typed variants (studio / lifestyle / flatlay / mockup)
+    // GALLERY — 4 distinct angles, all in the SAME warm-daylight world
     if (sec.type === 'gallery') {
       const hasImages = Array.isArray(p.images) && (p.images as unknown[]).filter((u) => typeof u === 'string' && u).length > 0;
       const hasPrompts = Array.isArray(p.imagePrompts) && (p.imagePrompts as unknown[]).filter((s) => typeof s === 'string' && s).length > 0;
       if (!hasImages && !hasPrompts) {
-        if (hasRef) {
-          p.imagePrompts = [
-            // Studio
-            `Studio shot of ${productPhrase} on a clean gradient backdrop, premium soft lighting, product perfectly centered, photorealistic, no text, no logos.`,
-            // Lifestyle (country-specific)
-            `${productPhrase} placed naturally in this scene: ${culture}. Show genuine usage context. Photorealistic, soft daylight, shallow depth of field, no text.`,
-            // Flatlay
-            `Top-down flatlay of ${productPhrase} on a marble or linen surface, surrounded by elegant complementary objects (cup, leaf, fabric), soft daylight, photorealistic, no text.`,
-            // Mockup / context
-            `Close-up macro shot of ${productPhrase} highlighting a beautiful detail (texture, material, finish), shallow depth of field, photorealistic, no text.`,
-          ];
-        } else {
-          p.imagePrompts = [
-            `close-up detail shot of a ${subject}, ${culture}, photorealistic, no text`,
-            `${subject} in use during daily routine, ${culture}, photorealistic, no text`,
-            `${subject} styled flat-lay on a marble surface, soft daylight, photorealistic, no text`,
-            `${subject} as a thoughtful gift, hands holding it, ${culture}, photorealistic, no text`,
-          ];
-        }
+        const noun = hasRef ? refLock : `a ${subject}`;
+        p.imagePrompts = [
+          `Close-up macro detail of ${noun}, revealing texture and craftsmanship, on a soft warm-toned surface`,
+          `${noun} in genuine everyday use within ${culture}, candid framing, warm daylight`,
+          `Top-down flat-lay of ${noun} on a linen or marble surface with 3-4 elegant complementary objects, intentional negative space`,
+          `${noun} as a curated still life on a wooden shelf with soft props, warm daylight from the side`,
+        ];
       }
     }
 
     // PRODUCT (rare path: only when injectProductImagesFirst didn't run)
     if (sec.type === 'product' && !p.imagePrompt && !p.imageUrl) {
-      p.imagePrompt = `studio product hero shot of a ${subject}, premium feel, soft gradient backdrop, photorealistic, no text, no logos`;
+      p.imagePrompt = hasRef
+        ? `${refLock} as a clean hero still life on a soft warm gradient backdrop, subject slightly off-center`
+        : `A ${subject} as a clean hero still life on a soft warm gradient backdrop, subject slightly off-center`;
     }
 
     // TESTIMONIALS — avatars, NO product reference (these are people)
@@ -1344,7 +1378,7 @@ function synthesizeMissingPrompts(
           const gender = idx % 2 === 0 ? 'woman' : 'man';
           const age = ['28', '34', '42'][idx % 3];
           const heritage = country ? `${country.toUpperCase()} origin` : 'mixed heritage';
-          it.imagePrompt = `headshot portrait of a smiling ${age} year old ${gender} with ${heritage}, natural daylight, soft background, photorealistic, no text`;
+          it.imagePrompt = `A warm, friendly ${age} year old ${gender} with ${heritage}, relaxed at home`;
         }
       });
     }

@@ -30,9 +30,11 @@ import {
   Image as ImageIcon,
   ShieldCheck,
   ArrowRight,
+  UsersRound,
+  LayoutTemplate,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { useAuthStore } from '@/stores/auth-store';
+import { useAuthStore, type TeamRole } from '@/stores/auth-store';
 import { BrandLogo } from '@/components/brand-logo';
 
 interface NavItem {
@@ -40,6 +42,32 @@ interface NavItem {
   label: string;
   icon: React.ComponentType<{ className?: string }>;
 }
+
+/**
+ * Which nav items a team member may see, by team role. Sellers (no teamRole)
+ * see everything. Anything not listed here is hidden for that role — notably
+ * "/dashboard/team" is seller-only, so it never appears for team members.
+ */
+const TEAM_ALLOWED: Record<TeamRole, string[]> = {
+  confirmation_agent: [
+    '/dashboard',
+    '/dashboard/orders',
+    '/dashboard/customers',
+    '/dashboard/profile',
+  ],
+  manager: [
+    '/dashboard',
+    '/dashboard/stores',
+    '/dashboard/analytics',
+    '/dashboard/products',
+    '/dashboard/pages',
+    '/dashboard/pages/landing-image',
+    '/dashboard/pages/poster',
+    '/dashboard/orders',
+    '/dashboard/customers',
+    '/dashboard/profile',
+  ],
+};
 
 const SECTIONS: { title: string; items: NavItem[] }[] = [
   {
@@ -55,6 +83,7 @@ const SECTIONS: { title: string; items: NavItem[] }[] = [
     items: [
       { href: '/dashboard/products', label: 'Produits', icon: Package },
       { href: '/dashboard/pages', label: 'Landing pages', icon: FileText },
+      { href: '/dashboard/pages/landing-image', label: 'Landing IA', icon: LayoutTemplate },
       { href: '/dashboard/pages/poster', label: 'Affiche IA', icon: ImageIcon },
       { href: '/dashboard/orders', label: 'Commandes', icon: ShoppingCart },
       { href: '/dashboard/customers', label: 'Clients', icon: Users },
@@ -64,6 +93,7 @@ const SECTIONS: { title: string; items: NavItem[] }[] = [
     title: 'Compte',
     items: [
       { href: '/dashboard/wallet', label: 'Solde', icon: Wallet },
+      { href: '/dashboard/team', label: 'Équipe', icon: UsersRound },
       { href: '/dashboard/support', label: 'Support', icon: LifeBuoy },
       { href: '/dashboard/integrations', label: 'Intégrations', icon: Plug },
       { href: '/dashboard/apps', label: 'Applications', icon: AppWindow },
@@ -99,6 +129,18 @@ export function Sidebar({ mobileOpen = false, onMobileClose }: Props) {
     STAFF_ROLES.has(String(user?.role || '')) ||
     user?.email?.toLowerCase() === FOUNDER_EMAIL;
 
+  // Team members see a scoped sidebar based on their team role. Sellers
+  // (no teamRole) see everything.
+  const teamRole = user?.teamRole as TeamRole | undefined;
+  const sections = teamRole
+    ? SECTIONS
+        .map((section) => ({
+          ...section,
+          items: section.items.filter((item) => TEAM_ALLOWED[teamRole].includes(item.href)),
+        }))
+        .filter((section) => section.items.length > 0)
+    : SECTIONS;
+
   // Close mobile drawer when navigating
   useEffect(() => {
     if (mobileOpen) onMobileClose?.();
@@ -126,8 +168,8 @@ export function Sidebar({ mobileOpen = false, onMobileClose }: Props) {
 
       <aside
         className={cn(
-          'fixed inset-y-0 left-0 z-50 flex h-full w-72 flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground transition-transform duration-300',
-          'md:sticky md:top-0 md:z-30 md:w-64 md:translate-x-0',
+          'fixed inset-y-0 left-0 z-50 flex h-full w-72 flex-col overflow-hidden border-r border-sidebar-border bg-sidebar text-sidebar-foreground transition-transform duration-300',
+          'md:sticky md:top-0 md:z-30 md:h-screen md:w-64 md:translate-x-0',
           mobileOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'
         )}
       >
@@ -136,7 +178,7 @@ export function Sidebar({ mobileOpen = false, onMobileClose }: Props) {
         <div className="pointer-events-none absolute -right-16 bottom-32 h-48 w-48 rounded-full bg-fuchsia-500/10 blur-3xl" aria-hidden />
 
         {/* Logo + close (mobile) */}
-        <div className="relative flex items-center justify-between px-5 py-5">
+        <div className="relative flex shrink-0 items-center justify-between px-5 py-5">
           <Link
             href="/dashboard"
             className="group flex items-center transition-transform duration-300 hover:scale-[1.02]"
@@ -156,7 +198,7 @@ export function Sidebar({ mobileOpen = false, onMobileClose }: Props) {
 
         {/* Sections */}
         <nav className="relative flex-1 space-y-5 overflow-y-auto px-3 pb-3">
-          {SECTIONS.map((section) => (
+          {sections.map((section) => (
             <div key={section.title}>
               <div className="px-3 pb-1.5 text-[10px] font-bold uppercase tracking-wider text-muted-foreground/60">
                 {section.title}
@@ -202,7 +244,7 @@ export function Sidebar({ mobileOpen = false, onMobileClose }: Props) {
 
         {/* Admin shortcut (staff + founder only) */}
         {canAccessAdmin && (
-          <div className="relative border-t border-sidebar-border px-3 pt-3">
+          <div className="relative shrink-0 border-t border-sidebar-border px-3 pt-3">
             <Link
               href="/admin"
               onClick={onMobileClose}
@@ -216,7 +258,7 @@ export function Sidebar({ mobileOpen = false, onMobileClose }: Props) {
         )}
 
         {/* User card */}
-        <div className="relative border-t border-sidebar-border p-3">
+        <div className="relative shrink-0 border-t border-sidebar-border p-3">
           <Link
             href="/dashboard/profile"
             onClick={onMobileClose}

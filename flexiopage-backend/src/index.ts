@@ -22,6 +22,7 @@ import webhooksRoutes from './routes/webhooks.routes';
 import walletRoutes from './routes/wallet.routes';
 import adminRoutes from './routes/admin.routes';
 import complaintRoutes from './routes/complaint.routes';
+import teamRoutes from './routes/team.routes';
 import { rateLimiter } from './middleware/rateLimiter';
 
 const app = express();
@@ -72,6 +73,7 @@ app.use(rateLimiter);
 // API routes
 app.use('/api/auth', authRoutes);
 app.use('/api/users', userRoutes);
+app.use('/api/team', teamRoutes);
 app.use('/api/wallet', walletRoutes);
 app.use('/api/complaints', complaintRoutes);
 app.use('/api/admin', adminRoutes);

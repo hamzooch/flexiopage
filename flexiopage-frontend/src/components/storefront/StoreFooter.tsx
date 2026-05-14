@@ -82,6 +82,7 @@ export function StoreFooter({ storeName, storeSlug, footerNote, config, theme }:
 
   return (
     <footer
+      id="store-footer"
       className="border-t"
       style={{
         borderColor: theme.border,

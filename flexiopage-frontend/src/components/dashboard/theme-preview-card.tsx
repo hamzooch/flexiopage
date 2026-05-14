@@ -337,6 +337,304 @@ const STORE_NAMES: Record<string, string> = {
   ebooks: 'Lumen Books',
 };
 
+// ── Modal mock — hero, mirrors the storefront's per-theme layout variants ──
+function ModalHeroPattern({ t }: { t: ThemeTokens }) {
+  if (t.pattern === 'grid') {
+    return (
+      <div
+        className="absolute inset-0 opacity-25"
+        style={{
+          backgroundImage: `linear-gradient(${t.border} 1px, transparent 1px), linear-gradient(90deg, ${t.border} 1px, transparent 1px)`,
+          backgroundSize: '40px 40px',
+          maskImage: 'radial-gradient(ellipse at center, black 30%, transparent 70%)',
+        }}
+        aria-hidden
+      />
+    );
+  }
+  if (t.pattern === 'mesh') {
+    return (
+      <>
+        <div className="pointer-events-none absolute -left-32 -top-24 h-96 w-96 rounded-full blur-3xl opacity-50" style={{ backgroundColor: t.gradientFrom }} aria-hidden />
+        <div className="pointer-events-none absolute -right-24 top-12 h-80 w-80 rounded-full blur-3xl opacity-40" style={{ backgroundColor: t.gradientTo }} aria-hidden />
+      </>
+    );
+  }
+  return null;
+}
+
+function ModalCta({ t, label }: { t: ThemeTokens; label: string }) {
+  return (
+    <span
+      className="inline-flex h-11 items-center gap-2 px-6 text-sm font-semibold"
+      style={{
+        background: t.style === 'tech' ? `linear-gradient(135deg, ${t.gradientFrom}, ${t.gradientTo})` : t.primary,
+        color: t.primaryFg,
+        borderRadius: t.borderRadius === 'none' ? '0' : '999px',
+        boxShadow:
+          t.shadow === 'glow'
+            ? `0 8px 32px ${hexA(t.primary, 0.45)}`
+            : t.shadow === 'soft'
+              ? `0 12px 28px ${hexA(t.primary, 0.25)}`
+              : `0 2px 0 ${t.primary}`,
+      }}
+    >
+      {label}
+      <ArrowRight className="h-4 w-4" />
+    </span>
+  );
+}
+
+function ModalHero({ template }: { template: StoreThemeTemplate }) {
+  const t = template.theme;
+  const hl = t.layout?.hero || 'centered';
+  const headline = nicheHeadline(template.niche);
+  const sub = nicheLongSub(template.niche);
+  const radius = RADIUS_PX[t.borderRadius];
+  const titleSize =
+    t.fontDisplaySize === 'xlarge' ? 'text-5xl sm:text-7xl' :
+    t.fontDisplaySize === 'large'  ? 'text-4xl sm:text-6xl' : 'text-3xl sm:text-5xl';
+
+  if (hl === 'fullbleed') {
+    return (
+      <section className="relative overflow-hidden" style={{ backgroundColor: t.surfaceMuted }}>
+        <ModalHeroPattern t={t} />
+        <div className="relative mx-auto max-w-5xl px-6 py-16 sm:py-24">
+          <div className="mb-5 inline-flex items-center gap-2 px-3 py-1 text-[11px] font-bold uppercase tracking-[0.2em]" style={{ backgroundColor: t.primary, color: t.primaryFg }}>
+            Nouvelle collection
+          </div>
+          <h1 className={`${titleSize} max-w-3xl font-black uppercase leading-[0.92] tracking-tight`} style={{ fontFamily: t.fontHeading, color: t.foreground }}>
+            {headline}
+          </h1>
+          <p className="mt-5 max-w-lg text-base leading-relaxed" style={{ color: t.muted }}>{sub}</p>
+          <div className="mt-7"><ModalCta t={t} label="Voir les produits" /></div>
+        </div>
+      </section>
+    );
+  }
+
+  if (hl === 'editorial') {
+    return (
+      <section className="relative overflow-hidden" style={{ backgroundColor: t.background }}>
+        <div className="relative mx-auto max-w-5xl px-6 py-16 sm:py-24">
+          <div className="grid gap-8 lg:grid-cols-[1.4fr_1fr] lg:items-end">
+            <div>
+              <div className="mb-4 flex items-center gap-3 text-[11px] font-semibold uppercase tracking-[0.3em]" style={{ color: t.accent }}>
+                <span className="h-px w-10" style={{ backgroundColor: t.accent }} />
+                Maison & collection
+              </div>
+              <h1 className={`${titleSize} font-bold leading-[0.95] tracking-tight`} style={{ fontFamily: t.fontHeading, color: t.foreground }}>
+                {headline}
+              </h1>
+            </div>
+            <p className="max-w-sm border-l pl-5 text-base leading-relaxed" style={{ color: t.muted, borderColor: t.border }}>{sub}</p>
+          </div>
+          <div className="mt-9 flex flex-wrap items-center gap-5">
+            <ModalCta t={t} label="Découvrir" />
+            <span className="text-sm font-medium underline underline-offset-4" style={{ color: t.foreground }}>Voir le catalogue</span>
+          </div>
+        </div>
+      </section>
+    );
+  }
+
+  if (hl === 'split') {
+    return (
+      <section className="relative overflow-hidden" style={{ backgroundColor: t.background }}>
+        <ModalHeroPattern t={t} />
+        <div className="relative mx-auto grid max-w-5xl gap-8 px-6 py-14 sm:py-20 lg:grid-cols-2 lg:items-center">
+          <div>
+            <div className="mb-5 inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-semibold" style={{ borderColor: t.border, color: t.primary, backgroundColor: hexA(t.surface, 0.6) }}>
+              <Sparkles className="h-3 w-3" />
+              Nouvelle collection
+            </div>
+            <h1 className={`${titleSize} font-bold leading-[1.05] tracking-tight`} style={{ fontFamily: t.fontHeading, color: t.foreground }}>
+              {headline}
+            </h1>
+            <p className="mt-5 max-w-md text-base leading-relaxed" style={{ color: t.muted }}>{sub}</p>
+            <div className="mt-7"><ModalCta t={t} label="Découvrir" /></div>
+          </div>
+          <div
+            className="relative aspect-square overflow-hidden"
+            style={{ borderRadius: radius, background: `linear-gradient(135deg, ${t.gradientFrom}, ${t.gradientTo})` }}
+          >
+            <div className="absolute left-6 top-6 h-20 w-20 rounded-2xl" style={{ backgroundColor: hexA(t.surface, 0.55) }} aria-hidden />
+            <div className="absolute bottom-8 right-8 h-28 w-28 rounded-full" style={{ backgroundColor: hexA(t.background, 0.35) }} aria-hidden />
+            <div className="absolute inset-x-6 bottom-6 rounded-xl p-4" style={{ backgroundColor: hexA(t.surface, 0.85), borderRadius: radius }}>
+              <div className="h-2 w-2/3 rounded-full" style={{ backgroundColor: t.foreground, opacity: 0.7 }} />
+              <div className="mt-2 h-2 w-1/3 rounded-full" style={{ backgroundColor: t.primary }} />
+            </div>
+          </div>
+        </div>
+      </section>
+    );
+  }
+
+  if (hl === 'minimal') {
+    return (
+      <section className="relative" style={{ backgroundColor: t.background }}>
+        <div className="mx-auto max-w-5xl px-6 py-20 sm:py-28">
+          <div className="mb-6 text-[11px] font-bold uppercase tracking-[0.35em]" style={{ color: t.muted }}>
+            Nouvelle collection
+          </div>
+          <h1 className={`${titleSize} max-w-3xl font-extrabold leading-[1] tracking-tight`} style={{ fontFamily: t.fontHeading, color: t.foreground }}>
+            {headline}
+          </h1>
+          <p className="mt-5 max-w-md text-base leading-relaxed" style={{ color: t.muted }}>{sub}</p>
+          <div className="mt-8"><ModalCta t={t} label="Parcourir" /></div>
+          <div className="mt-12 h-px w-full" style={{ backgroundColor: t.border }} />
+        </div>
+      </section>
+    );
+  }
+
+  // centered
+  return (
+    <section className="relative overflow-hidden" style={{ backgroundColor: t.background }}>
+      <ModalHeroPattern t={t} />
+      <div className="relative mx-auto max-w-5xl px-6 py-14 sm:py-20">
+        <div className="mx-auto max-w-3xl text-center">
+          <div className="mb-5 inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-semibold" style={{ borderColor: t.border, color: t.foreground, backgroundColor: hexA(t.surface, 0.6) }}>
+            <Sparkles className="h-3 w-3" />
+            Nouvelle collection
+          </div>
+          <h1 className={`${titleSize} font-bold leading-[1.05] tracking-tight`} style={{ fontFamily: t.fontHeading, color: t.foreground }}>
+            {headline}
+          </h1>
+          <p className="mx-auto mt-5 max-w-xl text-sm leading-relaxed sm:text-base" style={{ color: t.muted }}>{sub}</p>
+          <div className="mt-7 flex justify-center"><ModalCta t={t} label="Découvrir" /></div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+// ── Modal mock — products grid, layout-aware columns + card style ──
+const MODAL_GRID_COLS: Record<number, string> = {
+  2: 'sm:grid-cols-2',
+  3: 'sm:grid-cols-2 lg:grid-cols-3',
+  4: 'grid-cols-2 sm:grid-cols-3 lg:grid-cols-4',
+};
+
+function ModalProductGrid({ template }: { template: StoreThemeTemplate }) {
+  const t = template.theme;
+  const products = (MOCK_PRODUCTS[template.niche] || MOCK_PRODUCTS.general).slice(0, 6);
+  const radius = RADIUS_PX[t.borderRadius];
+  const cardStyle = t.layout?.productCard || 'classic';
+  const cols = t.layout?.gridColumns || 3;
+  const uppercase = t.layout?.nav === 'bold';
+  const leftAlign = t.layout?.hero === 'editorial' || t.layout?.hero === 'minimal';
+  const gridClass = MODAL_GRID_COLS[cols] || MODAL_GRID_COLS[3];
+
+  return (
+    <section style={{ backgroundColor: t.background }}>
+      <div className="mx-auto max-w-5xl px-6 py-14">
+        <div className={`mb-8 ${leftAlign ? '' : 'text-center'}`}>
+          {leftAlign && (
+            <div className="mb-2 text-[11px] font-semibold uppercase tracking-[0.25em]" style={{ color: t.accent }}>
+              — Sélection
+            </div>
+          )}
+          <h2
+            className={`text-2xl font-bold tracking-tight sm:text-3xl ${uppercase ? 'uppercase' : ''}`}
+            style={{ fontFamily: t.fontHeading, color: t.foreground }}
+          >
+            Nos produits
+          </h2>
+        </div>
+        <div className={`grid gap-5 ${gridClass}`}>
+          {products.map((p, i) => {
+            const fill =
+              i % 3 === 0 ? `linear-gradient(135deg, ${t.gradientFrom}, ${t.gradientTo})` : t.surfaceMuted;
+            const tag = p.tag && (
+              <span
+                className="absolute left-3 top-3 px-2 py-1 text-[10px] font-bold uppercase tracking-wider"
+                style={{ backgroundColor: t.primary, color: t.primaryFg, borderRadius: t.borderRadius === 'none' ? '0' : '999px' }}
+              >
+                {p.tag}
+              </span>
+            );
+
+            if (cardStyle === 'overlay') {
+              return (
+                <div key={i} className="group relative aspect-[4/5] overflow-hidden" style={{ borderRadius: radius, background: fill }}>
+                  <div className="absolute inset-0" style={{ background: 'linear-gradient(to top, rgba(0,0,0,0.78) 8%, rgba(0,0,0,0) 55%)' }} aria-hidden />
+                  {tag}
+                  <div className="absolute inset-x-0 bottom-0 p-3">
+                    <h3 className="text-sm font-bold uppercase tracking-tight text-white" style={{ fontFamily: t.fontHeading }}>{p.name}</h3>
+                    <div className="mt-1 flex items-baseline gap-2">
+                      <span className="font-bold" style={{ color: t.primary }}>{p.price}</span>
+                      {p.before && <span className="text-xs text-white/60 line-through">{p.before}</span>}
+                    </div>
+                  </div>
+                </div>
+              );
+            }
+
+            if (cardStyle === 'editorial') {
+              return (
+                <div key={i} className="group block">
+                  <div className="relative aspect-[3/4]" style={{ background: fill }}>{tag}</div>
+                  <div className="pt-3">
+                    <h3 className="text-base font-medium leading-snug" style={{ fontFamily: t.fontHeading, color: t.foreground }}>{p.name}</h3>
+                    <div className="mt-1 flex items-baseline gap-2">
+                      <span className="font-bold" style={{ color: t.primary }}>{p.price}</span>
+                      {p.before && <span className="text-xs line-through" style={{ color: t.muted }}>{p.before}</span>}
+                    </div>
+                  </div>
+                </div>
+              );
+            }
+
+            if (cardStyle === 'minimal') {
+              return (
+                <div key={i} className="group block overflow-hidden" style={{ borderRadius: radius, border: `1px solid ${t.border}`, backgroundColor: t.surface }}>
+                  <div className="relative aspect-square" style={{ background: fill }}>{tag}</div>
+                  <div className="px-3 py-2.5">
+                    <h3 className="truncate text-sm font-semibold tracking-tight" style={{ color: t.foreground }}>{p.name}</h3>
+                    <div className="mt-1 flex items-baseline gap-2">
+                      <span className="font-bold" style={{ color: t.primary }}>{p.price}</span>
+                      {p.before && <span className="text-xs line-through" style={{ color: t.muted }}>{p.before}</span>}
+                    </div>
+                  </div>
+                </div>
+              );
+            }
+
+            // classic
+            return (
+              <div
+                key={i}
+                className="group block overflow-hidden border transition-transform hover:-translate-y-1"
+                style={{
+                  backgroundColor: t.surface,
+                  borderColor: t.border,
+                  borderRadius: radius,
+                  boxShadow:
+                    t.shadow === 'glow'
+                      ? `0 4px 24px ${hexA(t.primary, 0.15)}`
+                      : t.shadow === 'soft'
+                        ? '0 6px 16px rgba(0,0,0,0.04)'
+                        : '0 1px 0 rgba(0,0,0,0.05)',
+                }}
+              >
+                <div className="relative aspect-square" style={{ background: fill }}>{tag}</div>
+                <div className="p-4">
+                  <h3 className="text-sm font-semibold tracking-tight" style={{ fontFamily: t.fontBody, color: t.foreground }}>{p.name}</h3>
+                  <div className="mt-1.5 flex items-baseline gap-2">
+                    <span className="font-bold" style={{ color: t.primary }}>{p.price}</span>
+                    {p.before && <span className="text-xs line-through" style={{ color: t.muted }}>{p.before}</span>}
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </section>
+  );
+}
+
 export function ThemePreviewModal({ template, onClose, onUse }: ModalProps) {
   // Lock scroll + Escape to close
   useEffect(() => {
@@ -356,15 +654,7 @@ export function ThemePreviewModal({ template, onClose, onUse }: ModalProps) {
   if (!template) return null;
   const t = template.theme;
   const fontsUrl = googleFontsHref(t);
-  const radius = RADIUS_PX[t.borderRadius];
-  const products = MOCK_PRODUCTS[template.niche] || MOCK_PRODUCTS.general;
   const storeName = STORE_NAMES[template.niche] || STORE_NAMES.general;
-  const isEditorial = t.style === 'editorial';
-  const isTech = t.style === 'tech';
-
-  const titleSize =
-    t.fontDisplaySize === 'xlarge' ? 'text-5xl sm:text-7xl' :
-    t.fontDisplaySize === 'large'  ? 'text-4xl sm:text-6xl' : 'text-3xl sm:text-5xl';
 
   return (
     <>
@@ -430,91 +720,8 @@ export function ThemePreviewModal({ template, onClose, onUse }: ModalProps) {
               </div>
             </header>
 
-            {/* HERO */}
-            <section className="relative overflow-hidden">
-              {t.pattern === 'grid' && (
-                <div
-                  className="absolute inset-0 opacity-25"
-                  style={{
-                    backgroundImage: `linear-gradient(${t.border} 1px, transparent 1px), linear-gradient(90deg, ${t.border} 1px, transparent 1px)`,
-                    backgroundSize: '40px 40px',
-                    maskImage: 'radial-gradient(ellipse at center, black 30%, transparent 70%)',
-                  }}
-                  aria-hidden
-                />
-              )}
-              {t.pattern === 'mesh' && (
-                <>
-                  <div
-                    className="pointer-events-none absolute -left-32 -top-24 h-96 w-96 rounded-full blur-3xl opacity-50"
-                    style={{ backgroundColor: t.gradientFrom }}
-                    aria-hidden
-                  />
-                  <div
-                    className="pointer-events-none absolute -right-24 top-12 h-80 w-80 rounded-full blur-3xl opacity-40"
-                    style={{ backgroundColor: t.gradientTo }}
-                    aria-hidden
-                  />
-                </>
-              )}
-              <div className={`relative mx-auto max-w-5xl px-6 ${isEditorial ? 'py-16 sm:py-24' : 'py-14 sm:py-20'}`}>
-                <div className={`${isEditorial ? 'max-w-2xl' : 'mx-auto max-w-3xl text-center'}`}>
-                  {!isEditorial && (
-                    <div
-                      className="mb-5 inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-semibold backdrop-blur"
-                      style={{
-                        borderColor: t.border,
-                        color: isTech ? t.primary : t.foreground,
-                        backgroundColor: hexA(t.surface, 0.6),
-                      }}
-                    >
-                      <Sparkles className="h-3 w-3" />
-                      Nouvelle collection
-                    </div>
-                  )}
-                  <h1
-                    className={`${titleSize} ${isEditorial ? 'leading-[0.95]' : 'leading-[1.05]'} font-bold tracking-tight`}
-                    style={{ fontFamily: t.fontHeading, color: t.foreground }}
-                  >
-                    {nicheHeadline(template.niche)}
-                  </h1>
-                  <p className={`mt-5 leading-relaxed ${isEditorial ? 'max-w-md text-base' : 'mx-auto max-w-xl text-sm sm:text-base'}`} style={{ color: t.muted }}>
-                    {nicheLongSub(template.niche)}
-                  </p>
-                  <div className={`mt-7 flex flex-wrap items-center gap-3 ${isEditorial ? '' : 'justify-center'}`}>
-                    <span
-                      className="inline-flex h-11 items-center gap-2 px-6 text-sm font-semibold"
-                      style={{
-                        background: isTech
-                          ? `linear-gradient(135deg, ${t.gradientFrom}, ${t.gradientTo})`
-                          : t.primary,
-                        color: t.primaryFg,
-                        borderRadius: t.borderRadius === 'none' ? '0' : '999px',
-                        boxShadow:
-                          t.shadow === 'glow'
-                            ? `0 8px 32px ${hexA(t.primary, 0.45)}`
-                            : t.shadow === 'soft'
-                              ? `0 12px 28px ${hexA(t.primary, 0.25)}`
-                              : `0 2px 0 ${t.primary}`,
-                      }}
-                    >
-                      Découvrir
-                      <ArrowRight className="h-4 w-4" />
-                    </span>
-                    <span
-                      className="inline-flex h-11 items-center px-5 text-sm font-medium"
-                      style={{
-                        border: `1px solid ${t.border}`,
-                        color: t.foreground,
-                        borderRadius: t.borderRadius === 'none' ? '0' : '999px',
-                      }}
-                    >
-                      En savoir plus
-                    </span>
-                  </div>
-                </div>
-              </div>
-            </section>
+            {/* HERO — mirrors the storefront's per-theme layout variants */}
+            <ModalHero template={template} />
 
             {/* TRUST STRIP */}
             <section className="border-y" style={{ borderColor: t.border, backgroundColor: t.surfaceMuted }}>
@@ -546,80 +753,8 @@ export function ThemePreviewModal({ template, onClose, onUse }: ModalProps) {
               </div>
             </section>
 
-            {/* PRODUCTS GRID */}
-            <section style={{ backgroundColor: t.background }}>
-              <div className="mx-auto max-w-5xl px-6 py-14">
-                <div className={`mb-8 ${isEditorial ? '' : 'text-center'}`}>
-                  {isEditorial && (
-                    <div className="mb-2 text-[11px] font-semibold uppercase tracking-[0.25em]" style={{ color: t.accent }}>
-                      — Sélection
-                    </div>
-                  )}
-                  <h2 className="text-2xl font-bold tracking-tight sm:text-3xl" style={{ fontFamily: t.fontHeading, color: t.foreground }}>
-                    Nos produits
-                  </h2>
-                </div>
-                <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
-                  {products.slice(0, 6).map((p, i) => (
-                    <div
-                      key={i}
-                      className="group block overflow-hidden border transition-transform hover:-translate-y-1"
-                      style={{
-                        backgroundColor: t.surface,
-                        borderColor: t.border,
-                        borderRadius: radius,
-                        boxShadow:
-                          t.shadow === 'glow'
-                            ? `0 4px 24px ${hexA(t.primary, 0.15)}`
-                            : t.shadow === 'soft'
-                              ? '0 6px 16px rgba(0,0,0,0.04)'
-                              : '0 1px 0 rgba(0,0,0,0.05)',
-                      }}
-                    >
-                      <div
-                        className="relative aspect-square"
-                        style={{
-                          background:
-                            i % 3 === 0
-                              ? `linear-gradient(135deg, ${t.gradientFrom}, ${t.gradientTo})`
-                              : t.surfaceMuted,
-                        }}
-                      >
-                        {p.tag && (
-                          <span
-                            className="absolute left-3 top-3 px-2 py-1 text-[10px] font-bold uppercase tracking-wider"
-                            style={{
-                              backgroundColor: t.primary,
-                              color: t.primaryFg,
-                              borderRadius: t.borderRadius === 'none' ? '0' : '999px',
-                            }}
-                          >
-                            {p.tag}
-                          </span>
-                        )}
-                      </div>
-                      <div className="p-4">
-                        <h3
-                          className="text-sm font-semibold tracking-tight"
-                          style={{
-                            fontFamily: isEditorial ? t.fontHeading : t.fontBody,
-                            color: t.foreground,
-                          }}
-                        >
-                          {p.name}
-                        </h3>
-                        <div className="mt-1.5 flex items-baseline gap-2">
-                          <span className="font-bold" style={{ color: t.primary }}>{p.price}</span>
-                          {p.before && (
-                            <span className="text-xs line-through" style={{ color: t.muted }}>{p.before}</span>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </section>
+            {/* PRODUCTS GRID — layout-aware columns + card style */}
+            <ModalProductGrid template={template} />
 
             {/* FOOTER */}
             <footer
