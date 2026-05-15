@@ -36,6 +36,10 @@ import {
   Warehouse,
   RefreshCw,
   Plug,
+  KeyRound,
+  Lock,
+  Info,
+  Webhook,
 } from 'lucide-react';
 
 type TabId = 'domain' | 'pixels' | 'shipping';
@@ -61,10 +65,11 @@ interface DeliveryConfig {
 }
 
 interface LogisticsConfig {
-  provider?: 'shipbob' | 'cubyn' | 'amazon-mcf' | 'sendcloud' | 'easyship' | 'manual' | 'other';
+  provider?: 'mogadelivery' | 'shipbob' | 'cubyn' | 'amazon-mcf' | 'sendcloud' | 'easyship' | 'manual' | 'other';
   enabled?: boolean;
   apiKey?: string;
   baseUrl?: string;
+  webhookSecret?: string;
   warehouseId?: string;
   autoForward?: boolean;
 }
@@ -475,7 +480,7 @@ function PixelRow({ icon, label, help, children }: { icon: React.ReactNode; labe
 // SHIPPING — sub-tabs: carrier (livraison) + logistics (3PL)
 // ─────────────────────────────────────────────────────────────────────
 const CARRIER_PROVIDERS = [
-  { id: 'mogadelivery', label: 'Moga Delivery (Afrique)', description: 'Last-mile scooter Afrique de l\'Ouest' },
+  { id: 'mogadelivery', label: 'MogaDelivery',              description: 'Last-mile scooter Afrique. Auto-dispatch + SKU matching.', logoUrl: '/integrations/mogadelivery.png' },
   { id: 'yalidine',     label: 'Yalidine (Algérie)',       description: 'Livraison nationale Algérie' },
   { id: 'noest',        label: 'Noest Express (Algérie)',  description: 'Livraison express Algérie' },
   { id: 'aramex',       label: 'Aramex (MENA)',            description: 'International MENA + Asie' },
@@ -484,6 +489,7 @@ const CARRIER_PROVIDERS = [
 ] as const;
 
 const LOGISTICS_PROVIDERS = [
+  { id: 'mogadelivery', label: 'MogaDelivery',        description: 'Stockage + dispatch automatique Afrique. SKU matching natif.', logoUrl: '/integrations/mogadelivery.png' },
   { id: 'shipbob',      label: 'ShipBob',             description: '3PL global — entrepôts US, EU, AU, CA' },
   { id: 'cubyn',        label: 'Cubyn',               description: '3PL européen rapide, SLA strict' },
   { id: 'amazon-mcf',   label: 'Amazon MCF',          description: 'Utilise ton stock FBA pour commandes hors Amazon' },
@@ -580,6 +586,7 @@ function CarrierPanel({ store, onSaved, saving, setSaving }: PanelProps) {
                 name={p.label}
                 description={p.description}
                 icon={<Truck className="h-5 w-5" />}
+                logoUrl={'logoUrl' in p ? p.logoUrl : undefined}
                 selected={provider === p.id}
                 onSelect={() => setProvider(p.id)}
               />
@@ -646,7 +653,57 @@ function LogisticsPanel({ store, onSaved, saving, setSaving }: PanelProps) {
   const [apiKey, setApiKey] = useState(l.apiKey || '');
   const [baseUrl, setBaseUrl] = useState(l.baseUrl || '');
   const [warehouseId, setWarehouseId] = useState(l.warehouseId || '');
+  const [webhookSecret, setWebhookSecret] = useState(l.webhookSecret || '');
   const [autoForward, setAutoForward] = useState(l.autoForward ?? true);
+  const [copied, setCopied] = useState<string | null>(null);
+
+  const isMoga = provider === 'mogadelivery';
+  const apiBase = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
+  const inboundWebhookUrl = `${apiBase}/api/webhooks/mogadelivery`;
+
+  // Detect unsaved changes so we can nudge the user to click "Enregistrer".
+  // Without this banner sellers routinely select a provider then leave the
+  // page thinking the integration is live (the card visually flips to
+  // "Intégré" but that's only local state until they save).
+  const dirty =
+    provider !== (l.provider || 'manual') ||
+    enabled !== !!l.enabled ||
+    apiKey !== (l.apiKey || '') ||
+    baseUrl !== (l.baseUrl || '') ||
+    warehouseId !== (l.warehouseId || '') ||
+    webhookSecret !== (l.webhookSecret || '') ||
+    autoForward !== (l.autoForward ?? true);
+
+  // Selecting MogaDelivery is the "intent to integrate" — auto-flip the
+  // enabled + autoForward toggles so the seller only has to fill the secret
+  // and hit Save. They can always toggle off manually if they change their
+  // mind. For other providers we don't auto-enable because they need API
+  // keys etc. that aren't optional.
+  function handleSelectProvider(id: string) {
+    setProvider(id);
+    if (id === 'mogadelivery') {
+      setEnabled(true);
+      setAutoForward(true);
+    }
+  }
+
+  // Auto-generate a 64-hex webhook secret if the seller doesn't have one.
+  // They can still paste their own to match what MogaDelivery has on their
+  // side — this is just a one-click convenience.
+  function generateSecret() {
+    const bytes = new Uint8Array(32);
+    crypto.getRandomValues(bytes);
+    const hex = Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
+    setWebhookSecret(hex);
+  }
+
+  async function copy(value: string, key: string) {
+    try {
+      await navigator.clipboard.writeText(value);
+      setCopied(key);
+      setTimeout(() => setCopied((k) => (k === key ? null : k)), 1200);
+    } catch {}
+  }
 
   async function handleSave() {
     setSaving(true);
@@ -659,6 +716,7 @@ function LogisticsPanel({ store, onSaved, saving, setSaving }: PanelProps) {
             enabled,
             apiKey: apiKey.trim() || undefined,
             baseUrl: baseUrl.trim() || undefined,
+            webhookSecret: webhookSecret.trim() || undefined,
             warehouseId: warehouseId.trim() || undefined,
             autoForward,
           },
@@ -684,40 +742,205 @@ function LogisticsPanel({ store, onSaved, saving, setSaving }: PanelProps) {
                 name={p.label}
                 description={p.description}
                 icon={<Warehouse className="h-5 w-5" />}
+                logoUrl={'logoUrl' in p ? p.logoUrl : undefined}
                 selected={provider === p.id}
-                onSelect={() => setProvider(p.id)}
+                onSelect={() => handleSelectProvider(p.id)}
               />
             ))}
           </div>
         </div>
 
         <ToggleRow checked={enabled} onChange={setEnabled}
-          label="Activer le 3PL"
-          sublabel="Les commandes seront forwardées au prestataire qui prépare et expédie." />
+          label={isMoga ? 'Activer l\'intégration MogaDelivery' : 'Activer le 3PL'}
+          sublabel={isMoga
+            ? 'Quand activé, chaque commande COD est envoyée automatiquement à MogaDelivery.'
+            : 'Les commandes seront forwardées au prestataire qui prépare et expédie.'} />
 
         <ToggleRow checked={autoForward} onChange={setAutoForward}
           label="Auto-forward des commandes"
-          sublabel="Envoie automatiquement chaque commande payée au 3PL." />
+          sublabel={isMoga
+            ? 'Envoie automatiquement chaque nouvelle commande à MogaDelivery (sinon dispatch manuel depuis la page Commandes).'
+            : 'Envoie automatiquement chaque commande payée au 3PL.'} />
 
-        <div className="grid gap-3 sm:grid-cols-2">
-          <div>
-            <Label>Clé API</Label>
-            <Input type="password" value={apiKey} onChange={(e) => setApiKey(e.target.value)} className="mt-1.5 h-11 font-mono" />
+        {isMoga ? (
+          /* ─── MogaDelivery-specific config ──────────────────────────── */
+          <>
+            <div className="rounded-2xl border border-border/60 bg-muted/20 p-4 space-y-4">
+              <div className="flex items-start gap-2.5">
+                <div className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-emerald-500/15 text-emerald-700">
+                  <Info className="h-4 w-4" />
+                </div>
+                <div>
+                  <h4 className="text-sm font-semibold">À partager avec MogaDelivery</h4>
+                  <p className="text-xs text-muted-foreground">
+                    Donne ces 2 informations à MogaDelivery pour lier ton compte. Ils n'ont besoin de rien d'autre.
+                  </p>
+                </div>
+              </div>
+
+              {/* Store ID */}
+              <div>
+                <Label className="text-xs">Store ID (à donner à MogaDelivery)</Label>
+                <div className="mt-1.5 flex items-center gap-2">
+                  <code className="flex-1 truncate rounded-md border border-border/60 bg-card px-3 py-2 font-mono text-xs">
+                    {store._id}
+                  </code>
+                  <Button type="button" variant="outline" size="sm" onClick={() => copy(store._id, 'storeId')} className="gap-1.5">
+                    <Copy className="h-3.5 w-3.5" />
+                    {copied === 'storeId' ? 'Copié' : 'Copier'}
+                  </Button>
+                </div>
+              </div>
+
+              {/* Inbound webhook URL */}
+              <div>
+                <Label className="text-xs flex items-center gap-1.5">
+                  <Webhook className="h-3.5 w-3.5" />
+                  URL webhook entrant (à configurer côté MogaDelivery)
+                </Label>
+                <div className="mt-1.5 flex items-center gap-2">
+                  <code className="flex-1 truncate rounded-md border border-border/60 bg-card px-3 py-2 font-mono text-xs">
+                    {inboundWebhookUrl}
+                  </code>
+                  <Button type="button" variant="outline" size="sm" onClick={() => copy(inboundWebhookUrl, 'webhook')} className="gap-1.5">
+                    <Copy className="h-3.5 w-3.5" />
+                    {copied === 'webhook' ? 'Copié' : 'Copier'}
+                  </Button>
+                </div>
+                <p className="mt-1 text-[11px] text-muted-foreground">
+                  MogaDelivery enverra ici les changements de statut (assigné, en transit, livré, retourné…).
+                </p>
+              </div>
+            </div>
+
+            {/* Webhook secret — required */}
+            <div>
+              <Label className="flex items-center gap-1.5">
+                <Lock className="h-3.5 w-3.5" />
+                Clé webhook secret (HMAC-SHA256) *
+              </Label>
+              <div className="mt-1.5 flex gap-2">
+                <Input
+                  type="password"
+                  value={webhookSecret}
+                  onChange={(e) => setWebhookSecret(e.target.value)}
+                  placeholder="Ex: 9f8c7b6a5d4e3f2a1b0c..."
+                  className="h-11 flex-1 font-mono"
+                />
+                <Button type="button" variant="outline" onClick={generateSecret} className="h-11 gap-1.5">
+                  <KeyRound className="h-3.5 w-3.5" />
+                  Générer
+                </Button>
+                {webhookSecret && (
+                  <Button type="button" variant="outline" onClick={() => copy(webhookSecret, 'secret')} className="h-11 gap-1.5">
+                    <Copy className="h-3.5 w-3.5" />
+                    {copied === 'secret' ? 'Copié' : 'Copier'}
+                  </Button>
+                )}
+              </div>
+              <p className="mt-1 text-[11px] text-muted-foreground">
+                Donne <strong>la même clé</strong> à MogaDelivery (ils la collent côté admin chez eux).
+                Sert à signer/vérifier les webhooks dans les deux sens. Si vide, on retombe sur <code className="rounded bg-muted px-1">FLEXIOPAGE_WEBHOOK_SECRET</code> du serveur.
+              </p>
+            </div>
+
+            {/* Optional fields */}
+            <details className="rounded-xl border border-border/60 bg-card">
+              <summary className="cursor-pointer px-4 py-3 text-sm font-medium">
+                Options avancées (facultatives)
+              </summary>
+              <div className="space-y-3 border-t border-border/60 p-4">
+                <div>
+                  <Label className="text-xs">URL endpoint MogaDelivery (override défaut)</Label>
+                  <Input
+                    value={baseUrl}
+                    onChange={(e) => setBaseUrl(e.target.value)}
+                    placeholder="https://api.admin-mogadelivery.com/api/webhooks/boutshop"
+                    className="mt-1.5 h-10 font-mono text-xs"
+                  />
+                  <p className="mt-1 text-[11px] text-muted-foreground">
+                    Laisse vide → utilise <code className="rounded bg-muted px-1">api.admin-mogadelivery.com/api/webhooks/boutshop</code> (endpoint legacy stable).
+                    {' '}Bascule vers <code className="rounded bg-muted px-1">/api/webhooks/flexiopage</code> quand MogaDelivery le déploiera de leur côté.
+                  </p>
+                </div>
+                <div>
+                  <Label className="text-xs">Clé API MogaDelivery (si fournie)</Label>
+                  <Input
+                    type="password"
+                    value={apiKey}
+                    onChange={(e) => setApiKey(e.target.value)}
+                    className="mt-1.5 h-10 font-mono"
+                  />
+                  <p className="mt-1 text-[11px] text-muted-foreground">
+                    Optionnel — réservé à une future API REST. La signature HMAC suffit pour les webhooks.
+                  </p>
+                </div>
+              </div>
+            </details>
+
+            <div className="rounded-xl border border-amber-500/30 bg-amber-500/5 p-3 text-xs text-amber-800">
+              <strong>Important pour le matching produits :</strong> chaque produit doit avoir le <strong>même SKU</strong> côté
+              FlexioPage <em>et</em> côté MogaDelivery. Le SKU se configure dans
+              {' '}<code className="rounded bg-muted px-1">Produit → Référence produit (SKU & code-barres)</code>.
+            </div>
+          </>
+        ) : (
+          /* ─── Generic 3PL config (ShipBob, Cubyn, etc.) ─────────────── */
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div>
+              <Label>Clé API</Label>
+              <Input type="password" value={apiKey} onChange={(e) => setApiKey(e.target.value)} className="mt-1.5 h-11 font-mono" />
+            </div>
+            <div>
+              <Label>ID entrepôt / centre</Label>
+              <Input value={warehouseId} onChange={(e) => setWarehouseId(e.target.value)} placeholder="warehouse_xyz" className="mt-1.5 h-11 font-mono text-xs" />
+            </div>
+            <div className="sm:col-span-2">
+              <Label>Base URL (optionnel)</Label>
+              <Input value={baseUrl} onChange={(e) => setBaseUrl(e.target.value)} placeholder="https://api.shipbob.com" className="mt-1.5 h-11 font-mono text-xs" />
+            </div>
           </div>
-          <div>
-            <Label>ID entrepôt / centre</Label>
-            <Input value={warehouseId} onChange={(e) => setWarehouseId(e.target.value)} placeholder="warehouse_xyz" className="mt-1.5 h-11 font-mono text-xs" />
+        )}
+
+        {/* Sticky save bar — shows clearly when there are unsaved changes.
+            Without this, sellers select MogaDelivery, see the card flip to
+            "Intégré", then navigate away thinking it's saved. */}
+        <div
+          className={cn(
+            'sticky bottom-3 z-10 flex flex-wrap items-center justify-between gap-3 rounded-2xl border px-4 py-3 backdrop-blur',
+            dirty
+              ? 'border-amber-500/40 bg-amber-500/10 ring-2 ring-amber-500/20'
+              : 'border-border/60 bg-card/80'
+          )}
+        >
+          <div className="flex items-center gap-2 text-sm">
+            {dirty ? (
+              <>
+                <AlertCircle className="h-4 w-4 text-amber-700" />
+                <span className="font-medium text-amber-800">
+                  Changements non enregistrés — clique sur « Enregistrer » pour activer.
+                </span>
+              </>
+            ) : enabled && provider !== 'manual' ? (
+              <>
+                <CheckCircle2 className="h-4 w-4 text-emerald-600" />
+                <span className="font-medium text-emerald-700">
+                  {isMoga ? 'MogaDelivery actif' : `${provider} actif`}
+                </span>
+              </>
+            ) : (
+              <span className="text-muted-foreground">Aucune intégration active.</span>
+            )}
           </div>
-          <div className="sm:col-span-2">
-            <Label>Base URL (optionnel)</Label>
-            <Input value={baseUrl} onChange={(e) => setBaseUrl(e.target.value)} placeholder="https://api.shipbob.com" className="mt-1.5 h-11 font-mono text-xs" />
-          </div>
+          <Button
+            onClick={handleSave}
+            disabled={saving || !dirty}
+            className={cn('gap-2', dirty && 'gradient-brand text-white shadow-lg')}
+          >
+            {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+            Enregistrer
+          </Button>
         </div>
-
-        <Button onClick={handleSave} disabled={saving} className="gap-2">
-          {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-          Enregistrer
-        </Button>
       </div>
     </Card>
   );
@@ -750,17 +973,22 @@ function Card({ icon, title, subtitle, children }: { icon: React.ReactNode; titl
   );
 }
 
-/** A pickable provider card — "Disponible" badge + "Intégrer" button. */
+/** A pickable provider card — "Disponible" badge + "Intégrer" button.
+ * If `logoUrl` is provided, it replaces the default gradient/icon tile. The
+ * image is rendered with `object-contain` on a white tile so partner logos
+ * keep their own colors and proportions. */
 function ProviderCard({
   name,
   description,
   icon,
+  logoUrl,
   selected,
   onSelect,
 }: {
   name: string;
   description: string;
   icon: React.ReactNode;
+  logoUrl?: string;
   selected: boolean;
   onSelect: () => void;
 }) {
@@ -774,9 +1002,16 @@ function ProviderCard({
       )}
     >
       <div className="flex items-start justify-between gap-2">
-        <span className="grid h-10 w-10 place-items-center rounded-xl bg-gradient-to-br from-fuchsia-500 to-indigo-600 text-white shadow-md">
-          {icon}
-        </span>
+        {logoUrl ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <span className="grid h-10 w-10 place-items-center overflow-hidden rounded-xl bg-white shadow-md ring-1 ring-border/60">
+            <img src={logoUrl} alt={name} className="h-9 w-9 object-contain" />
+          </span>
+        ) : (
+          <span className="grid h-10 w-10 place-items-center rounded-xl bg-gradient-to-br from-fuchsia-500 to-indigo-600 text-white shadow-md">
+            {icon}
+          </span>
+        )}
         {selected ? (
           <span className="inline-flex items-center gap-1 rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-semibold text-primary">
             <CheckCircle2 className="h-3 w-3" /> Sélectionné

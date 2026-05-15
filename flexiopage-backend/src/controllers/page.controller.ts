@@ -268,10 +268,12 @@ export async function getPage(req: AuthRequest, res: Response): Promise<void> {
 
 export async function updatePage(req: AuthRequest, res: Response): Promise<void> {
   const store = req.store!;
-  const { name, slug, sections, seoTitle, seoDescription, ogImage, isPublished, language, country, currency, direction } = req.body;
+  const { name, slug, kind, body, sections, seoTitle, seoDescription, ogImage, isPublished, language, country, currency, direction } = req.body;
   const updates: Record<string, unknown> = {};
   if (typeof name === 'string') updates.name = name.trim();
   if (typeof slug === 'string') updates.slug = slug.trim();
+  if (kind === 'landing' || kind === 'info') updates.kind = kind;
+  if (typeof body === 'string') updates.body = body;
   if (Array.isArray(sections)) updates.sections = sections;
   if (typeof seoTitle === 'string') updates.seoTitle = seoTitle;
   if (typeof seoDescription === 'string') updates.seoDescription = seoDescription;

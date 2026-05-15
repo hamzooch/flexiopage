@@ -9,6 +9,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { storesApi, type TrackingStats, type TrackingRange } from '@/lib/api';
+import { useScopedStoreId } from '@/lib/use-scoped-store';
 import { cn } from '@/lib/utils';
 import {
   Activity, Eye, ShoppingCart, PackageCheck, CircleSlash, Loader2,
@@ -24,11 +25,13 @@ const RANGES: { value: TrackingRange; label: string }[] = [
 
 export default function TrackingPage() {
   const searchParams = useSearchParams();
+  const { storeId, setStoreId: setStoreIdScoped } = useScopedStoreId(searchParams.get('storeId'));
   const [stores, setStores] = useState<StoreLite[]>([]);
-  const [storeId, setStoreId] = useState(searchParams.get('storeId') || '');
   const [range, setRange] = useState<TrackingRange>('30d');
   const [stats, setStats] = useState<TrackingStats | null>(null);
   const [loading, setLoading] = useState(true);
+
+  const setStoreId = (id: string) => setStoreIdScoped(id || null);
 
   useEffect(() => {
     storesApi.list()
@@ -38,6 +41,7 @@ export default function TrackingPage() {
         if (!storeId && list.length > 0) setStoreId(list[0]._id);
       })
       .catch(() => setStores([]));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [storeId]);
 
   const load = useCallback(async () => {
@@ -78,7 +82,7 @@ export default function TrackingPage() {
             {stores.length > 1 && (
               <select
                 className="h-10 rounded-xl border border-border bg-background px-3 text-sm"
-                value={storeId}
+                value={storeId || ''}
                 onChange={(e) => setStoreId(e.target.value)}
               >
                 {stores.map((s) => (

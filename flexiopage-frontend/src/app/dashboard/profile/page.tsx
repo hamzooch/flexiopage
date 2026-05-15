@@ -1,22 +1,27 @@
 'use client';
 
 /**
- * Profil — vue de compte du vendeur :
- *   • Hero avec avatar gradient (initiales) + nom/email + "Membre depuis"
- *   • Édition du nom (email lecture seule pour l'instant)
- *   • Changement de mot de passe (POST /api/users/change-password)
- *   • Stats compte (boutiques, soldes)
+ * Profil — vue de compte du vendeur. C'est le hub central où le seller :
+ *   • voit/édite ses infos (nom, email, mot de passe, pays & devise)
+ *   • gère TOUTES ses boutiques (liste, sélection active, création)
+ *
+ * La création vit ici (CreateStoreWizard) parce qu'on a centralisé toutes
+ * les actions liées au compte dans /profile — l'ex-page /dashboard/stores
+ * redirige maintenant ici.
  */
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useAuthStore } from '@/stores/auth-store';
 import { useWalletStore } from '@/stores/wallet-store';
+import { useStoreStore } from '@/stores/store-store';
 import { usersApi, storesApi } from '@/lib/api';
+import { CreateStoreWizard } from '@/components/dashboard/create-store-wizard';
 import {
   User as UserIcon,
   Mail,
@@ -26,15 +31,23 @@ import {
   Check,
   Wallet,
   Sparkles,
-  Store,
+  Store as StoreIcon,
   ArrowRight,
   Eye,
   EyeOff,
   AlertTriangle,
   Globe,
   Lock,
+  Package,
+  Cloud,
+  Settings as SettingsIcon,
+  ExternalLink,
+  CheckCircle2,
+  Copy,
+  Check as CheckIcon,
 } from 'lucide-react';
 import { COUNTRIES, COUNTRY_GROUPS, currencyForCountry } from '@/data/countries';
+import { cn } from '@/lib/utils';
 
 interface UserDoc {
   _id: string;
@@ -47,6 +60,15 @@ interface UserDoc {
   currency?: string;
 }
 
+interface StoreDoc {
+  _id: string;
+  name: string;
+  slug: string;
+  isPublished?: boolean;
+  storeType?: 'physical' | 'digital';
+  description?: string;
+}
+
 function fmtCur(amount: number, currency: string): string {
   try {
     return new Intl.NumberFormat(undefined, { style: 'currency', currency, maximumFractionDigits: 0 }).format(amount);
@@ -56,18 +78,23 @@ function fmtCur(amount: number, currency: string): string {
 }
 
 export default function ProfilePage() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
   const authUser = useAuthStore((s) => s.user);
   const setAuth = useAuthStore((s) => s.setAuth);
   const token = useAuthStore((s) => s.token);
   const wallet = useWalletStore((s) => s.wallet);
   const refreshWallet = useWalletStore((s) => s.refresh);
+  const currentStoreId = useStoreStore((s) => s.currentStoreId);
+  const setCurrentStore = useStoreStore((s) => s.setCurrentStore);
 
   const [user, setUser] = useState<UserDoc | null>(null);
   const [name, setName] = useState('');
   const [country, setCountry] = useState('');
   const [currency, setCurrency] = useState('');
-  const [storeCount, setStoreCount] = useState(0);
+  const [stores, setStores] = useState<StoreDoc[]>([]);
   const [loading, setLoading] = useState(true);
+  const [autoStartCreate, setAutoStartCreate] = useState(false);
 
   // Profile save
   const [savingName, setSavingName] = useState(false);
@@ -84,22 +111,45 @@ export default function ProfilePage() {
   const [pwSuccess, setPwSuccess] = useState(false);
   const [pwShow, setPwShow] = useState(false);
 
+  function loadStores() {
+    return storesApi
+      .list()
+      .then((res) => {
+        const list = (res.data as { stores: StoreDoc[] }).stores || [];
+        setStores(list);
+        return list;
+      });
+  }
+
   useEffect(() => {
-    Promise.all([
-      usersApi.getProfile(),
-      storesApi.list(),
-    ])
-      .then(([profileRes, storesRes]) => {
+    Promise.all([usersApi.getProfile(), loadStores()])
+      .then(([profileRes]) => {
         const u = (profileRes.data as { user: UserDoc }).user;
         setUser(u);
         setName(u.name || '');
         setCountry(u.country || '');
         setCurrency(u.currency || '');
-        setStoreCount(((storesRes.data as { stores: unknown[] }).stores || []).length);
       })
       .finally(() => setLoading(false));
     refreshWallet();
   }, [refreshWallet]);
+
+  // Honour ?create=1 — auto-open the wizard. Used by /select-store and the
+  // Header's "Switch store" empty-state CTA.
+  useEffect(() => {
+    if (searchParams.get('create') === '1') setAutoStartCreate(true);
+  }, [searchParams]);
+
+  function handleStoreCreated(newId: string) {
+    loadStores().then(() => router.push('/dashboard'));
+    setCurrentStore(newId);
+    setAutoStartCreate(false);
+  }
+
+  function pickStore(storeId: string) {
+    setCurrentStore(storeId);
+    router.push('/dashboard');
+  }
 
   const initials = (user?.name || user?.email || 'U')
     .split(/[\s@]/)
@@ -113,10 +163,8 @@ export default function ProfilePage() {
     ? new Date(user.createdAt).toLocaleDateString(undefined, { month: 'long', year: 'numeric' })
     : '—';
 
-  // ── Country / currency ─────────────────────────────────────────────
   function handleCountryChange(code: string) {
     setCountry(code);
-    // Auto-fill the currency from the country, but the user can still edit it.
     const auto = currencyForCountry(code);
     if (auto) setCurrency(auto);
   }
@@ -208,6 +256,8 @@ export default function ProfilePage() {
     );
   }
 
+  const activeStore = stores.find((s) => s._id === currentStoreId);
+
   return (
     <div className="space-y-8">
       {/* Hero */}
@@ -240,11 +290,11 @@ export default function ProfilePage() {
       {/* Stats */}
       <section className="grid gap-4 sm:grid-cols-3">
         <StatCard
-          icon={<Store className="h-5 w-5" />}
+          icon={<StoreIcon className="h-5 w-5" />}
           tone="indigo"
           label="Boutiques"
-          value={String(storeCount)}
-          href="/dashboard/stores"
+          value={String(stores.length)}
+          href="#stores"
         />
         <StatCard
           icon={<Wallet className="h-5 w-5" />}
@@ -260,6 +310,150 @@ export default function ProfilePage() {
           value={wallet ? fmtCur(wallet.aiBalance, wallet.currency) : '—'}
           href="/dashboard/wallet?bucket=ai"
         />
+      </section>
+
+      {/* ────────────────────────── BOUTIQUES ────────────────────────── */}
+      <section id="stores" className="scroll-mt-20 space-y-4">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h2 className="text-2xl font-bold tracking-tight">Mes boutiques</h2>
+            <p className="text-sm text-muted-foreground">
+              Crée, sélectionne et change de boutique active depuis ton profil.
+            </p>
+          </div>
+        </div>
+
+        {/* Wizard (auto-opens with ?create=1) */}
+        <div className="rounded-2xl border border-border/60 bg-card p-5">
+          <CreateStoreWizard
+            onCreated={handleStoreCreated}
+            triggerLabel={stores.length === 0 ? 'Créer ma première boutique' : 'Créer une boutique'}
+          />
+          {autoStartCreate && stores.length === 0 && (
+            <p className="mt-3 text-xs text-muted-foreground">
+              Astuce : tu peux lancer le wizard en cliquant sur le bouton ci-dessus.
+            </p>
+          )}
+        </div>
+
+        {/* Store list — each one as its own card, with explicit "Active" badge */}
+        {stores.length === 0 ? (
+          <div className="rounded-2xl border border-dashed border-border/60 bg-card/40 p-8 text-center">
+            <StoreIcon className="mx-auto h-8 w-8 text-muted-foreground" />
+            <p className="mt-3 text-sm font-medium">Aucune boutique pour le moment.</p>
+            <p className="text-xs text-muted-foreground">
+              Utilise le bouton ci-dessus pour créer ta première vitrine.
+            </p>
+          </div>
+        ) : (
+          <div className="grid gap-4 sm:grid-cols-2">
+            {stores.map((store) => {
+              const isActive = store._id === currentStoreId;
+              const isDigital = store.storeType === 'digital';
+              const TypeIcon = isDigital ? Cloud : Package;
+              return (
+                <div
+                  key={store._id}
+                  className={cn(
+                    'group relative overflow-hidden rounded-2xl border bg-card p-5 transition-all duration-300',
+                    isActive
+                      ? 'border-primary ring-2 ring-primary/20 shadow-md'
+                      : 'border-border/60 hover:-translate-y-0.5 hover:border-primary/30 hover:shadow-lg'
+                  )}
+                >
+                  <div
+                    className={cn(
+                      'pointer-events-none absolute -right-10 -top-10 h-32 w-32 rounded-full bg-gradient-to-br opacity-10 blur-2xl transition-opacity duration-300 group-hover:opacity-25',
+                      isDigital ? 'from-fuchsia-500 to-pink-500' : 'from-indigo-500 to-violet-500'
+                    )}
+                    aria-hidden
+                  />
+                  <div className="relative flex items-start justify-between gap-2">
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div
+                        className={cn(
+                          'grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-gradient-to-br text-white shadow-md',
+                          isDigital
+                            ? 'from-fuchsia-500 to-pink-600 shadow-fuchsia-500/30'
+                            : 'from-indigo-500 to-violet-600 shadow-indigo-500/30'
+                        )}
+                      >
+                        <TypeIcon className="h-5 w-5" />
+                      </div>
+                      <div className="min-w-0">
+                        <h3 className="truncate text-base font-semibold tracking-tight">{store.name}</h3>
+                        <p className="truncate text-xs text-muted-foreground">/{store.slug}</p>
+                      </div>
+                    </div>
+                    <div className="flex shrink-0 flex-col items-end gap-1">
+                      <span
+                        className={cn(
+                          'rounded-full px-2 py-0.5 text-[10px] font-semibold',
+                          store.isPublished
+                            ? 'bg-emerald-500/10 text-emerald-700'
+                            : 'bg-amber-500/10 text-amber-700'
+                        )}
+                      >
+                        {store.isPublished ? 'Live' : 'Brouillon'}
+                      </span>
+                      {isActive && (
+                        <span className="inline-flex items-center gap-1 rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-semibold text-primary">
+                          <CheckCircle2 className="h-3 w-3" />
+                          Active
+                        </span>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Store ID — copy-to-clipboard for external integrations
+                      like MogaDelivery, where the partner needs to map their
+                      account to this exact ObjectId. */}
+                  <div className="relative mt-4">
+                    <StoreIdBadge storeId={store._id} />
+                  </div>
+
+                  <div className="relative mt-3 flex flex-wrap gap-2">
+                    {!isActive && (
+                      <Button
+                        size="sm"
+                        onClick={() => pickStore(store._id)}
+                        className="h-9 gap-1.5 rounded-lg gradient-brand text-white"
+                      >
+                        <ArrowRight className="h-3.5 w-3.5" />
+                        Utiliser
+                      </Button>
+                    )}
+                    <Link href={`/dashboard/stores/${store._id}`}>
+                      <Button variant="outline" size="sm" className="h-9 gap-1.5 rounded-lg">
+                        <SettingsIcon className="h-3.5 w-3.5" />
+                        Réglages
+                      </Button>
+                    </Link>
+                    <Link href={`/${store.slug}`} target="_blank" rel="noopener">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className={cn(
+                          'h-9 gap-1.5 rounded-lg',
+                          !store.isPublished && 'border-amber-500/40 text-amber-700 hover:bg-amber-500/10'
+                        )}
+                      >
+                        <ExternalLink className="h-3.5 w-3.5" />
+                        Voir
+                      </Button>
+                    </Link>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        {activeStore && (
+          <div className="rounded-xl border border-primary/20 bg-primary/5 px-4 py-3 text-xs text-foreground/80">
+            Boutique active : <strong>{activeStore.name}</strong> · le tableau de bord est scopé à cette boutique.
+          </div>
+        )}
       </section>
 
       {/* Pays & devise du solde */}
@@ -530,5 +724,51 @@ function StatCard({
         <ArrowRight className="h-3 w-3 transition-transform group-hover:translate-x-0.5" />
       </div>
     </Link>
+  );
+}
+
+/** Read-only Store ID pill with a copy-to-clipboard button. Used when the
+ * seller needs to paste this id into a third-party integration (e.g.
+ * MogaDelivery's admin to bind their account to this exact FlexioPage store). */
+function StoreIdBadge({ storeId }: { storeId: string }) {
+  const [copied, setCopied] = useState(false);
+  async function handleCopy() {
+    try {
+      await navigator.clipboard.writeText(storeId);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1500);
+    } catch {
+      // Clipboard API blocked (e.g. insecure context) — fall back to a
+      // synchronous selection so the user can still copy manually.
+      const el = document.createElement('textarea');
+      el.value = storeId;
+      document.body.appendChild(el);
+      el.select();
+      try { document.execCommand('copy'); setCopied(true); } catch {}
+      document.body.removeChild(el);
+      window.setTimeout(() => setCopied(false), 1500);
+    }
+  }
+  return (
+    <button
+      type="button"
+      onClick={handleCopy}
+      title="Copier l'identifiant boutique"
+      className="group/copy flex w-full items-center gap-2 rounded-lg border border-border/60 bg-muted/30 px-2.5 py-1.5 text-left transition-colors hover:border-primary/40 hover:bg-muted/60"
+    >
+      <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+        Store ID
+      </span>
+      <code className="flex-1 truncate font-mono text-[11px] text-foreground/90">
+        {storeId}
+      </code>
+      {copied ? (
+        <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-emerald-600">
+          <CheckIcon className="h-3 w-3" /> Copié
+        </span>
+      ) : (
+        <Copy className="h-3.5 w-3.5 text-muted-foreground transition-colors group-hover/copy:text-foreground" />
+      )}
+    </button>
   );
 }

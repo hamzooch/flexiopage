@@ -6,6 +6,7 @@ import { useSearchParams } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { storesApi } from '@/lib/api';
+import { useScopedStoreId } from '@/lib/use-scoped-store';
 import { FileText, Plus, Eye, ExternalLink, Pencil } from 'lucide-react';
 
 interface StoreType {
@@ -25,28 +26,18 @@ interface PageType {
 export default function DashboardPagesPage() {
   const searchParams = useSearchParams();
   const storeIdParam = searchParams.get('storeId');
+  const { storeId: selectedStoreId, setStoreId: setSelectedStoreId } = useScopedStoreId(storeIdParam);
   const [stores, setStores] = useState<StoreType[]>([]);
   const [pages, setPages] = useState<PageType[]>([]);
-  const [selectedStoreId, setSelectedStoreId] = useState<string | null>(storeIdParam);
   const [loading, setLoading] = useState(true);
-
-  // Sync selected store from URL when searchParams change (e.g. after refresh)
-  useEffect(() => {
-    const sid = searchParams.get('storeId');
-    if (sid) setSelectedStoreId(sid);
-  }, [searchParams]);
 
   useEffect(() => {
     storesApi.list().then((res) => {
       const list = (res.data as { stores: StoreType[] }).stores;
       setStores(list);
-      setSelectedStoreId((prev) => {
-        const fromUrl = searchParams.get('storeId');
-        if (fromUrl && list.some((s) => s._id === fromUrl)) return fromUrl;
-        if (!prev && list.length) return list[0]._id;
-        return prev;
-      });
+      if (!selectedStoreId && list.length) setSelectedStoreId(list[0]._id);
     }).catch(() => setStores([]));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {

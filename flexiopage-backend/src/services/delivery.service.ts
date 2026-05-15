@@ -55,7 +55,13 @@ interface DeliveryProviderImpl {
 // ─────────────────────────────────────────────────────────────────────
 class MogaDeliveryProvider implements DeliveryProviderImpl {
   id: DeliveryProvider = 'mogadelivery';
-  private defaultUrl = 'https://api.admin-mogadelivery.com/webhooks/boutshop';
+  // MogaDelivery confirmed two URLs: the legacy `/api/webhooks/boutshop`
+  // (always active, currently deployed) and the canonical
+  // `/api/webhooks/flexiopage` (not yet deployed on their side, returns
+  // 404). We default to the legacy path so dispatch works out of the box;
+  // sellers can override via `integrations.delivery.baseUrl` once the
+  // canonical endpoint is live.
+  private defaultUrl = 'https://api.admin-mogadelivery.com/api/webhooks/boutshop';
 
   isConfigured(store: IStore): boolean {
     const cfg = store.integrations?.delivery;
@@ -215,17 +221,29 @@ class MogaDeliveryProvider implements DeliveryProviderImpl {
 
     const externalId = String(payload.delivery_id || payload.id || '');
     const status = String(payload.status || '').toLowerCase();
+    // MogaDelivery has two consecutive enums: OrderStatus (call-center phase,
+    // before shipping) and ShippingStatus (logistics phase). We collapse them
+    // both into our linear pipeline. See integration spec doc.
     const map: Record<string, WebhookResult['status']> = {
+      // OrderStatus (pre-shipping)
       pending: 'pending',
       created: 'pending',
+      notreachable: 'pending',     // buyer unreachable — still actionable, not terminal
+      not_reachable: 'pending',
+      callback: 'pending',          // agent will retry — keep pending
+      confirmed: 'assigned',        // order validated, ready for fulfillment
+
+      // ShippingStatus (post-shipping)
       assigned: 'assigned',
       accepted: 'assigned',
+      prepared: 'assigned',         // packed, awaiting courier pickup
       picked: 'picked_up',
       picked_up: 'picked_up',
       collected: 'picked_up',
       in_transit: 'in_transit',
       ongoing: 'in_transit',
       out_for_delivery: 'in_transit',
+      reprogrammed: 'in_transit',   // delivery rescheduled — still en route
       delivered: 'delivered',
       returned: 'returned',
       cancelled: 'cancelled',
@@ -292,13 +310,38 @@ export async function dispatchOrder(args: {
   order: IOrder;
   store: IStore;
 }): Promise<{ ok: boolean; alreadyDispatched?: boolean; result?: DispatchResult; error?: string }> {
-  const cfg = args.store.integrations?.delivery;
-  if (!cfg?.enabled || !cfg.provider) {
+  // Primary path: explicit last-mile carrier under `integrations.delivery`.
+  // Fallback: seller picked MogaDelivery as their 3PL fulfillment provider
+  // under `integrations.logistics` instead — same outbound endpoint, same
+  // SKU-matching contract, so we route through the MogaDelivery dispatcher
+  // by synthesising an effective delivery config from the logistics block.
+  const directCfg = args.store.integrations?.delivery;
+  const logCfg = args.store.integrations?.logistics;
+  let providerId: DeliveryProvider;
+  if (directCfg?.enabled && directCfg.provider) {
+    providerId = directCfg.provider;
+  } else if (logCfg?.enabled && logCfg.provider === 'mogadelivery' && (logCfg.autoForward ?? true)) {
+    providerId = 'mogadelivery';
+    // Mutate the store object in memory so isConfigured() sees the synth
+    // config without persisting it. The actual provider impl reads from
+    // store.integrations.delivery.
+    args.store.integrations = {
+      ...args.store.integrations,
+      delivery: {
+        provider: 'mogadelivery',
+        enabled: true,
+        apiKey: logCfg.apiKey,
+        baseUrl: logCfg.baseUrl,
+        webhookSecret: logCfg.webhookSecret,
+        autoDispatch: logCfg.autoForward ?? true,
+      },
+    };
+  } else {
     return { ok: false, error: 'Delivery integration disabled' };
   }
-  const provider = getDeliveryProvider(cfg.provider);
+  const provider = getDeliveryProvider(providerId);
   if (!provider || !provider.isConfigured(args.store)) {
-    return { ok: false, error: `Provider ${cfg.provider} not configured` };
+    return { ok: false, error: `Provider ${providerId} not configured` };
   }
   // Idempotent
   if (args.order.delivery?.externalId) {
@@ -307,7 +350,7 @@ export async function dispatchOrder(args: {
   try {
     const result = await provider.dispatch({ order: args.order, store: args.store });
     args.order.delivery = {
-      provider: cfg.provider,
+      provider: providerId,
       externalId: result.externalId,
       externalStatus: result.externalStatus,
       trackingUrl: result.trackingUrl,
@@ -322,7 +365,7 @@ export async function dispatchOrder(args: {
     const msg = (err as Error).message || 'Dispatch failed';
     args.order.delivery = {
       ...(args.order.delivery || {}),
-      provider: cfg.provider,
+      provider: providerId,
       error: msg,
     };
     await args.order.save();
@@ -371,6 +414,7 @@ export async function applyDeliveryWebhook(args: {
     }
   }
 
+  const previousStatus = order.delivery?.externalStatus;
   order.delivery = {
     ...(order.delivery || {}),
     externalStatus: parsedNoCheck.status,
@@ -385,6 +429,23 @@ export async function applyDeliveryWebhook(args: {
     order.paymentStatus = 'paid';
   }
   await order.save();
+
+  // In-app notification on each status transition (only when it actually
+  // changed, so we don't spam the bell for duplicate webhook deliveries).
+  if (store?.ownerId && previousStatus !== parsedNoCheck.status) {
+    try {
+      const { notifyOrderStatusChanged } = await import('./notification.service');
+      await notifyOrderStatusChanged({
+        userId: store.ownerId,
+        storeId: order.storeId,
+        orderId: order._id.toString(),
+        orderNumber: order.orderNumber,
+        status: parsedNoCheck.status,
+      });
+    } catch (err) {
+      console.error('[delivery webhook] notification failed (non-fatal):', (err as Error).message);
+    }
+  }
 
   // Charge the seller's wallet commission once per order (idempotent).
   if (parsedNoCheck.status === 'delivered' && store?.ownerId) {

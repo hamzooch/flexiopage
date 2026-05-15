@@ -20,6 +20,10 @@ export default function EditProductPage() {
   const [price, setPrice] = useState('');
   const [type, setType] = useState<'physical' | 'digital'>('physical');
   const [stock, setStock] = useState('0');
+  // SKU is the matching key with external systems (MogaDelivery uses it to
+  // bind FlexioPage line_items to its own catalog).
+  const [sku, setSku] = useState('');
+  const [barcode, setBarcode] = useState('');
   const [isPublished, setIsPublished] = useState(false);
   // Per-product storefront page customization. Toggles default to "shown".
   const [pageSettings, setPageSettings] = useState({
@@ -44,6 +48,8 @@ export default function EditProductPage() {
         setPrice(String(p.price ?? ''));
         setType((p.type as 'physical' | 'digital') || 'physical');
         setStock(String(p.stock ?? '0'));
+        setSku((p.sku as string) || '');
+        setBarcode((p.barcode as string) || '');
         setIsPublished(!!p.isPublished);
         const ps = (p.pageSettings as Record<string, unknown>) || {};
         setPageSettings({
@@ -70,6 +76,8 @@ export default function EditProductPage() {
         price: parseFloat(price) || 0,
         type,
         stock: parseInt(stock, 10) || 0,
+        sku: sku.trim() || undefined,
+        barcode: barcode.trim() || undefined,
         isPublished,
         pageSettings: {
           showGallery: pageSettings.showGallery,
@@ -184,6 +192,41 @@ export default function EditProductPage() {
                 className="h-4 w-4 rounded border-input"
               />
               <Label htmlFor="published">Published</Label>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Référence produit — SKU est la clé de matching avec MogaDelivery
+            et les autres 3PL ; barcode reste optionnel (EAN/UPC). */}
+        <Card>
+          <CardHeader>
+            <CardTitle>Référence produit (SKU & code-barres)</CardTitle>
+            <CardDescription>Identifiants utilisés pour le stock et MogaDelivery.</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="space-y-2">
+                <Label htmlFor="sku">SKU (référence interne)</Label>
+                <Input
+                  id="sku"
+                  value={sku}
+                  onChange={(e) => setSku(e.target.value)}
+                  placeholder="Ex: TSHIRT-RED-M"
+                />
+                <p className="text-[11px] text-muted-foreground">
+                  Ta référence interne. <strong>Doit être identique côté MogaDelivery</strong> pour que les commandes soient bien matchées.
+                </p>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="barcode">Code-barres (EAN/UPC)</Label>
+                <Input
+                  id="barcode"
+                  value={barcode}
+                  onChange={(e) => setBarcode(e.target.value)}
+                  placeholder="Ex: 3760123456789"
+                />
+                <p className="text-[11px] text-muted-foreground">Optionnel. Scanné par la logistique.</p>
+              </div>
             </div>
           </CardContent>
         </Card>

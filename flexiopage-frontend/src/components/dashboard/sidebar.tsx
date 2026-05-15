@@ -59,7 +59,6 @@ const TEAM_ALLOWED: Record<TeamRole, string[]> = {
   ],
   manager: [
     '/dashboard',
-    '/dashboard/stores',
     '/dashboard/analytics',
     '/dashboard/products',
     '/dashboard/offers',
@@ -78,7 +77,7 @@ const SECTIONS: { title: string; items: NavItem[] }[] = [
     title: 'Workspace',
     items: [
       { href: '/dashboard', label: 'Overview', icon: LayoutDashboard },
-      { href: '/dashboard/stores', label: 'Boutiques', icon: Store },
+      { href: '/dashboard/profile#stores', label: 'Mes boutiques', icon: Store },
       { href: '/dashboard/analytics', label: 'Analytics', icon: BarChart3 },
     ],
   },

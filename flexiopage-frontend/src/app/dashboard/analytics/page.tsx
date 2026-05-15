@@ -16,6 +16,7 @@ import {
   Users,
 } from 'lucide-react';
 import { storesApi } from '@/lib/api';
+import { useScopedStoreId } from '@/lib/use-scoped-store';
 import { formatCurrency } from '@/lib/utils';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { KpiCard } from '@/components/charts/KpiCard';
@@ -51,8 +52,8 @@ function downloadCsv(filename: string, content: string) {
 export default function DashboardAnalyticsPage() {
   const searchParams = useSearchParams();
   const storeIdParam = searchParams.get('storeId');
+  const { storeId: selectedStoreId, setStoreId: setSelectedStoreId } = useScopedStoreId(storeIdParam);
   const [stores, setStores] = useState<StoreType[]>([]);
-  const [selectedStoreId, setSelectedStoreId] = useState<string | null>(storeIdParam);
   const [range, setRange] = useState<RangeKey>('30d');
   const [data, setData] = useState<StoreAnalyticsRich | null>(null);
   const [loading, setLoading] = useState(true);
@@ -67,6 +68,7 @@ export default function DashboardAnalyticsPage() {
         if (!selectedStoreId && list.length) setSelectedStoreId(list[0]._id);
       })
       .catch(() => setStores([]));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {

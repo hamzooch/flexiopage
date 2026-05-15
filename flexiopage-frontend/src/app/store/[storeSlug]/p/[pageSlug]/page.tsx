@@ -3,7 +3,9 @@ import type { Metadata } from 'next';
 import { LandingRenderer } from '@/components/landing/LandingRenderer';
 import type { PageSection } from '@/components/landing/SectionEditor';
 import { StoreNavbar, type NavbarConfig } from '@/components/storefront/StoreNavbar';
+import { StoreFooter, type FooterConfig } from '@/components/storefront/StoreFooter';
 import { STORE_THEME_TEMPLATES } from '@/data/store-themes';
+import { renderMarkdown } from '@/lib/markdown';
 
 interface Props {
   params: Promise<{ storeSlug: string; pageSlug: string }>;
@@ -20,7 +22,12 @@ interface StoreDoc {
     currency?: string;
     language?: string;
     direction?: 'ltr' | 'rtl';
-    storefront?: { navbar?: NavbarConfig };
+    storefront?: {
+      navbar?: NavbarConfig;
+      showFooter?: boolean;
+      footerNote?: string;
+      footer?: FooterConfig;
+    };
   };
   layout?: {
     footer?: {
@@ -33,6 +40,8 @@ interface PageDoc {
   _id: string;
   name: string;
   slug: string;
+  kind?: 'landing' | 'info';
+  body?: string;
   sections?: PageSection[];
   seoTitle?: string;
   seoDescription?: string;
@@ -128,10 +137,48 @@ export default async function PublicLandingPage({ params }: Props) {
     );
   }
 
-  const products = await fetchProducts(storeSlug);
   const themeTokens =
     STORE_THEME_TEMPLATES.find((t) => t.id === data.store.theme?.templateId)?.theme ||
     STORE_THEME_TEMPLATES[0].theme;
+
+  // Info page (Conditions, FAQ, About…) — render markdown body with the
+  // same chrome (navbar + footer) as the rest of the storefront so it
+  // feels native, not like a generic legal text dump.
+  if (data.page.kind === 'info') {
+    const bodyHtml = renderMarkdown(data.page.body || '');
+    return (
+      <div
+        className="min-h-screen flex flex-col"
+        style={{ backgroundColor: themeTokens.background, color: themeTokens.foreground }}
+      >
+        <StoreNavbar
+          storeName={data.store.name}
+          storeSlug={storeSlug}
+          storeLogo={data.store.logo}
+          theme={themeTokens}
+          config={data.store.settings?.storefront?.navbar}
+        />
+        <main className="flex-1">
+          <article
+            className="prose-storefront mx-auto max-w-3xl px-4 py-10 sm:py-14"
+            style={{ fontFamily: themeTokens.fontBody }}
+            dangerouslySetInnerHTML={{ __html: bodyHtml }}
+          />
+        </main>
+        {(data.store.settings?.storefront?.showFooter ?? true) && (
+          <StoreFooter
+            storeName={data.store.name}
+            storeSlug={storeSlug}
+            footerNote={data.store.settings?.storefront?.footerNote}
+            config={data.store.settings?.storefront?.footer}
+            theme={themeTokens}
+          />
+        )}
+      </div>
+    );
+  }
+
+  const products = await fetchProducts(storeSlug);
 
   return (
     <LandingRenderer

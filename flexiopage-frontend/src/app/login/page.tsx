@@ -26,7 +26,10 @@ export default function LoginPage() {
       const { data } = await authApi.login({ email, password });
       const d = data as { user: { _id: string; email: string; name: string }; token: string };
       setAuth(d.user, d.token);
-      router.push('/dashboard');
+      // After login, send the seller to the store picker so they choose
+      // which store the dashboard should scope to. /select-store handles
+      // the empty-stores case by linking to the profile creation wizard.
+      router.push('/select-store');
       router.refresh();
     } catch (err: unknown) {
       const msg = err && typeof err === 'object' && 'response' in err

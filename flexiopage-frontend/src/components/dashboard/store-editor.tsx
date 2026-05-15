@@ -105,6 +105,11 @@ export interface TestimonialsSettings {
   items?: TestimonialItem[];
 }
 
+export interface FooterColumn {
+  title: string;
+  links: Array<{ label: string; url: string }>;
+}
+
 export interface FooterSettings {
   social?: {
     instagram?: string;
@@ -119,7 +124,9 @@ export interface FooterSettings {
     phone?: string;
     address?: string;
   };
+  /** Legacy flat list — kept for backwards compat, columns take precedence. */
   links?: Array<{ label: string; url: string }>;
+  columns?: FooterColumn[];
 }
 
 export interface StorefrontSettings {
@@ -869,8 +876,8 @@ export function FooterEditor({
   footer?: FooterSettings;
   onChange: (f: FooterSettings) => void;
 }) {
-  const cfg: FooterSettings = { social: {}, contact: {}, links: [], ...(footer || {}) };
-  const links = cfg.links || [];
+  const cfg: FooterSettings = { social: {}, contact: {}, links: [], columns: [], ...(footer || {}) };
+  const columns = cfg.columns || [];
 
   function setSocial(key: string, value: string) {
     onChange({ ...cfg, social: { ...(cfg.social || {}), [key]: value } });
@@ -878,18 +885,38 @@ export function FooterEditor({
   function setContact(key: 'email' | 'phone' | 'address', value: string) {
     onChange({ ...cfg, contact: { ...(cfg.contact || {}), [key]: value } });
   }
-  function addLink() {
-    onChange({ ...cfg, links: [...links, { label: '', url: '' }] });
+
+  function addColumn() {
+    onChange({ ...cfg, columns: [...columns, { title: 'Nouvelle colonne', links: [] }] });
   }
-  function updateLink(i: number, patch: Partial<{ label: string; url: string }>) {
-    const next = links.slice();
-    next[i] = { ...next[i], ...patch };
-    onChange({ ...cfg, links: next });
+  function updateColumnTitle(i: number, title: string) {
+    const next = columns.slice();
+    next[i] = { ...next[i], title };
+    onChange({ ...cfg, columns: next });
   }
-  function removeLink(i: number) {
-    const next = links.slice();
+  function removeColumn(i: number) {
+    const next = columns.slice();
     next.splice(i, 1);
-    onChange({ ...cfg, links: next });
+    onChange({ ...cfg, columns: next });
+  }
+  function addLinkTo(colIdx: number) {
+    const next = columns.slice();
+    next[colIdx] = { ...next[colIdx], links: [...(next[colIdx].links || []), { label: '', url: '' }] };
+    onChange({ ...cfg, columns: next });
+  }
+  function updateLinkAt(colIdx: number, linkIdx: number, patch: Partial<{ label: string; url: string }>) {
+    const next = columns.slice();
+    const links = (next[colIdx].links || []).slice();
+    links[linkIdx] = { ...links[linkIdx], ...patch };
+    next[colIdx] = { ...next[colIdx], links };
+    onChange({ ...cfg, columns: next });
+  }
+  function removeLinkAt(colIdx: number, linkIdx: number) {
+    const next = columns.slice();
+    const links = (next[colIdx].links || []).slice();
+    links.splice(linkIdx, 1);
+    next[colIdx] = { ...next[colIdx], links };
+    onChange({ ...cfg, columns: next });
   }
 
   return (
@@ -918,25 +945,79 @@ export function FooterEditor({
       <div>
         <div className="flex items-center justify-between">
           <h4 className="flex items-center gap-1.5 text-sm font-semibold">
-            <Link2 className="h-3.5 w-3.5" /> Liens additionnels
+            <Link2 className="h-3.5 w-3.5" /> Colonnes du footer
           </h4>
-          <Button type="button" size="sm" variant="outline" onClick={addLink} className="gap-1.5">
-            <Plus className="h-3 w-3" /> Ajouter
+          <Button type="button" size="sm" variant="outline" onClick={addColumn} className="gap-1.5">
+            <Plus className="h-3 w-3" /> Ajouter une colonne
           </Button>
         </div>
-        <p className="text-[11px] text-muted-foreground">Mentions légales, CGV, politique de retour, etc.</p>
-        {links.length > 0 && (
-          <ul className="mt-2 space-y-2">
-            {links.map((l, i) => (
-              <li key={i} className="grid grid-cols-[1fr_1fr_auto] gap-2">
-                <Input placeholder="Libellé" value={l.label} onChange={(e) => updateLink(i, { label: e.target.value })} className="h-9 text-sm" />
-                <Input placeholder="/legal/cgv" value={l.url} onChange={(e) => updateLink(i, { url: e.target.value })} className="h-9 text-xs font-mono" />
-                <button type="button" onClick={() => removeLink(i)} aria-label="Supprimer" className="grid h-9 w-9 place-items-center rounded-md text-destructive hover:bg-destructive/10">
-                  <Trash2 className="h-3.5 w-3.5" />
-                </button>
-              </li>
+        <p className="text-[11px] text-muted-foreground">
+          Chaque colonne apparaît dans le footer de la boutique. Les pages standards (CGV, FAQ, etc.)
+          sont créées automatiquement — leurs URLs sont <code className="rounded bg-muted px-1">/p/conditions-utilisation</code>,
+          {' '}<code className="rounded bg-muted px-1">/p/faq</code>, etc.
+        </p>
+        {columns.length === 0 ? (
+          <p className="mt-3 rounded-lg border border-dashed border-border/60 bg-muted/30 p-3 text-xs text-muted-foreground">
+            Aucune colonne. Ajoute-en une (ex: « Termes et politiques », « Contact », « Information »).
+          </p>
+        ) : (
+          <div className="mt-3 space-y-3">
+            {columns.map((col, ci) => (
+              <div key={ci} className="rounded-xl border border-border/60 bg-muted/20 p-3">
+                <div className="flex items-center gap-2">
+                  <Input
+                    placeholder="Titre de la colonne"
+                    value={col.title}
+                    onChange={(e) => updateColumnTitle(ci, e.target.value)}
+                    className="h-9 flex-1 text-sm font-semibold"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => removeColumn(ci)}
+                    aria-label="Supprimer la colonne"
+                    className="grid h-9 w-9 place-items-center rounded-md text-destructive hover:bg-destructive/10"
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+                <ul className="mt-2 space-y-1.5">
+                  {(col.links || []).map((l, li) => (
+                    <li key={li} className="grid grid-cols-[1fr_1fr_auto] gap-2">
+                      <Input
+                        placeholder="Libellé (ex: FAQ)"
+                        value={l.label}
+                        onChange={(e) => updateLinkAt(ci, li, { label: e.target.value })}
+                        className="h-8 text-sm"
+                      />
+                      <Input
+                        placeholder="/p/faq"
+                        value={l.url}
+                        onChange={(e) => updateLinkAt(ci, li, { url: e.target.value })}
+                        className="h-8 text-xs font-mono"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => removeLinkAt(ci, li)}
+                        aria-label="Supprimer le lien"
+                        className="grid h-8 w-8 place-items-center rounded-md text-destructive hover:bg-destructive/10"
+                      >
+                        <Trash2 className="h-3 w-3" />
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => addLinkTo(ci)}
+                  className="mt-2 h-8 gap-1.5 text-xs"
+                >
+                  <Plus className="h-3 w-3" /> Ajouter un lien
+                </Button>
+              </div>
             ))}
-          </ul>
+          </div>
         )}
       </div>
     </div>

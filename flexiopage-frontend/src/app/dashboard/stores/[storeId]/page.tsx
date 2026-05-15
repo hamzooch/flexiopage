@@ -15,6 +15,7 @@ import {
   Cloud,
   Eye,
   ExternalLink,
+  FileText,
   ImageIcon,
   Layers,
   Package,
@@ -58,9 +59,16 @@ const HUB_CARDS: HubCard[] = [
   {
     href: 'sections',
     icon: Layers,
-    title: 'Sections vitrine',
-    description: 'Navbar, hero, slider, témoignages, footer — la composition de la page d\'accueil.',
+    title: 'Header & Sections vitrine',
+    description: 'Navbar, hero, slider, témoignages, footer + colonnes de liens — la composition complète.',
     tone: 'amber',
+  },
+  {
+    href: 'info-pages',
+    icon: FileText,
+    title: 'Pages d\'information',
+    description: 'CGV, FAQ, Contact, Confidentialité, Livraison… — créées automatiquement, modifiables.',
+    tone: 'sky',
   },
   {
     href: 'checkout',

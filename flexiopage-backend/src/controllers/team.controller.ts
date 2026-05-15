@@ -3,6 +3,7 @@ import bcrypt from 'bcryptjs';
 import { AuthRequest } from '../middleware/auth.middleware';
 import { User, type TeamRole } from '../models/User.model';
 import { isTeamMember } from '../lib/owner';
+import { notifyTeamMemberAdded, notifyTeamMemberRemoved } from '../services/notification.service';
 
 const SALT_ROUNDS = 12;
 const TEAM_ROLES: TeamRole[] = ['manager', 'confirmation_agent'];
@@ -76,6 +77,17 @@ export async function createTeamMember(req: AuthRequest, res: Response): Promise
     emailVerified: true,
   });
 
+  // In-app notification on the seller's bell (best-effort).
+  try {
+    await notifyTeamMemberAdded({
+      userId: req.user!._id,
+      memberEmail: member.email,
+      memberRole: member.teamRole || 'membre',
+    });
+  } catch (err) {
+    console.error('[notification] team.member_added failed (non-fatal):', (err as Error).message);
+  }
+
   const { password: _p, ...safe } = member.toObject();
   res.status(201).json({ member: safe });
 }
@@ -127,6 +139,12 @@ export async function removeTeamMember(req: AuthRequest, res: Response): Promise
     res.status(404).json({ error: "Membre d'équipe introuvable." });
     return;
   }
+  const memberEmail = member.email;
   await member.deleteOne();
+  try {
+    await notifyTeamMemberRemoved({ userId: req.user!._id, memberEmail });
+  } catch (err) {
+    console.error('[notification] team.member_removed failed (non-fatal):', (err as Error).message);
+  }
   res.json({ ok: true });
 }

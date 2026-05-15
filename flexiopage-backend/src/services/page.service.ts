@@ -1,9 +1,11 @@
-import { LandingPage, ILandingPage, IPageSection, Direction } from '../models/LandingPage.model';
+import { LandingPage, ILandingPage, IPageSection, Direction, PageKind } from '../models/LandingPage.model';
 
 export interface CreatePageInput {
   storeId: string;
   name: string;
   slug?: string;
+  kind?: PageKind;
+  body?: string;
   sections?: IPageSection[];
   seoTitle?: string;
   seoDescription?: string;
@@ -32,6 +34,8 @@ export async function createPage(input: CreatePageInput): Promise<ILandingPage> 
     storeId: input.storeId,
     name: input.name.trim(),
     slug,
+    kind: input.kind || 'landing',
+    body: input.body,
     sections: input.sections ?? [],
     seoTitle: input.seoTitle,
     seoDescription: input.seoDescription,
@@ -51,6 +55,8 @@ export async function updatePage(
       ILandingPage,
       | 'name'
       | 'slug'
+      | 'kind'
+      | 'body'
       | 'sections'
       | 'seoTitle'
       | 'seoDescription'

@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { storesApi } from '@/lib/api';
 import { useAuthStore } from '@/stores/auth-store';
+import { useStoreStore } from '@/stores/store-store';
 import { formatCurrency, cn } from '@/lib/utils';
 import {
   Store,
@@ -39,17 +40,28 @@ type Stat = {
 
 export default function DashboardOverviewPage() {
   const user = useAuthStore((s) => s.user);
+  const currentStoreId = useStoreStore((s) => s.currentStoreId);
+  const setCurrentStore = useStoreStore((s) => s.setCurrentStore);
   const [stores, setStores] = useState<StoreType[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     storesApi
       .list()
-      .then((res) => setStores((res.data as { stores: StoreType[] }).stores))
+      .then((res) => {
+        const list = (res.data as { stores: StoreType[] }).stores || [];
+        setStores(list);
+        // If the global active store was deleted (or never set) but the seller
+        // has at least one store, default to the first one so downstream
+        // pages have something to query against.
+        if (!currentStoreId && list[0]) setCurrentStore(list[0]._id);
+      })
       .catch(() => setStores([]))
       .finally(() => setLoading(false));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  const activeStore = stores.find((s) => s._id === currentStoreId) || stores[0];
   const firstStore = stores[0];
   const storeCount = stores.length;
 
@@ -108,13 +120,26 @@ export default function DashboardOverviewPage() {
               Welcome back,{' '}
               <span className="gradient-brand-text">{user?.name?.split(' ')[0] || 'there'}</span>
             </h1>
-            <p className="max-w-xl text-sm text-muted-foreground sm:text-base">
-              Here's what's happening with your business today. Build, sell, and grow — all in one place.
-            </p>
+            {activeStore ? (
+              <p className="max-w-xl text-sm text-muted-foreground sm:text-base">
+                Boutique active :{' '}
+                <Link href="/dashboard/profile#stores" className="font-semibold text-foreground underline-offset-4 hover:underline">
+                  {activeStore.name}
+                </Link>
+                {' '}·{' '}
+                <Link href="/select-store" className="text-primary hover:underline">
+                  Changer
+                </Link>
+              </p>
+            ) : (
+              <p className="max-w-xl text-sm text-muted-foreground sm:text-base">
+                Build, sell, and grow — all in one place.
+              </p>
+            )}
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
-            <Link href="/dashboard/stores">
+            <Link href="/dashboard/profile?create=1">
               <Button className="h-11 gap-2 rounded-xl gradient-brand text-white shadow-lg shadow-primary/25 hover:opacity-95 hover:shadow-xl hover:shadow-primary/30 transition-all">
                 <Plus className="h-4 w-4" />
                 New store
@@ -183,7 +208,7 @@ export default function DashboardOverviewPage() {
               <h2 className="text-base font-semibold">Your stores</h2>
               <p className="text-xs text-muted-foreground">Manage and switch between storefronts</p>
             </div>
-            <Link href="/dashboard/stores">
+            <Link href="/dashboard/profile#stores">
               <Button variant="ghost" size="sm" className="gap-1 rounded-lg text-xs">
                 View all
                 <ChevronRight className="h-3.5 w-3.5" />
@@ -210,7 +235,7 @@ export default function DashboardOverviewPage() {
                 <p className="mt-1 text-xs text-muted-foreground">
                   Create your first store to start selling.
                 </p>
-                <Link href="/dashboard/stores" className="mt-4 inline-block">
+                <Link href="/dashboard/profile?create=1" className="mt-4 inline-block">
                   <Button size="sm" className="gradient-brand text-white">
                     <Plus className="mr-1.5 h-3.5 w-3.5" />
                     Create store
@@ -224,7 +249,7 @@ export default function DashboardOverviewPage() {
                 return (
                   <Link
                     key={s._id}
-                    href={`/dashboard/stores?store=${s._id}`}
+                    href="/dashboard/profile#stores"
                     className="group flex items-center gap-3 px-6 py-3.5 transition-colors hover:bg-muted/40"
                   >
                     <div
@@ -288,7 +313,7 @@ export default function DashboardOverviewPage() {
 
             <ol className="space-y-2">
               {[
-                { label: 'Create a store', href: '/dashboard/stores', icon: Store, done: !!firstStore },
+                { label: 'Create a store', href: '/dashboard/profile?create=1', icon: Store, done: !!firstStore },
                 { label: 'Add products', href: '/dashboard/products', icon: Package, done: false },
                 { label: 'Build a landing page', href: '/dashboard/pages', icon: FileText, done: false },
               ].map((step, i) => (

@@ -13,6 +13,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { storesApi, type ProductBundle, type ProductBundleTier } from '@/lib/api';
+import { useScopedStoreId } from '@/lib/use-scoped-store';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -36,10 +37,12 @@ interface ProductLite {
 
 export default function OffersPage() {
   const searchParams = useSearchParams();
+  const { storeId, setStoreId: setStoreIdScoped } = useScopedStoreId(searchParams.get('storeId'));
   const [stores, setStores] = useState<StoreLite[]>([]);
-  const [storeId, setStoreId] = useState(searchParams.get('storeId') || '');
   const [products, setProducts] = useState<ProductLite[]>([]);
   const [loading, setLoading] = useState(true);
+
+  const setStoreId = (id: string) => setStoreIdScoped(id || null);
 
   useEffect(() => {
     storesApi.list()
@@ -49,6 +52,7 @@ export default function OffersPage() {
         if (!storeId && list.length > 0) setStoreId(list[0]._id);
       })
       .catch(() => setStores([]));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [storeId]);
 
   const loadProducts = useCallback(async () => {
@@ -88,7 +92,7 @@ export default function OffersPage() {
           {stores.length > 1 && (
             <select
               className="h-10 rounded-xl border border-border bg-background px-3 text-sm"
-              value={storeId}
+              value={storeId || ''}
               onChange={(e) => setStoreId(e.target.value)}
             >
               {stores.map((s) => (
@@ -122,7 +126,7 @@ export default function OffersPage() {
         ) : (
           <div className="space-y-2.5">
             {products.map((p) => (
-              <ProductBundleCard key={p._id} storeId={storeId} product={p} currency={currency} />
+              <ProductBundleCard key={p._id} storeId={storeId || ''} product={p} currency={currency} />
             ))}
           </div>
         )}

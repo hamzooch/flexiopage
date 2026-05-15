@@ -28,6 +28,7 @@ const RESERVED_TOP_LEVEL = new Set([
   'preview',
   'thanks',
   'store',     // keep legacy /store/* URLs working so old links / GSC index entries still resolve
+  'select-store', // post-login store picker — without this it gets rewritten to /store/select-store
   'd',         // private download tokens
   // Next.js + framework
   '_next',

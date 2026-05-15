@@ -1,5 +1,119 @@
 import { Store, IStore, StoreType } from '../models/Store.model';
+import { LandingPage } from '../models/LandingPage.model';
 import mongoose from 'mongoose';
+
+/**
+ * Standard info pages seeded into every new store. Each becomes a
+ * LandingPage(kind='info') the seller can edit freely; their slugs are
+ * referenced by the default footer columns below so the footer is
+ * functional out of the box.
+ *
+ * Body is plain markdown — kept intentionally short so the seller is
+ * nudged to customize it rather than ship boilerplate.
+ */
+const STANDARD_INFO_PAGES: Array<{
+  name: string;
+  slug: string;
+  body: string;
+}> = [
+  {
+    name: "Conditions d'utilisation",
+    slug: 'conditions-utilisation',
+    body: "# Conditions d'utilisation\n\nMerci de visiter notre boutique. En passant commande, tu acceptes les conditions suivantes.\n\n## 1. Commandes\nLes commandes sont confirmées par téléphone avant expédition.\n\n## 2. Paiement\nNous acceptons le paiement à la livraison (cash on delivery).\n\n## 3. Litiges\nTout litige est traité directement avec notre service client.\n\n*— À personnaliser dans ton tableau de bord.*",
+  },
+  {
+    name: "Politique d'échange et de retour",
+    slug: 'politique-retour',
+    body: "# Politique d'échange et de retour\n\nNous voulons que tu sois satisfait·e de ton achat.\n\n## Retours\nTu disposes de **7 jours** après livraison pour nous retourner ton produit s'il ne te convient pas, à condition qu'il soit en parfait état et dans son emballage d'origine.\n\n## Échanges\nLes échanges (taille, couleur) sont gratuits sous 14 jours.\n\n## Remboursements\nLes remboursements sont effectués sous 5 jours ouvrés après réception du retour.\n\n*— À personnaliser dans ton tableau de bord.*",
+  },
+  {
+    name: 'Politique de confidentialité',
+    slug: 'politique-confidentialite',
+    body: "# Politique de confidentialité\n\nNous respectons ta vie privée.\n\n## Données collectées\nNom, téléphone, adresse de livraison, email — uniquement pour traiter ta commande.\n\n## Utilisation\nTes données ne sont jamais revendues ni partagées avec des tiers, sauf le transporteur pour la livraison.\n\n## Cookies\nNous utilisons des cookies pour mesurer le trafic et améliorer l'expérience.\n\n*— À personnaliser dans ton tableau de bord.*",
+  },
+  {
+    name: 'Contactez-nous',
+    slug: 'contact',
+    body: "# Contactez-nous\n\nUne question, une commande à modifier ?\n\n- **Téléphone** : +XXX XX XX XX XX\n- **Email** : contact@example.com\n- **WhatsApp** : +XXX XX XX XX XX\n\nNous répondons sous 24 h en semaine.\n\n*— Mets ici tes vraies coordonnées.*",
+  },
+  {
+    name: 'Questions fréquemment posées',
+    slug: 'faq',
+    body: "# FAQ\n\n## Comment passer commande ?\nClique sur « Commander » sur la page produit, remplis le formulaire et nous t'appelons pour confirmer.\n\n## Combien de temps pour être livré ?\nEntre 2 et 5 jours selon ta ville.\n\n## Puis-je payer à la livraison ?\nOui, c'est notre mode de paiement par défaut.\n\n## Comment retourner un produit ?\nContacte-nous sous 7 jours, voir la [politique de retour](/politique-retour).\n\n*— Ajoute tes propres questions.*",
+  },
+  {
+    name: 'À propos de nous',
+    slug: 'a-propos',
+    body: "# À propos\n\nNous sommes une boutique passionnée par les produits de qualité.\n\nNotre mission : t'offrir le meilleur rapport qualité-prix avec un service client humain.\n\n*— Raconte ton histoire ici.*",
+  },
+  {
+    name: 'Méthodes de paiement',
+    slug: 'paiement',
+    body: "# Méthodes de paiement\n\n## Paiement à la livraison (COD)\nMode de paiement par défaut. Tu payes en espèces au livreur lorsqu'il dépose ton colis.\n\n## Paiement en ligne\nNous travaillons à proposer d'autres options bientôt.\n\n*— À personnaliser.*",
+  },
+  {
+    name: 'Livraison',
+    slug: 'livraison',
+    body: "# Livraison\n\n## Délais\nLivraison sous **2 à 5 jours** ouvrés selon ta ville.\n\n## Frais\nLes frais sont calculés au moment du checkout selon ta zone.\n\n## Suivi\nDès que ton colis est expédié, tu reçois un SMS avec le numéro de suivi.\n\n*— À personnaliser selon ton transporteur.*",
+  },
+];
+
+/**
+ * Footer columns linked to the seeded info pages. Edited by the seller in
+ * /dashboard/stores/[id]/sections (Footer editor). Each link's URL is a
+ * relative path that the storefront prepends with the store slug.
+ */
+function defaultFooterColumns() {
+  return [
+    {
+      title: 'Termes et politiques',
+      links: [
+        { label: "Conditions d'utilisation", url: '/p/conditions-utilisation' },
+        { label: "Politique d'échange et de retour", url: '/p/politique-retour' },
+        { label: 'Politique de confidentialité', url: '/p/politique-confidentialite' },
+      ],
+    },
+    {
+      title: 'Contact',
+      links: [
+        { label: 'Contactez-nous', url: '/p/contact' },
+        { label: 'Questions fréquemment posées', url: '/p/faq' },
+      ],
+    },
+    {
+      title: 'Information',
+      links: [
+        { label: 'À propos de nous', url: '/p/a-propos' },
+        { label: 'Méthodes de paiement', url: '/p/paiement' },
+        { label: 'Livraison', url: '/p/livraison' },
+      ],
+    },
+  ];
+}
+
+/** Create the 8 standard info pages for a freshly-created store. */
+async function seedInfoPages(storeId: mongoose.Types.ObjectId, language?: string, direction?: 'ltr' | 'rtl') {
+  const docs = STANDARD_INFO_PAGES.map((p) => ({
+    storeId,
+    name: p.name,
+    slug: p.slug,
+    kind: 'info' as const,
+    body: p.body,
+    sections: [],
+    isPublished: true,
+    publishedAt: new Date(),
+    language,
+    direction,
+  }));
+  // insertMany continues on dup-key (very unlikely but safe), and is one
+  // round-trip instead of 8 sequential creates.
+  try {
+    await LandingPage.insertMany(docs, { ordered: false });
+  } catch (err) {
+    // Non-fatal — a failed seed shouldn't block store creation.
+    console.error('[store.seedInfoPages] failed:', (err as Error).message);
+  }
+}
 
 export interface CreateStoreInput {
   name: string;
@@ -41,7 +155,8 @@ export async function createStore(input: CreateStoreInput): Promise<IStore> {
     subdomain = slug;
   }
   const lang = input.language?.trim().toLowerCase() || undefined;
-  return Store.create({
+  const dir = directionFor(lang);
+  const store = await Store.create({
     ownerId: input.ownerId,
     name: input.name.trim(),
     slug,
@@ -55,9 +170,16 @@ export async function createStore(input: CreateStoreInput): Promise<IStore> {
       maintenanceMode: false,
       language: lang,
       country: input.country?.trim().toUpperCase() || undefined,
-      direction: directionFor(lang),
+      direction: dir,
+      storefront: {
+        showFooter: true,
+        footer: { columns: defaultFooterColumns() },
+      },
     },
   });
+  // Best-effort seeding — failure here doesn't roll back the store creation.
+  await seedInfoPages(store._id, lang, dir);
+  return store;
 }
 
 export async function updateStore(

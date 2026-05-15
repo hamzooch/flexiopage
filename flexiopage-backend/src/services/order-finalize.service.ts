@@ -15,6 +15,7 @@ import { Product } from '../models/Product.model';
 import { Store } from '../models/Store.model';
 import { sendOrderPaidEmail } from './email.service';
 import { dispatchOrder } from './delivery.service';
+import { notifyOrderCreated } from './notification.service';
 import { pushOrderToSheets } from './sheets.service';
 
 const TOKEN_BYTES = 24; // 32 base64url chars after encoding
@@ -111,20 +112,26 @@ export async function finalizePaidOrder(orderId: string, providerData?: {
   if (providerData?.webhookData) order.paymentWebhookData = providerData.webhookData;
   await order.save();
 
-  // Auto-dispatch to delivery provider (mogadelivery) when:
-  //   - order has at least one physical item
-  //   - store has integrations.delivery.enabled with autoDispatch=true
-  // Best-effort, never blocks the email.
+  // Auto-dispatch to delivery provider when the order has at least one
+  // physical item AND a carrier (integrations.delivery) OR MogaDelivery 3PL
+  // (integrations.logistics) is enabled. Best-effort, never blocks the email.
   if (hasPhysical) {
     try {
       const fullStore = await Store.findById(order.storeId);
-      if (fullStore?.integrations?.delivery?.enabled && fullStore.integrations.delivery.autoDispatch !== false) {
+      const carrierAuto = !!(fullStore?.integrations?.delivery?.enabled
+        && fullStore.integrations.delivery.autoDispatch !== false);
+      const logisticsAuto = !!(fullStore?.integrations?.logistics?.enabled
+        && fullStore.integrations.logistics.provider === 'mogadelivery'
+        && (fullStore.integrations.logistics.autoForward ?? true));
+      if (fullStore && (carrierAuto || logisticsAuto)) {
         const dispatch = await dispatchOrder({ order, store: fullStore });
         if (dispatch.ok) {
-          console.log(`[order-finalize] dispatched ${order.orderNumber} to ${fullStore.integrations.delivery.provider} (${dispatch.result?.externalId})`);
+          console.log(`[order-finalize] dispatched ${order.orderNumber} → ${dispatch.result?.externalId}`);
         } else {
           console.warn(`[order-finalize] dispatch skipped for ${order.orderNumber}: ${dispatch.error}`);
         }
+      } else if (fullStore) {
+        console.warn(`[order-finalize] no delivery/logistics integration enabled for ${order.orderNumber}`);
       }
     } catch (err) {
       console.error('[order-finalize] dispatch error (non-fatal):', (err as Error).message);
@@ -139,6 +146,24 @@ export async function finalizePaidOrder(orderId: string, providerData?: {
     }
   } catch (err) {
     console.error('[order-finalize] sheets push failed (non-fatal):', (err as Error).message);
+  }
+
+  // In-app bell notification (best-effort).
+  try {
+    const storeForNotif = await Store.findById(order.storeId).select('ownerId').lean();
+    if (storeForNotif?.ownerId) {
+      await notifyOrderCreated({
+        userId: storeForNotif.ownerId,
+        storeId: order.storeId,
+        orderId: order._id.toString(),
+        orderNumber: order.orderNumber,
+        total: order.total,
+        currency: order.currency,
+        customerName: order.customerName,
+      });
+    }
+  } catch (err) {
+    console.error('[order-finalize] notification failed (non-fatal):', (err as Error).message);
   }
 
   // Send confirmation email (best-effort — never block the webhook on email)

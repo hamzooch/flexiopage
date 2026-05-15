@@ -103,6 +103,16 @@ export interface IStore extends Document {
           address?: string;
         };
         links?: Array<{ label: string; url: string }>;
+        /**
+         * Grouped link columns rendered in the storefront footer — replaces
+         * the flat `links` array when set. Each column is a titled group of
+         * links. Seeded with 3 standard columns at store creation (Termes,
+         * Contact, Information) and fully editable by the seller.
+         */
+        columns?: Array<{
+          title: string;
+          links: Array<{ label: string; url: string }>;
+        }>;
       };
       /**
        * Carousel/slider displayed right under the navbar.
@@ -159,7 +169,7 @@ export interface IStore extends Document {
      * (last-mile carrier): a seller can use a 3PL that itself selects a carrier.
      */
     logistics?: {
-      provider: 'shipbob' | 'cubyn' | 'amazon-mcf' | 'sendcloud' | 'easyship' | 'manual' | 'other';
+      provider: 'mogadelivery' | 'shipbob' | 'cubyn' | 'amazon-mcf' | 'sendcloud' | 'easyship' | 'manual' | 'other';
       enabled: boolean;
       apiKey?: string;
       baseUrl?: string;
@@ -293,6 +303,17 @@ const StoreSchema = new Schema<IStore>(
               url: { type: String, required: true },
             },
           ],
+          columns: [
+            {
+              title: { type: String, required: true },
+              links: [
+                {
+                  label: { type: String, required: true },
+                  url: { type: String, required: true },
+                },
+              ],
+            },
+          ],
         },
         slider: {
           enabled: { type: Boolean, default: false },
@@ -333,7 +354,7 @@ const StoreSchema = new Schema<IStore>(
         autoDispatch: { type: Boolean, default: true },
       },
       logistics: {
-        provider: { type: String, enum: ['shipbob', 'cubyn', 'amazon-mcf', 'sendcloud', 'easyship', 'manual', 'other'] },
+        provider: { type: String, enum: ['mogadelivery', 'shipbob', 'cubyn', 'amazon-mcf', 'sendcloud', 'easyship', 'manual', 'other'] },
         enabled: { type: Boolean, default: false },
         apiKey: { type: String },
         baseUrl: { type: String },

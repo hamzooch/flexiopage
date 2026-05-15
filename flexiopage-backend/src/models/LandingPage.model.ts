@@ -47,10 +47,22 @@ export interface IPageSection {
   props: Record<string, unknown>;
 }
 
+/**
+ * `landing` — marketing landing page composed of visual sections (hero,
+ *   features, products, cod-form, …). Edited via the visual section builder.
+ * `info` — flat informational page (Conditions, FAQ, About). Body is a
+ *   single markdown string edited via a textarea. Seeded automatically on
+ *   store creation, referenced from the footer columns.
+ */
+export type PageKind = 'landing' | 'info';
+
 export interface ILandingPage extends Document {
   storeId: mongoose.Types.ObjectId;
   name: string;
   slug: string;
+  kind: PageKind;
+  /** Markdown body — only used when kind === 'info'. */
+  body?: string;
   sections: IPageSection[];
   seoTitle?: string;
   seoDescription?: string;
@@ -80,6 +92,8 @@ const LandingPageSchema = new Schema<ILandingPage>(
     storeId: { type: Schema.Types.ObjectId, ref: 'Store', required: true },
     name: { type: String, required: true, trim: true },
     slug: { type: String, required: true, trim: true },
+    kind: { type: String, enum: ['landing', 'info'], default: 'landing', index: true },
+    body: { type: String },
     sections: [PageSectionSchema],
     seoTitle: { type: String },
     seoDescription: { type: String },

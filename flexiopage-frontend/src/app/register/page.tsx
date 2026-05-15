@@ -29,7 +29,9 @@ export default function RegisterPage() {
       const { data } = await authApi.register({ email, password, name });
       const d = data as { user: { _id: string; email: string; name: string }; token: string };
       setAuth(d.user, d.token);
-      router.push('/dashboard');
+      // Brand-new accounts have zero stores — /select-store nudges them to
+      // /dashboard/profile?create=1 where the wizard lives.
+      router.push('/select-store');
       router.refresh();
     } catch (err: unknown) {
       const msg = err && typeof err === 'object' && 'response' in err

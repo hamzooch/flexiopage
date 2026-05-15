@@ -15,6 +15,11 @@ import {
 } from 'lucide-react';
 import type { ThemeTokens } from '@/data/store-themes';
 
+export interface FooterColumn {
+  title: string;
+  links: Array<{ label: string; url: string }>;
+}
+
 export interface FooterConfig {
   social?: {
     instagram?: string;
@@ -30,6 +35,8 @@ export interface FooterConfig {
     address?: string;
   };
   links?: Array<{ label: string; url: string }>;
+  /** Grouped link columns — when present, replaces the flat `links` list. */
+  columns?: FooterColumn[];
 }
 
 interface Props {
@@ -72,13 +79,28 @@ function resolveSocialUrl(key: typeof SOCIAL_DEFS[number]['key'], value: string)
   }
 }
 
+/** Make an absolute path relative to the store root (so seller-typed
+ *  `/p/contact` becomes `/<slug>/p/contact`). External URLs pass through. */
+function storeLink(storeSlug: string, url: string): string {
+  if (/^https?:\/\//i.test(url)) return url;
+  const trimmed = url.trim();
+  if (!trimmed) return `/${storeSlug}`;
+  return `/${storeSlug}${trimmed.startsWith('/') ? trimmed : `/${trimmed}`}`;
+}
+
 export function StoreFooter({ storeName, storeSlug, footerNote, config, theme }: Props) {
   const social = config?.social || {};
   const contact = config?.contact || {};
-  const links = (config?.links || []).filter((l) => l.label?.trim() && l.url?.trim());
+  // Grouped columns take precedence over the flat `links` array — they
+  // are what we seed on store creation and what the seller edits in the
+  // dashboard.
+  const columns = (config?.columns || [])
+    .map((c) => ({ ...c, links: (c.links || []).filter((l) => l.label?.trim() && l.url?.trim()) }))
+    .filter((c) => c.title?.trim() && c.links.length > 0);
+  const legacyLinks = (config?.links || []).filter((l) => l.label?.trim() && l.url?.trim());
   const hasContact = !!(contact.email || contact.phone || contact.address);
   const hasSocial = SOCIAL_DEFS.some((s) => social[s.key as keyof typeof social]);
-  const hasExtras = links.length > 0 || hasContact || hasSocial;
+  const hasExtras = columns.length > 0 || legacyLinks.length > 0 || hasContact || hasSocial;
 
   return (
     <footer
@@ -92,9 +114,15 @@ export function StoreFooter({ storeName, storeSlug, footerNote, config, theme }:
     >
       <div className="mx-auto max-w-6xl px-4 py-8 sm:px-6 sm:py-12">
         {hasExtras && (
-          <div className="grid gap-6 border-b pb-8 sm:grid-cols-2 sm:gap-10 sm:pb-10 lg:grid-cols-4" style={{ borderColor: theme.border }}>
-            {/* Brand block */}
-            <div className="lg:col-span-2">
+          <div
+            className="grid gap-6 border-b pb-8 sm:gap-10 sm:pb-10"
+            style={{
+              borderColor: theme.border,
+              gridTemplateColumns: `repeat(auto-fit, minmax(180px, 1fr))`,
+            }}
+          >
+            {/* Brand block — wider on lg screens */}
+            <div className="sm:col-span-2">
               <Link
                 href={`/${storeSlug}`}
                 className="text-lg font-bold tracking-tight"
@@ -178,8 +206,33 @@ export function StoreFooter({ storeName, storeSlug, footerNote, config, theme }:
               </div>
             )}
 
-            {/* Extra links */}
-            {links.length > 0 && (
+            {/* Grouped columns (Termes et politiques, Contact, Information…) */}
+            {columns.map((col) => (
+              <div key={col.title}>
+                <h4
+                  className="mb-3 text-sm font-semibold uppercase tracking-wider"
+                  style={{ color: theme.foreground, fontFamily: theme.fontHeading }}
+                >
+                  {col.title}
+                </h4>
+                <ul className="space-y-2 text-sm">
+                  {col.links.map((l, i) => (
+                    <li key={i}>
+                      <Link
+                        href={storeLink(storeSlug, l.url)}
+                        className="hover:underline"
+                        style={{ color: theme.muted }}
+                      >
+                        {l.label}
+                      </Link>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ))}
+
+            {/* Legacy flat links — only shown when no grouped columns are set */}
+            {columns.length === 0 && legacyLinks.length > 0 && (
               <div>
                 <h4
                   className="mb-3 text-sm font-semibold uppercase tracking-wider"
@@ -188,7 +241,7 @@ export function StoreFooter({ storeName, storeSlug, footerNote, config, theme }:
                   Liens
                 </h4>
                 <ul className="space-y-2 text-sm">
-                  {links.map((l, i) => (
+                  {legacyLinks.map((l, i) => (
                     <li key={i}>
                       <a
                         href={l.url.startsWith('http') || l.url.startsWith('/') ? l.url : `/${storeSlug}/${l.url.replace(/^\/+/, '')}`}

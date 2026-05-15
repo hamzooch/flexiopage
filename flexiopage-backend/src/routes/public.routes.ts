@@ -13,6 +13,7 @@ import { Store } from '../models/Store.model';
 import { LandingPage } from '../models/LandingPage.model';
 import { initOrderPayment, isMockMode, type Channel } from '../services/mobile-money.service';
 import { dispatchOrder } from '../services/delivery.service';
+import { notifyOrderCreated } from '../services/notification.service';
 import { pushOrderToSheets } from '../services/sheets.service';
 import { resolveBundlePricing } from '../lib/bundle';
 import { recordEvent } from '../services/tracking.service';
@@ -555,8 +556,17 @@ router.post('/checkout/cod', async (req: Request, res: Response): Promise<void> 
   // ── Best-effort dispatch to MogaDelivery ─────────────────────────
   // We do NOT await finalizePaidOrder (that path is for `paid` orders);
   // COD orders dispatch immediately because the courier collects cash.
+  // Trigger conditions: either a configured last-mile carrier
+  // (`integrations.delivery`) OR a MogaDelivery 3PL fallback under
+  // `integrations.logistics`. `dispatchOrder` handles the synth-config for
+  // the logistics path internally.
+  const carrierAuto = !!(store.integrations?.delivery?.enabled
+    && store.integrations.delivery.autoDispatch !== false);
+  const logisticsAuto = !!(store.integrations?.logistics?.enabled
+    && store.integrations.logistics.provider === 'mogadelivery'
+    && (store.integrations.logistics.autoForward ?? true));
   let dispatchInfo: { ok: boolean; externalId?: string; error?: string } = { ok: false };
-  if (store.integrations?.delivery?.enabled && store.integrations.delivery.autoDispatch !== false) {
+  if (carrierAuto || logisticsAuto) {
     try {
       const result = await dispatchOrder({ order, store });
       dispatchInfo = result.ok
@@ -564,10 +574,31 @@ router.post('/checkout/cod', async (req: Request, res: Response): Promise<void> 
         : { ok: false, error: result.error };
       if (!result.ok) {
         console.warn(`[checkout cod] dispatch skipped for ${order.orderNumber}: ${result.error}`);
+      } else {
+        console.log(`[checkout cod] dispatched ${order.orderNumber} → ${result.result?.externalId}`);
       }
     } catch (err) {
       dispatchInfo = { ok: false, error: (err as Error).message };
       console.error('[checkout cod] dispatch error (non-fatal):', (err as Error).message);
+    }
+  } else {
+    console.warn(`[checkout cod] no delivery/logistics integration enabled for ${order.orderNumber} (store ${store._id})`);
+  }
+
+  // Best-effort in-app notification — never blocks the order response.
+  if (store.ownerId) {
+    try {
+      await notifyOrderCreated({
+        userId: store.ownerId,
+        storeId: store._id,
+        orderId: order._id.toString(),
+        orderNumber: order.orderNumber,
+        total: order.total,
+        currency: order.currency,
+        customerName: order.customerName,
+      });
+    } catch (err) {
+      console.error('[notification] order.created failed (non-fatal):', (err as Error).message);
     }
   }
 

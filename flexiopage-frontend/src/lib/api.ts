@@ -664,3 +664,38 @@ export interface GenerationJob {
 export const jobsApi = {
   get: (jobId: string) => api.get<{ job: GenerationJob }>(`/jobs/${jobId}`),
 };
+
+// ─── Notifications ─────────────────────────────────────────────────────
+export type NotificationType =
+  | 'order.created'
+  | 'order.status_changed'
+  | 'team.member_added'
+  | 'team.member_removed';
+
+export interface NotificationDoc {
+  _id: string;
+  userId: string;
+  storeId?: string;
+  type: NotificationType;
+  title: string;
+  body: string;
+  link?: string;
+  read: boolean;
+  readAt?: string;
+  meta?: Record<string, unknown>;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export const notificationsApi = {
+  list: (opts?: { unreadOnly?: boolean; limit?: number }) =>
+    api.get<{ notifications: NotificationDoc[] }>('/notifications', {
+      params: {
+        unreadOnly: opts?.unreadOnly ? 1 : undefined,
+        limit: opts?.limit,
+      },
+    }),
+  unreadCount: () => api.get<{ count: number }>('/notifications/unread-count'),
+  markRead: (id: string) => api.post<{ notification: NotificationDoc }>(`/notifications/${id}/read`),
+  markAllRead: () => api.post<{ updated: number }>('/notifications/read-all'),
+};

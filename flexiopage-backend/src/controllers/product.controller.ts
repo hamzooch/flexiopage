@@ -70,6 +70,7 @@ export async function updateProduct(req: AuthRequest, res: Response): Promise<vo
     compareAtPrice: body.compareAtPrice,
     cost: body.cost,
     sku: body.sku,
+    barcode: body.barcode,
     stock: body.stock,
     trackInventory: body.trackInventory,
     allowBackorder: body.allowBackorder,
