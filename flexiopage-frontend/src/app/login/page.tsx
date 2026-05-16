@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { Suspense, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { ArrowRight, Eye, EyeOff, Lock, Mail, ShieldCheck, Sparkles, Truck } from 'lucide-react';
@@ -18,7 +18,23 @@ function safeNext(raw: string | null): string | null {
   return raw;
 }
 
+// Next.js 14 bails out of static generation for any page that calls
+// useSearchParams() unless the call is inside a Suspense boundary. Wrapping
+// the form in Suspense keeps /login statically prerenderable while letting
+// the inner component read ?next= on the client.
 export default function LoginPage() {
+  return (
+    <Suspense fallback={<LoginFallback />}>
+      <LoginInner />
+    </Suspense>
+  );
+}
+
+function LoginFallback() {
+  return <div className="min-h-screen bg-background" />;
+}
+
+function LoginInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const setAuth = useAuthStore((s) => s.setAuth);
