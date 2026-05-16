@@ -34,6 +34,29 @@ api.interceptors.response.use(
   }
 );
 
+/**
+ * Extract a user-readable error message from anything an axios call might
+ * reject with: backend `{ error: "..." }` body, network error, or plain
+ * Error. Falls back to the provided default so every caller gets a usable
+ * string instead of "[object Object]".
+ */
+export function extractApiError(err: unknown, fallback: string): string {
+  if (err && typeof err === 'object') {
+    const ax = err as {
+      response?: { data?: { error?: string; message?: string } };
+      message?: string;
+      code?: string;
+    };
+    const apiMsg = ax.response?.data?.error || ax.response?.data?.message;
+    if (apiMsg) return apiMsg;
+    // Network-level error (server down, CORS, timeout) — axios sets a code.
+    if (ax.code === 'ERR_NETWORK') return 'Connexion impossible au serveur. Vérifie ta connexion.';
+    if (ax.code === 'ECONNABORTED') return 'Le serveur a mis trop de temps à répondre. Réessaie.';
+    if (ax.message) return ax.message;
+  }
+  return fallback;
+}
+
 // Auth
 export const authApi = {
   register: (data: { email: string; password: string; name: string }) =>

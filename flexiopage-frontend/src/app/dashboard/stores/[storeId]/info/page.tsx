@@ -5,7 +5,7 @@ import { useParams } from 'next/navigation';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { storesApi } from '@/lib/api';
+import { storesApi, extractApiError } from '@/lib/api';
 import { StoreSubPageShell, type SaveStatus } from '@/components/dashboard/store-sub-page';
 import {
   SETTINGS_COUNTRIES,
@@ -59,24 +59,27 @@ export default function StoreInfoPage() {
         country: country || undefined,
         direction: directionOf(language),
       };
-      await storesApi.update(storeId, {
+      const res = await storesApi.update(storeId, {
         name,
         description: description || undefined,
         customDomain: customDomain || undefined,
         settings: newSettings,
       });
-      setStore({ ...store, name, description, customDomain, settings: newSettings });
+      const updated = (res.data as { store: StoreType }).store;
+      setStore(updated);
+      setName(updated.name);
+      setDescription(updated.description || '');
+      setCustomDomain(updated.customDomain || '');
+      setCountry(updated.settings?.country || '');
+      setLanguage(updated.settings?.language || '');
+      setCurrency(updated.settings?.currency || 'USD');
       setStatus('saved');
       // Drop the success pill back to idle after a short moment so it doesn't
       // linger forever — long enough to be read, short enough to feel snappy.
       setTimeout(() => setStatus('idle'), 2400);
     } catch (err: unknown) {
       console.error('[store/info] save failed', err);
-      const msg =
-        err && typeof err === 'object' && 'response' in err
-          ? (err as { response?: { data?: { error?: string } } }).response?.data?.error
-          : (err as Error)?.message;
-      setErrorMessage(msg || "L'enregistrement a échoué. Réessaie.");
+      setErrorMessage(extractApiError(err, "L'enregistrement a échoué. Réessaie."));
       setStatus('error');
     }
   }

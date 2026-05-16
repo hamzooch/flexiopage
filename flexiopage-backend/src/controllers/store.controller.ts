@@ -8,6 +8,22 @@ import { verifyAndSaveDomain, getDomainTarget, checkDomain } from '../services/d
 import { testSheetsWebhook } from '../services/sheets.service';
 import { effectiveOwnerId, isTeamMember } from '../lib/owner';
 
+// sanitizeMiddleware escapes string values recursively (e.g. "/" → "&#x2F;",
+// "&" → "&amp;"). That's fine for free-text fields but breaks config blobs
+// like `settings`/`theme`/`integrations`, which carry URLs and human-readable
+// titles. We deep-unescape them here before persisting so heroImage URLs,
+// announcement bar text, hero titles, etc. survive a round-trip intact.
+function deepUnescape(value: unknown): unknown {
+  if (typeof value === 'string') return validator.unescape(value);
+  if (Array.isArray(value)) return value.map(deepUnescape);
+  if (value && typeof value === 'object' && !(value instanceof Date)) {
+    const out: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(value as Record<string, unknown>)) out[k] = deepUnescape(v);
+    return out;
+  }
+  return value;
+}
+
 export async function createStore(req: AuthRequest, res: Response): Promise<void> {
   if (!req.user) {
     res.status(401).json({ error: 'Not authenticated' });
@@ -44,7 +60,7 @@ export async function createStore(req: AuthRequest, res: Response): Promise<void
       slug: slug?.trim(),
       storeType,
       description: description?.trim(),
-      theme: theme && typeof theme === 'object' ? (theme as Record<string, unknown>) : undefined,
+      theme: theme && typeof theme === 'object' ? (deepUnescape(theme) as Record<string, unknown>) : undefined,
       currency: typeof currency === 'string' ? currency : undefined,
       language: typeof language === 'string' ? language : undefined,
       country: typeof country === 'string' ? country : undefined,
@@ -84,9 +100,9 @@ export async function updateStore(req: AuthRequest, res: Response): Promise<void
   if (typeof logo === 'string') updates.logo = validator.unescape(logo);
   if (typeof favicon === 'string') updates.favicon = validator.unescape(favicon);
   if (typeof customDomain === 'string') updates.customDomain = customDomain || undefined;
-  if (theme && typeof theme === 'object') updates.theme = theme;
-  if (settings && typeof settings === 'object') updates.settings = settings;
-  if (integrations && typeof integrations === 'object') updates.integrations = integrations;
+  if (theme && typeof theme === 'object') updates.theme = deepUnescape(theme);
+  if (settings && typeof settings === 'object') updates.settings = deepUnescape(settings);
+  if (integrations && typeof integrations === 'object') updates.integrations = deepUnescape(integrations);
   if (typeof isPublished === 'boolean') updates.isPublished = isPublished;
   const updated = await storeService.updateStore(store._id.toString(), updates as Parameters<typeof storeService.updateStore>[1]);
   res.json({ store: updated });

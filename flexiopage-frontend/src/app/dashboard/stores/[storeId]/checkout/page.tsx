@@ -5,7 +5,7 @@ import { useParams, useRouter } from 'next/navigation';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { storesApi } from '@/lib/api';
+import { storesApi, extractApiError } from '@/lib/api';
 import { StoreSubPageShell, type SaveStatus } from '@/components/dashboard/store-sub-page';
 import { FieldToggle, type CodFormSettings, type StoreType } from '@/components/dashboard/store-editor';
 
@@ -64,17 +64,27 @@ export default function StoreCheckoutPage() {
     setErrorMessage('');
     try {
       const newSettings = { ...(store.settings || {}), codForm };
-      await storesApi.update(storeId, { settings: newSettings });
-      setStore({ ...store, settings: newSettings });
+      const res = await storesApi.update(storeId, { settings: newSettings });
+      const updated = (res.data as { store: StoreType }).store;
+      setStore(updated);
+      if (updated.settings?.codForm) {
+        setCodForm({
+          showEmail: false,
+          requireEmail: false,
+          showAddressLine2: false,
+          showCity: false,
+          showPostalCode: false,
+          showState: false,
+          showNotes: false,
+          showQuantity: true,
+          ...updated.settings.codForm,
+        });
+      }
       setStatus('saved');
       setTimeout(() => setStatus('idle'), 2400);
     } catch (err: unknown) {
       console.error('[store/checkout] save failed', err);
-      const msg =
-        err && typeof err === 'object' && 'response' in err
-          ? (err as { response?: { data?: { error?: string } } }).response?.data?.error
-          : (err as Error)?.message;
-      setErrorMessage(msg || "L'enregistrement a échoué. Réessaie.");
+      setErrorMessage(extractApiError(err, "L'enregistrement a échoué. Réessaie."));
       setStatus('error');
     }
   }

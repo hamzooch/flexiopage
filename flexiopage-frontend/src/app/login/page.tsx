@@ -1,22 +1,53 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { ArrowRight, Eye, EyeOff, Lock, Mail, ShieldCheck, Sparkles, Truck } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { authApi } from '@/lib/api';
+import { authApi, extractApiError } from '@/lib/api';
 import { useAuthStore } from '@/stores/auth-store';
 import { BrandLogo } from '@/components/brand-logo';
 
+// Only honor relative paths from ?next=… — never an absolute URL, which
+// would let an attacker craft https://login?next=//evil.com to redirect
+// the user off-site after login.
+function safeNext(raw: string | null): string | null {
+  if (!raw) return null;
+  if (!raw.startsWith('/') || raw.startsWith('//')) return null;
+  return raw;
+}
+
 export default function LoginPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const setAuth = useAuthStore((s) => s.setAuth);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+
+  const next = safeNext(searchParams.get('next'));
+
+  // If the user lands on /login while already authenticated (e.g. they
+  // refreshed /login after logging in elsewhere), bounce them straight to
+  // their destination instead of showing the form.
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const apply = () => {
+      const { token } = useAuthStore.getState();
+      if (token) router.replace(next || '/select-store');
+    };
+    if (useAuthStore.persist?.hasHydrated?.()) {
+      apply();
+      return;
+    }
+    const unsub = useAuthStore.persist?.onFinishHydration?.(apply);
+    return () => {
+      if (typeof unsub === 'function') unsub();
+    };
+  }, [next, router]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -26,16 +57,13 @@ export default function LoginPage() {
       const { data } = await authApi.login({ email, password });
       const d = data as { user: { _id: string; email: string; name: string }; token: string };
       setAuth(d.user, d.token);
-      // After login, send the seller to the store picker so they choose
-      // which store the dashboard should scope to. /select-store handles
-      // the empty-stores case by linking to the profile creation wizard.
-      router.push('/select-store');
+      // After login, honor ?next= if present (we came from a protected
+      // page) — otherwise send the seller to the store picker so they
+      // choose which store the dashboard should scope to.
+      router.push(next || '/select-store');
       router.refresh();
     } catch (err: unknown) {
-      const msg = err && typeof err === 'object' && 'response' in err
-        ? (err as { response?: { data?: { error?: string } } }).response?.data?.error
-        : 'Connexion échouée';
-      setError(msg || 'Connexion échouée');
+      setError(extractApiError(err, 'Connexion échouée'));
     } finally {
       setLoading(false);
     }

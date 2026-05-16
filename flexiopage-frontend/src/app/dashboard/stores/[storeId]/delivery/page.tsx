@@ -5,7 +5,7 @@ import { useParams, useRouter } from 'next/navigation';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { storesApi } from '@/lib/api';
+import { storesApi, extractApiError } from '@/lib/api';
 import { StoreSubPageShell, type SaveStatus } from '@/components/dashboard/store-sub-page';
 import type { DeliveryIntegration, StoreType } from '@/components/dashboard/store-editor';
 
@@ -56,17 +56,25 @@ export default function StoreDeliveryPage() {
     setErrorMessage('');
     try {
       const newIntegrations = { ...(store.integrations || {}), delivery: { ...delivery } };
-      await storesApi.update(storeId, { integrations: newIntegrations });
-      setStore({ ...store, integrations: newIntegrations });
+      const res = await storesApi.update(storeId, { integrations: newIntegrations });
+      const updated = (res.data as { store: StoreType }).store;
+      setStore(updated);
+      if (updated.integrations?.delivery) {
+        setDelivery({
+          provider: updated.integrations.delivery.provider || 'mogadelivery',
+          enabled: !!updated.integrations.delivery.enabled,
+          apiKey: updated.integrations.delivery.apiKey || '',
+          baseUrl: updated.integrations.delivery.baseUrl || '',
+          webhookSecret: updated.integrations.delivery.webhookSecret || '',
+          autoDispatch: updated.integrations.delivery.autoDispatch !== false,
+          pickupAddress: updated.integrations.delivery.pickupAddress || {},
+        });
+      }
       setStatus('saved');
       setTimeout(() => setStatus('idle'), 2400);
     } catch (err: unknown) {
       console.error('[store/delivery] save failed', err);
-      const msg =
-        err && typeof err === 'object' && 'response' in err
-          ? (err as { response?: { data?: { error?: string } } }).response?.data?.error
-          : (err as Error)?.message;
-      setErrorMessage(msg || "L'enregistrement a échoué. Réessaie.");
+      setErrorMessage(extractApiError(err, "L'enregistrement a échoué. Réessaie."));
       setStatus('error');
     }
   }

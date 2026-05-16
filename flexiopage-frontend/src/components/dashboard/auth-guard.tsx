@@ -11,41 +11,84 @@ import { useStoreStore } from '@/stores/store-store';
  *   2. /select-store if no `currentStoreId` is picked yet — the dashboard
  *      is scoped to a single store, so we force the picker first.
  *
- * Zustand persist with localStorage rehydrates synchronously during module
- * init, so by the time this effect fires the state is already correct. We
- * read via `getState()` to avoid React's subscription one-frame lag that
- * used to bounce sellers back to /login on refresh.
+ * We MUST wait for zustand persist to finish rehydrating from localStorage
+ * before deciding — otherwise a hard refresh sees `token=null` and bounces
+ * the seller to /login. We listen on both stores' `onFinishHydration` and
+ * fall back to a short timeout in case hydration already fired.
  */
 
 const STORELESS_ALLOWED = new Set(['/dashboard/profile']);
 
+function awaitHydration(
+  store: { persist?: { hasHydrated?: () => boolean; onFinishHydration?: (cb: () => void) => () => void } },
+  onDone: () => void,
+): () => void {
+  if (!store.persist) {
+    onDone();
+    return () => {};
+  }
+  if (store.persist.hasHydrated?.()) {
+    onDone();
+    return () => {};
+  }
+  const unsub = store.persist.onFinishHydration?.(onDone);
+  return () => {
+    if (typeof unsub === 'function') unsub();
+  };
+}
+
 export function AuthGuard({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
-  const [ready, setReady] = useState(false);
+  const [hydrated, setHydrated] = useState(false);
+  const [redirecting, setRedirecting] = useState(false);
 
+  // Wait for BOTH persisted stores to hydrate before reading their state.
   useEffect(() => {
     if (typeof window === 'undefined') return;
-    // localStorage reads are synchronous and zustand persist completes its
-    // rehydration during module init — well before this effect runs. A
-    // microtask (Promise.resolve()) is enough breathing room to let any
-    // queued state updates flush before we read.
-    Promise.resolve().then(() => {
-      const { token } = useAuthStore.getState();
-      const { currentStoreId } = useStoreStore.getState();
-      if (!token) {
-        router.replace('/login');
-        return;
-      }
-      if (!currentStoreId && !STORELESS_ALLOWED.has(pathname)) {
-        router.replace('/select-store');
-        return;
-      }
-      setReady(true);
+    let authDone = false;
+    let storeDone = false;
+    const check = () => {
+      if (authDone && storeDone) setHydrated(true);
+    };
+    const unsubAuth = awaitHydration(useAuthStore, () => {
+      authDone = true;
+      check();
     });
-  }, [pathname, router]);
+    const unsubStore = awaitHydration(useStoreStore, () => {
+      storeDone = true;
+      check();
+    });
+    // Safety net: if hydration somehow never fires (e.g. storage error),
+    // fall back to whatever state is in memory after 300ms so we don't hang
+    // on a blank Loading screen forever.
+    const fallback = setTimeout(() => setHydrated(true), 300);
+    return () => {
+      unsubAuth();
+      unsubStore();
+      clearTimeout(fallback);
+    };
+  }, []);
 
-  if (!ready) {
+  // Redirect logic runs only once hydration is settled.
+  useEffect(() => {
+    if (!hydrated) return;
+    const { token } = useAuthStore.getState();
+    const { currentStoreId } = useStoreStore.getState();
+    if (!token) {
+      setRedirecting(true);
+      router.replace(`/login?next=${encodeURIComponent(pathname)}`);
+      return;
+    }
+    if (!currentStoreId && !STORELESS_ALLOWED.has(pathname)) {
+      setRedirecting(true);
+      router.replace('/select-store');
+      return;
+    }
+    setRedirecting(false);
+  }, [hydrated, pathname, router]);
+
+  if (!hydrated || redirecting) {
     return (
       <div className="flex h-screen items-center justify-center">
         <p className="text-muted-foreground">Loading...</p>

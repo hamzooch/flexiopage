@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { storesApi } from '@/lib/api';
+import { storesApi, extractApiError } from '@/lib/api';
 import {
   STORE_THEME_TEMPLATES,
   themesForStoreType,
@@ -64,26 +64,26 @@ export default function StoreAppearancePage() {
     setStatus('saving');
     setErrorMessage('');
     try {
-      await storesApi.update(storeId, {
+      const res = await storesApi.update(storeId, {
         logo: logo ?? '',
         favicon: favicon ?? '',
         theme: themeTokens ? (themeTokens as unknown as Record<string, unknown>) : undefined,
       });
-      setStore({
-        ...store,
-        logo,
-        favicon,
-        theme: themeTokens ? (themeTokens as unknown as Record<string, unknown>) : undefined,
-      });
+      // Re-sync from the server response so the next save builds on top of
+      // what's actually in the DB (e.g. unescaped URLs).
+      const updated = (res.data as { store: StoreType }).store;
+      setStore(updated);
+      setLogo(updated.logo || undefined);
+      setFavicon(updated.favicon || undefined);
+      const savedTheme = updated.theme as Partial<ThemeTokens> | undefined;
+      if (savedTheme?.primary && savedTheme?.background) {
+        setThemeTokens(withLayoutFallback(savedTheme as ThemeTokens));
+      }
       setStatus('saved');
       setTimeout(() => setStatus('idle'), 2400);
     } catch (err: unknown) {
       console.error('[store/appearance] save failed', err);
-      const msg =
-        err && typeof err === 'object' && 'response' in err
-          ? (err as { response?: { data?: { error?: string } } }).response?.data?.error
-          : (err as Error)?.message;
-      setErrorMessage(msg || "L'enregistrement a échoué. Réessaie.");
+      setErrorMessage(extractApiError(err, "L'enregistrement a échoué. Réessaie."));
       setStatus('error');
     }
   }
