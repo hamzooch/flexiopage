@@ -179,15 +179,23 @@ export default function DashboardAnalyticsPage() {
         </Card>
       ) : (
         <>
-          {/* KPI grid — 2 cols mobile (8 cards stack as 4 rows of 2), 4 cols desktop. */}
+          {/* KPI grid — 2 cols mobile, 4 cols desktop. */}
           <div className="grid grid-cols-2 gap-2.5 sm:gap-3 lg:grid-cols-4">
             <KpiCard
-              label="Revenu"
+              label="Ventes totales"
+              value={formatCurrency(data.kpis.sales.value, currency)}
+              delta={data.kpis.sales.deltaPct}
+              icon={DollarSign}
+              accent="pink"
+              hint="toutes commandes confondues"
+            />
+            <KpiCard
+              label="Revenu encaissé"
               value={formatCurrency(data.kpis.revenue.value, currency)}
               delta={data.kpis.revenue.deltaPct}
               icon={DollarSign}
-              accent="pink"
-              hint="vs période précédente"
+              accent="emerald"
+              hint="commandes payées uniquement"
             />
             <KpiCard
               label="Commandes payées"
@@ -308,8 +316,9 @@ export default function DashboardAnalyticsPage() {
 
           {/* Totals footer */}
           <Card className="bg-gradient-to-br from-pink-500/5 via-violet-500/5 to-transparent">
-            <CardContent className="grid grid-cols-1 gap-4 py-5 sm:grid-cols-3 sm:py-6">
-              <FooterStat label="Revenu total (depuis le début)" value={formatCurrency(data.totals.totalRevenue, currency)} />
+            <CardContent className="grid grid-cols-1 gap-4 py-5 sm:grid-cols-2 sm:py-6 lg:grid-cols-4">
+              <FooterStat label="Ventes totales (depuis le début)" value={formatCurrency(data.totals.totalSales, currency)} />
+              <FooterStat label="Revenu encaissé (depuis le début)" value={formatCurrency(data.totals.totalRevenue, currency)} />
               <FooterStat label="Commandes totales" value={String(data.totals.totalOrders)} />
               <FooterStat label="Clients totaux" value={String(data.totals.totalCustomers)} />
             </CardContent>

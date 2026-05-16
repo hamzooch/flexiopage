@@ -153,7 +153,14 @@ export interface PosterContent {
   trustBadges: string[];
   features: PosterFeature[];
   testimonials: PosterTestimonial[];
-  cta: { label: string; reassurance?: string };
+  /** One short chiffré social-proof line shown between features and testimonials. */
+  socialProof?: string;
+  cta: {
+    label: string;
+    /** Big urgency hook above the CTA button. */
+    hook?: string;
+    reassurance?: string;
+  };
 }
 
 // ─────────────────────────────────────────────────────────────────────
@@ -174,6 +181,23 @@ export interface LandingImageResult {
   width: number;
   height: number;
   copy: LandingImageCopy;
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// Store analytics — light 4-KPI shape consumed by the dashboard cards
+// ─────────────────────────────────────────────────────────────────────
+export interface StoreAnalyticsSummary {
+  totalOrders: number;
+  /** Sum of all paid orders only. */
+  totalRevenue: number;
+  /** Sum of ALL orders regardless of payment status — what sellers usually want to see. */
+  totalOrderValue: number;
+  ordersThisMonth: number;
+  revenueThisMonth: number;
+  orderValueThisMonth: number;
+  conversionRate?: number;
+  storeViews?: number;
+  currency?: string;
 }
 
 // ─────────────────────────────────────────────────────────────────────
@@ -452,7 +476,8 @@ export const storesApi = {
   get: (storeId: string) => api.get<{ store: unknown }>(`/stores/${storeId}`),
   update: (storeId: string, data: Record<string, unknown>) =>
     api.patch<{ store: unknown }>(`/stores/${storeId}`, data),
-  getAnalytics: (storeId: string) => api.get<Record<string, number>>(`/stores/${storeId}/analytics`),
+  getAnalytics: (storeId: string) =>
+    api.get<StoreAnalyticsSummary>(`/stores/${storeId}/analytics`),
   getAnalyticsRich: (storeId: string, range: '7d' | '30d' | '90d' | '12m' = '30d') =>
     api.get<import('@/types/analytics').StoreAnalyticsRich>(`/stores/${storeId}/analytics/rich`, { params: { range } }),
   // Custom domain

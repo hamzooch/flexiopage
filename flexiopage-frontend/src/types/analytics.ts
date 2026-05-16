@@ -15,6 +15,8 @@ export interface StoreAnalyticsRich {
   currency: string;
   window: { from: string; to: string };
   kpis: {
+    /** Sum of ALL orders' total in the window (any payment status). */
+    sales: KpiValue;
     revenue: KpiValue;
     orders: KpiValue;
     paidOrders: KpiValue;
@@ -26,6 +28,8 @@ export interface StoreAnalyticsRich {
   };
   totals: {
     totalRevenue: number;
+    /** Sum of ALL orders' total ever placed (any payment status). */
+    totalSales: number;
     totalOrders: number;
     totalCustomers: number;
   };

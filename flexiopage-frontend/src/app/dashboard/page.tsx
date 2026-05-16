@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { storesApi } from '@/lib/api';
+import { storesApi, type StoreAnalyticsSummary } from '@/lib/api';
 import { useAuthStore } from '@/stores/auth-store';
 import { useStoreStore } from '@/stores/store-store';
 import { formatCurrency, cn } from '@/lib/utils';
@@ -44,6 +44,8 @@ export default function DashboardOverviewPage() {
   const setCurrentStore = useStoreStore((s) => s.setCurrentStore);
   const [stores, setStores] = useState<StoreType[]>([]);
   const [loading, setLoading] = useState(true);
+  const [analytics, setAnalytics] = useState<StoreAnalyticsSummary | null>(null);
+  const [analyticsLoading, setAnalyticsLoading] = useState(false);
 
   useEffect(() => {
     storesApi
@@ -64,6 +66,27 @@ export default function DashboardOverviewPage() {
   const activeStore = stores.find((s) => s._id === currentStoreId) || stores[0];
   const firstStore = stores[0];
   const storeCount = stores.length;
+  const activeStoreId = activeStore?._id;
+
+  // Pull order/revenue KPIs for the active store. Re-runs when the user
+  // switches store from the picker.
+  useEffect(() => {
+    if (!activeStoreId) {
+      setAnalytics(null);
+      return;
+    }
+    setAnalyticsLoading(true);
+    storesApi
+      .getAnalytics(activeStoreId)
+      .then((res) => setAnalytics(res.data))
+      .catch(() => setAnalytics(null))
+      .finally(() => setAnalyticsLoading(false));
+  }, [activeStoreId]);
+
+  const currency = analytics?.currency || 'USD';
+  const showAnalyticsLoading = analyticsLoading && !analytics;
+  const ordersThisMonth = analytics?.ordersThisMonth ?? 0;
+  const orderValueThisMonth = analytics?.orderValueThisMonth ?? 0;
 
   const stats: Stat[] = [
     {
@@ -84,16 +107,18 @@ export default function DashboardOverviewPage() {
     },
     {
       label: 'Orders',
-      value: '—',
-      change: 'No data yet',
+      value: showAnalyticsLoading ? '—' : String(analytics?.totalOrders ?? 0),
+      change: ordersThisMonth ? `${ordersThisMonth} ce mois-ci` : 'Aucune commande ce mois',
       icon: ShoppingCart,
       tint: 'from-amber-500/10 to-orange-500/10',
       iconTint: 'bg-amber-500/15 text-amber-600',
     },
     {
-      label: 'Revenue',
-      value: formatCurrency(0),
-      change: 'Last 30 days',
+      label: 'Total commandes',
+      value: showAnalyticsLoading ? '—' : formatCurrency(analytics?.totalOrderValue ?? 0, currency),
+      change: orderValueThisMonth
+        ? `${formatCurrency(orderValueThisMonth, currency)} ce mois`
+        : 'Aucune vente ce mois',
       icon: TrendingUp,
       tint: 'from-emerald-500/10 to-teal-500/10',
       iconTint: 'bg-emerald-500/15 text-emerald-600',

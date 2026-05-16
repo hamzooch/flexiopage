@@ -939,7 +939,9 @@ function collectImageSlots(
         sec.type === 'hero' ? 'hero' :
         sec.type === 'video' ? 'video' :
         sec.type === 'product' ? 'product' : 'generic';
-      const useRef = !isBanner && productImage && (kind === 'hero' || kind === 'product' || kind === 'generic');
+      // Video posters showcase the product in use — they MUST use the product
+      // reference, otherwise the model invents a generic look-alike.
+      const useRef = !isBanner && productImage && (kind === 'hero' || kind === 'product' || kind === 'generic' || kind === 'video');
       slots.push({
         prompt,
         kind,
@@ -1062,22 +1064,36 @@ async function buildImageGenInput(slot: ImageSlot): Promise<ImageGenInput> {
 
   // Nano Banana Edit fidelity guard. When we hand it a reference photo we
   // want it to PLACE THE SAME PRODUCT in a new scene — not invent a similar
-  // object. The model honours strong, explicit identity locks at the very
-  // start of the prompt much better than vague "based on this product"
-  // wording, so we prepend a fixed lock when a reference is attached.
+  // object. The model honours strong, explicit, repeated identity locks at
+  // the very start of the prompt much better than vague "based on this
+  // product" wording, so we prepend a hard lock and re-anchor at the end.
   const model = modelForKind(slot.kind) || '';
   const isNanoBananaEdit = /nano-banana/i.test(model) && referenceImages && referenceImages.length > 0;
   if (isNanoBananaEdit) {
-    const fidelityLock =
-      'Use the product from the reference image EXACTLY — keep its real shape, color, material, branding, hardware and proportions identical to the reference. Do NOT change the product, do NOT invent a new variant. Compose a NEW scene around this same product. Scene: ';
-    finalPrompt = fidelityLock + finalPrompt;
+    const fidelityHead =
+      'CRITICAL IDENTITY LOCK — READ FIRST: The product in the reference image is FIXED and IMMUTABLE. ' +
+      'You MUST preserve, pixel by pixel, every visible detail of that exact product: its silhouette, ' +
+      'dimensions, color palette, surface materials, hardware (buttons, ports, vents, switches, brushes, ' +
+      'nozzles, attachments), branding marks, logos, labels, textures, and physical proportions. ' +
+      'You are NOT redesigning a similar-looking product, NOT inventing a new color variant, NOT generating ' +
+      'an inspired-by version — you are PLACING THIS EXACT PRODUCT, unchanged, into a new scene like a ' +
+      'high-end photo composite. Treat the reference as sacred ground truth. ' +
+      'NEW SCENE around the SAME unchanged product: ';
+    const fidelityTail =
+      ' — Final reminder: the product MUST look identical to the reference. Same silhouette, same colors, ' +
+      'same materials, same hardware, same proportions. No variations of any kind on the product itself.';
+    finalPrompt = fidelityHead + finalPrompt + fidelityTail;
   }
 
   // Negative prompts only apply to FLUX-class models. Banners want text in
   // the image so we MUST NOT add "text, watermark, logo" to the negative.
+  // For img2img runs we additionally veto "different product" drift.
+  const baseNeg = 'text, watermark, logo, deformed, blurry, lowres, ugly, extra fingers, distorted face';
   const negativePrompt = isBanner
     ? 'blurry, lowres, distorted, deformed'
-    : 'text, watermark, logo, deformed, blurry, lowres, ugly, extra fingers, distorted face';
+    : isNanoBananaEdit
+      ? `${baseNeg}, different product, alternative product, redesigned product, similar but different, wrong color variant, wrong branding, generic look-alike`
+      : baseNeg;
 
   return {
     prompt: finalPrompt,

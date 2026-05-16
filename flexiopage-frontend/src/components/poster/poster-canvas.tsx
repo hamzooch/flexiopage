@@ -353,6 +353,37 @@ export function PosterCanvas({ content, exportRef }: Props) {
         </div>
       </section>
 
+      {/* ─── SOCIAL PROOF BANNER ─── */}
+      {content.socialProof && (
+        <section style={{ padding: '0 56px 28px' }}>
+          <div
+            style={{
+              padding: '18px 24px',
+              borderRadius: 14,
+              background: `linear-gradient(135deg, ${t.accentSoft}, transparent)`,
+              border: `1px solid ${t.border}`,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: 12,
+              flexDirection: isRtl ? 'row-reverse' : 'row',
+            }}
+          >
+            <Sparkles size={20} color={t.accent} fill={t.accent} />
+            <div
+              style={{
+                fontSize: 17,
+                fontWeight: 700,
+                color: t.primaryText,
+                letterSpacing: 0.2,
+              }}
+            >
+              {content.socialProof}
+            </div>
+          </div>
+        </section>
+      )}
+
       {/* ─── TESTIMONIALS ─── */}
       <section style={{ padding: '20px 56px 40px' }}>
         <div
@@ -432,6 +463,21 @@ export function PosterCanvas({ content, exportRef }: Props) {
 
       {/* ─── CTA ─── */}
       <section style={{ padding: '20px 56px 60px', textAlign: 'center' }}>
+        {content.cta.hook && (
+          <div
+            style={{
+              fontFamily: t.fontHeading,
+              fontSize: 34,
+              fontWeight: 800,
+              lineHeight: 1.1,
+              letterSpacing: -0.5,
+              color: t.primaryText,
+              marginBottom: 20,
+            }}
+          >
+            {content.cta.hook}
+          </div>
+        )}
         <div
           style={{
             padding: '24px 32px',
@@ -480,10 +526,25 @@ interface CompactProps {
 }
 
 /**
- * 1080 × 1080 — Facebook / Instagram feed post.
- * Layout: badge + title (top), product image (center, large), price + CTA (bottom).
+ * 1080 × 1080 — Facebook / Instagram feed post — HYBRID layout.
+ *
+ * The AI-generated hero scene fills the full canvas as the background; text
+ * (badge, title, price, CTA) is overlaid on top via dark gradient bands that
+ * keep everything legible regardless of the scene content.
+ *
+ * Stacked layers (bottom → top):
+ *   1. Scene image (object-fit: cover)
+ *   2. Top dark gradient — fades to transparent at ~35% (badge + title zone)
+ *   3. Bottom dark gradient — fades to transparent at ~35% (price + CTA zone)
+ *   4. Subtle vignette + accent glow
+ *   5. Text content
+ *
+ * When no scene image is available we fall back to the solid theme background
+ * with a placeholder block, so the layout still ships.
  */
 function SquarePoster({ content, t, isRtl, exportRef }: CompactProps) {
+  const hasScene = !!content.hero.productImageUrl;
+  const accentRgb = hexToRgb(t.accent) || { r: 217, g: 181, b: 106 };
   return (
     <div
       ref={exportRef as React.Ref<HTMLDivElement>}
@@ -493,49 +554,101 @@ function SquarePoster({ content, t, isRtl, exportRef }: CompactProps) {
         width: 1080,
         height: 1080,
         background: t.background,
-        color: t.primaryText,
+        color: '#ffffff',
         fontFamily: t.fontBody,
         position: 'relative',
         overflow: 'hidden',
-        padding: 64,
         display: 'flex',
         flexDirection: 'column',
         textAlign: isRtl ? 'right' : 'left',
       }}
     >
-      {/* Decorative glow */}
+      {/* Layer 1 — full-bleed hero scene */}
+      {hasScene ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={content.hero.productImageUrl}
+          alt=""
+          crossOrigin="anonymous"
+          style={{
+            position: 'absolute',
+            inset: 0,
+            width: '100%',
+            height: '100%',
+            objectFit: 'cover',
+          }}
+        />
+      ) : (
+        <div
+          style={{
+            position: 'absolute',
+            inset: 0,
+            background: t.surface,
+            display: 'grid',
+            placeItems: 'center',
+            color: t.mutedText,
+            fontSize: 18,
+          }}
+        >
+          Photo produit
+        </div>
+      )}
+
+      {/* Layer 2 — top dark gradient (badge + title legibility) */}
       <div
         aria-hidden
         style={{
           position: 'absolute',
-          top: -200,
-          [isRtl ? 'left' : 'right']: -200,
-          width: 600,
-          height: 600,
-          borderRadius: 999,
-          background: t.accent,
-          opacity: 0.15,
-          filter: 'blur(140px)',
+          inset: 0,
+          background: 'linear-gradient(180deg, rgba(0,0,0,0.78) 0%, rgba(0,0,0,0.55) 20%, rgba(0,0,0,0.15) 40%, rgba(0,0,0,0) 50%)',
           pointerEvents: 'none',
         }}
       />
 
-      {/* Top: badge + headline */}
-      <div style={{ position: 'relative' }}>
+      {/* Layer 3 — bottom dark gradient (price + CTA legibility) */}
+      <div
+        aria-hidden
+        style={{
+          position: 'absolute',
+          inset: 0,
+          background: 'linear-gradient(0deg, rgba(0,0,0,0.85) 0%, rgba(0,0,0,0.6) 18%, rgba(0,0,0,0.2) 35%, rgba(0,0,0,0) 48%)',
+          pointerEvents: 'none',
+        }}
+      />
+
+      {/* Layer 4 — accent corner glow (subtle brand color hint) */}
+      <div
+        aria-hidden
+        style={{
+          position: 'absolute',
+          top: -220,
+          [isRtl ? 'left' : 'right']: -220,
+          width: 540,
+          height: 540,
+          borderRadius: 999,
+          background: `radial-gradient(circle, rgba(${accentRgb.r},${accentRgb.g},${accentRgb.b},0.35) 0%, rgba(${accentRgb.r},${accentRgb.g},${accentRgb.b},0) 70%)`,
+          pointerEvents: 'none',
+        }}
+      />
+
+      {/* Layer 5 — TOP: badge + headline */}
+      <div style={{ position: 'relative', padding: '64px 72px 0' }}>
         {content.hero.badge && (
           <div
             style={{
               display: 'inline-block',
-              padding: '8px 18px',
+              padding: '9px 20px',
               borderRadius: 999,
-              background: t.accentSoft,
-              border: `1px solid ${t.border}`,
+              background: `rgba(${accentRgb.r},${accentRgb.g},${accentRgb.b},0.18)`,
+              border: `1px solid rgba(${accentRgb.r},${accentRgb.g},${accentRgb.b},0.5)`,
+              backdropFilter: 'blur(6px)',
               color: t.accent,
               fontSize: 14,
               fontWeight: 700,
-              letterSpacing: 1.5,
+              letterSpacing: 1.8,
               textTransform: 'uppercase',
-              marginBottom: 20,
+              marginBottom: 22,
+              textShadow: '0 1px 2px rgba(0,0,0,0.35)',
             }}
           >
             {content.hero.badge}
@@ -544,74 +657,95 @@ function SquarePoster({ content, t, isRtl, exportRef }: CompactProps) {
         <h1
           style={{
             fontFamily: t.fontHeading,
-            fontSize: 64,
+            fontSize: 72,
             fontWeight: 800,
-            lineHeight: 1.05,
-            letterSpacing: -1.5,
+            lineHeight: 1.04,
+            letterSpacing: -2,
             margin: 0,
-            color: t.primaryText,
+            color: '#ffffff',
+            maxWidth: '85%',
+            ...(isRtl ? { marginLeft: 'auto' } : {}),
+            textShadow: '0 2px 12px rgba(0,0,0,0.5), 0 1px 2px rgba(0,0,0,0.4)',
           }}
         >
           {content.hero.title}
         </h1>
       </div>
 
-      {/* Middle: product image */}
-      <div style={{ flex: 1, display: 'grid', placeItems: 'center', padding: '32px 0' }}>
-        {content.hero.productImageUrl ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
-            src={content.hero.productImageUrl}
-            alt=""
-            crossOrigin="anonymous"
-            style={{
-              maxWidth: '100%',
-              maxHeight: 460,
-              objectFit: 'contain',
-              borderRadius: 24,
-              filter: 'drop-shadow(0 24px 48px rgba(0,0,0,0.4))',
-            }}
-          />
-        ) : (
+      {/* Spacer pushing the price/CTA to the bottom */}
+      <div style={{ flex: 1 }} />
+
+      {/* Layer 5 — BOTTOM: urgency hook (optional) + price + CTA */}
+      {content.cta.hook && (
+        <div
+          style={{
+            position: 'relative',
+            padding: '0 72px 18px',
+            textAlign: isRtl ? 'right' : 'left',
+          }}
+        >
           <div
             style={{
-              width: 460,
-              height: 460,
-              borderRadius: 24,
-              background: t.surface,
-              display: 'grid',
-              placeItems: 'center',
-              color: t.mutedText,
-              fontSize: 16,
-              border: `1px solid ${t.border}`,
+              fontFamily: t.fontHeading,
+              fontSize: 30,
+              fontWeight: 800,
+              lineHeight: 1.1,
+              letterSpacing: -0.5,
+              color: '#ffffff',
+              textShadow: '0 2px 10px rgba(0,0,0,0.55)',
             }}
           >
-            Photo produit
+            {content.cta.hook}
           </div>
-        )}
-      </div>
-
-      {/* Bottom: price + CTA pill */}
+        </div>
+      )}
       <div
         style={{
+          position: 'relative',
+          padding: '0 72px 64px',
           display: 'flex',
           justifyContent: 'space-between',
-          alignItems: 'center',
-          gap: 24,
+          alignItems: 'flex-end',
+          gap: 28,
           flexDirection: isRtl ? 'row-reverse' : 'row',
-          position: 'relative',
         }}
       >
         <div>
-          <div style={{ fontSize: 13, color: t.mutedText, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 1.5 }}>
+          <div
+            style={{
+              fontSize: 13,
+              color: t.accent,
+              fontWeight: 800,
+              textTransform: 'uppercase',
+              letterSpacing: 2,
+              marginBottom: 6,
+              textShadow: '0 1px 2px rgba(0,0,0,0.4)',
+            }}
+          >
             {content.pricing.discountBadge || 'Prix promo'}
           </div>
-          <div style={{ display: 'flex', alignItems: 'baseline', gap: 14, marginTop: 6 }}>
-            <span style={{ fontFamily: t.fontHeading, fontSize: 58, fontWeight: 800, color: t.accent, lineHeight: 1 }}>
+          <div style={{ display: 'flex', alignItems: 'baseline', gap: 16, flexWrap: 'wrap' }}>
+            <span
+              style={{
+                fontFamily: t.fontHeading,
+                fontSize: 68,
+                fontWeight: 800,
+                color: '#ffffff',
+                lineHeight: 1,
+                textShadow: '0 2px 10px rgba(0,0,0,0.55)',
+              }}
+            >
               {fmtCurrency(content.pricing.priceAfter, content.pricing.currency)}
             </span>
             {content.pricing.priceBefore && content.pricing.priceBefore > content.pricing.priceAfter && (
-              <span style={{ color: t.mutedText, fontSize: 22, textDecoration: 'line-through' }}>
+              <span
+                style={{
+                  color: 'rgba(255,255,255,0.6)',
+                  fontSize: 24,
+                  textDecoration: 'line-through',
+                  textShadow: '0 1px 4px rgba(0,0,0,0.5)',
+                }}
+              >
                 {fmtCurrency(content.pricing.priceBefore, content.pricing.currency)}
               </span>
             )}
@@ -619,15 +753,15 @@ function SquarePoster({ content, t, isRtl, exportRef }: CompactProps) {
         </div>
         <div
           style={{
-            padding: '22px 36px',
+            padding: '24px 40px',
             borderRadius: 999,
             background: t.ctaBg,
             color: t.ctaText,
-            fontSize: 24,
+            fontSize: 22,
             fontWeight: 800,
             letterSpacing: 1.5,
             textTransform: 'uppercase',
-            boxShadow: '0 12px 32px rgba(0,0,0,0.4)',
+            boxShadow: '0 16px 40px rgba(0,0,0,0.45), 0 0 0 1px rgba(255,255,255,0.08) inset',
             whiteSpace: 'nowrap',
           }}
         >
@@ -636,6 +770,14 @@ function SquarePoster({ content, t, isRtl, exportRef }: CompactProps) {
       </div>
     </div>
   );
+}
+
+/** Convert a `#rrggbb` hex string to {r,g,b}; returns null on parse failure. */
+function hexToRgb(hex: string): { r: number; g: number; b: number } | null {
+  const m = /^#?([0-9a-f]{6})$/i.exec(hex.trim());
+  if (!m) return null;
+  const n = parseInt(m[1], 16);
+  return { r: (n >> 16) & 0xff, g: (n >> 8) & 0xff, b: n & 0xff };
 }
 
 /**

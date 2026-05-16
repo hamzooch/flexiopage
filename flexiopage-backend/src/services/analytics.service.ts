@@ -15,11 +15,23 @@ import { Store } from '../models/Store.model';
 
 export interface StoreAnalytics {
   totalOrders: number;
+  /** Sum of `total` across paid orders only — the actual money received. */
   totalRevenue: number;
+  /**
+   * Sum of `total` across ALL orders regardless of payment status — the
+   * "valeur des commandes passées" most sellers expect to see on their
+   * dashboard, especially in COD-heavy markets where `paymentStatus` only
+   * flips to `paid` once the delivery is confirmed.
+   */
+  totalOrderValue: number;
   conversionRate?: number;
   storeViews?: number;
   ordersThisMonth: number;
   revenueThisMonth: number;
+  /** Same definition as `totalOrderValue`, scoped to the current calendar month. */
+  orderValueThisMonth: number;
+  /** Store's display currency (e.g. "XOF"), so callers can format values. */
+  currency?: string;
 }
 
 export type RangeKey = '7d' | '30d' | '90d' | '12m';
@@ -68,6 +80,12 @@ export interface StoreAnalyticsRich {
   window: { from: string; to: string };
   /** Headline KPIs over [from, to], each with a delta vs the previous window. */
   kpis: {
+    /**
+     * Sum of `total` across ALL orders in the window, regardless of paymentStatus.
+     * The "ventes" figure most sellers want to see — especially in COD-heavy
+     * markets where `revenue` (paid-only) stays behind reality.
+     */
+    sales: { value: number; previous: number; deltaPct: number | null };
     revenue: { value: number; previous: number; deltaPct: number | null };
     orders: { value: number; previous: number; deltaPct: number | null };
     paidOrders: { value: number; previous: number; deltaPct: number | null };
@@ -80,6 +98,8 @@ export interface StoreAnalyticsRich {
   /** All-time aggregates (no window filter). */
   totals: {
     totalRevenue: number;
+    /** Sum of `total` across ALL orders ever placed (regardless of payment status). */
+    totalSales: number;
     totalOrders: number;
     totalCustomers: number;
   };
@@ -141,7 +161,7 @@ export async function getStoreAnalytics(storeId: string): Promise<StoreAnalytics
   const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
   const storeObjectId = new mongoose.Types.ObjectId(storeId);
 
-  const [total, thisMonth] = await Promise.all([
+  const [total, thisMonth, store] = await Promise.all([
     Order.aggregate([
       { $match: { storeId: storeObjectId } },
       {
@@ -149,6 +169,7 @@ export async function getStoreAnalytics(storeId: string): Promise<StoreAnalytics
           _id: null,
           count: { $sum: 1 },
           revenue: { $sum: { $cond: [{ $eq: ['$paymentStatus', 'paid'] }, '$total', 0] } },
+          orderValue: { $sum: '$total' },
         },
       },
     ]),
@@ -159,18 +180,23 @@ export async function getStoreAnalytics(storeId: string): Promise<StoreAnalytics
           _id: null,
           count: { $sum: 1 },
           revenue: { $sum: { $cond: [{ $eq: ['$paymentStatus', 'paid'] }, '$total', 0] } },
+          orderValue: { $sum: '$total' },
         },
       },
     ]),
+    Store.findById(storeObjectId, { 'settings.currency': 1 }).lean(),
   ]);
 
   return {
     totalOrders: total[0]?.count ?? 0,
     totalRevenue: total[0]?.revenue ?? 0,
+    totalOrderValue: total[0]?.orderValue ?? 0,
     ordersThisMonth: thisMonth[0]?.count ?? 0,
     revenueThisMonth: thisMonth[0]?.revenue ?? 0,
+    orderValueThisMonth: thisMonth[0]?.orderValue ?? 0,
     conversionRate: undefined,
     storeViews: undefined,
+    currency: (store as { settings?: { currency?: string } } | null)?.settings?.currency,
   };
 }
 
@@ -210,11 +236,12 @@ export async function getStoreAnalyticsRich(
           _id: null,
           orders: { $sum: 1 },
           revenue: { $sum: { $cond: [{ $eq: ['$paymentStatus', 'paid'] }, '$total', 0] } },
+          sales: { $sum: '$total' },
           customers: { $addToSet: '$email' },
           currency: { $first: '$currency' },
         },
       },
-      { $project: { orders: 1, revenue: 1, customers: { $size: '$customers' }, currency: 1 } },
+      { $project: { orders: 1, revenue: 1, sales: 1, customers: { $size: '$customers' }, currency: 1 } },
     ]),
     // Window aggregate — split by paymentStatus to derive every KPI in one pass.
     Order.aggregate([
@@ -227,10 +254,11 @@ export async function getStoreAnalyticsRich(
           refunded: { $sum: { $cond: [{ $eq: ['$paymentStatus', 'refunded'] }, 1, 0] } },
           fulfilled: { $sum: { $cond: [{ $eq: ['$fulfillmentStatus', 'fulfilled'] }, 1, 0] } },
           revenue: { $sum: { $cond: [{ $eq: ['$paymentStatus', 'paid'] }, '$total', 0] } },
+          sales: { $sum: '$total' },
           uniqueCustomers: { $addToSet: '$email' },
         },
       },
-      { $project: { orders: 1, paid: 1, refunded: 1, fulfilled: 1, revenue: 1, uniqueCustomers: { $size: '$uniqueCustomers' } } },
+      { $project: { orders: 1, paid: 1, refunded: 1, fulfilled: 1, revenue: 1, sales: 1, uniqueCustomers: { $size: '$uniqueCustomers' } } },
     ]),
     // Previous-window aggregate for delta comparison.
     Order.aggregate([
@@ -243,10 +271,11 @@ export async function getStoreAnalyticsRich(
           refunded: { $sum: { $cond: [{ $eq: ['$paymentStatus', 'refunded'] }, 1, 0] } },
           fulfilled: { $sum: { $cond: [{ $eq: ['$fulfillmentStatus', 'fulfilled'] }, 1, 0] } },
           revenue: { $sum: { $cond: [{ $eq: ['$paymentStatus', 'paid'] }, '$total', 0] } },
+          sales: { $sum: '$total' },
           uniqueCustomers: { $addToSet: '$email' },
         },
       },
-      { $project: { orders: 1, paid: 1, refunded: 1, fulfilled: 1, revenue: 1, uniqueCustomers: { $size: '$uniqueCustomers' } } },
+      { $project: { orders: 1, paid: 1, refunded: 1, fulfilled: 1, revenue: 1, sales: 1, uniqueCustomers: { $size: '$uniqueCustomers' } } },
     ]),
     // Pending-payment count is a snapshot, not a window aggregate.
     Order.countDocuments({ ...baseMatch, paymentStatus: 'pending' }),
@@ -299,9 +328,9 @@ export async function getStoreAnalyticsRich(
       .lean(),
   ]);
 
-  const t = totals[0] || { orders: 0, revenue: 0, customers: 0, currency: storeCurrency };
-  const a = windowAgg[0] || { orders: 0, paid: 0, refunded: 0, fulfilled: 0, revenue: 0, uniqueCustomers: 0 };
-  const p = prevAgg[0] || { orders: 0, paid: 0, refunded: 0, fulfilled: 0, revenue: 0, uniqueCustomers: 0 };
+  const t = totals[0] || { orders: 0, revenue: 0, sales: 0, customers: 0, currency: storeCurrency };
+  const a = windowAgg[0] || { orders: 0, paid: 0, refunded: 0, fulfilled: 0, revenue: 0, sales: 0, uniqueCustomers: 0 };
+  const p = prevAgg[0] || { orders: 0, paid: 0, refunded: 0, fulfilled: 0, revenue: 0, sales: 0, uniqueCustomers: 0 };
   // Always trust the store settings — order currency may be stale if the
   // seller changed their store currency after past orders were placed.
   const currency: string = storeCurrency;
@@ -339,6 +368,9 @@ export async function getStoreAnalyticsRich(
     currency,
     window: { from: w.from.toISOString(), to: w.to.toISOString() },
     kpis: {
+      // Sum of `total` across ALL orders in the window, regardless of paymentStatus.
+      // Most useful for COD-heavy markets where revenue (paid-only) lags.
+      sales: { value: a.sales, previous: p.sales, deltaPct: pctDelta(a.sales, p.sales) },
       revenue: { value: a.revenue, previous: p.revenue, deltaPct: pctDelta(a.revenue, p.revenue) },
       orders: { value: a.orders, previous: p.orders, deltaPct: pctDelta(a.orders, p.orders) },
       paidOrders: { value: a.paid, previous: p.paid, deltaPct: pctDelta(a.paid, p.paid) },
@@ -348,7 +380,7 @@ export async function getStoreAnalyticsRich(
       uniqueCustomers: { value: a.uniqueCustomers, previous: p.uniqueCustomers, deltaPct: pctDelta(a.uniqueCustomers, p.uniqueCustomers) },
       pendingOrders: { value: pendingNow },
     },
-    totals: { totalRevenue: t.revenue, totalOrders: t.orders, totalCustomers: t.customers },
+    totals: { totalRevenue: t.revenue, totalSales: t.sales, totalOrders: t.orders, totalCustomers: t.customers },
     timeseries,
     topProducts,
     paymentBreakdown: (paymentBreakdownRaw as Array<{ _id: string; orders: number; revenue: number }>).map((r) => ({

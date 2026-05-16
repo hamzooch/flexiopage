@@ -37,8 +37,32 @@ type Step =
   | 'choose-product'
   | 'from-image'
   | 'template'
+  | 'template-preview'
   | 'generating'
   | 'editor';
+
+/** Sample products injected into the `products` section during template
+ *  previews — gives sellers a realistic look without needing real catalog data. */
+const PREVIEW_PRODUCTS = [
+  {
+    _id: 'preview-1',
+    name: 'Sample Product 1',
+    price: 29.99,
+    images: ['https://images.unsplash.com/photo-1542291026-7eec264c27ff?w=600&q=80'],
+  },
+  {
+    _id: 'preview-2',
+    name: 'Sample Product 2',
+    price: 49.99,
+    images: ['https://images.unsplash.com/photo-1523275335684-37898b6baf30?w=600&q=80'],
+  },
+  {
+    _id: 'preview-3',
+    name: 'Sample Product 3',
+    price: 79.99,
+    images: ['https://images.unsplash.com/photo-1491637639811-60e2756cc1c7?w=600&q=80'],
+  },
+];
 
 type Tone = 'professional' | 'friendly' | 'minimal';
 type PageKind = 'landing' | 'product';
@@ -136,6 +160,11 @@ export default function NewLandingPagePage() {
   // template
   const [templates, setTemplates] = useState<TemplateLite[]>([]);
   const [templatesLoading, setTemplatesLoading] = useState(false);
+  // template-preview — sections loaded for the currently-previewed template,
+  // plus its id/name so the confirm button knows which one to apply.
+  const [previewTemplateId, setPreviewTemplateId] = useState<string | null>(null);
+  const [previewSections, setPreviewSections] = useState<PageSection[]>([]);
+  const [previewLoading, setPreviewLoading] = useState(false);
 
   // editor / save
   const [sections, setSections] = useState<PageSection[]>([]);
@@ -286,20 +315,39 @@ export default function NewLandingPagePage() {
     setSections((prev) => prev.filter((_, i) => i !== index).map((s, i) => ({ ...s, order: i })));
   }
 
-  async function handleSelectTemplate(templateId: string) {
+  /**
+   * Open the preview step for a template — loads its full sections from the
+   * server and renders them via LandingRenderer so the seller sees a complete,
+   * image-rich landing page before committing. From the preview they either
+   * apply the template (→ editor) or go back to the list.
+   */
+  async function handlePreviewTemplate(templateId: string) {
     if (!storeId) return;
     setError('');
+    setPreviewTemplateId(templateId);
+    setPreviewSections([]);
+    setPreviewLoading(true);
+    setStep('template-preview');
     try {
       const res = await storesApi.getSectionsFromTemplate(storeId, templateId);
-      const list = (res.data.sections || []) as PageSection[];
-      setSections(list);
-      const t = templates.find((x) => x.id === templateId);
-      if (t) setName(t.name.replace(/\s+/g, '-').toLowerCase());
-      setSlug('');
-      setStep('editor');
+      setPreviewSections((res.data.sections || []) as PageSection[]);
     } catch {
-      setError('Failed to load template');
+      setError('Impossible de charger ce thème.');
+      setStep('template');
+    } finally {
+      setPreviewLoading(false);
     }
+  }
+
+  /** Confirm-from-preview: drop the preview sections into the editor as the
+   *  starting point. The seller can then customise/replace as they wish. */
+  function applyPreviewedTemplate() {
+    if (!previewTemplateId || previewSections.length === 0) return;
+    setSections(previewSections);
+    const t = templates.find((x) => x.id === previewTemplateId);
+    if (t) setName(t.name.replace(/\s+/g, '-').toLowerCase());
+    setSlug('');
+    setStep('editor');
   }
 
   async function handleGenerateFromProduct() {
@@ -771,19 +819,88 @@ export default function NewLandingPagePage() {
               <button
                 key={t.id}
                 type="button"
-                onClick={() => handleSelectTemplate(t.id)}
+                onClick={() => handlePreviewTemplate(t.id)}
                 className="group overflow-hidden rounded-2xl border border-border/60 bg-card text-left transition-all hover:-translate-y-1 hover:border-primary/40 hover:shadow-xl"
               >
                 <div className="grid h-28 place-items-center bg-muted text-sm font-medium uppercase tracking-wider text-muted-foreground">
                   {t.category}
                 </div>
-                <div className="space-y-1 p-4">
+                <div className="space-y-2 p-4">
                   <h3 className="font-semibold">{t.name}</h3>
                   <p className="text-sm text-muted-foreground">{t.description}</p>
-                  <p className="pt-1 text-xs text-muted-foreground">{t.sectionCount} sections</p>
+                  <div className="flex items-center justify-between pt-1">
+                    <span className="text-xs text-muted-foreground">{t.sectionCount} sections</span>
+                    <span className="inline-flex items-center gap-1 text-xs font-semibold text-primary opacity-0 transition-opacity group-hover:opacity-100">
+                      <Eye className="h-3.5 w-3.5" />
+                      Voir le thème
+                    </span>
+                  </div>
                 </div>
               </button>
             ))}
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // ────────────────────────────── Step: Template preview
+  if (step === 'template-preview') {
+    const previewTpl = templates.find((x) => x.id === previewTemplateId);
+    return (
+      <div className="space-y-0 animate-fade-in-up">
+        {/* Sticky preview header — name + action buttons */}
+        <div className="sticky top-0 z-20 -mx-4 -mt-4 mb-4 border-b border-border/60 bg-card/95 px-4 py-3 backdrop-blur sm:-mx-6 sm:-mt-6 sm:px-6">
+          <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-3">
+            <div className="flex items-center gap-3 min-w-0">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setStep('template')}
+                className="-ml-1 gap-1.5 shrink-0"
+              >
+                <ArrowLeft className="h-4 w-4" />
+                <span className="hidden sm:inline">Retour</span>
+              </Button>
+              <div className="min-w-0">
+                <div className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                  Aperçu du thème
+                </div>
+                <div className="truncate text-sm font-semibold sm:text-base">
+                  {previewTpl?.name || 'Thème'}
+                </div>
+              </div>
+            </div>
+            <Button
+              onClick={applyPreviewedTemplate}
+              disabled={previewLoading || previewSections.length === 0}
+              className="h-10 gap-2 rounded-xl gradient-brand text-white shadow-md shadow-primary/25 hover:opacity-95"
+            >
+              <Check className="h-4 w-4" />
+              Utiliser ce thème
+            </Button>
+          </div>
+        </div>
+
+        {/* Preview frame — renders the template's sections with example
+            product data so the seller sees a realistic, complete page. */}
+        {previewLoading ? (
+          <div className="flex items-center justify-center py-24">
+            <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+          </div>
+        ) : previewSections.length === 0 ? (
+          <div className="py-24 text-center text-sm text-muted-foreground">
+            Aucune section trouvée pour ce thème.
+          </div>
+        ) : (
+          <div className="overflow-hidden rounded-2xl border border-border/60 bg-background shadow-sm">
+            <LandingRenderer
+              sections={previewSections}
+              products={PREVIEW_PRODUCTS}
+              direction={directionOf(language)}
+              language={language}
+              currency={currency}
+            />
           </div>
         )}
       </div>

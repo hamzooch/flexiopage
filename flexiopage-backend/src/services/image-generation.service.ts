@@ -17,6 +17,9 @@
  * Legacy: FAL_IMAGE_MODEL still works — it becomes the GALLERY default and
  * the global fallback when nothing else is set.
  */
+import fs from 'fs/promises';
+import path from 'path';
+
 const FAL_BASE = 'https://fal.run';
 
 export type ImageAspect = 'square' | 'portrait' | 'landscape' | 'wide' | 'tall';
@@ -102,6 +105,51 @@ function isIdeogram(model: string): boolean {
 }
 
 /**
+ * fal.ai can only fetch image URLs from the public internet. In dev, product
+ * images live at `http://localhost:5050/uploads/...` which fal cannot reach
+ * → request fails with HTTP 422 "Could not generate images with the given
+ * prompts and images".
+ *
+ * For each URL handed to nano-banana/edit (or any image-to-image endpoint),
+ * detect a private/loopback host and inline the file as a base64 data URI so
+ * fal receives the bytes directly. Public URLs (S3, R2, CDNs) pass through
+ * unchanged.
+ *
+ * Falls back to the original URL on any error so the caller still sees a
+ * meaningful upstream error rather than a silent inlining bug.
+ */
+const PRIVATE_HOST_RE = /^(localhost|127\.0\.0\.1|0\.0\.0\.0|10\.|172\.(1[6-9]|2\d|3[01])\.|192\.168\.)/i;
+const MIME_BY_EXT: Record<string, string> = {
+  jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png',
+  webp: 'image/webp', gif: 'image/gif', avif: 'image/avif',
+};
+
+async function inlinePrivateUrl(url: string): Promise<string> {
+  if (!url || url.startsWith('data:') || url.startsWith('blob:')) return url;
+  let parsed: URL;
+  try { parsed = new URL(url); } catch { return url; }
+  if (!PRIVATE_HOST_RE.test(parsed.hostname)) return url;
+
+  // Map http://localhost:.../uploads/<key> → <UPLOAD_PATH>/<key>
+  const m = parsed.pathname.match(/^\/uploads\/(.+)$/);
+  if (!m) {
+    console.warn('[image-gen] private URL not in /uploads/, cannot inline:', url);
+    return url;
+  }
+  const uploadRoot = process.env.UPLOAD_PATH || path.join(process.cwd(), 'uploads');
+  const filePath = path.join(uploadRoot, m[1]);
+  try {
+    const buffer = await fs.readFile(filePath);
+    const ext = path.extname(filePath).toLowerCase().slice(1);
+    const mime = MIME_BY_EXT[ext] || 'image/jpeg';
+    return `data:${mime};base64,${buffer.toString('base64')}`;
+  } catch (err) {
+    console.warn(`[image-gen] could not inline local file ${filePath}:`, (err as Error).message);
+    return url;
+  }
+}
+
+/**
  * Decide the actual fal endpoint to use. When the caller passes
  * referenceImages, route to the model's image-to-image / edit endpoint so
  * the output contains the real reference product.
@@ -183,9 +231,15 @@ export async function generateImage(input: ImageGenInput): Promise<ImageGenResul
   const key = getFalKey();
   const model = input.model || DEFAULT_MODEL;
   const aspect = input.aspect || 'square';
-  const hasRef = !!input.referenceImages?.length;
+  // Inline any private/loopback reference URLs as data URIs so fal.ai can
+  // actually receive the bytes (it cannot reach `localhost`).
+  const inlinedRefs = input.referenceImages?.length
+    ? await Promise.all(input.referenceImages.map(inlinePrivateUrl))
+    : input.referenceImages;
+  const adjusted: ImageGenInput = { ...input, referenceImages: inlinedRefs };
+  const hasRef = !!adjusted.referenceImages?.length;
   const endpoint = resolveEndpoint(model, hasRef);
-  const body = buildBody(endpoint, input);
+  const body = buildBody(endpoint, adjusted);
 
   const res = await fetch(`${FAL_BASE}/${endpoint}`, {
     method: 'POST',
