@@ -149,6 +149,19 @@ class MogaDeliveryProvider implements DeliveryProviderImpl {
     const rawBody = JSON.stringify(this.buildBody(order, store));
     const signature = crypto.createHmac('sha256', secret).update(rawBody).digest('hex');
 
+    // TEMP DEBUG — remove after MogaDelivery 401 is resolved
+    console.log('[mogadelivery dispatch DEBUG]', {
+      url,
+      storeId: order.storeId.toString(),
+      orderNumber: order.orderNumber,
+      secretFirst4: secret.slice(0, 4),
+      secretLast4: secret.slice(-4),
+      secretLen: secret.length,
+      signature,
+      bodyLen: rawBody.length,
+      bodyPreview: rawBody.slice(0, 300),
+    });
+
     const res = await fetch(url, {
       method: 'POST',
       headers: {
@@ -163,6 +176,7 @@ class MogaDeliveryProvider implements DeliveryProviderImpl {
       body: rawBody,
     });
     const text = await res.text();
+    console.log('[mogadelivery dispatch DEBUG response]', { status: res.status, body: text.slice(0, 400) });
     const json = (() => {
       try { return JSON.parse(text) as Record<string, unknown>; } catch { return {} as Record<string, unknown>; }
     })();
