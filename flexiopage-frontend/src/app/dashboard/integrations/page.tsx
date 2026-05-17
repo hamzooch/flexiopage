@@ -39,7 +39,6 @@ import {
   KeyRound,
   Lock,
   Info,
-  Webhook,
 } from 'lucide-react';
 
 type TabId = 'domain' | 'pixels' | 'shipping';
@@ -658,8 +657,6 @@ function LogisticsPanel({ store, onSaved, saving, setSaving }: PanelProps) {
   const [copied, setCopied] = useState<string | null>(null);
 
   const isMoga = provider === 'mogadelivery';
-  const apiBase = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
-  const inboundWebhookUrl = `${apiBase}/api/webhooks/mogadelivery`;
 
   // Detect unsaved changes so we can nudge the user to click "Enregistrer".
   // Without this banner sellers routinely select a provider then leave the
@@ -773,7 +770,7 @@ function LogisticsPanel({ store, onSaved, saving, setSaving }: PanelProps) {
                 <div>
                   <h4 className="text-sm font-semibold">À partager avec MogaDelivery</h4>
                   <p className="text-xs text-muted-foreground">
-                    Donne ces 2 informations à MogaDelivery pour lier ton compte. Ils n'ont besoin de rien d'autre.
+                    Donne le Store ID ci-dessous + le secret HMAC du champ plus bas. MogaDelivery utilise déjà une URL globale pour nous envoyer les statuts.
                   </p>
                 </div>
               </div>
@@ -790,26 +787,6 @@ function LogisticsPanel({ store, onSaved, saving, setSaving }: PanelProps) {
                     {copied === 'storeId' ? 'Copié' : 'Copier'}
                   </Button>
                 </div>
-              </div>
-
-              {/* Inbound webhook URL */}
-              <div>
-                <Label className="text-xs flex items-center gap-1.5">
-                  <Webhook className="h-3.5 w-3.5" />
-                  URL webhook entrant (à configurer côté MogaDelivery)
-                </Label>
-                <div className="mt-1.5 flex items-center gap-2">
-                  <code className="flex-1 truncate rounded-md border border-border/60 bg-card px-3 py-2 font-mono text-xs">
-                    {inboundWebhookUrl}
-                  </code>
-                  <Button type="button" variant="outline" size="sm" onClick={() => copy(inboundWebhookUrl, 'webhook')} className="gap-1.5">
-                    <Copy className="h-3.5 w-3.5" />
-                    {copied === 'webhook' ? 'Copié' : 'Copier'}
-                  </Button>
-                </div>
-                <p className="mt-1 text-[11px] text-muted-foreground">
-                  MogaDelivery enverra ici les changements de statut (assigné, en transit, livré, retourné…).
-                </p>
               </div>
             </div>
 
