@@ -10,7 +10,8 @@
  *
  * Env overrides:
  *   - FAL_KEY                  required
- *   - FAL_LLM_MODEL            default 'anthropic/claude-3-5-sonnet'
+ *   - FAL_LLM_MODEL            default 'anthropic/claude-sonnet-4.6'
+ *   - FAL_LLM_TEMPERATURE      default '0.85' — bump for more creativity, drop for consistency
  *   - FAL_IMAGE_MODEL          default 'fal-ai/flux/schnell'
  *   - FAL_AVATAR_MODEL         default same as FAL_IMAGE_MODEL
  *   - LANDING_AI_IMAGES_ENABLED  default 'true' — set to 'false' to skip step 2
@@ -409,12 +410,18 @@ async function captionProductImages(images: string[], max = 3): Promise<string> 
   return list.map((c, i) => `Image ${i + 1}: ${c}`).join('\n');
 }
 
-const LLM_MODEL = process.env.FAL_LLM_MODEL || 'anthropic/claude-sonnet-4.5';
+const LLM_MODEL = process.env.FAL_LLM_MODEL || 'anthropic/claude-sonnet-4.6';
+// Marketing copy lives at the upper end of the creativity dial — too cold
+// (≤0.5) and every page sounds identical; too hot (≥1.0) and we get
+// hallucinations of fake stats / made-up product features. 0.85 is the
+// sweet spot for "specific but inspired" output on Claude.
+const LLM_TEMPERATURE = parseFloat(process.env.FAL_LLM_TEMPERATURE || '0.85');
 
 /**
- * Run the strategic LLM through fal's queue endpoint. Claude Sonnet 4.5
- * by default — much better than Gemini Flash at dialect copy and large
- * JSON outputs.
+ * Run the strategic LLM through fal's queue endpoint. Claude Sonnet 4.6
+ * by default — sharper at dialect copy and richer at structured JSON than
+ * 3.5 or 4.5, and much better than Gemini Flash for the volume of arabic
+ * derja / french conversion copy this pipeline needs.
  *
  * We use the queue API (queue.fal.run) instead of the sync API (fal.run)
  * because Claude generating ~10 sections of structured JSON with image
@@ -427,6 +434,7 @@ export async function runLLM(prompt: string): Promise<string> {
   const out = await falQueueRequest<{ output?: string }>('fal-ai/any-llm', {
     model: LLM_MODEL,
     prompt,
+    temperature: LLM_TEMPERATURE,
   });
   return (out.output || '').trim();
 }
@@ -573,6 +581,10 @@ function buildPrompt(input: FalGenerateInput, language: string, direction: 'ltr'
     : '';
 
   const isArabicDialect = direction === 'rtl' && language.startsWith('ar') && !!dialect;
+  // French copy is the other half of our traffic (Maghreb + W. Africa).
+  // Without an explicit few-shot, the model defaults to euro-corporate tone
+  // ("Découvrez notre gamme premium") which never converts in COD markets.
+  const isFrenchCopy = language.startsWith('fr');
   const audienceLines = [
     `Output language: ${langLabel}.`,
     dialect ? `Dialect & cultural register (MANDATORY — do not write in MSA / Fusha):\n${dialect}` : '',
@@ -769,7 +781,60 @@ FAQ (Algérie, Darija):
   - Questions rhétoriques OK pour le hero/cta — donne du rythme conversationnel
 ` : '';
 
-  return `You are a senior conversion copywriter and dropshipping landing-page strategist. You write copy that sells — specific, sensory, culturally native — in the EXACT dialect of the target country. You output ONE valid JSON object only.
+  // ──────── French few-shots (FR Maghreb + Afrique francophone) ────────
+  // Same purpose as the arab block: kill the corporate-marketing default
+  // voice and force a direct, WhatsApp-grade tone that actually converts
+  // for COD audiences.
+  const frenchFewShots = isFrenchCopy ? `
+# 📝 Few-shot: voici comment écrit un bon copywriter dropshipping français COD (style à imiter, PAS à copier)
+
+Hero (Maroc):
+  title: "Reçu chez toi en 48h — paiement quand tu l'as en main."
+  subtitle: "Plus de 3 200 Marocains l'ont déjà commandé ce mois. Tu paies cash au livreur, zéro avance, zéro carte."
+  ctaText: "Commander · paiement à la livraison"
+
+Hero (Sénégal):
+  title: "Le truc que tous tes potes vont vouloir te piquer."
+  subtitle: "Livraison gratuite Dakar + régions sous 72h. Tu testes, ensuite tu payes — pas l'inverse."
+  ctaText: "Je le veux (-30%)"
+
+Features item (générique FR):
+  title: "Solide, vraiment solide"
+  description: "Testé plus de 10 000 fois sans casser. Cuir véritable, coutures renforcées — pas du plastique premier prix."
+
+Testimonial (Côte d'Ivoire):
+  quote: "J'étais sceptique au début, mais quand le livreur est passé chez moi à Yopougon avec le colis, j'ai vu la qualité avant même de payer. Excellent."
+  author: "Aïcha Koné"
+  role: "Cliente — Abidjan"
+
+CTA section (Tunisie FR):
+  title: "Il reste 38 pièces. Après, on attend la prochaine livraison."
+  subtitle: "Commande maintenant, paye à la réception. Tu refuses sans frais si ça ne te plaît pas."
+  buttonText: "Commander maintenant"
+  urgency: "Stock limité · réapprovisionnement dans 2 semaines"
+
+FAQ (Maroc FR):
+  question: "Et si je ne suis pas satisfait ?"
+  answer: "Le livreur attend que tu ouvres le colis. Si ça ne te convient pas, tu refuses, tu ne paies rien. Aucune avance, aucun frais caché."
+
+# 🚫 ANTI-PATTERNS — ne JAMAIS écrire comme ça (trop corporate / cliché Amazon) :
+  ❌ "Découvrez notre gamme premium de produits d'exception"  (vide, cliché, zéro spécifique)
+  ❌ "Nous vous proposons les meilleurs articles du marché"   (nous-on, formel, mensonge implicite)
+  ❌ "Profitez d'une expérience client inégalée"              (jargon SaaS, aucune image mentale)
+  ❌ "Notre engagement : votre satisfaction"                  (slogan publicitaire des années 2000)
+  ❌ "Achetez dès maintenant !"                               (impératif vide sans raison crédible)
+
+# ✅ PRINCIPES de copy FR (à appliquer dans CHAQUE section):
+  - PARLE direct : "tu" + verbe à la 2ème personne, jamais "vous" sauf B2B explicite
+  - SPÉCIFIQUE : chiffres (3 200 clients, 48h, -30%), villes locales (Yopougon, Casa, Dakar)
+  - CONCRET : la sensation, l'usage, le moment précis ("quand le livreur passe", "le matin avant le café")
+  - URGENCE crédible : "38 pièces restantes", "réappro dans 2 semaines", PAS "vite vite stock limité"
+  - Adresse l'objection COD frontalement : "tu payes seulement quand tu l'as en main"
+  - Rythme court : phrases de 6-12 mots dans les CTA, jamais de subordonnée alambiquée
+  - Zéro mot-jargon : pas de "premium", "exception", "engagement", "expérience", "univers"
+` : '';
+
+  return `You are an elite conversion copywriter who has written 800+ winning COD dropshipping landing pages for the Maghreb and West Africa markets. Your voice is direct, vivid, locally idiomatic, and obsessively specific — never corporate, never generic. You think in scrolls and tap-zones, not in paragraphs. You output ONE valid JSON object only.
 
 # Brand
 Store: ${storeName}
@@ -784,7 +849,7 @@ ${pageKind}${productPageRules}
 # Product
 ${productBlock}
 ${priceLines ? `\n# Pricing\n${priceLines}` : ''}${imageBlock}
-${arabFewShots}
+${arabFewShots}${frenchFewShots}
 # Section schema
 ${sectionsSchema}
 
@@ -799,6 +864,7 @@ ${sectionsSchema}
 - Strict JSON. No trailing commas. No code fences.
 - ALL human-readable copy in ${langLabel}${dialect ? ` (dialect: ${dialect.split(/[.\n]/)[0]})` : ''}.${arabHint}
 ${isArabicDialect ? `- DIALECT IS NON-NEGOTIABLE. Re-read the dialect block above before writing each section. After drafting, scan your output for any Fusha forms (e.g. "اشترِ", "احصل على", "الذي", verb-initial sentences with classical conjugation) and REWRITE them in ${country?.toUpperCase() || 'the target'} dialect with the markers listed.\n- French loanwords are encouraged where the dialect block lists them — DO NOT translate them to Arabic equivalents.` : ''}
+${isFrenchCopy ? `- VOICE IS NON-NEGOTIABLE. Re-read the French few-shot above before EACH section. After drafting, scan for forbidden corporate jargon ("premium", "exception", "univers", "engagement", "découvrez notre gamme", "expérience inégalée", "nous vous proposons") and REWRITE in the direct tu-form WhatsApp-tone shown in the examples.\n- Use "tu" (B2C), never "vous". Cite concrete numbers, local city names where natural, and address the COD payment objection head-on.` : ''}
 - ALL "imagePrompt" / "imagePrompts" fields stay in ENGLISH (image model needs English).
 - 9 to 13 sections. Start with "hero", end with "footer". Always include "cta" near the end.
 - NEVER invent a filename or URL. The ONLY allowed values for "imageUrl", "posterUrl", "avatarUrl", "images", "gallery" are: an http(s):// URL we already gave you, OR the literal placeholder "__PRODUCT_IMAGE_N__". For every other case, OMIT the field entirely and use "imagePrompt" / "imagePrompts" instead.
