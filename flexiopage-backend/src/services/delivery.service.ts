@@ -7,9 +7,9 @@
  * integrations and inbound `X-Boutshop-Signature` headers are still
  * accepted on the verify path.
  *
- * The MogaDelivery endpoint is `https://api.admin-mogadelivery.com/webhooks/flexiopage`
- * (prod, since 2026-05-17). Override per-store via
- * `integrations.delivery.baseUrl` or `MOGADELIVERY_WEBHOOK_URL` env.
+ * The MogaDelivery endpoint is `https://api.admin-mogadelivery.com/api/webhooks/flexiopage`
+ * (prod, since 2026-05-17, finalised path after MD migration). Override per-store
+ * via `integrations.delivery.baseUrl` or `MOGADELIVERY_WEBHOOK_URL` env.
  */
 import crypto from 'crypto';
 import type { IOrder } from '../models/Order.model';
@@ -53,11 +53,11 @@ interface DeliveryProviderImpl {
 }
 
 // ─────────────────────────────────────────────────────────────────────
-// MogaDelivery (api.admin-mogadelivery.com/webhooks/flexiopage)
+// MogaDelivery (api.admin-mogadelivery.com/api/webhooks/flexiopage)
 // ─────────────────────────────────────────────────────────────────────
 class MogaDeliveryProvider implements DeliveryProviderImpl {
   id: DeliveryProvider = 'mogadelivery';
-  private defaultUrl = 'https://api.admin-mogadelivery.com/webhooks/flexiopage';
+  private defaultUrl = 'https://api.admin-mogadelivery.com/api/webhooks/flexiopage';
 
   isConfigured(store: IStore): boolean {
     const cfg = store.integrations?.delivery;
@@ -162,12 +162,8 @@ class MogaDeliveryProvider implements DeliveryProviderImpl {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        // New canonical names; legacy `X-Boutshop-*` are emitted too while
-        // MogaDelivery transitions to the new header names.
         'X-Flexiopage-Signature': signature,
         'X-Flexiopage-Store-Id': order.storeId.toString(),
-        'X-Boutshop-Signature': signature,
-        'X-Boutshop-Store-Id': order.storeId.toString(),
       },
       body: rawBody,
     });
