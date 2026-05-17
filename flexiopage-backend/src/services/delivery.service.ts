@@ -15,6 +15,7 @@ import crypto from 'crypto';
 import type { IOrder } from '../models/Order.model';
 import { Order } from '../models/Order.model';
 import type { IStore } from '../models/Store.model';
+import { logActivity } from './activity-log.service';
 
 export type DeliveryProvider = 'mogadelivery' | 'yalidine' | 'noest' | 'aramex' | 'manual' | 'other';
 
@@ -369,6 +370,13 @@ export async function dispatchOrder(args: {
     args.order.trackingNumber = result.externalId;
     args.order.trackingUrl = result.trackingUrl;
     await args.order.save();
+    void logActivity({
+      type: 'delivery.dispatched',
+      message: `${args.order.orderNumber} envoyé à ${providerId} (${result.externalId})`,
+      storeId: args.order.storeId,
+      orderId: args.order._id,
+      metadata: { provider: providerId, externalId: result.externalId },
+    });
     return { ok: true, result };
   } catch (err) {
     const msg = (err as Error).message || 'Dispatch failed';
@@ -379,6 +387,13 @@ export async function dispatchOrder(args: {
     };
     await args.order.save();
     console.error(`[delivery] dispatch failed for order ${args.order.orderNumber}:`, msg);
+    void logActivity({
+      type: 'delivery.dispatch_failed',
+      message: `Échec dispatch ${args.order.orderNumber} vers ${providerId} : ${msg}`,
+      storeId: args.order.storeId,
+      orderId: args.order._id,
+      metadata: { provider: providerId, error: msg },
+    });
     return { ok: false, error: msg };
   }
 }

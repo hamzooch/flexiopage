@@ -26,6 +26,7 @@ import {
   User as UserIcon,
   Briefcase,
   DollarSign,
+  Activity,
 } from 'lucide-react';
 import { useAuthStore } from '@/stores/auth-store';
 import { cn } from '@/lib/utils';
@@ -39,6 +40,7 @@ const NAV = [
   { href: '/admin/wallets', label: 'Wallets', icon: Wallet },
   { href: '/admin/pricing', label: 'Tarifs AI', icon: DollarSign },
   { href: '/admin/complaints', label: 'Réclamations', icon: MessageSquare },
+  { href: '/admin/activity', label: 'Activité', icon: Activity },
   { href: '/admin/profile', label: 'Profil', icon: UserIcon },
 ];
 

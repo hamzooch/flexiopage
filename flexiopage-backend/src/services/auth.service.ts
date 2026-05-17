@@ -2,6 +2,7 @@ import bcrypt from 'bcryptjs';
 import jwt, { type SignOptions } from 'jsonwebtoken';
 import { User, IUser } from '../models/User.model';
 import { Subscription } from '../models/Subscription.model';
+import { logActivity } from './activity-log.service';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'change-me-in-production';
 const JWT_EXPIRES = (process.env.JWT_EXPIRES || '7d') as SignOptions['expiresIn'];
@@ -45,6 +46,12 @@ export async function register(input: RegisterInput): Promise<AuthResult> {
     status: 'active',
     storeLimit: 3,
     productLimitPerStore: 25,
+  });
+  void logActivity({
+    type: 'user.signup',
+    message: `Nouveau seller : ${user.email}`,
+    userId: user._id,
+    metadata: { name: user.name },
   });
   const token = jwt.sign(
     { userId: user._id.toString(), email: user.email },

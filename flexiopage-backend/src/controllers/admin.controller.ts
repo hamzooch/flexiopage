@@ -21,6 +21,8 @@ import { Order } from '../models/Order.model';
 import { Wallet } from '../models/Wallet.model';
 import { Complaint } from '../models/Complaint.model';
 import { credit, debit } from '../services/wallet.service';
+import { listActivities } from '../services/activity-log.service';
+import type { ActivityType } from '../models/ActivityLog.model';
 import {
   Settings,
   getSettings,
@@ -926,4 +928,13 @@ export async function updateAiPricing(req: AuthRequest, res: Response): Promise<
   invalidateSettingsCache();
   const fresh = await getSettings(true);
   res.json({ aiPricing: fresh.aiPricing, updatedAt: fresh.updatedAt });
+}
+
+/** GET /api/admin/activity — platform-wide event feed (cursor-paginated). */
+export async function listActivity(req: AuthRequest, res: Response): Promise<void> {
+  const limit = req.query.limit ? Number(req.query.limit) : undefined;
+  const cursor = typeof req.query.cursor === 'string' ? req.query.cursor : undefined;
+  const type = typeof req.query.type === 'string' ? (req.query.type as ActivityType) : undefined;
+  const { items, nextCursor } = await listActivities({ limit, cursor, type });
+  res.json({ items, nextCursor });
 }

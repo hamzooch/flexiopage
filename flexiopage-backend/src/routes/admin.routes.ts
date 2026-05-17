@@ -33,6 +33,7 @@ router.get('/stores', admin.listStores);
 router.get('/stores/:storeId/analytics', admin.getStoreDrilldown);
 router.get('/orders', admin.listOrders);
 router.get('/wallets', admin.listWallets);
+router.get('/activity', admin.listActivity);
 
 // Mutations open to admin+ (excludes supervisor)
 router.patch('/users/:userId', requireAdminWrite, admin.patchUser);

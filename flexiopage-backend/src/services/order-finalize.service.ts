@@ -17,6 +17,7 @@ import { sendOrderPaidEmail } from './email.service';
 import { dispatchOrder } from './delivery.service';
 import { notifyOrderCreated } from './notification.service';
 import { pushOrderToSheets } from './sheets.service';
+import { logActivity } from './activity-log.service';
 
 const TOKEN_BYTES = 24; // 32 base64url chars after encoding
 const DEFAULT_EXPIRY_DAYS = 30;
@@ -111,6 +112,13 @@ export async function finalizePaidOrder(orderId: string, providerData?: {
   }
   if (providerData?.webhookData) order.paymentWebhookData = providerData.webhookData;
   await order.save();
+  void logActivity({
+    type: 'order.paid',
+    message: `Paiement reçu pour ${order.orderNumber} (${order.total} ${order.currency})`,
+    storeId: order.storeId,
+    orderId: order._id,
+    metadata: { total: order.total, currency: order.currency, provider: providerData?.paymentProvider },
+  });
 
   // Auto-dispatch to delivery provider when the order has at least one
   // physical item AND a carrier (integrations.delivery) OR MogaDelivery 3PL

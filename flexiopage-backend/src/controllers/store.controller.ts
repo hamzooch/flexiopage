@@ -7,6 +7,7 @@ import { getTrackingStats, type TrackingRange } from '../services/tracking.servi
 import { verifyAndSaveDomain, getDomainTarget, checkDomain } from '../services/domain.service';
 import { testSheetsWebhook } from '../services/sheets.service';
 import { effectiveOwnerId, isTeamMember } from '../lib/owner';
+import { logActivity } from '../services/activity-log.service';
 
 // sanitizeMiddleware escapes string values recursively (e.g. "/" → "&#x2F;",
 // "&" → "&amp;"). That's fine for free-text fields but breaks config blobs
@@ -104,7 +105,17 @@ export async function updateStore(req: AuthRequest, res: Response): Promise<void
   if (settings && typeof settings === 'object') updates.settings = deepUnescape(settings);
   if (integrations && typeof integrations === 'object') updates.integrations = deepUnescape(integrations);
   if (typeof isPublished === 'boolean') updates.isPublished = isPublished;
+  const wasPublished = !!store.isPublished;
   const updated = await storeService.updateStore(store._id.toString(), updates as Parameters<typeof storeService.updateStore>[1]);
+  if (!wasPublished && isPublished === true) {
+    void logActivity({
+      type: 'store.published',
+      message: `Boutique publiée : ${store.name} (/${store.slug})`,
+      storeId: store._id,
+      userId: store.ownerId,
+      metadata: { slug: store.slug },
+    });
+  }
   res.json({ store: updated });
 }
 

@@ -2,6 +2,7 @@ import crypto from 'crypto';
 import { Order, IOrder } from '../models/Order.model';
 import { Customer } from '../models/Customer.model';
 import { Product } from '../models/Product.model';
+import { logActivity } from './activity-log.service';
 
 /** Random opaque 32-char URL-safe token used as the customer download key. */
 function generateDownloadToken(): string {
@@ -143,7 +144,7 @@ export async function createOrder(input: CreateOrderInput): Promise<IOrder> {
     }
   }
 
-  return Order.create({
+  const order = await Order.create({
     storeId: input.storeId,
     orderNumber,
     customerId,
@@ -166,6 +167,14 @@ export async function createOrder(input: CreateOrderInput): Promise<IOrder> {
     downloadToken,
     downloadExpiresAt,
   });
+  void logActivity({
+    type: 'order.created',
+    message: `Commande ${order.orderNumber} créée (${order.total} ${order.currency}, ${order.paymentMethod})`,
+    storeId: order.storeId,
+    orderId: order._id,
+    metadata: { total: order.total, currency: order.currency, paymentMethod: order.paymentMethod, items: items.length },
+  });
+  return order;
 }
 
 /** Look up an order by its public download token (for the customer portal). */

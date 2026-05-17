@@ -366,6 +366,25 @@ export interface AdminWallet {
   updatedAt?: string;
 }
 
+export type AdminActivityType =
+  | 'user.signup'
+  | 'order.created'
+  | 'order.paid'
+  | 'store.published'
+  | 'delivery.dispatched'
+  | 'delivery.dispatch_failed';
+
+export interface AdminActivityEvent {
+  _id: string;
+  type: AdminActivityType;
+  message: string;
+  userId?: { _id: string; email: string; name: string } | null;
+  storeId?: { _id: string; name: string; slug: string } | null;
+  orderId?: string | null;
+  metadata?: Record<string, unknown>;
+  createdAt: string;
+}
+
 // ─────────────────────────────────────────────────────────────────────
 // Complaints (réclamations)
 // ─────────────────────────────────────────────────────────────────────
@@ -458,6 +477,8 @@ export const adminApi = {
   stores: () => api.get<{ stores: AdminStore[]; total: number }>('/admin/stores'),
   orders: () => api.get<{ orders: AdminOrder[]; total: number }>('/admin/orders'),
   wallets: () => api.get<{ wallets: AdminWallet[] }>('/admin/wallets'),
+  activity: (params?: { limit?: number; cursor?: string; type?: string }) =>
+    api.get<{ items: AdminActivityEvent[]; nextCursor: string | null }>('/admin/activity', { params }),
   adjustWallet: (
     userId: string,
     data: { amount: number; bucket?: WalletBucket; reason: string }
