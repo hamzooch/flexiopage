@@ -306,12 +306,67 @@ function Hero({ store, theme, isDigital = false }: { store: StoreDoc; theme: The
   const layout = theme.layout?.hero || 'centered';
   const title = store.settings?.storefront?.heroTitle || store.name;
   const subtitle = store.settings?.storefront?.heroSubtitle || store.description;
+  const heroImage = store.settings?.storefront?.heroImage;
   const eyebrow = isDigital ? 'Téléchargement instantané' : 'Nouvelle collection';
   const radius = RADIUS_PX[theme.borderRadius];
 
   const titleSize =
     theme.fontDisplaySize === 'xlarge' ? 'text-4xl sm:text-6xl lg:text-7xl' :
     theme.fontDisplaySize === 'large'  ? 'text-3xl sm:text-5xl lg:text-6xl' : 'text-3xl sm:text-4xl lg:text-5xl';
+
+  // When the seller uploads a hero background image we render a dedicated
+  // image-cover layout (image + dark scrim + white text) instead of one of
+  // the 5 layout variants — the picked image is a strong creative choice
+  // that should drive the hero, not compete with a placeholder visual.
+  if (heroImage) {
+    return (
+      <section className="relative overflow-hidden" style={{ backgroundColor: theme.surfaceMuted }}>
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src={heroImage}
+          alt=""
+          className="absolute inset-0 h-full w-full object-cover"
+          aria-hidden
+        />
+        <div
+          className="absolute inset-0"
+          style={{ background: 'linear-gradient(180deg, rgba(0,0,0,0.35) 0%, rgba(0,0,0,0.65) 100%)' }}
+          aria-hidden
+        />
+        <div className="relative mx-auto max-w-6xl px-4 py-20 sm:px-6 sm:py-28 lg:py-36">
+          <div className="mx-auto max-w-3xl text-center">
+            <div
+              className="mb-5 inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-semibold backdrop-blur"
+              style={{ borderColor: 'rgba(255,255,255,0.35)', color: '#fff', backgroundColor: 'rgba(255,255,255,0.12)' }}
+            >
+              <span className="relative grid h-1.5 w-1.5 place-items-center">
+                <span className="absolute inset-0 animate-ping rounded-full opacity-60" style={{ backgroundColor: theme.primary }} />
+                <span className="relative h-1.5 w-1.5 rounded-full" style={{ backgroundColor: theme.primary }} />
+              </span>
+              {eyebrow}
+            </div>
+            <h1
+              className={`${titleSize} font-bold leading-[1.05] tracking-tight text-white`}
+              style={{ fontFamily: theme.fontHeading, textShadow: '0 2px 16px rgba(0,0,0,0.35)' }}
+            >
+              {title}
+            </h1>
+            {subtitle && (
+              <p
+                className="mx-auto mt-6 max-w-2xl text-base leading-relaxed text-white/90 sm:text-lg"
+                style={{ fontFamily: theme.fontBody, textShadow: '0 1px 8px rgba(0,0,0,0.35)' }}
+              >
+                {subtitle}
+              </p>
+            )}
+            <div className="mt-9 flex flex-wrap items-center justify-center gap-3">
+              <HeroCta theme={theme} label="Découvrir nos produits" />
+            </div>
+          </div>
+        </div>
+      </section>
+    );
+  }
 
   // ── FULLBLEED — edge-to-edge color block, oversized uppercase type ──
   if (layout === 'fullbleed') {
@@ -592,13 +647,22 @@ function ProductCard({
       {KIND_LABEL[p.digitalKind] || 'Digital'}
     </span>
   );
+  // Wrap allows the compare price to drop to a 2nd line on very narrow
+  // mobile cards instead of overflowing; whitespace-nowrap keeps each
+  // formatted amount atomic so "45 000 XOF" never splits mid-number.
   const priceRow = (
-    <div className="flex items-baseline gap-2">
-      <span className="font-bold" style={{ color: theme.primary }}>
+    <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 tabular-nums">
+      <span
+        className="whitespace-nowrap text-sm font-bold sm:text-base"
+        style={{ color: theme.primary }}
+      >
         {formatCurrency(p.price, currency)}
       </span>
       {hasDiscount && (
-        <span className="text-xs line-through" style={{ color: theme.muted }}>
+        <span
+          className="whitespace-nowrap text-xs font-medium line-through opacity-80 sm:text-[13px]"
+          style={{ color: theme.muted }}
+        >
           {formatCurrency(p.compareAtPrice!, currency)}
         </span>
       )}
@@ -622,10 +686,17 @@ function ProductCard({
           <h3 className="text-sm font-bold uppercase tracking-tight text-white sm:text-base" style={{ fontFamily: theme.fontHeading }}>
             {p.name}
           </h3>
-          <div className="mt-1 flex items-baseline gap-2">
-            <span className="font-bold" style={{ color: theme.primary }}>{formatCurrency(p.price, currency)}</span>
+          <div className="mt-1 flex flex-wrap items-baseline gap-x-2 gap-y-0.5 tabular-nums">
+            <span
+              className="whitespace-nowrap text-sm font-bold sm:text-base"
+              style={{ color: theme.primary }}
+            >
+              {formatCurrency(p.price, currency)}
+            </span>
             {hasDiscount && (
-              <span className="text-xs text-white/60 line-through">{formatCurrency(p.compareAtPrice!, currency)}</span>
+              <span className="whitespace-nowrap text-xs font-medium text-white/70 line-through sm:text-[13px]">
+                {formatCurrency(p.compareAtPrice!, currency)}
+              </span>
             )}
           </div>
         </div>
@@ -699,11 +770,14 @@ function ProductCard({
         {discountBadge}
         {kindBadge}
       </div>
-      <div className="p-5">
-        <h3 className="font-semibold tracking-tight" style={{ fontFamily: theme.fontBody, color: theme.foreground }}>
+      <div className="p-3 sm:p-5">
+        <h3
+          className="line-clamp-2 text-sm font-semibold leading-snug tracking-tight sm:text-base"
+          style={{ fontFamily: theme.fontBody, color: theme.foreground }}
+        >
           {p.name}
         </h3>
-        <div className="mt-2">{priceRow}</div>
+        <div className="mt-1.5 sm:mt-2">{priceRow}</div>
       </div>
     </Link>
   );
