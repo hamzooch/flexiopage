@@ -11,15 +11,9 @@ import { useStoreStore } from '@/stores/store-store';
  *   2. /select-store if no `currentStoreId` is picked yet — the dashboard
  *      is scoped to a single store, so we force the picker first.
  *
- * We MUST wait for zustand persist to finish rehydrating from localStorage
- * before deciding — otherwise a hard refresh sees `token=null` and bounces
- * the seller to /login.
- *
- * The previous version used a 300ms timeout as a safety net, which itself
- * caused false /login bounces when hydration was slower than that. We now
- * skip the timer and read the persisted token straight from localStorage
- * as a last-resort fallback, so we can decide deterministically without
- * racing zustand's hydration microtask chain.
+ * We read the persisted blob straight from localStorage instead of waiting
+ * for zustand's hydration callback — the callback was occasionally never
+ * firing and the page hung on "Loading..." indefinitely.
  */
 
 const STORELESS_ALLOWED = new Set(['/dashboard/profile']);
@@ -52,60 +46,18 @@ function resolveCurrentStoreId(): string | null {
   return persisted?.currentStoreId ?? null;
 }
 
-function awaitHydration(
-  store: { persist?: { hasHydrated?: () => boolean; onFinishHydration?: (cb: () => void) => () => void } },
-  onDone: () => void,
-): () => void {
-  if (!store.persist) {
-    onDone();
-    return () => {};
-  }
-  if (store.persist.hasHydrated?.()) {
-    onDone();
-    return () => {};
-  }
-  const unsub = store.persist.onFinishHydration?.(onDone);
-  if (typeof unsub !== 'function') {
-    // No subscription API → don't hang the UI; treat as already settled.
-    onDone();
-    return () => {};
-  }
-  return unsub;
-}
-
 export function AuthGuard({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
-  const [hydrated, setHydrated] = useState(false);
+  const [mounted, setMounted] = useState(false);
   const [redirecting, setRedirecting] = useState(false);
 
-  // Wait for BOTH persisted stores to hydrate before reading their state.
   useEffect(() => {
-    if (typeof window === 'undefined') return;
-    let authDone = false;
-    let storeDone = false;
-    const check = () => {
-      if (authDone && storeDone) setHydrated(true);
-    };
-    const unsubAuth = awaitHydration(useAuthStore, () => {
-      authDone = true;
-      check();
-    });
-    const unsubStore = awaitHydration(useStoreStore, () => {
-      storeDone = true;
-      check();
-    });
-    return () => {
-      unsubAuth();
-      unsubStore();
-    };
+    setMounted(true);
   }, []);
 
-  // Redirect logic runs only once hydration is settled. Falls back to
-  // reading the persisted blob directly from localStorage so a slow
-  // rehydration cannot make us think the user is logged out.
   useEffect(() => {
-    if (!hydrated) return;
+    if (!mounted) return;
     const token = resolveToken();
     const currentStoreId = resolveCurrentStoreId();
     if (!token) {
@@ -119,9 +71,9 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
       return;
     }
     setRedirecting(false);
-  }, [hydrated, pathname, router]);
+  }, [mounted, pathname, router]);
 
-  if (!hydrated || redirecting) {
+  if (!mounted || redirecting) {
     return (
       <div className="flex h-screen items-center justify-center">
         <p className="text-muted-foreground">Loading...</p>
