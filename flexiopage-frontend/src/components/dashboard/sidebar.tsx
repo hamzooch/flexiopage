@@ -178,18 +178,14 @@ export function Sidebar({ mobileOpen = false, onMobileClose }: Props) {
           mobileOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'
         )}
       >
-        {/* Decorative glows */}
-        <div className="pointer-events-none absolute -left-10 top-10 h-40 w-40 rounded-full bg-primary/10 blur-3xl" aria-hidden />
-        <div className="pointer-events-none absolute -right-16 bottom-32 h-48 w-48 rounded-full bg-fuchsia-500/10 blur-3xl" aria-hidden />
-
         {/* Logo + close (mobile) */}
-        <div className="relative flex shrink-0 items-center justify-between px-5 py-5">
+        <div className="flex shrink-0 items-center justify-between border-b border-sidebar-border/60 px-5 py-4">
           <Link
             href="/dashboard"
-            className="group flex items-center transition-transform duration-300 hover:scale-[1.02]"
+            className="flex items-center"
             aria-label="FlexioPage — tableau de bord"
           >
-            <BrandLogo variant="color" width={140} priority />
+            <BrandLogo variant="color" width={130} priority />
           </Link>
           <button
             type="button"
@@ -202,7 +198,7 @@ export function Sidebar({ mobileOpen = false, onMobileClose }: Props) {
         </div>
 
         {/* Sections */}
-        <nav className="relative flex-1 space-y-5 overflow-y-auto px-3 pb-3">
+        <nav className="flex-1 space-y-5 overflow-y-auto px-3 py-4">
           {sections.map((section) => (
             <div key={section.title}>
               <div className="px-3 pb-1.5 text-[10px] font-bold uppercase tracking-wider text-muted-foreground/60">
@@ -219,24 +215,16 @@ export function Sidebar({ mobileOpen = false, onMobileClose }: Props) {
                         href={item.href}
                         onClick={onMobileClose}
                         className={cn(
-                          'group relative flex items-center gap-3 rounded-xl px-3 py-2 text-sm font-medium transition-all duration-200',
+                          'group relative flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors',
                           isActive
-                            ? 'text-primary'
+                            ? 'bg-primary/10 text-primary'
                             : 'text-foreground/70 hover:bg-sidebar-muted hover:text-foreground'
                         )}
                       >
                         {isActive && (
-                          <span className="absolute inset-0 -z-10 rounded-xl bg-primary/10 ring-1 ring-primary/15" />
-                        )}
-                        {isActive && (
                           <span className="absolute -left-3 top-1/2 h-5 w-1 -translate-y-1/2 rounded-r-full gradient-brand" />
                         )}
-                        <item.icon
-                          className={cn(
-                            'h-[17px] w-[17px] transition-transform duration-200',
-                            isActive ? 'scale-110' : 'group-hover:scale-110'
-                          )}
-                        />
+                        <item.icon className="h-[17px] w-[17px] shrink-0" />
                         <span className="truncate">{item.label}</span>
                       </Link>
                     </li>
@@ -249,11 +237,11 @@ export function Sidebar({ mobileOpen = false, onMobileClose }: Props) {
 
         {/* Admin shortcut (staff + founder only) */}
         {canAccessAdmin && (
-          <div className="relative shrink-0 border-t border-sidebar-border px-3 pt-3">
+          <div className="shrink-0 border-t border-sidebar-border/60 px-3 pt-3">
             <Link
               href="/admin"
               onClick={onMobileClose}
-              className="group flex items-center gap-2.5 rounded-xl bg-gradient-to-r from-rose-600 via-orange-600 to-amber-500 px-3 py-2.5 text-sm font-semibold text-white shadow-md shadow-rose-500/30 transition-transform hover:scale-[1.02]"
+              className="group flex items-center gap-2.5 rounded-lg bg-gradient-to-r from-rose-600 to-orange-600 px-3 py-2.5 text-sm font-semibold text-white shadow-sm shadow-rose-500/30 transition-transform hover:scale-[1.01]"
             >
               <ShieldCheck className="h-4 w-4" strokeWidth={2.5} />
               <span className="flex-1">Mode Admin Plateforme</span>
@@ -263,20 +251,20 @@ export function Sidebar({ mobileOpen = false, onMobileClose }: Props) {
         )}
 
         {/* User card */}
-        <div className="relative shrink-0 border-t border-sidebar-border p-3">
+        <div className="shrink-0 border-t border-sidebar-border/60 p-3">
           <Link
             href="/dashboard/profile"
             onClick={onMobileClose}
-            className="flex items-center gap-3 rounded-xl px-2 py-2 transition-colors hover:bg-sidebar-muted"
+            className="flex items-center gap-2.5 rounded-lg p-1.5 transition-colors hover:bg-sidebar-muted"
           >
-            <div className="grid h-9 w-9 shrink-0 place-items-center rounded-full gradient-brand text-xs font-semibold text-white shadow-md">
+            <div className="grid h-9 w-9 shrink-0 place-items-center rounded-full gradient-brand text-[11px] font-semibold text-white shadow-sm">
               {initials}
             </div>
-            <div className="min-w-0 flex-1">
+            <div className="min-w-0 flex-1 leading-tight">
               <div className="truncate text-sm font-medium text-foreground">
                 {user?.name || 'User'}
               </div>
-              <div className="truncate text-xs text-muted-foreground">
+              <div className="truncate text-[11px] text-muted-foreground">
                 {user?.email}
               </div>
             </div>
