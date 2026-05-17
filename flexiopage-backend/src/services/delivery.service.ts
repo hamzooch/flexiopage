@@ -7,8 +7,9 @@
  * integrations and inbound `X-Boutshop-Signature` headers are still
  * accepted on the verify path.
  *
- * The MogaDelivery endpoint path itself (`/webhooks/boutshop`) is owned
- * by the partner and stays unchanged until they rebrand on their side.
+ * The MogaDelivery endpoint is `https://api.admin-mogadelivery.com/webhooks/flexiopage`
+ * (prod, since 2026-05-17). Override per-store via
+ * `integrations.delivery.baseUrl` or `MOGADELIVERY_WEBHOOK_URL` env.
  */
 import crypto from 'crypto';
 import type { IOrder } from '../models/Order.model';
@@ -51,17 +52,11 @@ interface DeliveryProviderImpl {
 }
 
 // ─────────────────────────────────────────────────────────────────────
-// MogaDelivery (api.admin-mogadelivery.com/webhooks/boutshop)
+// MogaDelivery (api.admin-mogadelivery.com/webhooks/flexiopage)
 // ─────────────────────────────────────────────────────────────────────
 class MogaDeliveryProvider implements DeliveryProviderImpl {
   id: DeliveryProvider = 'mogadelivery';
-  // MogaDelivery confirmed two URLs: the legacy `/api/webhooks/boutshop`
-  // (always active, currently deployed) and the canonical
-  // `/api/webhooks/flexiopage` (not yet deployed on their side, returns
-  // 404). We default to the legacy path so dispatch works out of the box;
-  // sellers can override via `integrations.delivery.baseUrl` once the
-  // canonical endpoint is live.
-  private defaultUrl = 'https://api.admin-mogadelivery.com/api/webhooks/boutshop';
+  private defaultUrl = 'https://api.admin-mogadelivery.com/webhooks/flexiopage';
 
   isConfigured(store: IStore): boolean {
     const cfg = store.integrations?.delivery;

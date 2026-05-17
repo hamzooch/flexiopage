@@ -855,12 +855,11 @@ function LogisticsPanel({ store, onSaved, saving, setSaving }: PanelProps) {
                   <Input
                     value={baseUrl}
                     onChange={(e) => setBaseUrl(e.target.value)}
-                    placeholder="https://api.admin-mogadelivery.com/api/webhooks/boutshop"
+                    placeholder="https://api.admin-mogadelivery.com/webhooks/flexiopage"
                     className="mt-1.5 h-10 font-mono text-xs"
                   />
                   <p className="mt-1 text-[11px] text-muted-foreground">
-                    Laisse vide → utilise <code className="rounded bg-muted px-1">api.admin-mogadelivery.com/api/webhooks/boutshop</code> (endpoint legacy stable).
-                    {' '}Bascule vers <code className="rounded bg-muted px-1">/api/webhooks/flexiopage</code> quand MogaDelivery le déploiera de leur côté.
+                    Laisse vide → utilise <code className="rounded bg-muted px-1">api.admin-mogadelivery.com/webhooks/flexiopage</code> (endpoint prod).
                   </p>
                 </div>
                 <div>
