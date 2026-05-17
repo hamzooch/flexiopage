@@ -1,9 +1,13 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
 import { adminApi, type AdminOrder } from '@/lib/api';
-import { Loader2 } from 'lucide-react';
+import { cn } from '@/lib/utils';
+import { Loader2, Search, X } from 'lucide-react';
+
+type PayFilter = 'all' | 'pending' | 'paid' | 'failed' | 'refunded';
 
 function fmt(amount: number, currency: string): string {
   try {
@@ -17,6 +21,8 @@ export default function AdminOrdersPage() {
   const [orders, setOrders] = useState<AdminOrder[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
+  const [search, setSearch] = useState('');
+  const [payFilter, setPayFilter] = useState<PayFilter>('all');
 
   useEffect(() => {
     adminApi.orders().then((res) => {
@@ -25,24 +31,70 @@ export default function AdminOrdersPage() {
     }).finally(() => setLoading(false));
   }, []);
 
+  const filtered = useMemo(() => {
+    let list = orders;
+    if (payFilter !== 'all') list = list.filter((o) => o.paymentStatus === payFilter);
+    const q = search.trim().toLowerCase();
+    if (q) {
+      list = list.filter((o) =>
+        o.orderNumber.toLowerCase().includes(q) ||
+        (o.customerName?.toLowerCase() || '').includes(q) ||
+        (o.email?.toLowerCase() || '').includes(q) ||
+        (o.storeId?.name?.toLowerCase() || '').includes(q) ||
+        (o.storeId?.slug?.toLowerCase() || '').includes(q)
+      );
+    }
+    return list;
+  }, [orders, payFilter, search]);
+
+  const counts = useMemo(() => {
+    const by = (k: string) => orders.filter((o) => o.paymentStatus === k).length;
+    return { pending: by('pending'), paid: by('paid'), failed: by('failed'), refunded: by('refunded') };
+  }, [orders]);
+
   return (
     <Card>
       <CardHeader>
         <CardTitle className="text-base sm:text-lg">Commandes ({total})</CardTitle>
         <CardDescription className="text-xs sm:text-sm">Toutes les commandes de la plateforme, plus récentes en premier.</CardDescription>
+
+        {/* Filters */}
+        <div className="mt-4 flex flex-col gap-2.5">
+          <div className="relative">
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Rechercher par n° commande, client, email, boutique…"
+              className="h-9 rounded-lg pl-9 text-xs sm:text-sm"
+            />
+            {search && (
+              <button type="button" onClick={() => setSearch('')} className="absolute right-2 top-1/2 grid h-6 w-6 -translate-y-1/2 place-items-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground" aria-label="Effacer">
+                <X className="h-3.5 w-3.5" />
+              </button>
+            )}
+          </div>
+          <div className="flex flex-wrap gap-1.5">
+            <PayChip active={payFilter === 'all'} onClick={() => setPayFilter('all')}>Tout ({orders.length})</PayChip>
+            <PayChip active={payFilter === 'pending'} onClick={() => setPayFilter('pending')} tint="amber">En attente ({counts.pending})</PayChip>
+            <PayChip active={payFilter === 'paid'} onClick={() => setPayFilter('paid')} tint="emerald">Payées ({counts.paid})</PayChip>
+            <PayChip active={payFilter === 'failed'} onClick={() => setPayFilter('failed')} tint="rose">Échec ({counts.failed})</PayChip>
+            <PayChip active={payFilter === 'refunded'} onClick={() => setPayFilter('refunded')} tint="amber">Remboursées ({counts.refunded})</PayChip>
+          </div>
+        </div>
       </CardHeader>
       <CardContent className="px-3 sm:px-6">
         {loading ? (
           <div className="grid place-items-center py-16"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>
-        ) : orders.length === 0 ? (
+        ) : filtered.length === 0 ? (
           <p className="rounded-lg border border-dashed border-border bg-muted/30 p-6 text-center text-sm text-muted-foreground">
-            Aucune commande pour l&apos;instant.
+            {orders.length === 0 ? "Aucune commande pour l'instant." : 'Aucun résultat pour ces filtres.'}
           </p>
         ) : (
           <>
             {/* Mobile cards */}
             <ul className="space-y-2.5 md:hidden">
-              {orders.map((o) => <AdminOrderMobileCard key={o._id} order={o} />)}
+              {filtered.map((o) => <AdminOrderMobileCard key={o._id} order={o} />)}
             </ul>
 
             {/* Desktop table */}
@@ -60,7 +112,7 @@ export default function AdminOrdersPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {orders.map((o) => (
+                  {filtered.map((o) => (
                     <tr key={o._id} className="border-b border-border/30 hover:bg-muted/20">
                       <td className="py-3 font-mono text-xs">{o.orderNumber}</td>
                       <td className="py-3 text-xs">
@@ -155,4 +207,33 @@ function fulfillmentColor(s: string): string {
 }
 function labelFulfillment(s: string): string {
   return ({ unfulfilled: 'Non livrée', partial: 'En route', fulfilled: 'Livrée', cancelled: 'Annulée' } as Record<string, string>)[s] || s;
+}
+
+function PayChip({
+  children, active, onClick, tint,
+}: {
+  children: React.ReactNode;
+  active: boolean;
+  onClick: () => void;
+  tint?: 'emerald' | 'amber' | 'rose';
+}) {
+  const tintCls = {
+    emerald: 'border-emerald-500 bg-emerald-500 text-white',
+    amber:   'border-amber-500 bg-amber-500 text-white',
+    rose:    'border-rose-500 bg-rose-500 text-white',
+  };
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={cn(
+        'rounded-lg border px-2.5 py-1 text-[11px] font-medium transition-colors',
+        active
+          ? tint ? tintCls[tint] : 'border-primary bg-primary text-primary-foreground'
+          : 'border-border/70 text-muted-foreground hover:border-primary/30 hover:text-foreground'
+      )}
+    >
+      {children}
+    </button>
+  );
 }

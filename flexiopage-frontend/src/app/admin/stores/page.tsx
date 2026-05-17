@@ -1,16 +1,23 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
 import { adminApi, type AdminStore } from '@/lib/api';
-import { storeAbsoluteUrl } from '@/lib/utils';
-import { Loader2, Cloud, Package, ExternalLink } from 'lucide-react';
+import { cn, storeAbsoluteUrl } from '@/lib/utils';
+import { Loader2, Cloud, Package, ExternalLink, Search, X } from 'lucide-react';
 import Link from 'next/link';
+
+type TypeFilter = 'all' | 'physical' | 'digital';
+type StatusFilter = 'all' | 'live' | 'draft';
 
 export default function AdminStoresPage() {
   const [stores, setStores] = useState<AdminStore[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
+  const [search, setSearch] = useState('');
+  const [typeFilter, setTypeFilter] = useState<TypeFilter>('all');
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
 
   useEffect(() => {
     adminApi.stores().then((res) => {
@@ -19,15 +26,98 @@ export default function AdminStoresPage() {
     }).finally(() => setLoading(false));
   }, []);
 
+  const filtered = useMemo(() => {
+    let list = stores;
+    if (typeFilter !== 'all') {
+      list = list.filter((s) => (s.storeType || 'physical') === typeFilter);
+    }
+    if (statusFilter !== 'all') {
+      const wantLive = statusFilter === 'live';
+      list = list.filter((s) => !!s.isPublished === wantLive);
+    }
+    const q = search.trim().toLowerCase();
+    if (q) {
+      list = list.filter((s) =>
+        s.name.toLowerCase().includes(q) ||
+        s.slug.toLowerCase().includes(q) ||
+        (s.ownerId?.email?.toLowerCase() || '').includes(q) ||
+        (s.ownerId?.name?.toLowerCase() || '').includes(q)
+      );
+    }
+    return list;
+  }, [stores, typeFilter, statusFilter, search]);
+
+  const stats = useMemo(() => {
+    const physical = stores.filter((s) => (s.storeType || 'physical') === 'physical').length;
+    const digital = stores.filter((s) => s.storeType === 'digital').length;
+    const live = stores.filter((s) => s.isPublished).length;
+    const draft = stores.length - live;
+    return { physical, digital, live, draft };
+  }, [stores]);
+
   return (
     <Card>
       <CardHeader>
         <CardTitle>Boutiques ({total})</CardTitle>
         <CardDescription>Toutes les boutiques de la plateforme, plus récentes en premier.</CardDescription>
+
+        {/* Filters */}
+        <div className="mt-4 flex flex-col gap-2.5">
+          {/* Search */}
+          <div className="relative">
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Rechercher par nom, slug, vendeur, email…"
+              className="h-9 rounded-lg pl-9 text-xs sm:text-sm"
+            />
+            {search && (
+              <button
+                type="button"
+                onClick={() => setSearch('')}
+                className="absolute right-2 top-1/2 grid h-6 w-6 -translate-y-1/2 place-items-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"
+                aria-label="Effacer"
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            )}
+          </div>
+
+          {/* Type chips */}
+          <div className="flex flex-wrap gap-1.5">
+            <Chip active={typeFilter === 'all'} onClick={() => setTypeFilter('all')}>
+              Tous types ({stores.length})
+            </Chip>
+            <Chip active={typeFilter === 'physical'} onClick={() => setTypeFilter('physical')} tint="indigo">
+              <Package className="h-3 w-3" /> Physique ({stats.physical})
+            </Chip>
+            <Chip active={typeFilter === 'digital'} onClick={() => setTypeFilter('digital')} tint="fuchsia">
+              <Cloud className="h-3 w-3" /> Digital ({stats.digital})
+            </Chip>
+          </div>
+
+          {/* Status chips */}
+          <div className="flex flex-wrap gap-1.5">
+            <Chip active={statusFilter === 'all'} onClick={() => setStatusFilter('all')}>
+              Tous statuts
+            </Chip>
+            <Chip active={statusFilter === 'live'} onClick={() => setStatusFilter('live')} tint="emerald">
+              Live ({stats.live})
+            </Chip>
+            <Chip active={statusFilter === 'draft'} onClick={() => setStatusFilter('draft')} tint="amber">
+              Draft ({stats.draft})
+            </Chip>
+          </div>
+        </div>
       </CardHeader>
       <CardContent>
         {loading ? (
           <div className="grid place-items-center py-16"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>
+        ) : filtered.length === 0 ? (
+          <p className="rounded-lg border border-dashed border-border bg-muted/30 p-6 text-center text-sm text-muted-foreground">
+            Aucune boutique ne correspond aux filtres.
+          </p>
         ) : (
           <div className="overflow-x-auto">
             <table className="min-w-full text-sm">
@@ -42,7 +132,7 @@ export default function AdminStoresPage() {
                 </tr>
               </thead>
               <tbody>
-                {stores.map((s) => {
+                {filtered.map((s) => {
                   const isDigital = s.storeType === 'digital';
                   return (
                     <tr key={s._id} className="border-b border-border/30 hover:bg-muted/20">
@@ -100,5 +190,38 @@ export default function AdminStoresPage() {
         )}
       </CardContent>
     </Card>
+  );
+}
+
+function Chip({
+  children,
+  active,
+  onClick,
+  tint,
+}: {
+  children: React.ReactNode;
+  active: boolean;
+  onClick: () => void;
+  tint?: 'indigo' | 'fuchsia' | 'emerald' | 'amber';
+}) {
+  const tintCls = {
+    indigo:  'border-indigo-500 bg-indigo-500 text-white',
+    fuchsia: 'border-fuchsia-500 bg-fuchsia-500 text-white',
+    emerald: 'border-emerald-500 bg-emerald-500 text-white',
+    amber:   'border-amber-500 bg-amber-500 text-white',
+  };
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={cn(
+        'inline-flex items-center gap-1 rounded-lg border px-2.5 py-1 text-[11px] font-medium transition-colors',
+        active
+          ? tint ? tintCls[tint] : 'border-primary bg-primary text-primary-foreground'
+          : 'border-border/70 text-muted-foreground hover:border-primary/30 hover:text-foreground'
+      )}
+    >
+      {children}
+    </button>
   );
 }

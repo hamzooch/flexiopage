@@ -1,14 +1,15 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { adminApi, type AdminWallet, type WalletBucket } from '@/lib/api';
 import { useAuthStore } from '@/stores/auth-store';
+import { cn } from '@/lib/utils';
 import {
-  Loader2, Wallet as WalletIcon, Sparkles, X, AlertTriangle, Check, ArrowDownToLine, Plus, Minus,
+  Loader2, Wallet as WalletIcon, Sparkles, X, AlertTriangle, Check, ArrowDownToLine, Plus, Minus, Search,
 } from 'lucide-react';
 
 function fmt(amount: number, currency: string): string {
@@ -26,6 +27,9 @@ export default function AdminWalletsPage() {
   const [loading, setLoading] = useState(true);
   const [adjusting, setAdjusting] = useState<{ wallet: AdminWallet; mode: 'add' | 'withdraw' } | null>(null);
   const [crediting, setCrediting] = useState<AdminWallet | null>(null);
+  const [search, setSearch] = useState('');
+  type WalletFilter = 'all' | 'low' | 'zero';
+  const [filter, setFilter] = useState<WalletFilter>('all');
 
   async function load() {
     setLoading(true);
@@ -38,23 +42,65 @@ export default function AdminWalletsPage() {
   }
   useEffect(() => { load(); }, []);
 
+  const filtered = useMemo(() => {
+    let list = wallets;
+    if (filter === 'low') list = list.filter((w) => (w.balance + w.aiBalance) > 0 && (w.balance + w.aiBalance) < 10);
+    else if (filter === 'zero') list = list.filter((w) => (w.balance + w.aiBalance) === 0);
+    const q = search.trim().toLowerCase();
+    if (q) {
+      list = list.filter((w) =>
+        (w.userId?.name?.toLowerCase() || '').includes(q) ||
+        (w.userId?.email?.toLowerCase() || '').includes(q)
+      );
+    }
+    return list;
+  }, [wallets, filter, search]);
+
+  const counts = useMemo(() => ({
+    low:  wallets.filter((w) => (w.balance + w.aiBalance) > 0 && (w.balance + w.aiBalance) < 10).length,
+    zero: wallets.filter((w) => (w.balance + w.aiBalance) === 0).length,
+  }), [wallets]);
+
   return (
     <>
       <Card>
         <CardHeader>
           <CardTitle>Wallets vendeurs ({wallets.length})</CardTitle>
           <CardDescription>Solde principal + solde IA de chaque vendeur. Clique sur un wallet pour ajuster.</CardDescription>
+
+          {/* Filters */}
+          <div className="mt-4 flex flex-col gap-2.5">
+            <div className="relative">
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Rechercher par nom ou email…"
+                className="h-9 rounded-lg pl-9 text-xs sm:text-sm"
+              />
+              {search && (
+                <button type="button" onClick={() => setSearch('')} className="absolute right-2 top-1/2 grid h-6 w-6 -translate-y-1/2 place-items-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground" aria-label="Effacer">
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              )}
+            </div>
+            <div className="flex flex-wrap gap-1.5">
+              <WChip active={filter === 'all'} onClick={() => setFilter('all')}>Tous ({wallets.length})</WChip>
+              <WChip active={filter === 'low'} onClick={() => setFilter('low')} tint="amber">Solde bas &lt; 10 ({counts.low})</WChip>
+              <WChip active={filter === 'zero'} onClick={() => setFilter('zero')} tint="rose">Vide ({counts.zero})</WChip>
+            </div>
+          </div>
         </CardHeader>
         <CardContent>
           {loading ? (
             <div className="grid place-items-center py-16"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>
-          ) : wallets.length === 0 ? (
+          ) : filtered.length === 0 ? (
             <p className="rounded-lg border border-dashed border-border bg-muted/30 p-6 text-center text-sm text-muted-foreground">
-              Aucun wallet.
+              {wallets.length === 0 ? 'Aucun wallet.' : 'Aucun résultat pour ces filtres.'}
             </p>
           ) : (
             <ul className="divide-y divide-border">
-              {wallets.map((w) => (
+              {filtered.map((w) => (
                 <li key={w._id} className="flex flex-wrap items-center gap-4 py-3">
                   <div className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-gradient-to-br from-emerald-500 to-fuchsia-500 text-xs font-semibold text-white shadow-md">
                     {w.userId?.name?.[0]?.toUpperCase() || '?'}
@@ -274,6 +320,34 @@ function Pill({ icon, tone, amount, currency, label }: { icon: React.ReactNode; 
       <span className="inline-flex items-center gap-1 text-[9px] font-bold uppercase tracking-wider opacity-80">{icon} {label}</span>
       <span className="text-sm font-bold">{fmt(amount, currency)}</span>
     </div>
+  );
+}
+
+function WChip({
+  children, active, onClick, tint,
+}: {
+  children: React.ReactNode;
+  active: boolean;
+  onClick: () => void;
+  tint?: 'amber' | 'rose';
+}) {
+  const tintCls = {
+    amber: 'border-amber-500 bg-amber-500 text-white',
+    rose:  'border-rose-500 bg-rose-500 text-white',
+  };
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={cn(
+        'rounded-lg border px-2.5 py-1 text-[11px] font-medium transition-colors',
+        active
+          ? tint ? tintCls[tint] : 'border-primary bg-primary text-primary-foreground'
+          : 'border-border/70 text-muted-foreground hover:border-primary/30 hover:text-foreground'
+      )}
+    >
+      {children}
+    </button>
   );
 }
 
