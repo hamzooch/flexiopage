@@ -124,6 +124,9 @@ export default function DashboardOrdersPage() {
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
   const [dayFilter, setDayFilter] = useState<DayFilter>('all');
+  // Custom range (YYYY-MM-DD). When either is set, takes precedence over dayFilter.
+  const [customFrom, setCustomFrom] = useState<string>('');
+  const [customTo, setCustomTo] = useState<string>('');
   const [expandedId, setExpandedId] = useState<string | null>(null);
 
   useEffect(() => {
@@ -166,9 +169,20 @@ export default function DashboardOrdersPage() {
   const filteredOrders = useMemo(() => {
     let list = orders;
 
-    // Day filter — drop orders older than the cutoff. `today` means since
-    // local midnight, not "in the last 24h".
-    if (dayFilter !== 'all') {
+    // Custom range takes precedence over the preset chips. Either bound
+    // can be set alone; missing bound means "no limit on that side".
+    const fromMs = customFrom ? new Date(`${customFrom}T00:00:00`).getTime() : null;
+    const toMs = customTo ? new Date(`${customTo}T23:59:59.999`).getTime() : null;
+    if (fromMs !== null || toMs !== null) {
+      list = list.filter((o) => {
+        if (!o.createdAt) return false;
+        const t = new Date(o.createdAt).getTime();
+        if (fromMs !== null && t < fromMs) return false;
+        if (toMs !== null && t > toMs) return false;
+        return true;
+      });
+    } else if (dayFilter !== 'all') {
+      // Preset chip — `today` means since local midnight, not "last 24h".
       const cutoff = new Date();
       if (dayFilter === 'today') {
         cutoff.setHours(0, 0, 0, 0);
@@ -204,7 +218,7 @@ export default function DashboardOrdersPage() {
       });
     }
     return list;
-  }, [orders, dayFilter, statusFilter, search]);
+  }, [orders, dayFilter, customFrom, customTo, statusFilter, search]);
 
   return (
     <div className="space-y-6 sm:space-y-8">
@@ -274,15 +288,21 @@ export default function DashboardOrdersPage() {
           />
         </div>
         <div className="flex flex-col gap-2">
-          <div className="flex flex-wrap gap-1.5">
+          <div className="flex flex-wrap items-center gap-1.5">
             {(['all', 'today', '7d', '30d'] as DayFilter[]).map((d) => (
               <button
                 key={d}
                 type="button"
-                onClick={() => setDayFilter(d)}
+                onClick={() => {
+                  setDayFilter(d);
+                  // Selecting a preset clears any custom range so the two
+                  // can't visually contradict each other.
+                  setCustomFrom('');
+                  setCustomTo('');
+                }}
                 className={cn(
                   'rounded-lg border px-3 py-1.5 text-xs font-medium transition-all',
-                  dayFilter === d
+                  dayFilter === d && !customFrom && !customTo
                     ? 'border-primary bg-primary text-primary-foreground'
                     : 'border-border/70 text-muted-foreground hover:border-primary/30 hover:text-foreground'
                 )}
@@ -290,6 +310,42 @@ export default function DashboardOrdersPage() {
                 {d === 'all' ? 'Toute période' : d === 'today' ? "Aujourd'hui" : d === '7d' ? '7 derniers jours' : '30 derniers jours'}
               </button>
             ))}
+
+            {/* Custom date range — when either is set, presets visually deselect */}
+            <div className="flex items-center gap-1.5 rounded-lg border border-border/70 bg-background px-2 py-1">
+              <span className="text-[11px] font-medium text-muted-foreground">Du</span>
+              <input
+                type="date"
+                value={customFrom}
+                max={customTo || undefined}
+                onChange={(e) => {
+                  setCustomFrom(e.target.value);
+                  if (e.target.value) setDayFilter('all');
+                }}
+                className="h-6 rounded bg-transparent text-xs outline-none focus:ring-1 focus:ring-primary/40"
+              />
+              <span className="text-[11px] font-medium text-muted-foreground">au</span>
+              <input
+                type="date"
+                value={customTo}
+                min={customFrom || undefined}
+                onChange={(e) => {
+                  setCustomTo(e.target.value);
+                  if (e.target.value) setDayFilter('all');
+                }}
+                className="h-6 rounded bg-transparent text-xs outline-none focus:ring-1 focus:ring-primary/40"
+              />
+              {(customFrom || customTo) && (
+                <button
+                  type="button"
+                  onClick={() => { setCustomFrom(''); setCustomTo(''); }}
+                  className="ml-1 rounded-md px-1.5 text-[11px] font-medium text-muted-foreground hover:bg-muted hover:text-foreground"
+                  title="Effacer la plage personnalisée"
+                >
+                  ×
+                </button>
+              )}
+            </div>
           </div>
           <div className="flex flex-wrap gap-1.5">
             {(['all', 'pending', 'paid', 'delivered', 'cancelled'] as StatusFilter[]).map((s) => (
