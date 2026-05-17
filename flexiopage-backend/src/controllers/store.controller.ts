@@ -128,7 +128,7 @@ export async function getStoreAnalyticsController(req: AuthRequest, res: Respons
 /** GET /api/stores/:storeId/analytics/rich?range=7d|30d|90d|12m — full dashboard payload. */
 export async function getStoreAnalyticsRichController(req: AuthRequest, res: Response): Promise<void> {
   const store = req.store!;
-  const allowed: RangeKey[] = ['7d', '30d', '90d', '12m'];
+  const allowed: RangeKey[] = ['today', '7d', '30d', '90d', '12m'];
   const raw = String(req.query.range || '30d');
   const range = (allowed as string[]).includes(raw) ? (raw as RangeKey) : '30d';
   const analytics = await getStoreAnalyticsRich(store._id.toString(), range);

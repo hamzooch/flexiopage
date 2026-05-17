@@ -34,7 +34,7 @@ export interface StoreAnalytics {
   currency?: string;
 }
 
-export type RangeKey = '7d' | '30d' | '90d' | '12m';
+export type RangeKey = 'today' | '7d' | '30d' | '90d' | '12m';
 
 interface RangeWindow {
   from: Date;
@@ -63,7 +63,9 @@ function resolveRange(range: RangeKey, now: Date = new Date()): RangeWindow {
     prevFrom.setHours(0, 0, 0, 0);
     return { from, to, prevFrom, prevTo, bucket: 'month', buckets: 12 };
   }
-  const days = range === '7d' ? 7 : range === '90d' ? 90 : 30;
+  // `today` is a 1-day window starting at local midnight; the previous
+  // window is yesterday so the delta KPI is meaningful day-over-day.
+  const days = range === 'today' ? 1 : range === '7d' ? 7 : range === '90d' ? 90 : 30;
   const from = new Date(to);
   from.setDate(from.getDate() - (days - 1));
   from.setHours(0, 0, 0, 0);

@@ -1,8 +1,8 @@
 /**
  * Shape mirrors the backend `StoreAnalyticsRich` payload returned by
- * GET /api/stores/:storeId/analytics/rich?range=<7d|30d|90d|12m>.
+ * GET /api/stores/:storeId/analytics/rich?range=<today|7d|30d|90d|12m>.
  */
-export type RangeKey = '7d' | '30d' | '90d' | '12m';
+export type RangeKey = 'today' | '7d' | '30d' | '90d' | '12m';
 
 export interface KpiValue {
   value: number;

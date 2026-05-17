@@ -431,9 +431,9 @@ export type StaffRole = 'owner' | 'superadmin' | 'admin' | 'supervisor' | 'user'
 
 export const adminApi = {
   overview: () => api.get<{ overview: AdminOverview }>('/admin/overview'),
-  overviewRich: (range: '7d' | '30d' | '90d' | '12m' = '30d') =>
+  overviewRich: (range: 'today' | '7d' | '30d' | '90d' | '12m' = '30d') =>
     api.get<import('@/types/admin-analytics').AdminOverviewRich>('/admin/overview/rich', { params: { range } }),
-  storeDrilldown: (storeId: string, range: '7d' | '30d' | '90d' | '12m' = '30d') =>
+  storeDrilldown: (storeId: string, range: 'today' | '7d' | '30d' | '90d' | '12m' = '30d') =>
     api.get<import('@/types/admin-analytics').AdminStoreDrilldown>(`/admin/stores/${storeId}/analytics`, { params: { range } }),
   users: (search?: string) =>
     api.get<{ users: AdminUser[]; total: number }>('/admin/users', { params: { search } }),
@@ -533,7 +533,7 @@ export const storesApi = {
     api.patch<{ store: unknown }>(`/stores/${storeId}`, data),
   getAnalytics: (storeId: string) =>
     api.get<StoreAnalyticsSummary>(`/stores/${storeId}/analytics`),
-  getAnalyticsRich: (storeId: string, range: '7d' | '30d' | '90d' | '12m' = '30d') =>
+  getAnalyticsRich: (storeId: string, range: 'today' | '7d' | '30d' | '90d' | '12m' = '30d') =>
     api.get<import('@/types/analytics').StoreAnalyticsRich>(`/stores/${storeId}/analytics/rich`, { params: { range } }),
   // Custom domain
   getDomainTarget: (storeId: string) =>

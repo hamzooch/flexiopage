@@ -4,6 +4,7 @@ import type { RangeKey } from '@/types/analytics';
 import { cn } from '@/lib/utils';
 
 const RANGES: Array<{ id: RangeKey; label: string; short: string }> = [
+  { id: 'today', label: "Aujourd'hui", short: 'Auj.' },
   { id: '7d', label: '7 jours', short: '7j' },
   { id: '30d', label: '30 jours', short: '30j' },
   { id: '90d', label: '90 jours', short: '90j' },
