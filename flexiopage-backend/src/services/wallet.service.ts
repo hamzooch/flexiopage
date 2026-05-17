@@ -8,8 +8,6 @@
 import crypto from 'crypto';
 import mongoose from 'mongoose';
 import { Wallet, type IWallet, type IWalletTransaction, type TxKind, type WalletBucket } from '../models/Wallet.model';
-import { Store } from '../models/Store.model';
-import { User } from '../models/User.model';
 import { getSettings, DEFAULT_AI_PRICING, type AiKind } from '../models/Settings.model';
 
 /**
@@ -50,21 +48,13 @@ export async function aiCostUSD(kind: AiKind): Promise<number> {
 }
 
 /**
- * Convert the USD price into the seller's wallet currency. If we have no
- * rate for that currency, we charge in USD (and warn so the admin can
- * add the rate). Returned amount is rounded to the nearest integer —
- * sub-unit billing is too noisy for prepaid SaaS UX.
+ * AI cost is now always charged in USD — wallet balances are pinned to
+ * USD platform-wide so there's no per-seller currency conversion to do.
+ * Signature keeps the `currency` argument so callers don't break, but
+ * the value is ignored on purpose.
  */
-export async function aiCostInCurrency(kind: AiKind, currency: string): Promise<number> {
-  const usd = await aiCostUSD(kind);
-  const s = await getSettings();
-  const cur = (currency || 'USD').toUpperCase();
-  const rate = s.aiPricing?.rates?.[cur] ?? DEFAULT_AI_PRICING.rates[cur];
-  if (!rate) {
-    console.warn(`[wallet] no USD→${cur} rate configured — billing in USD as-is`);
-    return Math.round(usd);
-  }
-  return Math.max(1, Math.round(usd * rate));
+export async function aiCostInCurrency(kind: AiKind, _currency?: string): Promise<number> {
+  return Math.round(await aiCostUSD(kind));
 }
 
 function genId(): string {
@@ -72,21 +62,12 @@ function genId(): string {
 }
 
 /**
- * Infer the wallet currency for a seller. Precedence:
- *   1. the seller's own profile currency (set from the profile page)
- *   2. the oldest store's currency (the one that anchored the account)
- *   3. USD fallback
+ * Wallet currency is pinned to USD platform-wide — both the main and AI
+ * balances are denominated in USD regardless of the seller's profile or
+ * store currency. Kept as a function so callers don't have to change.
  */
-async function inferUserCurrency(userId: mongoose.Types.ObjectId): Promise<string> {
-  const user = await User.findById(userId).select('currency country').lean();
-  const userCur = user?.currency?.toUpperCase().trim();
-  if (userCur) return userCur;
-  const firstStore = await Store.findOne({ ownerId: userId })
-    .sort({ createdAt: 1 })
-    .select('settings.currency')
-    .lean();
-  const cur = firstStore?.settings?.currency?.toUpperCase().trim();
-  return cur || 'USD';
+async function inferUserCurrency(_userId: mongoose.Types.ObjectId): Promise<string> {
+  return 'USD';
 }
 
 /**

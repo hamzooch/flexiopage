@@ -2,7 +2,6 @@ import { Response } from 'express';
 import bcrypt from 'bcryptjs';
 import { AuthRequest } from '../middleware/auth.middleware';
 import { User } from '../models/User.model';
-import { Wallet } from '../models/Wallet.model';
 import { Subscription } from '../models/Subscription.model';
 import * as storeService from '../services/store.service';
 import { currencyForCountry, isKnownCountry } from '../data/countries';
@@ -76,29 +75,13 @@ export async function updateProfile(req: AuthRequest, res: Response): Promise<vo
     return;
   }
 
-  // Propagate to the wallet ONLY if it has no transactions yet — once the
-  // wallet is in use we can't safely change its currency.
-  let walletUpdated = false;
-  let walletPinned = false;
-  if (updates.currency) {
-    const wallet = await Wallet.findOne({ userId: user._id });
-    if (wallet) {
-      if (wallet.transactions.length === 0 && wallet.balance === 0 && wallet.aiBalance === 0) {
-        if (wallet.currency.toUpperCase() !== updates.currency) {
-          wallet.currency = updates.currency;
-          await wallet.save();
-          walletUpdated = true;
-        }
-      } else if (wallet.currency.toUpperCase() !== updates.currency) {
-        walletPinned = true;
-      }
-    }
-  }
-
+  // Wallet currency is platform-pinned to USD — the profile currency is
+  // a display-only preference and no longer drives the wallet. We keep
+  // the response shape so the frontend doesn't break.
   res.json({
     user: user.toObject(),
-    walletCurrencyUpdated: walletUpdated,
-    walletCurrencyPinned: walletPinned,
+    walletCurrencyUpdated: false,
+    walletCurrencyPinned: false,
   });
 }
 
