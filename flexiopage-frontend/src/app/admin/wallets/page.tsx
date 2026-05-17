@@ -8,7 +8,7 @@ import { Label } from '@/components/ui/label';
 import { adminApi, type AdminWallet, type WalletBucket } from '@/lib/api';
 import { useAuthStore } from '@/stores/auth-store';
 import {
-  Loader2, Wallet as WalletIcon, Sparkles, X, AlertTriangle, Check, ArrowDownToLine, Edit3,
+  Loader2, Wallet as WalletIcon, Sparkles, X, AlertTriangle, Check, ArrowDownToLine, Plus, Minus,
 } from 'lucide-react';
 
 function fmt(amount: number, currency: string): string {
@@ -24,7 +24,7 @@ export default function AdminWalletsPage() {
   const isSuperAdmin = (me as { role?: string } | null)?.role === 'superadmin';
   const [wallets, setWallets] = useState<AdminWallet[]>([]);
   const [loading, setLoading] = useState(true);
-  const [adjusting, setAdjusting] = useState<AdminWallet | null>(null);
+  const [adjusting, setAdjusting] = useState<{ wallet: AdminWallet; mode: 'add' | 'withdraw' } | null>(null);
   const [crediting, setCrediting] = useState<AdminWallet | null>(null);
 
   async function load() {
@@ -78,9 +78,23 @@ export default function AdminWalletsPage() {
                         Recharger
                       </Button>
                     )}
-                    <Button variant="outline" size="sm" onClick={() => setAdjusting(w)} className="gap-1.5">
-                      <Edit3 className="h-3.5 w-3.5" />
-                      Ajuster
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setAdjusting({ wallet: w, mode: 'add' })}
+                      className="gap-1.5 border-emerald-500/40 text-emerald-700 hover:bg-emerald-500/10"
+                    >
+                      <Plus className="h-3.5 w-3.5" />
+                      Ajouter
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setAdjusting({ wallet: w, mode: 'withdraw' })}
+                      className="gap-1.5 border-rose-500/40 text-rose-700 hover:bg-rose-500/10"
+                    >
+                      <Minus className="h-3.5 w-3.5" />
+                      Retirer
                     </Button>
                   </div>
                 </li>
@@ -92,7 +106,8 @@ export default function AdminWalletsPage() {
 
       {adjusting && (
         <AdjustModal
-          wallet={adjusting}
+          wallet={adjusting.wallet}
+          mode={adjusting.mode}
           onClose={() => setAdjusting(null)}
           onDone={() => { setAdjusting(null); load(); }}
         />
@@ -264,13 +279,16 @@ function Pill({ icon, tone, amount, currency, label }: { icon: React.ReactNode; 
 
 function AdjustModal({
   wallet,
+  mode,
   onClose,
   onDone,
 }: {
   wallet: AdminWallet;
+  mode: 'add' | 'withdraw';
   onClose: () => void;
   onDone: () => void;
 }) {
+  const isAdd = mode === 'add';
   const [bucket, setBucket] = useState<WalletBucket>('main');
   const [amount, setAmount] = useState('');
   const [reason, setReason] = useState('');
@@ -283,18 +301,24 @@ function AdjustModal({
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError(''); setSuccess(false);
-    const value = Number(amount);
-    if (!value || !Number.isFinite(value)) {
-      setError('Montant invalide. Positif = crédit, négatif = débit.');
+    const positive = Math.abs(Number(amount));
+    if (!positive || !Number.isFinite(positive)) {
+      setError('Montant invalide.');
       return;
     }
     if (reason.trim().length < 3) {
       setError('Raison requise (au moins 3 caractères).');
       return;
     }
+    const signed = isAdd ? positive : -positive;
+    const currentBalance = bucket === 'main' ? wallet.balance : wallet.aiBalance;
+    if (!isAdd && positive > currentBalance) {
+      setError(`Le solde ${bucket === 'main' ? 'principal' : 'IA'} (${currentBalance}) est inférieur au retrait demandé.`);
+      return;
+    }
     setSubmitting(true);
     try {
-      await adminApi.adjustWallet(userId, { amount: value, bucket, reason: reason.trim() });
+      await adminApi.adjustWallet(userId, { amount: signed, bucket, reason: reason.trim() });
       setSuccess(true);
       window.setTimeout(onDone, 600);
     } catch (err) {
@@ -307,10 +331,14 @@ function AdjustModal({
 
   return (
     <div className="fixed inset-0 z-50 grid place-items-center bg-black/50 p-4 backdrop-blur-sm">
-      <div className="w-full max-w-md rounded-2xl border border-border/60 bg-card p-6 shadow-2xl">
+      <div className={`w-full max-w-md rounded-2xl border bg-card p-6 shadow-2xl ${isAdd ? 'border-emerald-500/30' : 'border-rose-500/30'}`}>
         <div className="mb-4 flex items-start justify-between">
           <div>
-            <h2 className="text-lg font-bold">Ajuster le wallet</h2>
+            <div className={`inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider ${isAdd ? 'bg-emerald-500/10 text-emerald-700' : 'bg-rose-500/10 text-rose-700'}`}>
+              {isAdd ? <Plus className="h-3 w-3" /> : <Minus className="h-3 w-3" />}
+              {isAdd ? 'Ajouter au solde' : 'Retirer du solde'}
+            </div>
+            <h2 className="mt-1.5 text-lg font-bold">{isAdd ? 'Créditer le wallet' : 'Débiter le wallet'}</h2>
             <p className="mt-0.5 text-xs text-muted-foreground">{wallet.userId?.email}</p>
           </div>
           <button onClick={onClose} className="grid h-8 w-8 place-items-center rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground" aria-label="Fermer">
@@ -344,17 +372,20 @@ function AdjustModal({
             </div>
           </div>
           <div>
-            <Label htmlFor="amount" className="text-xs">Montant ({wallet.currency})</Label>
+            <Label htmlFor="amount" className="text-xs">
+              Montant à {isAdd ? 'ajouter' : 'retirer'} ({wallet.currency})
+            </Label>
             <Input
               id="amount"
               type="number"
               inputMode="decimal"
-              placeholder="Ex: 5000 (crédit) ou -2000 (débit)"
+              min="0"
+              step="any"
+              placeholder="Ex: 5000"
               value={amount}
               onChange={(e) => setAmount(e.target.value)}
               className="mt-1"
             />
-            <p className="mt-1 text-[11px] text-muted-foreground">Positif = crédit · Négatif = débit</p>
           </div>
           <div>
             <Label htmlFor="reason" className="text-xs">Raison</Label>
@@ -375,14 +406,21 @@ function AdjustModal({
           )}
           {success && (
             <div className="flex items-start gap-2 rounded-lg border border-emerald-500/30 bg-emerald-500/5 p-2.5 text-xs text-emerald-700">
-              <Check className="mt-0.5 h-3.5 w-3.5 shrink-0" /> Ajustement appliqué.
+              <Check className="mt-0.5 h-3.5 w-3.5 shrink-0" /> {isAdd ? 'Montant ajouté.' : 'Montant retiré.'}
             </div>
           )}
 
           <div className="flex justify-end gap-2 pt-2">
             <Button type="button" variant="outline" size="sm" onClick={onClose}>Annuler</Button>
-            <Button type="submit" disabled={submitting} size="sm">
-              {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Appliquer'}
+            <Button
+              type="submit"
+              disabled={submitting}
+              size="sm"
+              className={isAdd
+                ? 'bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700'
+                : 'bg-gradient-to-r from-rose-600 to-orange-600 hover:from-rose-700 hover:to-orange-700'}
+            >
+              {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : (isAdd ? 'Ajouter' : 'Retirer')}
             </Button>
           </div>
         </form>
