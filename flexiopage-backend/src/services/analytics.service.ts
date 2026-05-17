@@ -12,6 +12,7 @@ import mongoose from 'mongoose';
 import { Order } from '../models/Order.model';
 import { Product } from '../models/Product.model';
 import { Store } from '../models/Store.model';
+import { StoreEvent } from '../models/StoreEvent.model';
 
 export interface StoreAnalytics {
   totalOrders: number;
@@ -32,6 +33,14 @@ export interface StoreAnalytics {
   orderValueThisMonth: number;
   /** Store's display currency (e.g. "XOF"), so callers can format values. */
   currency?: string;
+  /** All-time anonymous storefront page views. */
+  pageViews?: number;
+  /** Page views in the current calendar month. */
+  pageViewsThisMonth?: number;
+  /** All-time anonymous product detail page views. */
+  productViews?: number;
+  /** Product views in the current calendar month. */
+  productViewsThisMonth?: number;
 }
 
 export type RangeKey = 'today' | '7d' | '30d' | '90d' | '12m';
@@ -96,6 +105,10 @@ export interface StoreAnalyticsRich {
     fulfillmentRate: { value: number; previous: number; deltaPct: number | null };
     uniqueCustomers: { value: number; previous: number; deltaPct: number | null };
     pendingOrders: { value: number };
+    /** Any storefront page hit (landing + info pages + product pages). */
+    pageViews: { value: number; previous: number; deltaPct: number | null };
+    /** Subset of pageViews — only the public product detail page. */
+    productViews: { value: number; previous: number; deltaPct: number | null };
   };
   /** All-time aggregates (no window filter). */
   totals: {
@@ -163,7 +176,7 @@ export async function getStoreAnalytics(storeId: string): Promise<StoreAnalytics
   const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
   const storeObjectId = new mongoose.Types.ObjectId(storeId);
 
-  const [total, thisMonth, store] = await Promise.all([
+  const [total, thisMonth, store, viewsTotal, viewsMonth] = await Promise.all([
     Order.aggregate([
       { $match: { storeId: storeObjectId } },
       {
@@ -187,7 +200,18 @@ export async function getStoreAnalytics(storeId: string): Promise<StoreAnalytics
       },
     ]),
     Store.findById(storeObjectId, { 'settings.currency': 1 }).lean(),
+    StoreEvent.aggregate<{ _id: 'page_view' | 'product_view'; count: number }>([
+      { $match: { storeId: storeObjectId, type: { $in: ['page_view', 'product_view'] } } },
+      { $group: { _id: '$type', count: { $sum: 1 } } },
+    ]),
+    StoreEvent.aggregate<{ _id: 'page_view' | 'product_view'; count: number }>([
+      { $match: { storeId: storeObjectId, type: { $in: ['page_view', 'product_view'] }, createdAt: { $gte: startOfMonth } } },
+      { $group: { _id: '$type', count: { $sum: 1 } } },
+    ]),
   ]);
+
+  const countBy = (rows: Array<{ _id: 'page_view' | 'product_view'; count: number }>, type: 'page_view' | 'product_view') =>
+    rows.find((r) => r._id === type)?.count ?? 0;
 
   return {
     totalOrders: total[0]?.count ?? 0,
@@ -199,6 +223,10 @@ export async function getStoreAnalytics(storeId: string): Promise<StoreAnalytics
     conversionRate: undefined,
     storeViews: undefined,
     currency: (store as { settings?: { currency?: string } } | null)?.settings?.currency,
+    pageViews: countBy(viewsTotal, 'page_view'),
+    pageViewsThisMonth: countBy(viewsMonth, 'page_view'),
+    productViews: countBy(viewsTotal, 'product_view'),
+    productViewsThisMonth: countBy(viewsMonth, 'product_view'),
   };
 }
 
@@ -229,6 +257,8 @@ export async function getStoreAnalyticsRich(
     topProductsRaw,
     paymentBreakdownRaw,
     recentRaw,
+    windowViews,
+    prevViews,
   ] = await Promise.all([
     // All-time totals (any status).
     Order.aggregate([
@@ -328,6 +358,16 @@ export async function getStoreAnalyticsRich(
       .limit(8)
       .select('orderNumber email customerName total currency paymentStatus fulfillmentStatus createdAt')
       .lean(),
+    // Storefront page-view + product-view counts for the current window.
+    StoreEvent.aggregate<{ _id: 'page_view' | 'product_view'; count: number }>([
+      { $match: { storeId: storeObjectId, type: { $in: ['page_view', 'product_view'] }, createdAt: { $gte: w.from, $lte: w.to } } },
+      { $group: { _id: '$type', count: { $sum: 1 } } },
+    ]),
+    // …and for the previous window, so the KPI cards can show a delta.
+    StoreEvent.aggregate<{ _id: 'page_view' | 'product_view'; count: number }>([
+      { $match: { storeId: storeObjectId, type: { $in: ['page_view', 'product_view'] }, createdAt: { $gte: w.prevFrom, $lte: w.prevTo } } },
+      { $group: { _id: '$type', count: { $sum: 1 } } },
+    ]),
   ]);
 
   const t = totals[0] || { orders: 0, revenue: 0, sales: 0, customers: 0, currency: storeCurrency };
@@ -358,6 +398,17 @@ export async function getStoreAnalyticsRich(
     revenue: r.revenue,
   }));
 
+  const sumByType = (rows: Array<{ _id: 'page_view' | 'product_view'; count: number }>) => {
+    let pv = 0, pr = 0;
+    for (const r of rows) {
+      if (r._id === 'page_view') pv = r.count;
+      else if (r._id === 'product_view') pr = r.count;
+    }
+    return { pageViews: pv, productViews: pr };
+  };
+  const curViews = sumByType(windowViews);
+  const prvViews = sumByType(prevViews);
+
   const refundRate = a.paid === 0 ? 0 : (a.refunded / Math.max(a.paid + a.refunded, 1)) * 100;
   const prevRefundRate = p.paid === 0 ? 0 : (p.refunded / Math.max(p.paid + p.refunded, 1)) * 100;
   const fulfillmentRate = a.paid === 0 ? 0 : (a.fulfilled / a.paid) * 100;
@@ -381,6 +432,8 @@ export async function getStoreAnalyticsRich(
       fulfillmentRate: { value: fulfillmentRate, previous: prevFulfillmentRate, deltaPct: pctDelta(fulfillmentRate, prevFulfillmentRate) },
       uniqueCustomers: { value: a.uniqueCustomers, previous: p.uniqueCustomers, deltaPct: pctDelta(a.uniqueCustomers, p.uniqueCustomers) },
       pendingOrders: { value: pendingNow },
+      pageViews: { value: curViews.pageViews, previous: prvViews.pageViews, deltaPct: pctDelta(curViews.pageViews, prvViews.pageViews) },
+      productViews: { value: curViews.productViews, previous: prvViews.productViews, deltaPct: pctDelta(curViews.productViews, prvViews.productViews) },
     },
     totals: { totalRevenue: t.revenue, totalSales: t.sales, totalOrders: t.orders, totalCustomers: t.customers },
     timeseries,

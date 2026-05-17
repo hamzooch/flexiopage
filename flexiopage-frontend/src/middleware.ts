@@ -1,5 +1,13 @@
 import { NextResponse, type NextRequest } from 'next/server';
 
+/** Internal API base — server-side only so middleware can reach the backend
+ * even when NEXT_PUBLIC_API_URL points to a public host. Falls back to the
+ * public var, then to local dev. */
+const INTERNAL_API_URL =
+  process.env.INTERNAL_API_URL ||
+  process.env.NEXT_PUBLIC_API_URL ||
+  'http://localhost:5050';
+
 /**
  * Two URL shapes resolve to the same internal /store/[storeSlug] route:
  *
@@ -65,27 +73,72 @@ function subdomainStoreSlug(host: string | null): string | null {
   return sub;
 }
 
-export function middleware(request: NextRequest) {
+/** True for hosts that should NEVER trigger a custom-domain lookup: the app
+ * itself, raw IPs, localhost variants. Anything else that doesn't end in the
+ * root domain is a candidate for custom-domain resolution. */
+function isAppOrLocalHost(host: string): boolean {
+  if (host === ROOT_DOMAIN) return true;             // apex of the app
+  if (host === 'localhost') return true;
+  if (host === '127.0.0.1' || host === '0.0.0.0') return true;
+  if (/^\d+\.\d+\.\d+\.\d+$/.test(host)) return true; // raw IPv4
+  if (host.endsWith('.' + ROOT_DOMAIN)) return true;  // any *.<root>
+  return false;
+}
+
+/** Resolve a custom domain to its store slug via the public backend route.
+ * Cached for 60s via Next's fetch cache so we don't hit the API on every
+ * request. Returns null on miss or error (fail-open: render app shell). */
+async function customDomainStoreSlug(host: string): Promise<string | null> {
+  try {
+    const res = await fetch(
+      `${INTERNAL_API_URL}/api/public/store-by-domain?domain=${encodeURIComponent(host)}`,
+      { next: { revalidate: 60 }, headers: { accept: 'application/json' } }
+    );
+    if (!res.ok) return null;
+    const data = (await res.json()) as { store?: { slug?: string } };
+    return data?.store?.slug || null;
+  } catch {
+    return null;
+  }
+}
+
+export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
+  const rawHost = request.headers.get('host');
+  const host = (rawHost || '').toLowerCase().split(':')[0];
+
+  // Framework/static/API paths bypass everything.
+  const isFrameworkPath =
+    pathname.startsWith('/_next') ||
+    pathname.startsWith('/api') ||
+    pathname === '/favicon.ico' ||
+    pathname.includes('.');
 
   // ── 1. Subdomain-based storefront (canonical) ─────────────────────
-  const subSlug = subdomainStoreSlug(request.headers.get('host'));
+  const subSlug = subdomainStoreSlug(rawHost);
   if (subSlug) {
-    // Never rewrite framework/static paths even on a store subdomain.
-    if (
-      pathname.startsWith('/_next') ||
-      pathname.startsWith('/api') ||
-      pathname === '/favicon.ico' ||
-      pathname.includes('.')
-    ) {
-      return NextResponse.next();
-    }
+    if (isFrameworkPath) return NextResponse.next();
     const url = request.nextUrl.clone();
     url.pathname = `/store/${subSlug}${pathname === '/' ? '' : pathname}`;
     return NextResponse.rewrite(url);
   }
 
-  // ── 2. Path-based storefront (legacy fallback) ────────────────────
+  // ── 2. Custom-domain storefront ───────────────────────────────────
+  // Any Host that isn't the app, localhost, an IP, or a *.<root> subdomain
+  // is a candidate. We ask the backend to look it up (verified domains only).
+  if (host && !isAppOrLocalHost(host)) {
+    if (isFrameworkPath) return NextResponse.next();
+    const slug = await customDomainStoreSlug(host);
+    if (slug) {
+      const url = request.nextUrl.clone();
+      url.pathname = `/store/${slug}${pathname === '/' ? '' : pathname}`;
+      return NextResponse.rewrite(url);
+    }
+    // Unknown custom host → fall through to the app (will likely 404),
+    // which is the right signal that DNS lands here but no store claims it.
+  }
+
+  // ── 3. Path-based storefront (legacy fallback) ────────────────────
   if (pathname === '/' || pathname === '') return NextResponse.next();
 
   const firstSeg = pathname.split('/')[1] || '';

@@ -17,6 +17,7 @@ import { formatCurrency } from '@/lib/utils';
 import type { ThemeTokens } from '@/data/store-themes';
 import type { ProductBundle } from '@/lib/api';
 import { getSessionId, trackStoreEvent } from '@/lib/storefront-track';
+import { fireMarketingEvent } from '@/components/storefront/TrackEvent';
 
 const API_BASE = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5001').replace(/\/$/, '');
 
@@ -132,12 +133,22 @@ export function CodOrderForm({
   const [error, setError] = useState('');
 
   // Funnel tracking: fire `add_to_cart` once, the first time the visitor
-  // engages with the order form.
+  // engages with the order form. Both our anonymous tracker AND the seller's
+  // marketing pixels (Meta / TikTok / GA4) get a synchronised event so
+  // attribution dashboards line up with the in-app "Suivi" funnel.
   const cartTracked = useRef(false);
   function handleFirstEngagement() {
     if (cartTracked.current) return;
     cartTracked.current = true;
     trackStoreEvent({ storeId, productId, type: 'add_to_cart' });
+    fireMarketingEvent({
+      event: 'AddToCart',
+      contentIds: productId ? [productId] : undefined,
+      contentName: productName,
+      value: productPrice,
+      currency,
+      items: productId ? [{ id: productId, name: productName, quantity: 1, price: productPrice }] : undefined,
+    });
   }
 
   const phonePrefix = useMemo(

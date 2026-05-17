@@ -6,6 +6,7 @@ import { StoreNavbar, type NavbarConfig } from '@/components/storefront/StoreNav
 import { StoreFooter, type FooterConfig } from '@/components/storefront/StoreFooter';
 import { STORE_THEME_TEMPLATES } from '@/data/store-themes';
 import { renderMarkdown } from '@/lib/markdown';
+import { StoreTracker } from '@/components/storefront/StoreTracker';
 
 interface Props {
   params: Promise<{ storeSlug: string; pageSlug: string }>;
@@ -151,6 +152,7 @@ export default async function PublicLandingPage({ params }: Props) {
         className="min-h-screen flex flex-col"
         style={{ backgroundColor: themeTokens.background, color: themeTokens.foreground }}
       >
+        <StoreTracker storeId={data.store._id} type="page_view" />
         <StoreNavbar
           storeName={data.store.name}
           storeSlug={storeSlug}
@@ -181,7 +183,9 @@ export default async function PublicLandingPage({ params }: Props) {
   const products = await fetchProducts(storeSlug);
 
   return (
-    <LandingRenderer
+    <>
+      <StoreTracker storeId={data.store._id} type="page_view" />
+      <LandingRenderer
       sections={data.page.sections || []}
       products={products}
       storeSlug={storeSlug}
@@ -205,5 +209,6 @@ export default async function PublicLandingPage({ params }: Props) {
         />
       }
     />
+    </>
   );
 }

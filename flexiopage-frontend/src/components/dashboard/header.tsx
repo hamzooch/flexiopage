@@ -11,6 +11,8 @@ import { storesApi } from '@/lib/api';
 import { cn } from '@/lib/utils';
 import { WalletBadges } from '@/components/dashboard/wallet-badges';
 import { NotificationsBell } from '@/components/dashboard/notifications-bell';
+import { LanguageSwitcher } from '@/components/dashboard/language-switcher';
+import { useT } from '@/lib/i18n';
 
 function prettySegment(seg: string) {
   return seg.replace(/-/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
@@ -27,6 +29,7 @@ export function Header({ onOpenMobileNav }: Props = {}) {
   const [menuOpen, setMenuOpen] = useState(false);
   const currentStoreId = useStoreStore((s) => s.currentStoreId);
   const [activeStoreName, setActiveStoreName] = useState<string | null>(null);
+  const { t } = useT();
 
   // The header shows which store the dashboard is currently scoped to. We
   // fetch the name lazily so we don't add a heavy load — list endpoint is
@@ -47,7 +50,7 @@ export function Header({ onOpenMobileNav }: Props = {}) {
   }, [currentStoreId]);
 
   const segments = pathname.split('/').filter(Boolean);
-  const title = segments.length <= 1 ? 'Overview' : prettySegment(segments[segments.length - 1]);
+  const title = segments.length <= 1 ? t('header.overview') : prettySegment(segments[segments.length - 1]);
   const initials = (user?.name || user?.email || 'U')
     .split(' ')
     .map((s) => s[0])
@@ -78,7 +81,7 @@ export function Header({ onOpenMobileNav }: Props = {}) {
         </button>
         <div className="min-w-0">
           <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-            <span>Dashboard</span>
+            <span>{t('header.dashboard')}</span>
             {segments.length > 1 && (
               <>
                 <span className="text-muted-foreground/40">/</span>
@@ -96,7 +99,7 @@ export function Header({ onOpenMobileNav }: Props = {}) {
           <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground transition-colors group-focus-within:text-primary" />
           <input
             type="search"
-            placeholder="Search products, orders, customers..."
+            placeholder={t('header.searchPlaceholder')}
             className="h-10 w-full rounded-xl border border-border/70 bg-muted/40 pl-10 pr-12 text-sm placeholder:text-muted-foreground/70 transition-all focus:border-primary/40 focus:bg-background focus:outline-none focus:ring-4 focus:ring-primary/10"
           />
           <kbd className="pointer-events-none absolute right-2.5 top-1/2 hidden -translate-y-1/2 items-center gap-1 rounded-md border border-border/60 bg-background px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground sm:inline-flex">
@@ -112,11 +115,11 @@ export function Header({ onOpenMobileNav }: Props = {}) {
         <Link
           href="/select-store"
           className="hidden h-10 items-center gap-2 rounded-xl border border-border/70 bg-card/60 px-3 text-sm transition-all hover:border-primary/40 hover:bg-card sm:inline-flex"
-          title="Changer de boutique"
+          title={t('header.switchStore')}
         >
           <StoreIcon className="h-4 w-4 text-primary" />
           <span className="max-w-[140px] truncate font-medium">
-            {activeStoreName || 'Choisir une boutique'}
+            {activeStoreName || t('header.chooseStore')}
           </span>
           <Repeat className="h-3 w-3 text-muted-foreground" />
         </Link>
@@ -130,9 +133,11 @@ export function Header({ onOpenMobileNav }: Props = {}) {
             className="hidden h-10 gap-2 rounded-xl text-muted-foreground hover:text-foreground sm:inline-flex"
           >
             <ExternalLink className="h-4 w-4" />
-            View site
+            {t('header.viewSite')}
           </Button>
         </Link>
+
+        <LanguageSwitcher />
 
         <NotificationsBell />
 
@@ -173,7 +178,7 @@ export function Header({ onOpenMobileNav }: Props = {}) {
               role="menuitem"
             >
               <Repeat className="h-4 w-4" />
-              Changer de boutique
+              {t('header.switchStore')}
             </Link>
             <Link
               href="/dashboard/profile"
@@ -181,7 +186,7 @@ export function Header({ onOpenMobileNav }: Props = {}) {
               role="menuitem"
             >
               <User className="h-4 w-4" />
-              Profil
+              {t('header.profile')}
             </Link>
             <Link
               href="/dashboard/settings"
@@ -189,7 +194,7 @@ export function Header({ onOpenMobileNav }: Props = {}) {
               role="menuitem"
             >
               <SettingsIcon className="h-4 w-4" />
-              Paramètres
+              {t('header.settings')}
             </Link>
             <div className="my-1 h-px bg-border/70" />
             <button
@@ -199,7 +204,7 @@ export function Header({ onOpenMobileNav }: Props = {}) {
               role="menuitem"
             >
               <LogOut className="h-4 w-4" />
-              Log out
+              {t('header.logout')}
             </button>
           </div>
         </div>

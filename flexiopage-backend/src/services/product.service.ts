@@ -16,6 +16,11 @@ export interface CreateProductInput {
   price: number;
   compareAtPrice?: number;
   cost?: number;
+  shippingCost?: number;
+  packagingCost?: number;
+  marketingCost?: number;
+  paymentFeePct?: number;
+  paymentFeeFixed?: number;
   sku?: string;
   barcode?: string;
   stock?: number;

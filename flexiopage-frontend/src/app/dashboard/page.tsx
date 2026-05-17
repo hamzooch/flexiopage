@@ -17,9 +17,11 @@ import {
   Rocket,
   ChevronRight,
   Cloud,
+  Eye,
 } from 'lucide-react';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
+import { PageHeader } from '@/components/dashboard/page-header';
 
 interface StoreType {
   _id: string;
@@ -98,10 +100,12 @@ export default function DashboardOverviewPage() {
       iconTint: 'bg-indigo-500/15 text-indigo-600',
     },
     {
-      label: 'Products',
-      value: '—',
-      change: 'Select a store',
-      icon: Package,
+      label: 'Vues storefront',
+      value: showAnalyticsLoading ? '—' : String(analytics?.pageViews ?? 0),
+      change: (analytics?.pageViewsThisMonth ?? 0)
+        ? `${analytics?.pageViewsThisMonth} ce mois-ci`
+        : 'Aucune vue ce mois',
+      icon: Eye,
       tint: 'from-fuchsia-500/10 to-pink-500/10',
       iconTint: 'bg-fuchsia-500/15 text-fuchsia-600',
     },
@@ -127,58 +131,37 @@ export default function DashboardOverviewPage() {
 
   return (
     <div className="space-y-8">
-      {/* Hero greeting */}
-      <section className="relative overflow-hidden rounded-3xl border border-border/60 bg-card p-6 sm:p-8 animate-fade-in-up">
-        <div className="pointer-events-none absolute -right-16 -top-16 h-64 w-64 rounded-full gradient-brand opacity-10 blur-3xl" aria-hidden />
-        <div className="pointer-events-none absolute -left-10 bottom-0 h-40 w-40 rounded-full bg-fuchsia-500/10 blur-3xl" aria-hidden />
-
-        <div className="relative flex flex-col items-start gap-6 md:flex-row md:items-center md:justify-between">
-          <div className="space-y-2">
-            <div className="inline-flex items-center gap-1.5 rounded-full border border-border/70 bg-background/60 px-3 py-1 text-xs font-medium text-muted-foreground backdrop-blur">
-              <span className="relative flex h-1.5 w-1.5">
-                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
-                <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-emerald-500" />
-              </span>
-              All systems operational
-            </div>
-            <h1 className="text-3xl font-bold tracking-tight sm:text-4xl">
-              Welcome back,{' '}
-              <span className="gradient-brand-text">{user?.name?.split(' ')[0] || 'there'}</span>
-            </h1>
-            {activeStore ? (
-              <p className="max-w-xl text-sm text-muted-foreground sm:text-base">
-                Boutique active :{' '}
-                <Link href="/dashboard/profile#stores" className="font-semibold text-foreground underline-offset-4 hover:underline">
-                  {activeStore.name}
-                </Link>
-                {' '}·{' '}
-                <Link href="/select-store" className="text-primary hover:underline">
-                  Changer
-                </Link>
-              </p>
-            ) : (
-              <p className="max-w-xl text-sm text-muted-foreground sm:text-base">
-                Build, sell, and grow — all in one place.
-              </p>
-            )}
-          </div>
-
-          <div className="flex flex-wrap items-center gap-2">
+      <PageHeader
+        title={<>
+          Welcome back, <span className="gradient-brand-text">{user?.name?.split(' ')[0] || 'there'}</span>
+        </>}
+        description={activeStore ? (
+          <>
+            Boutique active :{' '}
+            <Link href="/dashboard/profile#stores" className="font-semibold text-foreground underline-offset-4 hover:underline">
+              {activeStore.name}
+            </Link>
+            {' '}·{' '}
+            <Link href="/select-store" className="text-primary hover:underline">Changer</Link>
+          </>
+        ) : 'Build, sell, and grow — all in one place.'}
+        actions={
+          <>
             <Link href="/dashboard/profile?create=1">
-              <Button className="h-11 gap-2 rounded-xl gradient-brand text-white shadow-lg shadow-primary/25 hover:opacity-95 hover:shadow-xl hover:shadow-primary/30 transition-all">
-                <Plus className="h-4 w-4" />
+              <Button size="sm" className="h-9 gap-1.5 rounded-xl gradient-brand text-white shadow-md shadow-primary/25 hover:opacity-95">
+                <Plus className="h-3.5 w-3.5" />
                 New store
               </Button>
             </Link>
             <Link href="/dashboard/pages">
-              <Button variant="outline" className="h-11 gap-2 rounded-xl">
-                <Sparkles className="h-4 w-4 text-fuchsia-500" />
+              <Button size="sm" variant="outline" className="h-9 gap-1.5 rounded-xl">
+                <Sparkles className="h-3.5 w-3.5 text-fuchsia-500" />
                 AI page
               </Button>
             </Link>
-          </div>
-        </div>
-      </section>
+          </>
+        }
+      />
 
       {/* Stat cards */}
       <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">

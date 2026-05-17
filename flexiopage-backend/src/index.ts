@@ -24,6 +24,7 @@ import adminRoutes from './routes/admin.routes';
 import complaintRoutes from './routes/complaint.routes';
 import teamRoutes from './routes/team.routes';
 import notificationRoutes from './routes/notification.routes';
+import calculatorRoutes from './routes/calculator.routes';
 import { rateLimiter } from './middleware/rateLimiter';
 
 const app = express();
@@ -100,6 +101,7 @@ app.use('/api/auth', authRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/team', teamRoutes);
 app.use('/api/notifications', notificationRoutes);
+app.use('/api/calculator', calculatorRoutes);
 app.use('/api/wallet', walletRoutes);
 app.use('/api/complaints', complaintRoutes);
 app.use('/api/admin', adminRoutes);

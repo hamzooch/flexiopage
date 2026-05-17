@@ -260,29 +260,18 @@ export default function ProfilePage() {
 
   return (
     <div className="space-y-8">
-      {/* Hero */}
-      <section className="relative overflow-hidden rounded-3xl border border-border/60 bg-card p-6 sm:p-8">
-        <div className="pointer-events-none absolute -right-20 -top-20 h-64 w-64 rounded-full gradient-brand opacity-10 blur-3xl" aria-hidden />
-        <div className="pointer-events-none absolute -left-10 bottom-0 h-40 w-40 rounded-full bg-fuchsia-500/10 blur-3xl" aria-hidden />
-
-        <div className="relative flex flex-col items-start gap-6 sm:flex-row sm:items-center">
-          <div className="grid h-24 w-24 shrink-0 place-items-center rounded-3xl gradient-brand text-3xl font-bold text-white shadow-2xl shadow-primary/30">
-            {initials}
-          </div>
-          <div className="min-w-0 flex-1">
-            <div className="inline-flex items-center gap-1.5 rounded-full border border-border/60 bg-background/60 px-2.5 py-1 text-[11px] font-medium text-muted-foreground backdrop-blur">
-              <span className="grid h-1.5 w-1.5 place-items-center">
-                <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
-              </span>
-              Compte actif
-            </div>
-            <h1 className="mt-2 truncate text-3xl font-bold tracking-tight sm:text-4xl">
-              {user?.name || 'Vendeur'}
-            </h1>
-            <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-muted-foreground">
-              <span className="inline-flex items-center gap-1.5"><Mail className="h-3.5 w-3.5" />{user?.email}</span>
-              <span className="inline-flex items-center gap-1.5"><Calendar className="h-3.5 w-3.5" />Membre depuis {memberSince}</span>
-            </div>
+      {/* Identity strip — avatar + name on a single tight line. */}
+      <section className="flex items-center gap-3 border-b border-border/60 pb-4">
+        <div className="grid h-12 w-12 shrink-0 place-items-center rounded-xl gradient-brand text-base font-bold text-white shadow-md shadow-primary/25">
+          {initials}
+        </div>
+        <div className="min-w-0 flex-1">
+          <h1 className="truncate text-lg font-semibold tracking-tight sm:text-xl">
+            {user?.name || 'Vendeur'}
+          </h1>
+          <div className="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-muted-foreground">
+            <span className="inline-flex items-center gap-1"><Mail className="h-3 w-3" />{user?.email}</span>
+            <span className="inline-flex items-center gap-1"><Calendar className="h-3 w-3" />Depuis {memberSince}</span>
           </div>
         </div>
       </section>

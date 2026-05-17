@@ -11,6 +11,7 @@ import { useSearchParams } from 'next/navigation';
 import { storesApi, type TrackingStats, type TrackingRange } from '@/lib/api';
 import { useScopedStoreId } from '@/lib/use-scoped-store';
 import { cn } from '@/lib/utils';
+import { PageHeader } from '@/components/dashboard/page-header';
 import {
   Activity, Eye, ShoppingCart, PackageCheck, CircleSlash, Loader2,
 } from 'lucide-react';
@@ -63,25 +64,15 @@ export default function TrackingPage() {
 
   return (
     <div className="space-y-8">
-      {/* Hero */}
-      <header className="relative overflow-hidden rounded-3xl border border-border/60 bg-card p-6 sm:p-8">
-        <div className="pointer-events-none absolute -right-16 -top-16 h-56 w-56 rounded-full gradient-brand opacity-10 blur-3xl" aria-hidden />
-        <div className="relative flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <div className="inline-flex items-center gap-1.5 rounded-full border border-border/70 bg-background/60 px-3 py-1 text-xs font-medium text-muted-foreground backdrop-blur">
-              <Activity className="h-3 w-3" />
-              Suivi
-            </div>
-            <h1 className="mt-2 text-3xl font-bold tracking-tight sm:text-4xl">Suivi du trafic</h1>
-            <p className="mt-1 max-w-xl text-sm text-muted-foreground">
-              Vues produit, ajouts au panier, commandes et paniers abandonnés — pour comprendre
-              où tu perds des clients.
-            </p>
-          </div>
-          <div className="flex flex-wrap items-center gap-2">
+      <PageHeader
+        icon={Activity}
+        title="Suivi du trafic"
+        description="Vues, ajouts au panier, paniers abandonnés — pour comprendre où tu perds des clients."
+        actions={
+          <>
             {stores.length > 1 && (
               <select
-                className="h-10 rounded-xl border border-border bg-background px-3 text-sm"
+                className="h-9 rounded-xl border border-border bg-background px-3 text-sm"
                 value={storeId || ''}
                 onChange={(e) => setStoreId(e.target.value)}
               >
@@ -97,7 +88,7 @@ export default function TrackingPage() {
                   type="button"
                   onClick={() => setRange(r.value)}
                   className={cn(
-                    'rounded-lg px-3 py-1.5 text-sm font-medium transition-colors',
+                    'rounded-lg px-3 py-1 text-xs font-medium transition-colors',
                     range === r.value ? 'bg-card text-foreground shadow' : 'text-muted-foreground hover:text-foreground'
                   )}
                 >
@@ -105,9 +96,9 @@ export default function TrackingPage() {
                 </button>
               ))}
             </div>
-          </div>
-        </div>
-      </header>
+          </>
+        }
+      />
 
       {loading ? (
         <div className="grid h-64 place-items-center">

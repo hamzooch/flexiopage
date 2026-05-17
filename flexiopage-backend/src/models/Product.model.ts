@@ -59,7 +59,18 @@ export interface IProduct extends Document {
   type: ProductType;
   price: number;
   compareAtPrice?: number;
+  /** Unit cost of the product (COGS) — what it costs the seller to acquire one. */
   cost?: number;
+  /** Per-order shipping cost paid by the seller (carrier fee). */
+  shippingCost?: number;
+  /** Per-order packaging cost (box, tape, label, etc.). */
+  packagingCost?: number;
+  /** Average marketing cost per sale (CPA) — total ad spend / paid orders. */
+  marketingCost?: number;
+  /** Payment processor percentage fee (e.g. 2.9 for 2.9%). */
+  paymentFeePct?: number;
+  /** Payment processor fixed fee per transaction. */
+  paymentFeeFixed?: number;
   sku?: string;
   barcode?: string;
   stock: number;
@@ -191,6 +202,11 @@ const ProductSchema = new Schema<IProduct>(
     price: { type: Number, required: true },
     compareAtPrice: { type: Number },
     cost: { type: Number },
+    shippingCost: { type: Number },
+    packagingCost: { type: Number },
+    marketingCost: { type: Number },
+    paymentFeePct: { type: Number },
+    paymentFeeFixed: { type: Number },
     sku: { type: String },
     barcode: { type: String },
     stock: { type: Number, default: 0 },

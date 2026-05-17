@@ -10,6 +10,7 @@ import {
   type ThemeTokens,
 } from '@/data/store-themes';
 import { MarketingPixels, type MarketingConfig } from '@/components/storefront/MarketingPixels';
+import { StoreTracker } from '@/components/storefront/StoreTracker';
 import { StorefrontSlider, type SliderConfig } from '@/components/storefront/Slider';
 import { StoreNavbar, type NavbarConfig } from '@/components/storefront/StoreNavbar';
 import { StoreFooter, type FooterConfig } from '@/components/storefront/StoreFooter';
@@ -159,6 +160,7 @@ export default async function PublicStorePage({ params }: Props) {
     <>
       {fontsUrl && <link rel="stylesheet" href={fontsUrl} />}
       <MarketingPixels config={store.integrations?.marketing} />
+      <StoreTracker storeId={store._id} type="page_view" />
       <div
         dir={direction}
         lang={language}

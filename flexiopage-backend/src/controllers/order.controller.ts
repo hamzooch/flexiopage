@@ -3,6 +3,21 @@ import { AuthRequest } from '../middleware/auth.middleware';
 import * as orderService from '../services/order.service';
 import { dispatchOrder } from '../services/delivery.service';
 import { Order } from '../models/Order.model';
+import { Product } from '../models/Product.model';
+import { logActivity } from '../services/activity-log.service';
+
+const PAYMENT_STATUSES = ['pending', 'paid', 'failed', 'refunded', 'manual'] as const;
+const FULFILLMENT_STATUSES = ['unfulfilled', 'partial', 'fulfilled', 'cancelled'] as const;
+
+/** True once the courier has progressed past the "draft" pending state.
+ * We use this to block silent overrides — once a colis is rolling at the
+ * provider, the seller has to acknowledge they're forcing the change. */
+function isDispatchedAndMoving(order: { delivery?: { externalId?: string; externalStatus?: string } }): boolean {
+  const d = order.delivery;
+  if (!d?.externalId) return false;
+  const movingStates = ['assigned', 'picked_up', 'in_transit', 'delivered', 'returned'];
+  return movingStates.includes((d.externalStatus || '').toLowerCase());
+}
 
 export async function createOrder(req: AuthRequest, res: Response): Promise<void> {
   const store = req.store!;
@@ -111,4 +126,113 @@ export async function dispatchOrderToCourier(req: AuthRequest, res: Response): P
   // Re-fetch to return the persisted state
   const fresh = await Order.findById(order._id).lean();
   res.json({ ok: true, alreadyDispatched: result.alreadyDispatched, order: fresh });
+}
+
+/**
+ * PATCH /api/stores/:storeId/orders/:orderId/manual-status
+ *
+ * Seller-facing endpoint to override an order's payment + fulfillment status
+ * BEFORE it's been picked up by a logistics provider. Three things happen
+ * beyond a plain status write:
+ *
+ *   1. Guard — if the colis is already moving at the provider (assigned /
+ *      picked_up / in_transit / delivered / returned), we refuse unless the
+ *      caller sets `force: true`. Avoids silently desynchronising the seller's
+ *      view from the courier's reality.
+ *   2. Restock — when cancelling, we $inc inventory back for each line item
+ *      that still tracks stock. Idempotent via `inventoryRestored` so a
+ *      double-cancel doesn't double-credit.
+ *   3. Audit — every change is appended to `statusHistory` so the seller can
+ *      review who changed what and when from the order detail page.
+ *
+ * Body: { paymentStatus?, fulfillmentStatus?, reason?, force?: boolean }
+ */
+export async function manualStatusOverride(req: AuthRequest, res: Response): Promise<void> {
+  const store = req.store!;
+  const userId = req.user?._id as { toString(): string } | undefined;
+  const { paymentStatus, fulfillmentStatus, reason, force } = req.body as {
+    paymentStatus?: typeof PAYMENT_STATUSES[number];
+    fulfillmentStatus?: typeof FULFILLMENT_STATUSES[number];
+    reason?: string;
+    force?: boolean;
+  };
+
+  if (!paymentStatus && !fulfillmentStatus) {
+    res.status(400).json({ error: 'At least one of paymentStatus / fulfillmentStatus is required' });
+    return;
+  }
+  if (paymentStatus && !PAYMENT_STATUSES.includes(paymentStatus)) {
+    res.status(400).json({ error: 'Invalid paymentStatus' });
+    return;
+  }
+  if (fulfillmentStatus && !FULFILLMENT_STATUSES.includes(fulfillmentStatus)) {
+    res.status(400).json({ error: 'Invalid fulfillmentStatus' });
+    return;
+  }
+
+  const order = await Order.findOne({ _id: req.params.orderId, storeId: store._id });
+  if (!order) { res.status(404).json({ error: 'Order not found' }); return; }
+
+  // Guard: respect the courier's state machine unless the seller forces it.
+  if (isDispatchedAndMoving(order) && !force) {
+    res.status(409).json({
+      error: 'order_dispatched',
+      message: `La commande est déjà chez ${order.delivery?.provider || 'le transporteur'} (statut : ${order.delivery?.externalStatus}). Active "force" pour outrepasser.`,
+      delivery: order.delivery,
+    });
+    return;
+  }
+
+  const before = {
+    paymentStatus: order.paymentStatus,
+    fulfillmentStatus: order.fulfillmentStatus,
+  };
+
+  if (paymentStatus) order.paymentStatus = paymentStatus;
+  if (fulfillmentStatus) order.fulfillmentStatus = fulfillmentStatus;
+
+  // Restock on transition INTO cancelled (idempotent). We only credit items
+  // whose product still has trackInventory turned on — sellers can disable
+  // tracking later and we shouldn't push their counts into the negative.
+  let restockedItems = 0;
+  if (fulfillmentStatus === 'cancelled' && before.fulfillmentStatus !== 'cancelled' && !order.inventoryRestored) {
+    const productIds = order.items.map((i) => i.productId).filter(Boolean);
+    const tracked = await Product.find({ _id: { $in: productIds }, trackInventory: true })
+      .select('_id')
+      .lean();
+    const trackedSet = new Set(tracked.map((p) => p._id.toString()));
+    await Promise.all(
+      order.items
+        .filter((i) => trackedSet.has(i.productId.toString()))
+        .map((i) =>
+          Product.updateOne({ _id: i.productId }, { $inc: { stock: i.quantity } }).then(() => {
+            restockedItems += 1;
+          })
+        )
+    );
+    order.inventoryRestored = true;
+    if (reason) order.cancelReason = reason.trim().slice(0, 500);
+  }
+
+  // Append to the audit trail.
+  order.statusHistory = order.statusHistory || [];
+  order.statusHistory.push({
+    at: new Date(),
+    by: userId as unknown as undefined,
+    paymentStatus: paymentStatus,
+    fulfillmentStatus: fulfillmentStatus,
+    note: reason?.trim().slice(0, 500),
+  });
+
+  await order.save();
+
+  void logActivity({
+    type: 'order.status_changed',
+    message: `Statut commande ${order.orderNumber} : ${before.fulfillmentStatus}→${order.fulfillmentStatus}, paiement ${before.paymentStatus}→${order.paymentStatus}`,
+    storeId: store._id,
+    userId: store.ownerId,
+    metadata: { orderId: order._id.toString(), reason: reason || null, forced: !!force, restockedItems },
+  });
+
+  res.json({ order, restockedItems });
 }

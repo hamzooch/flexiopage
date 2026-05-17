@@ -5,7 +5,8 @@ import mongoose, { Document, Schema } from 'mongoose';
  * product views, add-to-cart, purchases — and abandoned carts (a session with
  * an add_to_cart but no purchase).
  *
- *   product_view — the public product page was opened
+ *   page_view    — any public storefront page was opened (landing, info, product)
+ *   product_view — the public product page was opened (subset of page_view)
  *   add_to_cart  — the visitor started filling the COD order form
  *   purchase     — a COD order was created (recorded server-side)
  *
@@ -13,7 +14,7 @@ import mongoose, { Document, Schema } from 'mongoose';
  * correlate add_to_cart -> purchase. No PII is stored. Rows auto-expire after
  * 180 days so the collection stays bounded.
  */
-export type StoreEventType = 'product_view' | 'add_to_cart' | 'purchase';
+export type StoreEventType = 'page_view' | 'product_view' | 'add_to_cart' | 'purchase';
 
 export interface IStoreEvent extends Document {
   storeId: mongoose.Types.ObjectId;
@@ -31,7 +32,7 @@ const StoreEventSchema = new Schema<IStoreEvent>(
   {
     storeId: { type: Schema.Types.ObjectId, ref: 'Store', required: true },
     productId: { type: Schema.Types.ObjectId, ref: 'Product' },
-    type: { type: String, enum: ['product_view', 'add_to_cart', 'purchase'], required: true },
+    type: { type: String, enum: ['page_view', 'product_view', 'add_to_cart', 'purchase'], required: true },
     sessionId: { type: String, required: true, index: true },
     value: { type: Number },
     currency: { type: String },

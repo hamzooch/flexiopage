@@ -25,6 +25,10 @@ export interface StoreAnalyticsRich {
     fulfillmentRate: KpiValue;
     uniqueCustomers: KpiValue;
     pendingOrders: { value: number };
+    /** Any storefront page hit (landing + info + product pages). */
+    pageViews: KpiValue;
+    /** Subset of pageViews — only the product detail page. */
+    productViews: KpiValue;
   };
   totals: {
     totalRevenue: number;

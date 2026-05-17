@@ -13,7 +13,7 @@
  * by storesApi.listOrders().
  */
 
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { storesApi } from '@/lib/api';
 import { useScopedStoreId } from '@/lib/use-scoped-store';
@@ -39,6 +39,7 @@ import {
   Hash,
   RotateCcw,
   Banknote,
+  X,
 } from 'lucide-react';
 
 interface StoreType {
@@ -90,6 +91,15 @@ interface OrderType {
     dispatchedAt?: string;
     error?: string;
   };
+  /** Set after a cancel that restored stock — prevents double-restock. */
+  inventoryRestored?: boolean;
+  /** Append-only audit trail of manual status changes. */
+  statusHistory?: Array<{
+    at: string;
+    paymentStatus?: string;
+    fulfillmentStatus?: string;
+    note?: string;
+  }>;
 }
 
 type StatusFilter = 'all' | 'pending' | 'paid' | 'delivered' | 'cancelled';
@@ -138,19 +148,21 @@ export default function DashboardOrdersPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  useEffect(() => {
+  const refreshOrders = useCallback(() => {
     if (!selectedStoreId) {
       setOrders([]);
       setLoading(false);
-      return;
+      return Promise.resolve();
     }
     setLoading(true);
-    storesApi
+    return storesApi
       .listOrders(selectedStoreId)
       .then((res) => setOrders((res.data as { orders: OrderType[] }).orders))
       .catch(() => setOrders([]))
       .finally(() => setLoading(false));
   }, [selectedStoreId]);
+
+  useEffect(() => { void refreshOrders(); }, [refreshOrders]);
 
   // ── Stats over the loaded orders ─────────────────────────────────────
   const stats = useMemo(() => {
@@ -387,8 +399,10 @@ export default function DashboardOrdersPage() {
             <OrderCard
               key={o._id}
               order={o}
+              storeId={selectedStoreId || ''}
               expanded={expandedId === o._id}
               onToggle={() => setExpandedId((id) => (id === o._id ? null : o._id))}
+              onChanged={refreshOrders}
             />
           ))}
         </ul>
@@ -438,12 +452,16 @@ function StatCard({
 // ─── Order Card (expandable) ────────────────────────────────────────────
 function OrderCard({
   order: o,
+  storeId,
   expanded,
   onToggle,
+  onChanged,
 }: {
   order: OrderType;
+  storeId: string;
   expanded: boolean;
   onToggle: () => void;
+  onChanged: () => void | Promise<void>;
 }) {
   const payment = PAYMENT_BADGE[o.paymentStatus] || { label: o.paymentStatus, cls: 'bg-slate-500/10 text-slate-700 ring-slate-500/20' };
   const deliveryKey = (o.delivery?.externalStatus || '').toLowerCase();
@@ -696,7 +714,12 @@ function OrderCard({
             </div>
           )}
 
-          {/* Actions */}
+          {/* Manual status override — seller can fix a stuck order without
+              touching the courier. The component disables irrelevant actions
+              once the colis is moving at the provider. */}
+          <OrderStatusActions order={o} storeId={storeId} onChanged={onChanged} />
+
+          {/* Quick contact / tracking links */}
           <div className="mt-5 flex flex-wrap gap-2">
             {o.customerPhone && (
               <a href={`tel:${o.customerPhone}`} className="inline-flex">
@@ -750,6 +773,159 @@ function EmptyState({ title, body }: { title: string; body: string }) {
       </div>
       <p className="text-base font-semibold">{title}</p>
       <p className="mt-1 text-sm text-muted-foreground">{body}</p>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// Manual order status override
+// ─────────────────────────────────────────────────────────────────────
+// Sellers occasionally need to fix an order that won't move through the
+// normal courier flow — customer called to cancel, manual delivery,
+// payment received offline, etc. This panel exposes the three actions
+// the seller actually reaches for, plus a sentinel banner when the colis
+// is already moving at the provider (silently overriding then would
+// desynchronise FlexioPage from the courier's reality).
+const MOVING_STATES = new Set(['assigned', 'picked_up', 'in_transit', 'delivered', 'returned']);
+
+function OrderStatusActions({
+  order,
+  storeId,
+  onChanged,
+}: {
+  order: OrderType;
+  storeId: string;
+  onChanged: () => void | Promise<void>;
+}) {
+  const [busy, setBusy] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [showForce, setShowForce] = useState(false);
+
+  const isMoving = !!order.delivery?.externalId && MOVING_STATES.has((order.delivery?.externalStatus || '').toLowerCase());
+  const isCancelled = order.fulfillmentStatus === 'cancelled';
+  const isPaid = order.paymentStatus === 'paid';
+  const isFulfilled = order.fulfillmentStatus === 'fulfilled';
+
+  async function call(
+    label: string,
+    data: { paymentStatus?: 'paid' | 'pending' | 'refunded'; fulfillmentStatus?: 'fulfilled' | 'cancelled' | 'unfulfilled'; reason?: string; force?: boolean },
+  ) {
+    setBusy(label);
+    setError(null);
+    try {
+      await storesApi.manualOrderStatus(storeId, order._id, data);
+      await onChanged();
+    } catch (err: unknown) {
+      const ax = err as { response?: { data?: { error?: string; message?: string }; status?: number } };
+      if (ax?.response?.status === 409) {
+        setError(ax.response.data?.message || 'Commande déjà chez le transporteur. Coche "forcer" pour passer outre.');
+        setShowForce(true);
+      } else {
+        setError(ax?.response?.data?.message || ax?.response?.data?.error || 'Action impossible.');
+      }
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function cancel() {
+    const reason = window.prompt('Raison de l\'annulation (visible dans l\'historique)', isMoving ? 'Annulation manuelle après dispatch' : 'Annulation manuelle');
+    if (reason === null) return;
+    await call('cancel', { fulfillmentStatus: 'cancelled', reason, force: showForce || isMoving });
+  }
+
+  if (!storeId) return null;
+
+  return (
+    <div className="mt-5 rounded-xl border border-border/60 bg-card p-3 sm:p-4">
+      <div className="mb-2 flex items-center justify-between gap-2">
+        <h3 className="inline-flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+          <CreditCard className="h-3.5 w-3.5" />
+          Changer le statut
+        </h3>
+        {isMoving && (
+          <span className="rounded-full bg-amber-500/10 px-2 py-0.5 text-[10px] font-semibold text-amber-700">
+            Chez le transporteur
+          </span>
+        )}
+      </div>
+
+      {isMoving && (
+        <p className="mb-3 text-[11px] text-muted-foreground">
+          La commande est déjà <strong>{order.delivery?.externalStatus}</strong> chez {order.delivery?.provider || 'le transporteur'}.
+          Toute action ici sera marquée comme override manuel.
+        </p>
+      )}
+
+      {error && (
+        <p className="mb-3 rounded-lg bg-red-500/10 px-2.5 py-1.5 text-[11px] font-medium text-red-700">{error}</p>
+      )}
+
+      <div className="flex flex-wrap gap-2">
+        {!isPaid && (
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={busy !== null}
+            onClick={() => call('paid', { paymentStatus: 'paid', force: showForce })}
+            className="gap-1.5"
+          >
+            {busy === 'paid' ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" />}
+            Marquer payé
+          </Button>
+        )}
+        {!isFulfilled && (
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={busy !== null}
+            onClick={() => call('fulfilled', { fulfillmentStatus: 'fulfilled', paymentStatus: isPaid ? undefined : 'paid', force: showForce })}
+            className="gap-1.5"
+          >
+            {busy === 'fulfilled' ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Truck className="h-3.5 w-3.5 text-emerald-600" />}
+            Marquer livré
+          </Button>
+        )}
+        {!isCancelled && (
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={busy !== null}
+            onClick={cancel}
+            className="gap-1.5 border-red-500/30 text-red-700 hover:bg-red-500/10"
+          >
+            {busy === 'cancel' ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <X className="h-3.5 w-3.5" />}
+            Annuler {order.inventoryRestored ? '' : '+ remettre stock'}
+          </Button>
+        )}
+        {isMoving && !showForce && (
+          <button
+            type="button"
+            onClick={() => setShowForce(true)}
+            className="text-[11px] font-medium text-amber-700 underline-offset-2 hover:underline"
+          >
+            Activer le mode "force"
+          </button>
+        )}
+      </div>
+
+      {order.statusHistory && order.statusHistory.length > 0 && (
+        <details className="mt-3">
+          <summary className="cursor-pointer text-[11px] font-medium text-muted-foreground hover:text-foreground">
+            Historique ({order.statusHistory.length})
+          </summary>
+          <ul className="mt-2 space-y-1 text-[11px]">
+            {order.statusHistory.slice().reverse().map((h, i) => (
+              <li key={i} className="rounded-lg bg-muted/40 px-2 py-1.5 text-muted-foreground">
+                <span className="font-mono text-foreground/80">{formatDate(h.at)}</span>
+                {h.paymentStatus && <> · paiement → <strong>{h.paymentStatus}</strong></>}
+                {h.fulfillmentStatus && <> · livraison → <strong>{h.fulfillmentStatus}</strong></>}
+                {h.note && <div className="mt-0.5 italic">{h.note}</div>}
+              </li>
+            ))}
+          </ul>
+        </details>
+      )}
     </div>
   );
 }

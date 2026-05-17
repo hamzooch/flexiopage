@@ -34,14 +34,17 @@ import {
   LayoutTemplate,
   Layers,
   Activity,
+  Calculator,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAuthStore, type TeamRole } from '@/stores/auth-store';
 import { BrandLogo } from '@/components/brand-logo';
+import { useT, type TKey } from '@/lib/i18n';
 
 interface NavItem {
   href: string;
-  label: string;
+  /** Translation key — resolved at render time via `useT()`. */
+  labelKey: TKey;
   icon: React.ComponentType<{ className?: string }>;
 }
 
@@ -72,38 +75,39 @@ const TEAM_ALLOWED: Record<TeamRole, string[]> = {
   ],
 };
 
-const SECTIONS: { title: string; items: NavItem[] }[] = [
+const SECTIONS: { titleKey: TKey; items: NavItem[] }[] = [
   {
-    title: 'Workspace',
+    titleKey: 'sidebar.workspace',
     items: [
-      { href: '/dashboard', label: 'Overview', icon: LayoutDashboard },
-      { href: '/dashboard/profile#stores', label: 'Mes boutiques', icon: Store },
-      { href: '/dashboard/analytics', label: 'Analytics', icon: BarChart3 },
+      { href: '/dashboard', labelKey: 'sidebar.overview', icon: LayoutDashboard },
+      { href: '/dashboard/profile#stores', labelKey: 'sidebar.myStores', icon: Store },
+      { href: '/dashboard/analytics', labelKey: 'sidebar.analytics', icon: BarChart3 },
     ],
   },
   {
-    title: 'Vente',
+    titleKey: 'sidebar.sales',
     items: [
-      { href: '/dashboard/products', label: 'Produits', icon: Package },
-      { href: '/dashboard/offers', label: 'Offres', icon: Layers },
-      { href: '/dashboard/pages', label: 'Landing pages', icon: FileText },
-      { href: '/dashboard/pages/landing-image', label: 'Landing IA', icon: LayoutTemplate },
-      { href: '/dashboard/pages/poster', label: 'Affiche IA', icon: ImageIcon },
-      { href: '/dashboard/orders', label: 'Commandes', icon: ShoppingCart },
-      { href: '/dashboard/tracking', label: 'Suivi', icon: Activity },
-      { href: '/dashboard/customers', label: 'Clients', icon: Users },
+      { href: '/dashboard/orders', labelKey: 'sidebar.orders', icon: ShoppingCart },
+      { href: '/dashboard/products', labelKey: 'sidebar.products', icon: Package },
+      { href: '/dashboard/offers', labelKey: 'sidebar.offers', icon: Layers },
+      { href: '/dashboard/pages', labelKey: 'sidebar.landingPages', icon: FileText },
+      { href: '/dashboard/pages/landing-image', labelKey: 'sidebar.aiLanding', icon: LayoutTemplate },
+      { href: '/dashboard/pages/poster', labelKey: 'sidebar.aiPoster', icon: ImageIcon },
+      { href: '/dashboard/tracking', labelKey: 'sidebar.tracking', icon: Activity },
+      { href: '/dashboard/customers', labelKey: 'sidebar.customers', icon: Users },
+      { href: '/dashboard/calculator', labelKey: 'sidebar.profitCalculator', icon: Calculator },
     ],
   },
   {
-    title: 'Compte',
+    titleKey: 'sidebar.account',
     items: [
-      { href: '/dashboard/wallet', label: 'Solde', icon: Wallet },
-      { href: '/dashboard/team', label: 'Équipe', icon: UsersRound },
-      { href: '/dashboard/support', label: 'Support', icon: LifeBuoy },
-      { href: '/dashboard/integrations', label: 'Intégrations', icon: Plug },
-      { href: '/dashboard/apps', label: 'Applications', icon: AppWindow },
-      { href: '/dashboard/profile', label: 'Profil', icon: UserRound },
-      { href: '/dashboard/settings', label: 'Paramètres', icon: Settings },
+      { href: '/dashboard/wallet', labelKey: 'sidebar.wallet', icon: Wallet },
+      { href: '/dashboard/team', labelKey: 'sidebar.team', icon: UsersRound },
+      { href: '/dashboard/support', labelKey: 'sidebar.support', icon: LifeBuoy },
+      { href: '/dashboard/integrations', labelKey: 'sidebar.integrations', icon: Plug },
+      { href: '/dashboard/apps', labelKey: 'sidebar.apps', icon: AppWindow },
+      { href: '/dashboard/profile', labelKey: 'sidebar.profile', icon: UserRound },
+      { href: '/dashboard/settings', labelKey: 'sidebar.settings', icon: Settings },
     ],
   },
 ];
@@ -117,6 +121,7 @@ interface Props {
 export function Sidebar({ mobileOpen = false, onMobileClose }: Props) {
   const pathname = usePathname();
   const user = useAuthStore((s) => s.user);
+  const { t } = useT();
   const initials = (user?.name || user?.email || 'U')
     .split(/[\s@]/)
     .map((s) => s[0])
@@ -200,9 +205,9 @@ export function Sidebar({ mobileOpen = false, onMobileClose }: Props) {
         {/* Sections */}
         <nav className="flex-1 space-y-5 overflow-y-auto px-3 py-4">
           {sections.map((section) => (
-            <div key={section.title}>
+            <div key={section.titleKey}>
               <div className="px-3 pb-1.5 text-[10px] font-bold uppercase tracking-wider text-muted-foreground/60">
-                {section.title}
+                {t(section.titleKey)}
               </div>
               <ul className="space-y-0.5">
                 {section.items.map((item) => {
@@ -225,7 +230,7 @@ export function Sidebar({ mobileOpen = false, onMobileClose }: Props) {
                           <span className="absolute -left-3 top-1/2 h-5 w-1 -translate-y-1/2 rounded-r-full gradient-brand" />
                         )}
                         <item.icon className="h-[17px] w-[17px] shrink-0" />
-                        <span className="truncate">{item.label}</span>
+                        <span className="truncate">{t(item.labelKey)}</span>
                       </Link>
                     </li>
                   );

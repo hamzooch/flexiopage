@@ -13,6 +13,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { storesApi, type ProductBundle, type ProductBundleTier } from '@/lib/api';
+import { PageHeader } from '@/components/dashboard/page-header';
 import { useScopedStoreId } from '@/lib/use-scoped-store';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -74,34 +75,22 @@ export default function OffersPage() {
 
   return (
     <div className="space-y-8">
-      {/* Hero */}
-      <header className="relative overflow-hidden rounded-3xl border border-border/60 bg-card p-6 sm:p-8">
-        <div className="pointer-events-none absolute -right-16 -top-16 h-56 w-56 rounded-full gradient-brand opacity-10 blur-3xl" aria-hidden />
-        <div className="relative flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <div className="inline-flex items-center gap-1.5 rounded-full border border-border/70 bg-background/60 px-3 py-1 text-xs font-medium text-muted-foreground backdrop-blur">
-              <Layers className="h-3 w-3" />
-              Offres
-            </div>
-            <h1 className="mt-2 text-3xl font-bold tracking-tight sm:text-4xl">Offres &amp; bundles</h1>
-            <p className="mt-1 max-w-xl text-sm text-muted-foreground">
-              Crée des offres par paliers de quantité — « 2 pièces = prix réduit ». Le client
-              choisit l&apos;offre sur la page produit, le prix s&apos;ajuste automatiquement.
-            </p>
-          </div>
-          {stores.length > 1 && (
-            <select
-              className="h-10 rounded-xl border border-border bg-background px-3 text-sm"
-              value={storeId || ''}
-              onChange={(e) => setStoreId(e.target.value)}
-            >
-              {stores.map((s) => (
-                <option key={s._id} value={s._id}>{s.name}</option>
-              ))}
-            </select>
-          )}
-        </div>
-      </header>
+      <PageHeader
+        icon={Layers}
+        title="Offres & bundles"
+        description="Paliers de quantité — « 2 pièces = prix réduit ». Le prix s'ajuste sur la page produit."
+        actions={stores.length > 1 ? (
+          <select
+            className="h-9 rounded-xl border border-border bg-background px-3 text-sm"
+            value={storeId || ''}
+            onChange={(e) => setStoreId(e.target.value)}
+          >
+            {stores.map((s) => (
+              <option key={s._id} value={s._id}>{s.name}</option>
+            ))}
+          </select>
+        ) : undefined}
+      />
 
       {/* Bundle — live */}
       <section className="space-y-3">

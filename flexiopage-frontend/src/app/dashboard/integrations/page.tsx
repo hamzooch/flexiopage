@@ -20,6 +20,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { cn, storeAbsoluteUrl } from '@/lib/utils';
+import { PageHeader } from '@/components/dashboard/page-header';
 import {
   Globe,
   CheckCircle2,
@@ -151,37 +152,22 @@ export default function IntegrationsPage() {
 
   return (
     <div className="space-y-8">
-      <header className="relative overflow-hidden rounded-3xl border border-border/60 bg-card p-6 sm:p-8">
-        <div className="pointer-events-none absolute -right-16 -top-16 h-56 w-56 rounded-full gradient-brand opacity-10 blur-3xl" aria-hidden />
-        <div className="relative flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <div className="inline-flex items-center gap-1.5 rounded-full border border-border/70 bg-background/60 px-3 py-1 text-xs font-medium text-muted-foreground backdrop-blur">
-              <Plug className="h-3 w-3" />
-              Intégrations · {activeStore.name}
-            </div>
-            <h1 className="mt-2 text-3xl font-bold tracking-tight sm:text-4xl">
-              Connecte ta boutique au monde
-            </h1>
-            <p className="mt-1 max-w-xl text-sm text-muted-foreground">
-              Domaine personnalisé, pixels Facebook et Google, sociétés de livraison & de logistique.
-            </p>
-            <p className="mt-2 text-xs text-muted-foreground">
-              Les applications de productivité (Google Sheets, Slack…) sont dans <a href="/dashboard/apps" className="font-medium text-primary hover:underline">Applications →</a>
-            </p>
-          </div>
-          {stores.length > 1 && (
-            <select
-              className="h-10 rounded-xl border border-border bg-background px-3 text-sm"
-              value={activeStore._id}
-              onChange={(e) => setCurrentStore(e.target.value)}
-            >
-              {stores.map((s) => (
-                <option key={s._id} value={s._id}>{s.name}</option>
-              ))}
-            </select>
-          )}
-        </div>
-      </header>
+      <PageHeader
+        icon={Plug}
+        title={`Intégrations · ${activeStore.name}`}
+        description={<>Domaine, pixels marketing, livraison. Apps productivité dans <a href="/dashboard/apps" className="font-medium text-primary hover:underline">Applications →</a></>}
+        actions={stores.length > 1 ? (
+          <select
+            className="h-9 rounded-xl border border-border bg-background px-3 text-sm"
+            value={activeStore._id}
+            onChange={(e) => setCurrentStore(e.target.value)}
+          >
+            {stores.map((s) => (
+              <option key={s._id} value={s._id}>{s.name}</option>
+            ))}
+          </select>
+        ) : undefined}
+      />
 
       <nav role="tablist" className="inline-flex rounded-2xl border border-border/60 bg-card p-1 shadow-sm overflow-x-auto">
         {TABS.map((t) => {
@@ -193,11 +179,12 @@ export default function IntegrationsPage() {
               aria-selected={isActive}
               onClick={() => setTab(t.id)}
               className={cn(
-                'relative inline-flex items-center gap-2 rounded-xl px-3.5 py-2 text-sm font-medium transition-all whitespace-nowrap sm:px-4',
-                isActive ? 'text-white' : 'text-muted-foreground hover:text-foreground'
+                'inline-flex items-center gap-2 rounded-xl px-3.5 py-2 text-sm font-medium transition-all whitespace-nowrap sm:px-4',
+                isActive
+                  ? 'gradient-brand text-white shadow-md shadow-primary/30'
+                  : 'text-muted-foreground hover:text-foreground'
               )}
             >
-              {isActive && <span className="absolute inset-0 -z-10 rounded-xl gradient-brand shadow-md shadow-primary/30" />}
               <t.icon className="h-4 w-4" />
               <span>{t.label}</span>
             </button>
@@ -241,16 +228,40 @@ function DomainPanel({ store, onSaved, saving, setSaving }: PanelProps) {
   const [target, setTarget] = useState<{ host: string; ips: string[] }>({ host: '', ips: [] });
   const [check, setCheck] = useState<null | { verified: boolean; cname?: string[]; aRecords?: string[]; reason?: string }>(null);
   const [checking, setChecking] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [justSaved, setJustSaved] = useState(false);
 
   useEffect(() => {
     storesApi.getDomainTarget(store._id).then((r) => setTarget(r.data)).catch(() => {});
   }, [store._id]);
 
+  // Normalize what the user types (no protocol, no path, no trailing dot).
+  function normalize(d: string): string {
+    return d.trim().toLowerCase().replace(/^https?:\/\//, '').replace(/\/.*$/, '').replace(/\.$/, '');
+  }
+
   async function handleSaveDomain() {
     setSaving(true);
+    setSaveError(null);
+    setJustSaved(false);
+    setCheck(null);
     try {
-      await storesApi.update(store._id, { customDomain: domain.trim() || null });
+      const clean = normalize(domain);
+      // Empty input → clear the domain. Non-empty → must match the basic shape;
+      // backend re-validates, this just spares a round-trip on obvious typos.
+      if (clean && !/^[a-z0-9.-]+\.[a-z]{2,}$/.test(clean)) {
+        setSaveError('Format invalide. Exemple : shop.tonsite.com');
+        return;
+      }
+      await storesApi.update(store._id, { customDomain: clean || null });
+      setDomain(clean);
+      setJustSaved(true);
       await onSaved();
+    } catch (err: unknown) {
+      const msg = (err as { response?: { data?: { message?: string; error?: string } } })?.response?.data?.message
+        || (err as { response?: { data?: { error?: string } } })?.response?.data?.error
+        || 'Échec de l\'enregistrement';
+      setSaveError(msg);
     } finally { setSaving(false); }
   }
 
@@ -259,6 +270,7 @@ function DomainPanel({ store, onSaved, saving, setSaving }: PanelProps) {
     try {
       const res = await storesApi.verifyDomain(store._id);
       setCheck(res.data);
+      setJustSaved(false);
       await onSaved();
     } finally { setChecking(false); }
   }
@@ -296,6 +308,14 @@ function DomainPanel({ store, onSaved, saving, setSaving }: PanelProps) {
           <p className="mt-2 text-xs text-muted-foreground">
             URL actuelle : <a href={previewUrl} target="_blank" rel="noreferrer" className="font-mono text-primary hover:underline">{previewUrl}</a>
           </p>
+          {saveError && (
+            <p className="mt-2 text-xs font-medium text-destructive">{saveError}</p>
+          )}
+          {justSaved && !verified && (
+            <p className="mt-2 text-xs font-medium text-emerald-600">
+              Enregistré. Configure les enregistrements DNS ci-dessous puis clique sur « Vérifier le DNS ».
+            </p>
+          )}
         </div>
 
         {domain.trim() && (

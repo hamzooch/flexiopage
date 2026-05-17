@@ -13,6 +13,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { cn } from '@/lib/utils';
+import { PageHeader } from '@/components/dashboard/page-header';
 import {
   UsersRound,
   UserPlus,
@@ -85,21 +86,11 @@ export default function TeamPage() {
 
   return (
     <div className="space-y-8">
-      {/* Hero */}
-      <header className="relative overflow-hidden rounded-3xl border border-border/60 bg-card p-6 sm:p-8">
-        <div className="pointer-events-none absolute -right-16 -top-16 h-56 w-56 rounded-full gradient-brand opacity-10 blur-3xl" aria-hidden />
-        <div className="relative">
-          <div className="inline-flex items-center gap-1.5 rounded-full border border-border/70 bg-background/60 px-3 py-1 text-xs font-medium text-muted-foreground backdrop-blur">
-            <UsersRound className="h-3 w-3" />
-            Équipe
-          </div>
-          <h1 className="mt-2 text-3xl font-bold tracking-tight sm:text-4xl">Ton équipe</h1>
-          <p className="mt-1 max-w-xl text-sm text-muted-foreground">
-            Invite des gestionnaires et des agents de confirmation. Chacun reçoit son propre
-            identifiant et un tableau de bord adapté à son rôle.
-          </p>
-        </div>
-      </header>
+      <PageHeader
+        icon={UsersRound}
+        title="Ton équipe"
+        description="Invite des gestionnaires et agents de confirmation — chacun a un tableau de bord adapté."
+      />
 
       <div className="grid gap-6 lg:grid-cols-[1fr_360px]">
         {/* Members list */}

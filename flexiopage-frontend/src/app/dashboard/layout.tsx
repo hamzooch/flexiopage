@@ -1,9 +1,10 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Sidebar } from '@/components/dashboard/sidebar';
 import { Header } from '@/components/dashboard/header';
 import { AuthGuard } from '@/components/dashboard/auth-guard';
+import { isRtl, useLangStore } from '@/lib/i18n';
 
 export default function DashboardLayout({
   children,
@@ -11,6 +12,16 @@ export default function DashboardLayout({
   children: React.ReactNode;
 }) {
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
+  const lang = useLangStore((s) => s.lang);
+
+  // Drive <html lang> and <html dir> from the seller's language preference.
+  // Done at layout level so every dashboard route reflects the choice without
+  // each page having to opt in.
+  useEffect(() => {
+    const root = document.documentElement;
+    root.lang = lang;
+    root.dir = isRtl(lang) ? 'rtl' : 'ltr';
+  }, [lang]);
 
   return (
     <AuthGuard>

@@ -168,6 +168,7 @@ export default async function PublicProductPage({ params }: Props) {
     <>
       {fontsUrl && <link rel="stylesheet" href={fontsUrl} />}
       <MarketingPixels config={store?.integrations?.marketing} />
+      <StoreTracker storeId={store?._id} type="page_view" />
       <StoreTracker storeId={store?._id} productId={product._id} type="product_view" />
       <TrackEvent
         payload={{

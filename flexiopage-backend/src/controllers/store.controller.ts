@@ -4,7 +4,7 @@ import { AuthRequest } from '../middleware/auth.middleware';
 import * as storeService from '../services/store.service';
 import { getStoreAnalytics, getStoreAnalyticsRich, type RangeKey } from '../services/analytics.service';
 import { getTrackingStats, type TrackingRange } from '../services/tracking.service';
-import { verifyAndSaveDomain, getDomainTarget, checkDomain } from '../services/domain.service';
+import { verifyAndSaveDomain, getDomainTarget, checkDomain, normalizeDomain, isValidDomain } from '../services/domain.service';
 import { testSheetsWebhook } from '../services/sheets.service';
 import { effectiveOwnerId, isTeamMember } from '../lib/owner';
 import { logActivity } from '../services/activity-log.service';
@@ -100,7 +100,27 @@ export async function updateStore(req: AuthRequest, res: Response): Promise<void
   // sanitizeMiddleware escapes "/" -> "&#x2F;"; reverse it for URL fields
   if (typeof logo === 'string') updates.logo = validator.unescape(logo);
   if (typeof favicon === 'string') updates.favicon = validator.unescape(favicon);
-  if (typeof customDomain === 'string') updates.customDomain = customDomain || undefined;
+  // customDomain handling:
+  //   - undefined           → don't touch
+  //   - null / empty string → clear domain + reset verification
+  //   - non-empty string    → normalize, validate, reset verification only if it changed
+  if (customDomain === null || customDomain === '') {
+    updates.customDomain = null;
+    updates.customDomainVerified = false;
+    updates.customDomainVerifiedAt = null;
+    updates.customDomainTarget = null;
+  } else if (typeof customDomain === 'string') {
+    const next = normalizeDomain(customDomain);
+    if (!isValidDomain(next)) {
+      res.status(400).json({ error: 'invalid_domain', message: 'Domaine invalide. Format attendu : shop.tonsite.com' });
+      return;
+    }
+    if (next !== (store.customDomain || '')) {
+      updates.customDomain = next;
+      updates.customDomainVerified = false;
+      updates.customDomainVerifiedAt = null;
+    }
+  }
   if (theme && typeof theme === 'object') updates.theme = deepUnescape(theme);
   if (settings && typeof settings === 'object') updates.settings = deepUnescape(settings);
   if (integrations && typeof integrations === 'object') updates.integrations = deepUnescape(integrations);

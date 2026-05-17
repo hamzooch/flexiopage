@@ -27,7 +27,7 @@ export function getSessionId(): string {
   }
 }
 
-export type StoreEventType = 'product_view' | 'add_to_cart';
+export type StoreEventType = 'page_view' | 'product_view' | 'add_to_cart';
 
 /** Fire-and-forget — never throws, never blocks the storefront. */
 export function trackStoreEvent(input: {

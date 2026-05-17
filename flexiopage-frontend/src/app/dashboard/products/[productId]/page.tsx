@@ -8,6 +8,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { storesApi } from '@/lib/api';
+import { ProfitCalculator, EMPTY_PROFIT_INPUTS, type ProfitInputs } from '@/components/dashboard/ProfitCalculator';
 
 export default function EditProductPage() {
   const params = useParams();
@@ -33,6 +34,10 @@ export default function EditProductPage() {
     codFormTitle: '',
     reassuranceText: '',
   });
+  // Cost inputs powering the profit calculator. Persisted with the product so
+  // the seller's verdict survives reload.
+  const [profit, setProfit] = useState<ProfitInputs>(EMPTY_PROFIT_INPUTS);
+  const [currency, setCurrency] = useState('USD');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
@@ -59,10 +64,35 @@ export default function EditProductPage() {
           codFormTitle: (ps.codFormTitle as string) || '',
           reassuranceText: (ps.reassuranceText as string) || '',
         });
+        setProfit({
+          price: Number(p.price) || 0,
+          cost: Number(p.cost) || 0,
+          shippingCost: Number(p.shippingCost) || 0,
+          packagingCost: Number(p.packagingCost) || 0,
+          marketingCost: Number(p.marketingCost) || 0,
+          paymentFeePct: Number(p.paymentFeePct) || 0,
+          paymentFeeFixed: Number(p.paymentFeeFixed) || 0,
+        });
       })
       .catch(() => setError('Product not found'))
       .finally(() => setLoading(false));
+
+    // Fetch the store once to know which currency to display in the calculator.
+    storesApi
+      .get(storeId)
+      .then((res) => {
+        const s = (res.data as { store: { settings?: { currency?: string } } }).store;
+        if (s?.settings?.currency) setCurrency(s.settings.currency);
+      })
+      .catch(() => {});
   }, [storeId, productId]);
+
+  // Keep the calculator's price in sync with the main price field — the
+  // seller edits price in one place but the verdict depends on it.
+  useEffect(() => {
+    const n = parseFloat(price) || 0;
+    setProfit((prev) => (prev.price === n ? prev : { ...prev, price: n }));
+  }, [price]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -79,6 +109,12 @@ export default function EditProductPage() {
         sku: sku.trim() || undefined,
         barcode: barcode.trim() || undefined,
         isPublished,
+        cost: profit.cost || undefined,
+        shippingCost: profit.shippingCost || undefined,
+        packagingCost: profit.packagingCost || undefined,
+        marketingCost: profit.marketingCost || undefined,
+        paymentFeePct: profit.paymentFeePct || undefined,
+        paymentFeeFixed: profit.paymentFeeFixed || undefined,
         pageSettings: {
           showGallery: pageSettings.showGallery,
           showDescription: pageSettings.showDescription,
@@ -195,6 +231,10 @@ export default function EditProductPage() {
             </div>
           </CardContent>
         </Card>
+
+        {/* Profit calculator — lets the seller know if the product is actually
+            making money once shipping, packaging, ads and payment fees are in. */}
+        <ProfitCalculator value={profit} onChange={setProfit} currency={currency} />
 
         {/* Référence produit — SKU est la clé de matching avec MogaDelivery
             et les autres 3PL ; barcode reste optionnel (EAN/UPC). */}

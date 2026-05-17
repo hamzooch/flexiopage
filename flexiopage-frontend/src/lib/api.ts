@@ -232,6 +232,12 @@ export interface StoreAnalyticsSummary {
   conversionRate?: number;
   storeViews?: number;
   currency?: string;
+  /** All-time anonymous storefront page views. */
+  pageViews?: number;
+  pageViewsThisMonth?: number;
+  /** All-time anonymous product detail page views. */
+  productViews?: number;
+  productViewsThisMonth?: number;
 }
 
 // ─────────────────────────────────────────────────────────────────────
@@ -241,6 +247,8 @@ export type TrackingRange = '7d' | '30d' | '90d';
 export interface TrackingStats {
   range: TrackingRange;
   totals: {
+    /** Any storefront page hit. */
+    pageViews: number;
     productViews: number;
     addToCart: number;
     purchases: number;
@@ -689,6 +697,14 @@ export const storesApi = {
     api.patch<{ order: unknown }>(`/stores/${storeId}/orders/${orderId}/payment`, data),
   updateOrderFulfillment: (storeId: string, orderId: string, data: { fulfillmentStatus: string; trackingNumber?: string; trackingUrl?: string }) =>
     api.patch<{ order: unknown }>(`/stores/${storeId}/orders/${orderId}/fulfillment`, data),
+  /** Seller-facing manual override — guards against orders already moving at the courier. */
+  manualOrderStatus: (storeId: string, orderId: string, data: {
+    paymentStatus?: 'pending' | 'paid' | 'failed' | 'refunded' | 'manual';
+    fulfillmentStatus?: 'unfulfilled' | 'partial' | 'fulfilled' | 'cancelled';
+    reason?: string;
+    force?: boolean;
+  }) =>
+    api.patch<{ order: unknown; restockedItems: number }>(`/stores/${storeId}/orders/${orderId}/manual-status`, data),
   // Customers
   listCustomers: (storeId: string) =>
     api.get<{ customers: unknown[] }>(`/stores/${storeId}/customers`),
@@ -778,4 +794,25 @@ export const notificationsApi = {
   unreadCount: () => api.get<{ count: number }>('/notifications/unread-count'),
   markRead: (id: string) => api.post<{ notification: NotificationDoc }>(`/notifications/${id}/read`),
   markAllRead: () => api.post<{ updated: number }>('/notifications/read-all'),
+};
+
+// ─── COD Profit Calculator ─────────────────────────────────────────────
+import type { CalculatorInputs, CalculatorOutputs } from '@/lib/cod-calculator';
+
+export interface CalculatorSnapshot {
+  _id: string;
+  userId: string;
+  name: string;
+  inputs: CalculatorInputs;
+  outputs: CalculatorOutputs;
+  /** Optional ISO country code for the preset that seeded the inputs. */
+  country?: string;
+  createdAt: string;
+}
+
+export const calculatorApi = {
+  list: () => api.get<{ snapshots: CalculatorSnapshot[] }>('/calculator/history'),
+  save: (data: { name: string; inputs: CalculatorInputs; country?: string }) =>
+    api.post<{ snapshot: CalculatorSnapshot }>('/calculator/save', data),
+  remove: (id: string) => api.delete<{ ok: true }>(`/calculator/${id}`),
 };

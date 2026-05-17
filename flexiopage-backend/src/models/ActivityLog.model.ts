@@ -10,6 +10,7 @@ export type ActivityType =
   | 'user.signup'
   | 'order.created'
   | 'order.paid'
+  | 'order.status_changed'
   | 'store.published'
   | 'delivery.dispatched'
   | 'delivery.dispatch_failed';

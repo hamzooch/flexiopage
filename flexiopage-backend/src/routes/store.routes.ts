@@ -61,6 +61,7 @@ router.get('/:storeId/orders/:orderId', orderController.getOrder);
 router.patch('/:storeId/orders/:orderId/payment', orderController.updateOrderPaymentStatus);
 router.patch('/:storeId/orders/:orderId/fulfillment', orderController.updateOrderFulfillment);
 router.post('/:storeId/orders/:orderId/dispatch', orderController.dispatchOrderToCourier);
+router.patch('/:storeId/orders/:orderId/manual-status', orderController.manualStatusOverride);
 
 router.post('/:storeId/media', mediaController.uploadSingle, mediaController.uploadMedia);
 router.get('/:storeId/media', mediaController.listMedia);

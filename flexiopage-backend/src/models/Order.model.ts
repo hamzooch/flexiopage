@@ -98,6 +98,21 @@ export interface IOrder extends Document {
     error?: string;
   };
 
+  // ── Manual status override (seller-facing) ─────────────────────────
+  /** True once stock has been restored to inventory after a cancel.
+   * Prevents double-restocking if the order is uncancelled and re-cancelled. */
+  inventoryRestored?: boolean;
+  /** Free-text reason captured when the seller manually cancels/changes status. */
+  cancelReason?: string;
+  /** Append-only audit trail of manual status changes (seller actions). */
+  statusHistory?: Array<{
+    at: Date;
+    by?: mongoose.Types.ObjectId;
+    paymentStatus?: PaymentStatus;
+    fulfillmentStatus?: FulfillmentStatus;
+    note?: string;
+  }>;
+
   createdAt: Date;
   updatedAt: Date;
 }
@@ -169,6 +184,18 @@ const OrderSchema = new Schema<IOrder>(
       lastSyncedAt: { type: Date },
       error: { type: String },
     },
+    inventoryRestored: { type: Boolean, default: false },
+    cancelReason: { type: String, trim: true },
+    statusHistory: [
+      {
+        _id: false,
+        at: { type: Date, default: Date.now },
+        by: { type: Schema.Types.ObjectId, ref: 'User' },
+        paymentStatus: { type: String },
+        fulfillmentStatus: { type: String },
+        note: { type: String, trim: true },
+      },
+    ],
   },
   { timestamps: true }
 );

@@ -42,49 +42,52 @@ function gaEventName(event: FbqEvent): string {
   }
 }
 
+/** Imperative version of TrackEvent — call from event handlers (e.g. on COD
+ * form first interaction). Safe to call before any pixel is loaded; each
+ * branch checks for the global before firing. */
+export function fireMarketingEvent(payload: TrackPayload): void {
+  if (typeof window === 'undefined') return;
+  const { event, contentIds, contentName, contentType, value, currency, transactionId, items } = payload;
+
+  if (window.fbq) {
+    const fbData: Record<string, unknown> = {};
+    if (contentIds?.length) fbData.content_ids = contentIds;
+    if (contentName) fbData.content_name = contentName;
+    fbData.content_type = contentType || 'product';
+    if (typeof value === 'number') fbData.value = value;
+    if (currency) fbData.currency = currency;
+    try { window.fbq('track', event, fbData); } catch { /* noop */ }
+  }
+
+  if (window.gtag) {
+    const gaParams: Record<string, unknown> = {};
+    if (typeof value === 'number') gaParams.value = value;
+    if (currency) gaParams.currency = currency;
+    if (transactionId) gaParams.transaction_id = transactionId;
+    if (items?.length) {
+      gaParams.items = items.map((it) => ({
+        item_id: it.id,
+        item_name: it.name,
+        quantity: it.quantity || 1,
+        price: it.price,
+      }));
+    }
+    try { window.gtag('event', gaEventName(event), gaParams); } catch { /* noop */ }
+  }
+
+  if (window.ttq) {
+    const ttData: Record<string, unknown> = {};
+    if (typeof value === 'number') ttData.value = value;
+    if (currency) ttData.currency = currency;
+    if (contentIds?.length) ttData.content_id = contentIds[0];
+    if (contentName) ttData.content_name = contentName;
+    try { window.ttq.track(event, ttData); } catch { /* noop */ }
+  }
+}
+
 export function TrackEvent({ payload }: { payload: TrackPayload }) {
   useEffect(() => {
-    if (typeof window === 'undefined') return;
-    const { event, contentIds, contentName, contentType, value, currency, transactionId, items } = payload;
-
-    // Facebook / Meta
-    if (window.fbq) {
-      const fbData: Record<string, unknown> = {};
-      if (contentIds?.length) fbData.content_ids = contentIds;
-      if (contentName) fbData.content_name = contentName;
-      fbData.content_type = contentType || 'product';
-      if (typeof value === 'number') fbData.value = value;
-      if (currency) fbData.currency = currency;
-      try { window.fbq('track', event, fbData); } catch { /* noop */ }
-    }
-
-    // Google Analytics 4
-    if (window.gtag) {
-      const gaParams: Record<string, unknown> = {};
-      if (typeof value === 'number') gaParams.value = value;
-      if (currency) gaParams.currency = currency;
-      if (transactionId) gaParams.transaction_id = transactionId;
-      if (items?.length) {
-        gaParams.items = items.map((it) => ({
-          item_id: it.id,
-          item_name: it.name,
-          quantity: it.quantity || 1,
-          price: it.price,
-        }));
-      }
-      try { window.gtag('event', gaEventName(event), gaParams); } catch { /* noop */ }
-    }
-
-    // TikTok
-    if (window.ttq) {
-      const ttData: Record<string, unknown> = {};
-      if (typeof value === 'number') ttData.value = value;
-      if (currency) ttData.currency = currency;
-      if (contentIds?.length) ttData.content_id = contentIds[0];
-      if (contentName) ttData.content_name = contentName;
-      try { window.ttq.track(event, ttData); } catch { /* noop */ }
-    }
+    fireMarketingEvent(payload);
   }, [payload]);
-
   return null;
 }

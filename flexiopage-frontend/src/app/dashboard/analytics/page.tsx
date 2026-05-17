@@ -8,6 +8,8 @@ import {
   Clock,
   DollarSign,
   Download,
+  Eye,
+  MousePointerClick,
   RefreshCcw,
   RotateCcw,
   ShoppingCart,
@@ -249,6 +251,22 @@ export default function DashboardAnalyticsPage() {
               icon={Clock}
               accent="amber"
               hint="à confirmer"
+            />
+            <KpiCard
+              label="Vues de page"
+              value={String(data.kpis.pageViews.value)}
+              delta={data.kpis.pageViews.deltaPct}
+              icon={Eye}
+              accent="sky"
+              hint="trafic storefront"
+            />
+            <KpiCard
+              label="Vues produits"
+              value={String(data.kpis.productViews.value)}
+              delta={data.kpis.productViews.deltaPct}
+              icon={MousePointerClick}
+              accent="violet"
+              hint="fiches produit ouvertes"
             />
           </div>
 

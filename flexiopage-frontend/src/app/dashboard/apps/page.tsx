@@ -18,6 +18,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { cn } from '@/lib/utils';
+import { PageHeader } from '@/components/dashboard/page-header';
 import {
   AppWindow,
   FileSpreadsheet,
@@ -173,35 +174,22 @@ export default function AppsPage() {
 
   return (
     <div className="space-y-8">
-      {/* Hero */}
-      <header className="relative overflow-hidden rounded-3xl border border-border/60 bg-card p-6 sm:p-8">
-        <div className="pointer-events-none absolute -right-16 -top-16 h-56 w-56 rounded-full gradient-brand opacity-10 blur-3xl" aria-hidden />
-        <div className="relative flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <div className="inline-flex items-center gap-1.5 rounded-full border border-border/70 bg-background/60 px-3 py-1 text-xs font-medium text-muted-foreground backdrop-blur">
-              <AppWindow className="h-3 w-3" />
-              Marketplace · {activeStore.name}
-            </div>
-            <h1 className="mt-2 text-3xl font-bold tracking-tight sm:text-4xl">
-              Applications
-            </h1>
-            <p className="mt-1 max-w-xl text-sm text-muted-foreground">
-              Connecte tes outils du quotidien à ta boutique : Google Sheets, email, notifications, automatisations.
-            </p>
-          </div>
-          {stores.length > 1 && (
-            <select
-              className="h-10 rounded-xl border border-border bg-background px-3 text-sm"
-              value={activeStore._id}
-              onChange={(e) => setCurrentStore(e.target.value)}
-            >
-              {stores.map((s) => (
-                <option key={s._id} value={s._id}>{s.name}</option>
-              ))}
-            </select>
-          )}
-        </div>
-      </header>
+      <PageHeader
+        icon={AppWindow}
+        title={`Applications · ${activeStore.name}`}
+        description="Connecte tes outils : Google Sheets, email, notifications, automatisations."
+        actions={stores.length > 1 ? (
+          <select
+            className="h-9 rounded-xl border border-border bg-background px-3 text-sm"
+            value={activeStore._id}
+            onChange={(e) => setCurrentStore(e.target.value)}
+          >
+            {stores.map((s) => (
+              <option key={s._id} value={s._id}>{s.name}</option>
+            ))}
+          </select>
+        ) : undefined}
+      />
 
       {/* App grid */}
       <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">

@@ -184,13 +184,25 @@ export async function createStore(input: CreateStoreInput): Promise<IStore> {
 
 export async function updateStore(
   storeId: string,
-  updates: Partial<Pick<IStore, 'name' | 'description' | 'logo' | 'favicon' | 'customDomain' | 'theme' | 'settings' | 'integrations' | 'isPublished'>>
+  updates: Partial<Pick<IStore,
+    | 'name' | 'description' | 'logo' | 'favicon'
+    | 'customDomain' | 'customDomainVerified' | 'customDomainVerifiedAt' | 'customDomainTarget'
+    | 'theme' | 'settings' | 'integrations' | 'isPublished'
+  >>
 ): Promise<IStore | null> {
-  return Store.findByIdAndUpdate(
-    storeId,
-    { $set: updates },
-    { new: true }
-  );
+  // Split into $set / $unset so we can clear customDomain (null) properly —
+  // `$set: { customDomain: null }` would store a literal null and break the
+  // sparse unique-style index; $unset removes the field outright.
+  const set: Record<string, unknown> = {};
+  const unset: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(updates)) {
+    if (v === null) unset[k] = '';
+    else set[k] = v;
+  }
+  const op: Record<string, unknown> = {};
+  if (Object.keys(set).length) op.$set = set;
+  if (Object.keys(unset).length) op.$unset = unset;
+  return Store.findByIdAndUpdate(storeId, op, { new: true });
 }
 
 export async function getStoresByOwner(ownerId: string): Promise<IStore[]> {
@@ -210,5 +222,11 @@ export async function getStoreBySubdomain(subdomain: string): Promise<IStore | n
 }
 
 export async function getStoreByCustomDomain(domain: string): Promise<IStore | null> {
-  return Store.findOne({ customDomain: domain, isPublished: true }).lean<IStore | null>();
+  // Only serve a custom-domain request once DNS has been verified — otherwise
+  // a seller could squat on a domain they don't actually control.
+  return Store.findOne({
+    customDomain: domain,
+    customDomainVerified: true,
+    isPublished: true,
+  }).lean<IStore | null>();
 }

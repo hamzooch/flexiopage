@@ -30,8 +30,17 @@ export interface DomainCheck {
   reason?: string;
 }
 
-function normalizeDomain(d: string): string {
-  return d.trim().toLowerCase().replace(/^https?:\/\//, '').replace(/\/.*$/, '');
+export function normalizeDomain(d: string): string {
+  return d
+    .trim()
+    .toLowerCase()
+    .replace(/^https?:\/\//, '')
+    .replace(/\/.*$/, '')
+    .replace(/\.$/, '');
+}
+
+export function isValidDomain(d: string): boolean {
+  return /^[a-z0-9.-]+\.[a-z]{2,}$/.test(d);
 }
 
 export async function checkDomain(domain: string): Promise<DomainCheck> {
@@ -43,7 +52,7 @@ export async function checkDomain(domain: string): Promise<DomainCheck> {
     verified: false,
   };
 
-  if (!/^[a-z0-9.-]+\.[a-z]{2,}$/.test(clean)) {
+  if (!isValidDomain(clean)) {
     out.reason = 'invalid_domain';
     return out;
   }

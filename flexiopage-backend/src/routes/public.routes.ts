@@ -60,7 +60,11 @@ router.post('/track', (req: Request, res: Response): void => {
     type?: string;
     sessionId?: string;
   };
-  const type = body.type === 'add_to_cart' ? 'add_to_cart' : body.type === 'product_view' ? 'product_view' : null;
+  const type =
+    body.type === 'add_to_cart' ? 'add_to_cart'
+    : body.type === 'product_view' ? 'product_view'
+    : body.type === 'page_view' ? 'page_view'
+    : null;
   const validStore = body.storeId && mongoose.Types.ObjectId.isValid(body.storeId);
   if (type && validStore && body.sessionId) {
     void recordEvent({

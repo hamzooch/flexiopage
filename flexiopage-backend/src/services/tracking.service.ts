@@ -41,6 +41,8 @@ export async function recordEvent(input: RecordEventInput): Promise<void> {
 export interface TrackingStats {
   range: TrackingRange;
   totals: {
+    /** Any storefront page hit (landing, info page, product). */
+    pageViews: number;
     productViews: number;
     addToCart: number;
     purchases: number;
@@ -80,6 +82,7 @@ export async function getTrackingStats(
     { $group: { _id: '$type', count: { $sum: 1 } } },
   ]);
   const counts: Record<StoreEventType, number> = {
+    page_view: 0,
     product_view: 0,
     add_to_cart: 0,
     purchase: 0,
@@ -87,8 +90,16 @@ export async function getTrackingStats(
   for (const r of byType) counts[r._id] = r.count;
 
   // Abandoned carts: sessions that started an order but never completed one.
+  // Two boundary choices matter here:
+  //   1. We require carts to be at least 24h old before counting them as
+  //      abandoned — otherwise every fresh visitor (still in their session)
+  //      inflates the number. 24h is the industry-standard "grace period"
+  //      before a cart is considered dead.
+  //   2. We accept purchases up to NOW (no upper bound), so a cart from
+  //      day 1 of a 90-day window that converts today is correctly excluded.
+  const graceCutoff = new Date(Date.now() - 24 * 60 * 60 * 1000);
   const [cartSessions, purchaseSessions] = await Promise.all([
-    StoreEvent.distinct('sessionId', { storeId: oid, type: 'add_to_cart', createdAt: { $gte: start } }),
+    StoreEvent.distinct('sessionId', { storeId: oid, type: 'add_to_cart', createdAt: { $gte: start, $lte: graceCutoff } }),
     StoreEvent.distinct('sessionId', { storeId: oid, type: 'purchase', createdAt: { $gte: start } }),
   ]);
   const purchasedSet = new Set(purchaseSessions as string[]);
@@ -131,6 +142,7 @@ export async function getTrackingStats(
   return {
     range,
     totals: {
+      pageViews: counts.page_view,
       productViews: counts.product_view,
       addToCart: counts.add_to_cart,
       purchases: counts.purchase,
