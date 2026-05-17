@@ -500,7 +500,8 @@ export default async function PublicProductPage({ params }: Props) {
   );
 }
 
-function hexA(hex: string, a: number): string {
+function hexA(hex: string | undefined | null, a: number): string {
+  if (!hex || typeof hex !== 'string') return 'transparent';
   const m = hex.match(/^#?([0-9a-f]{6})$/i);
   if (!m) return hex;
   const n = parseInt(m[1], 16);

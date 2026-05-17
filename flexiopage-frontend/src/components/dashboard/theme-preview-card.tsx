@@ -859,7 +859,8 @@ function nicheLongSub(niche: string): string {
       return 'Une sélection soigneusement choisie pour t\'inspirer chaque jour.';
   }
 }
-function withAlpha(hex: string, a: number): string {
+function withAlpha(hex: string | undefined | null, a: number): string {
+  if (!hex || typeof hex !== 'string') return 'transparent';
   const m = hex.match(/^#?([0-9a-f]{6})$/i);
   if (!m) return hex;
   const n = parseInt(m[1], 16);

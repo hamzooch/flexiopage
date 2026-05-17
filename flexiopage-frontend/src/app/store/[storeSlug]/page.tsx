@@ -895,7 +895,8 @@ function Footer({ store, theme }: { store: StoreDoc; theme: ThemeTokens }) {
 }
 
 // hex (#rrggbb) → rgba helper for tinted backgrounds and shadows
-function hexA(hex: string, a: number): string {
+function hexA(hex: string | undefined | null, a: number): string {
+  if (!hex || typeof hex !== 'string') return 'transparent';
   const m = hex.match(/^#?([0-9a-f]{6})$/i);
   if (!m) return hex;
   const n = parseInt(m[1], 16);
