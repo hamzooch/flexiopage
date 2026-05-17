@@ -44,14 +44,32 @@ export default function SelectStorePage() {
   const [stores, setStores] = useState<StoreDoc[] | null>(null);
   const [authed, setAuthed] = useState(false);
 
-  // Persist with localStorage rehydrates synchronously during module init,
-  // so by the time this effect runs the state is already correct. A
-  // microtask (Promise.resolve()) lets any queued updates flush before we
-  // read. getState() avoids React's subscription one-frame lag.
+  // Zustand-persist hydration from localStorage is actually a microtask
+  // chain in zustand v4, NOT synchronous. A plain Promise.resolve() races
+  // with that chain and we'd read `token=null` on a fresh hard refresh,
+  // bouncing the user to /login. We wait on `onFinishHydration` and, as a
+  // last resort, fall back to reading the persisted blob directly so a
+  // stalled or absent hydration callback can't lock the user out.
   useEffect(() => {
     if (typeof window === 'undefined') return;
-    Promise.resolve().then(() => {
-      const { token } = useAuthStore.getState();
+    let cancelled = false;
+
+    const readPersistedToken = (): string | null => {
+      const live = useAuthStore.getState().token;
+      if (live) return live;
+      try {
+        const raw = window.localStorage.getItem('flexiopage-auth');
+        if (!raw) return null;
+        const parsed = JSON.parse(raw) as { state?: { token?: string | null } };
+        return parsed?.state?.token ?? null;
+      } catch {
+        return null;
+      }
+    };
+
+    const decide = () => {
+      if (cancelled) return;
+      const token = readPersistedToken();
       if (!token) {
         router.replace('/login');
         return;
@@ -59,9 +77,34 @@ export default function SelectStorePage() {
       setAuthed(true);
       storesApi
         .list()
-        .then((res) => setStores((res.data as { stores: StoreDoc[] }).stores || []))
-        .catch(() => setStores([]));
-    });
+        .then((res) => {
+          if (!cancelled) setStores((res.data as { stores: StoreDoc[] }).stores || []);
+        })
+        .catch(() => {
+          if (!cancelled) setStores([]);
+        });
+    };
+
+    let unsub: (() => void) | undefined;
+    if (useAuthStore.persist?.hasHydrated?.()) {
+      decide();
+    } else {
+      unsub = useAuthStore.persist?.onFinishHydration?.(decide);
+      // Belt-and-suspenders: if the hydration callback never fires (older
+      // storage error, unexpected persist state), check via localStorage
+      // after a brief delay so the page can never stay stuck on the spinner.
+      const safety = window.setTimeout(decide, 800);
+      const cleanup = () => {
+        cancelled = true;
+        window.clearTimeout(safety);
+        if (typeof unsub === 'function') unsub();
+      };
+      return cleanup;
+    }
+    return () => {
+      cancelled = true;
+      if (typeof unsub === 'function') unsub();
+    };
   }, [router]);
 
   function pick(storeId: string) {

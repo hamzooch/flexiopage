@@ -27,7 +27,18 @@ api.interceptors.request.use((config) => {
 api.interceptors.response.use(
   (res) => res,
   (err) => {
-    if (err.response?.status === 401 && typeof window !== 'undefined') {
+    // Only clear the session when the server says the auth check itself
+    // failed (/auth/me). A 401 from any other endpoint (notifications
+    // poll, analytics, a permission-scoped route) MUST NOT wipe the
+    // token — that bug silently logged users out from a background
+    // call, and on the next refresh AuthGuard saw {token:null} in
+    // localStorage and bounced them to /login.
+    if (
+      err.response?.status === 401 &&
+      typeof window !== 'undefined' &&
+      typeof err.config?.url === 'string' &&
+      /\/auth\/me\b/.test(err.config.url)
+    ) {
       useAuthStore.setState({ user: null, token: null, isAuthenticated: false });
     }
     return Promise.reject(err);

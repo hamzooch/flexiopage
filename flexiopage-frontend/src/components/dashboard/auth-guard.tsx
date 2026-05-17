@@ -13,11 +13,44 @@ import { useStoreStore } from '@/stores/store-store';
  *
  * We MUST wait for zustand persist to finish rehydrating from localStorage
  * before deciding — otherwise a hard refresh sees `token=null` and bounces
- * the seller to /login. We listen on both stores' `onFinishHydration` and
- * fall back to a short timeout in case hydration already fired.
+ * the seller to /login.
+ *
+ * The previous version used a 300ms timeout as a safety net, which itself
+ * caused false /login bounces when hydration was slower than that. We now
+ * skip the timer and read the persisted token straight from localStorage
+ * as a last-resort fallback, so we can decide deterministically without
+ * racing zustand's hydration microtask chain.
  */
 
 const STORELESS_ALLOWED = new Set(['/dashboard/profile']);
+const AUTH_STORAGE_KEY = 'flexiopage-auth';
+const STORE_STORAGE_KEY = 'flexiopage-current-store';
+
+function readPersisted<T = unknown>(key: string): T | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    const raw = window.localStorage.getItem(key);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as { state?: T };
+    return (parsed && parsed.state) || null;
+  } catch {
+    return null;
+  }
+}
+
+function resolveToken(): string | null {
+  const live = useAuthStore.getState().token;
+  if (live) return live;
+  const persisted = readPersisted<{ token?: string | null }>(AUTH_STORAGE_KEY);
+  return persisted?.token ?? null;
+}
+
+function resolveCurrentStoreId(): string | null {
+  const live = useStoreStore.getState().currentStoreId;
+  if (live) return live;
+  const persisted = readPersisted<{ currentStoreId?: string | null }>(STORE_STORAGE_KEY);
+  return persisted?.currentStoreId ?? null;
+}
 
 function awaitHydration(
   store: { persist?: { hasHydrated?: () => boolean; onFinishHydration?: (cb: () => void) => () => void } },
@@ -32,9 +65,12 @@ function awaitHydration(
     return () => {};
   }
   const unsub = store.persist.onFinishHydration?.(onDone);
-  return () => {
-    if (typeof unsub === 'function') unsub();
-  };
+  if (typeof unsub !== 'function') {
+    // No subscription API → don't hang the UI; treat as already settled.
+    onDone();
+    return () => {};
+  }
+  return unsub;
 }
 
 export function AuthGuard({ children }: { children: React.ReactNode }) {
@@ -59,22 +95,19 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
       storeDone = true;
       check();
     });
-    // Safety net: if hydration somehow never fires (e.g. storage error),
-    // fall back to whatever state is in memory after 300ms so we don't hang
-    // on a blank Loading screen forever.
-    const fallback = setTimeout(() => setHydrated(true), 300);
     return () => {
       unsubAuth();
       unsubStore();
-      clearTimeout(fallback);
     };
   }, []);
 
-  // Redirect logic runs only once hydration is settled.
+  // Redirect logic runs only once hydration is settled. Falls back to
+  // reading the persisted blob directly from localStorage so a slow
+  // rehydration cannot make us think the user is logged out.
   useEffect(() => {
     if (!hydrated) return;
-    const { token } = useAuthStore.getState();
-    const { currentStoreId } = useStoreStore.getState();
+    const token = resolveToken();
+    const currentStoreId = resolveCurrentStoreId();
     if (!token) {
       setRedirecting(true);
       router.replace(`/login?next=${encodeURIComponent(pathname)}`);
