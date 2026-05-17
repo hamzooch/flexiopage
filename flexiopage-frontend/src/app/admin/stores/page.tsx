@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { adminApi, type AdminStore } from '@/lib/api';
+import { storeAbsoluteUrl } from '@/lib/utils';
 import { Loader2, Cloud, Package, ExternalLink } from 'lucide-react';
 import Link from 'next/link';
 
@@ -83,7 +84,7 @@ export default function AdminStoresPage() {
                       </td>
                       <td className="py-3 text-right">
                         <Link
-                          href={`/${s.slug}`}
+                          href={storeAbsoluteUrl(s.slug)}
                           target="_blank"
                           className="inline-flex items-center gap-1 text-xs text-primary hover:underline"
                         >

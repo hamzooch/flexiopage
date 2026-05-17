@@ -27,7 +27,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { storesApi } from '@/lib/api';
-import { cn } from '@/lib/utils';
+import { cn, storeAbsoluteUrl } from '@/lib/utils';
 import type { StoreType } from '@/components/dashboard/store-editor';
 
 interface HubCard {
@@ -153,13 +153,13 @@ export default function StoreHubPage() {
             </div>
             <div className="min-w-0">
               <h1 className="truncate text-2xl font-bold tracking-tight sm:text-3xl">{store.name}</h1>
-              <p className="text-sm text-muted-foreground">/{store.slug}</p>
+              <p className="truncate text-sm text-muted-foreground">{storeAbsoluteUrl(store.slug).replace(/^https?:\/\//, '')}</p>
             </div>
           </div>
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
-          <Link href={`/${store.slug}`} target="_blank" rel="noopener">
+          <Link href={storeAbsoluteUrl(store.slug)} target="_blank" rel="noopener">
             <Button variant="outline" size="sm" className="gap-1.5">
               <ExternalLink className="h-3.5 w-3.5" />
               Voir la boutique

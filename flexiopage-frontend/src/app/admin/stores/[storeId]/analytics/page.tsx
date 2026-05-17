@@ -23,7 +23,7 @@ import {
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { adminApi } from '@/lib/api';
-import { formatCurrency } from '@/lib/utils';
+import { formatCurrency, storeAbsoluteUrl } from '@/lib/utils';
 import { KpiCard } from '@/components/charts/KpiCard';
 import { RangeSwitcher } from '@/components/charts/RangeSwitcher';
 import { RevenueAreaChart } from '@/components/charts/RevenueAreaChart';
@@ -161,7 +161,7 @@ export default function AdminStoreDrilldownPage() {
               </div>
               <div className="mt-3 flex flex-wrap items-center gap-2">
                 <Link
-                  href={`/${store.slug}`}
+                  href={storeAbsoluteUrl(store.slug)}
                   target="_blank"
                   className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border/60 bg-card px-2.5 text-[11px] font-semibold transition hover:bg-muted sm:px-3 sm:text-xs"
                 >

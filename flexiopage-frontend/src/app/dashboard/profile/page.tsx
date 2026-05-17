@@ -47,7 +47,7 @@ import {
   Check as CheckIcon,
 } from 'lucide-react';
 import { COUNTRIES, COUNTRY_GROUPS, currencyForCountry } from '@/data/countries';
-import { cn } from '@/lib/utils';
+import { cn, storeAbsoluteUrl } from '@/lib/utils';
 
 interface UserDoc {
   _id: string;
@@ -429,7 +429,7 @@ export default function ProfilePage() {
                         Réglages
                       </Button>
                     </Link>
-                    <Link href={`/${store.slug}`} target="_blank" rel="noopener">
+                    <Link href={storeAbsoluteUrl(store.slug)} target="_blank" rel="noopener">
                       <Button
                         variant="outline"
                         size="sm"

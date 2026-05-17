@@ -19,6 +19,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { adminApi, type AdminUserDetail } from '@/lib/api';
+import { storeAbsoluteUrl } from '@/lib/utils';
 import {
   ArrowLeft,
   KeyRound,
@@ -400,7 +401,7 @@ export default function AdminUserDetailPage() {
                   }`}>
                     {s.isPublished ? 'Live' : 'Draft'}
                   </span>
-                  <Link href={`/${s.slug}`} target="_blank" className="inline-flex items-center gap-1 text-xs text-primary hover:underline">
+                  <Link href={storeAbsoluteUrl(s.slug)} target="_blank" className="inline-flex items-center gap-1 text-xs text-primary hover:underline">
                     Voir <ExternalLink className="h-3 w-3" />
                   </Link>
                 </li>

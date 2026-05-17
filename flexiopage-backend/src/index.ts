@@ -57,12 +57,36 @@ app.use(
 
 // ── API CORS — credentialed, origin allow-list ──────────────────────
 // Accept either a single FRONTEND_URL or a comma-separated list (handy during
-// dev when the frontend is run on multiple ports).
+// dev when the frontend is run on multiple ports). Storefronts run on
+// per-seller subdomains, so for each listed origin we also allow ANY
+// subdomain of its hostname (e.g. macaftans.flexiopage.com when the list
+// contains flexiopage.com).
 const corsOrigins = (process.env.FRONTEND_URL || 'http://localhost:3000,http://localhost:3002')
   .split(',')
   .map((s) => s.trim())
   .filter(Boolean);
-app.use(cors({ origin: corsOrigins, credentials: true }));
+
+// Pre-compute apex hostnames so subdomain matching is a cheap endsWith().
+const allowedApexHosts = corsOrigins
+  .map((o) => {
+    try { return new URL(o).hostname.toLowerCase(); } catch { return null; }
+  })
+  .filter((h): h is string => !!h);
+
+app.use(cors({
+  credentials: true,
+  origin: (origin, cb) => {
+    if (!origin) return cb(null, true); // server-to-server / curl
+    if (corsOrigins.includes(origin)) return cb(null, true);
+    try {
+      const host = new URL(origin).hostname.toLowerCase();
+      if (allowedApexHosts.some((apex) => host === apex || host.endsWith('.' + apex))) {
+        return cb(null, true);
+      }
+    } catch { /* fall through */ }
+    cb(new Error(`CORS: origin ${origin} not allowed`));
+  },
+}));
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 app.use(cookieParser());

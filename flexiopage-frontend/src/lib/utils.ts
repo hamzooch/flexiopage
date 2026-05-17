@@ -16,21 +16,59 @@ export function formatDate(date: string | Date): string {
 }
 
 /**
- * Build a public storefront URL — clean, path-based.
+ * Build a relative path inside the same storefront. Use this for links
+ * rendered ON a storefront page — once the visitor is on
+ * `macaftans.flexiopage.com`, a relative href like `/product/foo` stays
+ * on the same subdomain naturally.
  *
  *   storeUrl('macaftans')                          → '/macaftans'
- *   storeUrl('macaftans', 'p/landing-1')           → '/macaftans/p/landing-1'
  *   storeUrl('macaftans', 'product/foo')           → '/macaftans/product/foo'
  *
- * The middleware at /src/middleware.ts rewrites these clean URLs to
- * the internal /store/<slug>/... route, so callers should always use
- * this helper instead of hardcoding "/store/" anywhere.
+ * Path-based URLs still resolve via the middleware fallback, so old
+ * `/macaftans/...` links keep working.
  */
 export function storeUrl(storeSlug: string, subPath?: string): string {
   const slug = storeSlug.replace(/^\/+|\/+$/g, '');
   if (!subPath) return `/${slug}`;
   const clean = subPath.replace(/^\/+/, '');
   return `/${slug}/${clean}`;
+}
+
+/**
+ * Build a full absolute URL on the storefront subdomain. Use this when
+ * the link is shown OUTSIDE the storefront (dashboard "View store"
+ * button, share buttons, emails, admin lists) — those origins don't
+ * carry the subdomain context, so a relative path would land on the
+ * wrong host.
+ *
+ *   storeAbsoluteUrl('macaftans')                  → 'https://macaftans.flexiopage.com'
+ *   storeAbsoluteUrl('macaftans', 'product/foo')   → 'https://macaftans.flexiopage.com/product/foo'
+ *
+ * In local dev, set `NEXT_PUBLIC_STOREFRONT_DOMAIN` to something like
+ * `lvh.me:3002` (lvh.me resolves *.lvh.me → 127.0.0.1) and the helper
+ * will emit `http://<slug>.lvh.me:3002/...` — protocol is auto-picked
+ * from `window.location` on the client so HTTPS isn't forced when the
+ * page itself is served over HTTP. If the env is unset entirely we fall
+ * back to the path-based form so the dashboard "View store" button
+ * still works without any setup.
+ */
+export function storeAbsoluteUrl(storeSlug: string, subPath?: string): string {
+  const slug = storeSlug.replace(/^\/+|\/+$/g, '');
+  const clean = subPath?.replace(/^\/+/, '') || '';
+  const domain = (process.env.NEXT_PUBLIC_STOREFRONT_DOMAIN || '').toLowerCase().trim();
+  if (!domain) {
+    // No subdomain configured → path-based on current origin.
+    return clean ? `/${slug}/${clean}` : `/${slug}`;
+  }
+  // Default https; on the client, mirror whatever scheme the current
+  // page uses so a Next dev server on http://localhost emits http URLs.
+  let protocol = 'https';
+  if (typeof window !== 'undefined' && window.location?.protocol) {
+    protocol = window.location.protocol.replace(/:$/, '');
+  }
+  return clean
+    ? `${protocol}://${slug}.${domain}/${clean}`
+    : `${protocol}://${slug}.${domain}`;
 }
 
 /**

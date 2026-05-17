@@ -1,22 +1,18 @@
 import { NextResponse, type NextRequest } from 'next/server';
 
 /**
- * URL-rewrite middleware that makes every customer-facing store page
- * appear at the root path — `flexiopage.com/<store-slug>` instead of
- * `flexiopage.com/store/<store-slug>`. The internal file structure
- * stays at /app/store/[storeSlug]/... so we keep type-safety and the
- * existing components untouched; only the public URL changes.
+ * Two URL shapes resolve to the same internal /store/[storeSlug] route:
  *
- * Strategy:
- *   1. Anything starting with a reserved top-level segment (auth,
- *      dashboard, admin, API, static assets, _next…) passes through.
- *   2. Anything else — the first segment is treated as a store slug,
- *      and we rewrite to /store/<segment>/<rest>.
+ *   1. Subdomain (canonical): macaftans.flexiopage.com/<path>
+ *   2. Path (legacy):         flexiopage.com/macaftans/<path>
  *
- * Reserved set is explicit and conservative: when in doubt, we DO NOT
- * rewrite. The cost of a false negative ("user typed /foo, we said
- * store not found") is a 404; the cost of a false positive (rewriting
- * /login to /store/login) is breaking auth.
+ * The legacy path form stays alive for old links + Google index entries.
+ * Internally both rewrite to /store/<slug>/<rest> so the file structure
+ * at /app/store/[storeSlug]/... stays untouched.
+ *
+ * For path rewrite (case 2), reserved top-level segments (auth, dashboard,
+ * admin, API, static assets…) pass through — when in doubt we DO NOT
+ * rewrite. False positives (rewriting /login to /store/login) break auth.
  */
 
 const RESERVED_TOP_LEVEL = new Set([
@@ -45,22 +41,59 @@ const RESERVED_TOP_LEVEL = new Set([
   'integrations',
 ]);
 
+/** Subdomains that are NOT a store — never rewrite their requests. */
+const RESERVED_SUBDOMAINS = new Set(['www', 'api', 'admin', 'app', 'staging', 'preview']);
+
+// Strip port — in dev the env may include one (lvh.me:3002), but Host
+// matching is done after we've stripped the port from the incoming host.
+const ROOT_DOMAIN = (process.env.NEXT_PUBLIC_STOREFRONT_DOMAIN || 'flexiopage.com')
+  .toLowerCase()
+  .split(':')[0];
+
+/**
+ * Pull the store slug out of the Host header when it looks like
+ * `<slug>.<rootDomain>`. Returns null for apex, www, reserved
+ * subdomains, raw IPs, or localhost (no subdomain routing in dev).
+ */
+function subdomainStoreSlug(host: string | null): string | null {
+  if (!host) return null;
+  const h = host.toLowerCase().split(':')[0]; // strip port
+  if (!h.endsWith('.' + ROOT_DOMAIN)) return null;
+  const sub = h.slice(0, h.length - ROOT_DOMAIN.length - 1);
+  if (!sub || sub.includes('.')) return null; // require a single label (no nested subdomains)
+  if (RESERVED_SUBDOMAINS.has(sub)) return null;
+  return sub;
+}
+
 export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
-  // Empty path or already a special root → leave alone.
+  // ── 1. Subdomain-based storefront (canonical) ─────────────────────
+  const subSlug = subdomainStoreSlug(request.headers.get('host'));
+  if (subSlug) {
+    // Never rewrite framework/static paths even on a store subdomain.
+    if (
+      pathname.startsWith('/_next') ||
+      pathname.startsWith('/api') ||
+      pathname === '/favicon.ico' ||
+      pathname.includes('.')
+    ) {
+      return NextResponse.next();
+    }
+    const url = request.nextUrl.clone();
+    url.pathname = `/store/${subSlug}${pathname === '/' ? '' : pathname}`;
+    return NextResponse.rewrite(url);
+  }
+
+  // ── 2. Path-based storefront (legacy fallback) ────────────────────
   if (pathname === '/' || pathname === '') return NextResponse.next();
 
   const firstSeg = pathname.split('/')[1] || '';
 
-  // Reserved app paths, static assets, hidden dotfiles → no rewrite.
   if (RESERVED_TOP_LEVEL.has(firstSeg)) return NextResponse.next();
   if (firstSeg.startsWith('_')) return NextResponse.next();
-  // Anything that looks like a file (e.g. /something.svg) → leave alone.
   if (firstSeg.includes('.')) return NextResponse.next();
 
-  // Rewrite /<slug>/<rest> → /store/<slug>/<rest> while keeping the
-  // browser address bar on the clean URL.
   const url = request.nextUrl.clone();
   url.pathname = `/store${pathname}`;
   return NextResponse.rewrite(url);

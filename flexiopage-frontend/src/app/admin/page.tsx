@@ -26,6 +26,7 @@ import {
 } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { adminApi } from '@/lib/api';
+import { storeAbsoluteUrl } from '@/lib/utils';
 import { useAuthStore } from '@/stores/auth-store';
 import { KpiCard } from '@/components/charts/KpiCard';
 import { RangeSwitcher } from '@/components/charts/RangeSwitcher';
@@ -425,7 +426,7 @@ export default function AdminOverviewPage() {
                                 {o.paymentStatus}
                               </span>
                               {storeName && (
-                                <Link href={storeSlug ? `/${storeSlug}` : '#'} target="_blank" className="truncate text-[10px] text-muted-foreground hover:text-foreground sm:text-[11px]">
+                                <Link href={storeSlug ? storeAbsoluteUrl(storeSlug) : '#'} target="_blank" className="truncate text-[10px] text-muted-foreground hover:text-foreground sm:text-[11px]">
                                   · {storeName}
                                 </Link>
                               )}

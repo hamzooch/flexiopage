@@ -19,7 +19,7 @@ import { useStoreStore } from '@/stores/store-store';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { cn } from '@/lib/utils';
+import { cn, storeAbsoluteUrl } from '@/lib/utils';
 import {
   Globe,
   CheckCircle2,
@@ -265,11 +265,14 @@ function DomainPanel({ store, onSaved, saving, setSaving }: PanelProps) {
 
   const verified = !!store.customDomainVerified;
   // Build the dev preview URL from the current origin so it follows whichever
-  // port Next is running on (3000, 3002, etc.) instead of being pinned.
+  // port Next is running on (3000, 3002, etc.) instead of being pinned. In
+  // prod, fall back to the canonical subdomain URL via storeAbsoluteUrl.
   const devOrigin = typeof window !== 'undefined' ? window.location.origin : '';
   const previewUrl = store.customDomain && verified
     ? `https://${store.customDomain}`
-    : `${devOrigin}/${store.slug}`;
+    : storeAbsoluteUrl(store.slug).startsWith('http')
+      ? storeAbsoluteUrl(store.slug)
+      : `${devOrigin}/${store.slug}`;
 
   return (
     <Card icon={<Globe className="h-5 w-5" />} title="Domaine personnalisé"
