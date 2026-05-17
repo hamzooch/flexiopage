@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from 'next';
 import { Inter } from 'next/font/google';
 import './globals.css';
+import { PlatformChatBot } from '@/components/chatbot/PlatformChatBot';
 
 const inter = Inter({ subsets: ['latin'] });
 
@@ -124,7 +125,12 @@ export default function RootLayout({
 }) {
   return (
     <html lang="fr">
-      <body className={inter.className} suppressHydrationWarning>{children}</body>
+      <body className={inter.className} suppressHydrationWarning>
+        {children}
+        {/* Platform-wide chatbot — auto-hides on storefront routes where each
+            store renders its own scoped widget. */}
+        <PlatformChatBot />
+      </body>
     </html>
   );
 }

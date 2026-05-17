@@ -6,8 +6,6 @@ import { motion, useInView, useReducedMotion, type Variants } from 'framer-motio
 import { Button } from '@/components/ui/button';
 import { useCountUp } from '@/lib/use-count-up';
 import { BrandLogo } from '@/components/brand-logo';
-import { ChatBot } from '@/components/chatbot/ChatBot';
-import { flexiopageScript } from '@/components/chatbot/scripts';
 import { StructuredData } from '@/components/seo/StructuredData';
 
 // Mirrors the FAQ rendered inside <Faq /> so Google can index the
@@ -88,7 +86,8 @@ export default function HomePage() {
 
       <Footer />
 
-      <ChatBot script={flexiopageScript} storageKey="flexiopage-marketing-chat" />
+      {/* ChatBot moved to root layout via PlatformChatBot — covers /, /login,
+          /register, /dashboard, /admin with one shared conversation thread. */}
 
       <StructuredData faq={FAQ_ITEMS} />
     </div>
