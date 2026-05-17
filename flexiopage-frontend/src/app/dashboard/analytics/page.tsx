@@ -179,15 +179,15 @@ export default function DashboardAnalyticsPage() {
         </Card>
       ) : (
         <>
-          {/* KPI grid — 2 cols mobile, 4 cols desktop. */}
-          <div className="grid grid-cols-2 gap-2.5 sm:gap-3 lg:grid-cols-4">
+          {/* KPI grid — denser: 2 cols mobile, 3 tablet, 4 desktop, 5 xl. */}
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 sm:gap-2.5 lg:grid-cols-4 xl:grid-cols-5">
             <KpiCard
               label="Ventes totales"
               value={formatCurrency(data.kpis.sales.value, currency)}
               delta={data.kpis.sales.deltaPct}
               icon={DollarSign}
               accent="pink"
-              hint="toutes commandes confondues"
+              hint="toutes commandes"
             />
             <KpiCard
               label="Revenu encaissé"
@@ -195,7 +195,7 @@ export default function DashboardAnalyticsPage() {
               delta={data.kpis.revenue.deltaPct}
               icon={DollarSign}
               accent="emerald"
-              hint="commandes payées uniquement"
+              hint="commandes payées"
             />
             <KpiCard
               label="Commandes payées"
@@ -203,7 +203,7 @@ export default function DashboardAnalyticsPage() {
               delta={data.kpis.paidOrders.deltaPct}
               icon={ShoppingCart}
               accent="violet"
-              hint="vs période précédente"
+              hint="vs période préc."
             />
             <KpiCard
               label="Panier moyen"
@@ -236,7 +236,7 @@ export default function DashboardAnalyticsPage() {
               accent="emerald"
             />
             <KpiCard
-              label="Taux de remboursement"
+              label="Taux remboursement"
               value={`${data.kpis.refundRate.value.toFixed(1)}%`}
               delta={data.kpis.refundRate.deltaPct}
               invertDelta
@@ -314,13 +314,17 @@ export default function DashboardAnalyticsPage() {
             </Card>
           </div>
 
-          {/* Totals footer */}
-          <Card className="bg-gradient-to-br from-pink-500/5 via-violet-500/5 to-transparent">
-            <CardContent className="grid grid-cols-1 gap-4 py-5 sm:grid-cols-2 sm:py-6 lg:grid-cols-4">
-              <FooterStat label="Ventes totales (depuis le début)" value={formatCurrency(data.totals.totalSales, currency)} />
-              <FooterStat label="Revenu encaissé (depuis le début)" value={formatCurrency(data.totals.totalRevenue, currency)} />
-              <FooterStat label="Commandes totales" value={String(data.totals.totalOrders)} />
-              <FooterStat label="Clients totaux" value={String(data.totals.totalCustomers)} />
+          {/* Totals footer — all-time numbers, deliberately understated. */}
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm sm:text-base">Depuis le début</CardTitle>
+              <p className="text-[11px] text-muted-foreground sm:text-xs">Cumul total de la boutique, hors filtre de période</p>
+            </CardHeader>
+            <CardContent className="grid grid-cols-2 gap-4 py-4 lg:grid-cols-4">
+              <FooterStat label="Ventes totales" value={formatCurrency(data.totals.totalSales, currency)} />
+              <FooterStat label="Revenu encaissé" value={formatCurrency(data.totals.totalRevenue, currency)} />
+              <FooterStat label="Commandes" value={String(data.totals.totalOrders)} />
+              <FooterStat label="Clients" value={String(data.totals.totalCustomers)} />
             </CardContent>
           </Card>
         </>
@@ -344,9 +348,9 @@ function Legend() {
 
 function FooterStat({ label, value }: { label: string; value: string }) {
   return (
-    <div className="min-w-0">
+    <div className="min-w-0 border-l border-border/60 pl-3 first:border-l-0 first:pl-0 lg:pl-4">
       <div className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground sm:text-[11px]">{label}</div>
-      <div className="mt-1 break-words text-lg font-bold sm:text-xl">{value}</div>
+      <div className="mt-1 break-words text-lg font-bold tabular-nums sm:text-xl">{value}</div>
     </div>
   );
 }
@@ -354,9 +358,9 @@ function FooterStat({ label, value }: { label: string; value: string }) {
 function LoadingSkeleton() {
   return (
     <div className="space-y-6">
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        {Array.from({ length: 8 }).map((_, i) => (
-          <div key={i} className="h-[110px] animate-pulse rounded-2xl border border-border/60 bg-card" />
+      <div className="grid gap-2 grid-cols-2 sm:grid-cols-3 sm:gap-2.5 lg:grid-cols-4 xl:grid-cols-5">
+        {Array.from({ length: 9 }).map((_, i) => (
+          <div key={i} className="h-[88px] animate-pulse rounded-xl border border-border/60 bg-card" />
         ))}
       </div>
       <div className="h-[380px] animate-pulse rounded-xl border border-border/60 bg-card" />
