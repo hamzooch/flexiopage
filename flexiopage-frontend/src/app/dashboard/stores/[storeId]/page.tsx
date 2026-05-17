@@ -29,6 +29,13 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { storesApi } from '@/lib/api';
 import { cn, storeAbsoluteUrl } from '@/lib/utils';
 import type { StoreType } from '@/components/dashboard/store-editor';
+import { ThemePreviewGrid } from '@/components/dashboard/theme-preview-card';
+import {
+  STORE_THEME_TEMPLATES,
+  themesForStoreType,
+  type StoreThemeTemplate,
+  type ThemeTokens,
+} from '@/data/store-themes';
 
 interface HubCard {
   href: string;
@@ -104,6 +111,11 @@ export default function StoreHubPage() {
   const [store, setStore] = useState<StoreType | null>(null);
   const [loading, setLoading] = useState(true);
   const [togglingPublish, setTogglingPublish] = useState(false);
+  const [themePickerOpen, setThemePickerOpen] = useState(false);
+  const [savingTheme, setSavingTheme] = useState(false);
+  // Bumped every time the theme changes so the preview iframe reloads
+  // with the new style without a full page refresh.
+  const [previewBust, setPreviewBust] = useState(0);
 
   useEffect(() => {
     if (!storeId) return;
@@ -125,6 +137,24 @@ export default function StoreHubPage() {
     }
   }
 
+  async function selectTheme(tpl: StoreThemeTemplate) {
+    if (!store) return;
+    setSavingTheme(true);
+    try {
+      const res = await storesApi.update(storeId, {
+        theme: tpl.theme as unknown as Record<string, unknown>,
+      });
+      const updated = (res.data as { store: StoreType }).store;
+      setStore(updated);
+      setPreviewBust((n) => n + 1);
+      setThemePickerOpen(false);
+    } catch (err) {
+      console.error('[store/hub] theme save failed', err);
+    } finally {
+      setSavingTheme(false);
+    }
+  }
+
   if (loading || !store) {
     return <p className="text-muted-foreground">Loading...</p>;
   }
@@ -132,6 +162,11 @@ export default function StoreHubPage() {
   const isDigital = store.storeType === 'digital';
   const visibleCards = HUB_CARDS.filter((c) => !(c.physicalOnly && isDigital));
   const StoreIcon = isDigital ? Cloud : Package;
+  const savedTheme = store.theme as Partial<ThemeTokens> | undefined;
+  const currentThemeId = savedTheme?.templateId;
+  const currentThemeName = currentThemeId
+    ? STORE_THEME_TEMPLATES.find((t) => t.id === currentThemeId)?.name
+    : undefined;
 
   return (
     <div className="space-y-8">
@@ -265,15 +300,65 @@ export default function StoreHubPage() {
           <CardContent>
             <div className="overflow-hidden rounded-xl border border-border/60 bg-muted/30">
               <iframe
+                key={previewBust}
                 src={`/${store.slug}`}
                 title="Aperçu de la boutique"
                 className="h-[480px] w-full lg:h-[calc(100vh-260px)]"
                 loading="lazy"
               />
             </div>
+            <div className="mt-3 flex items-center justify-between gap-2">
+              <div className="min-w-0 text-xs text-muted-foreground">
+                Thème actuel : <span className="font-medium text-foreground">{currentThemeName || 'Par défaut'}</span>
+              </div>
+              <Button variant="outline" size="sm" className="gap-1.5" onClick={() => setThemePickerOpen(true)}>
+                <Palette className="h-3.5 w-3.5" />
+                Changer le thème
+              </Button>
+            </div>
           </CardContent>
         </Card>
       </div>
+
+      {/* Quick theme picker modal — selecting a theme saves and reloads the preview */}
+      {themePickerOpen && (
+        <div
+          className="fixed inset-0 z-50 grid place-items-center bg-black/60 p-3 sm:p-6"
+          onClick={() => !savingTheme && setThemePickerOpen(false)}
+        >
+          <div
+            className="relative flex max-h-[92vh] w-full max-w-5xl flex-col overflow-hidden rounded-2xl border border-border bg-card shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between gap-3 border-b border-border/60 px-5 py-3">
+              <div>
+                <h2 className="text-base font-semibold">Choisir un thème</h2>
+                <p className="text-xs text-muted-foreground">Le thème sélectionné est appliqué et sauvegardé immédiatement.</p>
+              </div>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setThemePickerOpen(false)}
+                disabled={savingTheme}
+              >
+                Fermer
+              </Button>
+            </div>
+            <div className="relative flex-1 overflow-y-auto p-5">
+              {savingTheme && (
+                <div className="absolute inset-0 z-10 grid place-items-center bg-card/70 backdrop-blur-sm">
+                  <p className="text-sm font-medium">Application du thème…</p>
+                </div>
+              )}
+              <ThemePreviewGrid
+                templates={themesForStoreType(isDigital ? 'digital' : 'physical')}
+                selectedId={currentThemeId}
+                onSelect={selectTheme}
+              />
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
