@@ -337,6 +337,52 @@ const STORE_NAMES: Record<string, string> = {
   ebooks: 'Lumen Books',
 };
 
+// 3 fake reviews per niche so every theme preview shows real-looking
+// testimonials instead of a placeholder block. Keep them short — the
+// preview card is narrow.
+const MOCK_TESTIMONIALS: Record<string, Array<{ author: string; role?: string; rating: number; content: string }>> = {
+  electronics: [
+    { author: 'Yannick R.',  role: 'Paris',     rating: 5, content: "Casque livré en 24h, son incroyable. Le pack arrive nickel, ça change des marketplaces." },
+    { author: 'Sophie B.',   role: 'Lyon',      rating: 5, content: "J'ai pris la montre. Interface super claire, support qui répond en 10 minutes." },
+    { author: 'Karim D.',    role: 'Marseille', rating: 4, content: "Très bon rapport qualité-prix. Petit bémol sur l'autonomie mais rien de rédhibitoire." },
+  ],
+  fashion: [
+    { author: 'Inès M.',     role: 'Bordeaux',  rating: 5, content: "Pièces magnifiques, coupes impeccables. La robe en soie tombe parfaitement." },
+    { author: 'Léa K.',      role: 'Toulouse',  rating: 5, content: "Le sac est devenu mon préféré. Cuir souple, finitions superbes, je recommande à 100%." },
+    { author: 'Camille P.',  role: 'Nantes',    rating: 5, content: "Service client au top, échange ultra simple. Je commande déjà la 2ᵉ pièce." },
+  ],
+  beauty: [
+    { author: 'Amélie F.',   role: 'Lille',     rating: 5, content: "Le sérum a transformé ma peau en 3 semaines. Texture légère, pas grasse du tout." },
+    { author: 'Nora S.',     role: 'Strasbourg',rating: 5, content: "Le parfum tient toute la journée et les compliments pleuvent. Mon nouveau go-to." },
+    { author: 'Lucie V.',    role: 'Rennes',    rating: 4, content: "Belle palette, pigmentation au top. Emballage soigné, ça fait plaisir." },
+  ],
+  general: [
+    { author: 'Marc T.',     role: 'Client',    rating: 5, content: "Livraison rapide, produit exactement comme décrit. Rien à redire." },
+    { author: 'Julie L.',    role: 'Cliente',   rating: 5, content: "Achat facile, service réactif. Je recommande sans hésiter." },
+    { author: 'Hugo B.',     role: 'Client',    rating: 4, content: "Très satisfait. Le rapport qualité-prix est excellent." },
+  ],
+  saas: [
+    { author: 'Thomas R.',   role: 'CTO',       rating: 5, content: "Setup en 5 minutes, ça remplace 3 outils chez nous. ROI immédiat." },
+    { author: 'Alice M.',    role: 'Product',   rating: 5, content: "L'API est ultra propre, la doc top. Mon équipe l'a adopté instantanément." },
+    { author: 'David K.',    role: 'Founder',   rating: 5, content: "Lifetime deal qui se rentabilise en 2 mois. Aucun regret." },
+  ],
+  coaching: [
+    { author: 'Sandra P.',   role: 'Solopreneur',rating: 5, content: "La masterclass m'a fait gagner 6 mois. Méthode claire, exemples concrets." },
+    { author: 'Karim B.',    role: 'Freelance',  rating: 5, content: "Coaching 1-on-1 qui change tout. J'ai doublé mes tarifs en 3 mois." },
+    { author: 'Émilie D.',   role: 'Indépendante',rating: 5, content: "Le bootcamp est intense mais transformateur. Communauté incroyable en plus." },
+  ],
+  creators: [
+    { author: 'Romain L.',   role: 'Designer',  rating: 5, content: "Pack Notion qui fait gagner des heures. Templates pensés pour vraiment être utilisés." },
+    { author: 'Naïma H.',    role: 'Photographe',rating: 5, content: "Les presets Lightroom donnent direct un look pro. Mes clients adorent." },
+    { author: 'Maxence T.',  role: 'Dev',       rating: 4, content: "UI Kit Figma très complet. Petite courbe d'apprentissage mais ça vaut le coup." },
+  ],
+  ebooks: [
+    { author: 'Sarah G.',    role: 'Lectrice',  rating: 5, content: "Guide super bien écrit, je suis revenue dessus plusieurs fois. Vraiment pratique." },
+    { author: 'Antoine R.',  role: 'Lecteur',   rating: 5, content: "Le workbook complète parfaitement le PDF. J'ai appliqué et vu des résultats." },
+    { author: 'Marie F.',    role: 'Lectrice',  rating: 5, content: "Le bundle vaut chaque centime. Les checklists sont devenues mes outils du quotidien." },
+  ],
+};
+
 // ── Modal mock — hero, mirrors the storefront's per-theme layout variants ──
 function ModalHeroPattern({ t }: { t: ThemeTokens }) {
   if (t.pattern === 'grid') {
@@ -635,6 +681,81 @@ function ModalProductGrid({ template }: { template: StoreThemeTemplate }) {
   );
 }
 
+// ── Modal mock — customer testimonials ───────────────────────────────
+function ModalTestimonials({ template }: { template: StoreThemeTemplate }) {
+  const t = template.theme;
+  const items = (MOCK_TESTIMONIALS[template.niche] || MOCK_TESTIMONIALS.general).slice(0, 3);
+  const radius = RADIUS_PX[t.borderRadius];
+  const uppercase = t.layout?.nav === 'bold';
+  const leftAlign = t.layout?.hero === 'editorial' || t.layout?.hero === 'minimal';
+
+  return (
+    <section className="border-t" style={{ borderColor: t.border, backgroundColor: t.surfaceMuted }}>
+      <div className="mx-auto max-w-5xl px-6 py-14">
+        <div className={`mb-8 ${leftAlign ? '' : 'text-center'}`}>
+          {leftAlign && (
+            <div className="mb-2 text-[11px] font-semibold uppercase tracking-[0.25em]" style={{ color: t.accent }}>
+              — Avis clients
+            </div>
+          )}
+          <h2
+            className={`text-2xl font-bold tracking-tight sm:text-3xl ${uppercase ? 'uppercase' : ''}`}
+            style={{ fontFamily: t.fontHeading, color: t.foreground }}
+          >
+            Ils nous font confiance
+          </h2>
+        </div>
+        <div className="grid gap-4 sm:grid-cols-3">
+          {items.map((r, i) => (
+            <div
+              key={i}
+              className="flex flex-col gap-3 border p-4"
+              style={{
+                backgroundColor: t.surface,
+                borderColor: t.border,
+                borderRadius: radius,
+                boxShadow: t.shadow === 'glow'
+                  ? `0 4px 16px ${hexA(t.primary, 0.10)}`
+                  : t.shadow === 'soft'
+                    ? '0 2px 8px rgba(0,0,0,0.04)'
+                    : 'none',
+              }}
+            >
+              <div className="flex items-center gap-1" aria-label={`${r.rating} étoiles sur 5`}>
+                {Array.from({ length: 5 }).map((_, idx) => (
+                  <Star
+                    key={idx}
+                    className="h-3.5 w-3.5"
+                    style={{ color: idx < r.rating ? t.primary : t.border, fill: idx < r.rating ? t.primary : 'transparent' }}
+                  />
+                ))}
+              </div>
+              <p className="text-sm leading-relaxed" style={{ color: t.foreground, fontFamily: t.fontBody }}>
+                « {r.content} »
+              </p>
+              <div className="mt-auto flex items-center gap-2.5 pt-2" style={{ borderTop: `1px solid ${t.border}` }}>
+                <div
+                  className="grid h-8 w-8 shrink-0 place-items-center rounded-full text-[11px] font-bold"
+                  style={{ background: `linear-gradient(135deg, ${t.gradientFrom}, ${t.gradientTo})`, color: '#fff' }}
+                  aria-hidden
+                >
+                  {r.author.split(' ').map((s) => s[0]).join('').slice(0, 2)}
+                </div>
+                <div className="min-w-0 leading-tight">
+                  <div className="truncate text-xs font-semibold" style={{ color: t.foreground }}>{r.author}</div>
+                  {r.role && (
+                    <div className="truncate text-[11px]" style={{ color: t.muted }}>{r.role}</div>
+                  )}
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+}
+
 export function ThemePreviewModal({ template, onClose, onUse }: ModalProps) {
   // Lock scroll + Escape to close
   useEffect(() => {
@@ -755,6 +876,10 @@ export function ThemePreviewModal({ template, onClose, onUse }: ModalProps) {
 
             {/* PRODUCTS GRID — layout-aware columns + card style */}
             <ModalProductGrid template={template} />
+
+            {/* TESTIMONIALS — mock customer reviews so the seller sees what
+                a populated "Avis clients" section will look like */}
+            <ModalTestimonials template={template} />
 
             {/* FOOTER */}
             <footer
