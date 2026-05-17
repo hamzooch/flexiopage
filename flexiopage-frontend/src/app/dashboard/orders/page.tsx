@@ -93,6 +93,7 @@ interface OrderType {
 }
 
 type StatusFilter = 'all' | 'pending' | 'paid' | 'delivered' | 'cancelled';
+type DayFilter = 'all' | 'today' | '7d' | '30d';
 
 const DELIVERY_BADGE: Record<string, { label: string; cls: string; icon: React.ComponentType<{ className?: string }> }> = {
   pending:    { label: 'En attente',      cls: 'bg-amber-500/10 text-amber-700 ring-amber-500/20',   icon: Hourglass },
@@ -122,6 +123,7 @@ export default function DashboardOrdersPage() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
+  const [dayFilter, setDayFilter] = useState<DayFilter>('all');
   const [expandedId, setExpandedId] = useState<string | null>(null);
 
   useEffect(() => {
@@ -163,6 +165,22 @@ export default function DashboardOrdersPage() {
   // ── Filter / search ──────────────────────────────────────────────────
   const filteredOrders = useMemo(() => {
     let list = orders;
+
+    // Day filter — drop orders older than the cutoff. `today` means since
+    // local midnight, not "in the last 24h".
+    if (dayFilter !== 'all') {
+      const cutoff = new Date();
+      if (dayFilter === 'today') {
+        cutoff.setHours(0, 0, 0, 0);
+      } else if (dayFilter === '7d') {
+        cutoff.setDate(cutoff.getDate() - 7);
+      } else if (dayFilter === '30d') {
+        cutoff.setDate(cutoff.getDate() - 30);
+      }
+      const cutoffMs = cutoff.getTime();
+      list = list.filter((o) => o.createdAt && new Date(o.createdAt).getTime() >= cutoffMs);
+    }
+
     if (statusFilter !== 'all') {
       list = list.filter((o) => {
         if (statusFilter === 'pending') return o.paymentStatus === 'pending';
@@ -186,7 +204,7 @@ export default function DashboardOrdersPage() {
       });
     }
     return list;
-  }, [orders, statusFilter, search]);
+  }, [orders, dayFilter, statusFilter, search]);
 
   return (
     <div className="space-y-6 sm:space-y-8">
@@ -255,22 +273,41 @@ export default function DashboardOrdersPage() {
             className="h-11 rounded-xl pl-10"
           />
         </div>
-        <div className="flex flex-wrap gap-1.5">
-          {(['all', 'pending', 'paid', 'delivered', 'cancelled'] as StatusFilter[]).map((s) => (
-            <button
-              key={s}
-              type="button"
-              onClick={() => setStatusFilter(s)}
-              className={cn(
-                'rounded-lg border px-3 py-1.5 text-xs font-medium transition-all',
-                statusFilter === s
-                  ? 'border-primary bg-primary text-primary-foreground'
-                  : 'border-border/70 text-muted-foreground hover:border-primary/30 hover:text-foreground'
-              )}
-            >
-              {s === 'all' ? 'Tout' : s === 'pending' ? 'En attente' : s === 'paid' ? 'Payées' : s === 'delivered' ? 'Livrées' : 'Annulées'}
-            </button>
-          ))}
+        <div className="flex flex-col gap-2">
+          <div className="flex flex-wrap gap-1.5">
+            {(['all', 'today', '7d', '30d'] as DayFilter[]).map((d) => (
+              <button
+                key={d}
+                type="button"
+                onClick={() => setDayFilter(d)}
+                className={cn(
+                  'rounded-lg border px-3 py-1.5 text-xs font-medium transition-all',
+                  dayFilter === d
+                    ? 'border-primary bg-primary text-primary-foreground'
+                    : 'border-border/70 text-muted-foreground hover:border-primary/30 hover:text-foreground'
+                )}
+              >
+                {d === 'all' ? 'Toute période' : d === 'today' ? "Aujourd'hui" : d === '7d' ? '7 derniers jours' : '30 derniers jours'}
+              </button>
+            ))}
+          </div>
+          <div className="flex flex-wrap gap-1.5">
+            {(['all', 'pending', 'paid', 'delivered', 'cancelled'] as StatusFilter[]).map((s) => (
+              <button
+                key={s}
+                type="button"
+                onClick={() => setStatusFilter(s)}
+                className={cn(
+                  'rounded-lg border px-3 py-1.5 text-xs font-medium transition-all',
+                  statusFilter === s
+                    ? 'border-primary bg-primary text-primary-foreground'
+                    : 'border-border/70 text-muted-foreground hover:border-primary/30 hover:text-foreground'
+                )}
+              >
+                {s === 'all' ? 'Tout statut' : s === 'pending' ? 'En attente' : s === 'paid' ? 'Payées' : s === 'delivered' ? 'Livrées' : 'Annulées'}
+              </button>
+            ))}
+          </div>
         </div>
       </div>
 
