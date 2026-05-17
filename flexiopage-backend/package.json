@@ -11,7 +11,8 @@
     "seed:test-store": "tsx scripts/seed-test-store.ts",
     "seed:admin": "tsx scripts/seed-admin.ts",
     "seed:owner": "tsx scripts/seed-owner.ts",
-    "dispatch:test-order": "tsx scripts/dispatch-test-order.ts"
+    "dispatch:test-order": "tsx scripts/dispatch-test-order.ts",
+    "migrate:wallets-usd": "tsx scripts/migrate-wallets-to-usd.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.490.0",

@@ -8,7 +8,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { storesApi } from '@/lib/api';
 import { useScopedStoreId } from '@/lib/use-scoped-store';
 import { cn, formatCurrency, mediaUrl } from '@/lib/utils';
-import { Package, Plus, ImageIcon, Edit3, Cloud } from 'lucide-react';
+import { Package, Plus, ImageIcon, Cloud } from 'lucide-react';
 
 interface StoreType {
   _id: string;
@@ -121,7 +121,7 @@ export default function DashboardProductsPage() {
           </CardContent>
         </Card>
       ) : (
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+        <div className="grid gap-3 grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
           {products.map((p) => {
             const cover = mediaUrl(p.images?.[0]);
             const currency = activeStore?.settings?.currency || 'USD';
@@ -133,7 +133,7 @@ export default function DashboardProductsPage() {
               <Link
                 key={p._id}
                 href={`/dashboard/products/${p._id}?storeId=${selectedStoreId}`}
-                className="group flex flex-col overflow-hidden rounded-2xl border border-border/60 bg-card transition-all duration-300 hover:-translate-y-1 hover:border-primary/30 hover:shadow-xl hover:shadow-primary/5"
+                className="group flex flex-col overflow-hidden rounded-xl border border-border/60 bg-card transition-all duration-300 hover:-translate-y-0.5 hover:border-primary/30 hover:shadow-lg hover:shadow-primary/5"
               >
                 {/* Cover image */}
                 <div className="relative aspect-square overflow-hidden bg-muted/40">
@@ -146,13 +146,13 @@ export default function DashboardProductsPage() {
                     />
                   ) : (
                     <div className="grid h-full place-items-center text-muted-foreground">
-                      {isDigital ? <Cloud className="h-10 w-10" /> : <ImageIcon className="h-10 w-10" />}
+                      {isDigital ? <Cloud className="h-7 w-7" /> : <ImageIcon className="h-7 w-7" />}
                     </div>
                   )}
 
                   {/* Discount badge */}
                   {hasDiscount && (
-                    <span className="absolute left-2 top-2 rounded-full bg-rose-500 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-white shadow-sm">
+                    <span className="absolute left-1.5 top-1.5 rounded-full bg-rose-500 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-white shadow-sm">
                       −{Math.round(((p.compareAtPrice! - p.price) / p.compareAtPrice!) * 100)}%
                     </span>
                   )}
@@ -160,7 +160,7 @@ export default function DashboardProductsPage() {
                   {/* Status pill */}
                   <span
                     className={cn(
-                      'absolute right-2 top-2 rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider shadow-sm backdrop-blur',
+                      'absolute right-1.5 top-1.5 rounded-full px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider shadow-sm backdrop-blur',
                       p.isPublished
                         ? 'bg-emerald-500/90 text-white'
                         : 'bg-amber-500/90 text-white'
@@ -171,50 +171,39 @@ export default function DashboardProductsPage() {
 
                   {/* Type pill (only for digital) */}
                   {isDigital && (
-                    <span className="absolute bottom-2 left-2 inline-flex items-center gap-1 rounded-full bg-fuchsia-500/90 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-white shadow-sm backdrop-blur">
+                    <span className="absolute bottom-1.5 left-1.5 inline-flex items-center gap-1 rounded-full bg-fuchsia-500/90 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-white shadow-sm backdrop-blur">
                       <Cloud className="h-2.5 w-2.5" /> Digital
                     </span>
                   )}
 
                   {/* Low / out of stock pill */}
                   {outOfStock && (
-                    <span className="absolute bottom-2 left-2 rounded-full bg-rose-500/90 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-white shadow-sm backdrop-blur">
+                    <span className="absolute bottom-1.5 left-1.5 rounded-full bg-rose-500/90 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-white shadow-sm backdrop-blur">
                       Rupture
                     </span>
                   )}
                   {!outOfStock && lowStock && (
-                    <span className="absolute bottom-2 left-2 rounded-full bg-amber-500/90 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-white shadow-sm backdrop-blur">
-                      Stock bas · {p.stock}
+                    <span className="absolute bottom-1.5 left-1.5 rounded-full bg-amber-500/90 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-white shadow-sm backdrop-blur">
+                      {p.stock}
                     </span>
                   )}
                 </div>
 
                 {/* Body */}
-                <div className="flex flex-1 flex-col gap-3 p-3 sm:p-4">
-                  <h3 className="line-clamp-2 text-sm font-semibold leading-snug tracking-tight sm:text-base">
+                <div className="flex flex-1 flex-col gap-1.5 p-2.5">
+                  <h3 className="line-clamp-2 text-[13px] font-semibold leading-snug tracking-tight">
                     {p.name}
                   </h3>
 
-                  <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 tabular-nums">
-                    <span className="whitespace-nowrap text-base font-bold text-primary sm:text-lg">
+                  <div className="flex flex-wrap items-baseline gap-x-1.5 gap-y-0 tabular-nums">
+                    <span className="whitespace-nowrap text-sm font-bold text-primary">
                       {formatCurrency(p.price, currency)}
                     </span>
                     {hasDiscount && (
-                      <span className="whitespace-nowrap text-xs font-medium text-muted-foreground line-through sm:text-[13px]">
+                      <span className="whitespace-nowrap text-[11px] font-medium text-muted-foreground line-through">
                         {formatCurrency(p.compareAtPrice!, currency)}
                       </span>
                     )}
-                  </div>
-
-                  {!isDigital && typeof p.stock === 'number' && !outOfStock && !lowStock && (
-                    <div className="text-[11px] text-muted-foreground">{p.stock} en stock</div>
-                  )}
-
-                  <div className="mt-auto pt-2">
-                    <div className="inline-flex items-center gap-1.5 text-xs font-medium text-primary opacity-0 transition-opacity group-hover:opacity-100">
-                      <Edit3 className="h-3 w-3" />
-                      Modifier
-                    </div>
                   </div>
                 </div>
               </Link>
