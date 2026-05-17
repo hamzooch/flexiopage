@@ -53,7 +53,7 @@ export default function AdminOrdersStatsPage() {
     // dominant one and label everything else "+ autres".
     const byCurrency = new Map<string, number>();
     for (const o of paid) byCurrency.set(o.currency, (byCurrency.get(o.currency) || 0) + o.total);
-    const sortedCur = [...byCurrency.entries()].sort((a, b) => b[1] - a[1]);
+    const sortedCur = Array.from(byCurrency.entries()).sort((a, b) => b[1] - a[1]);
     const mainCurrency = sortedCur[0]?.[0] || 'USD';
     const mainRevenue = sortedCur[0]?.[1] || 0;
     const otherCurrencies = sortedCur.slice(1);
@@ -78,7 +78,7 @@ export default function AdminOrdersStatsPage() {
         });
       }
     }
-    const topStores = [...byStore.values()]
+    const topStores = Array.from(byStore.values())
       .sort((a, b) => b.count - a.count)
       .slice(0, 5);
 
