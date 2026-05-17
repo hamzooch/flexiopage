@@ -9,9 +9,13 @@ WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 
-# Build-time env (use defaults or build args)
+# Build-time env (use defaults or build args). NEXT_PUBLIC_* vars are
+# inlined into the JS bundle at build time, so they MUST be present here
+# — not just at container runtime.
 ARG NEXT_PUBLIC_API_URL=http://localhost:5000
 ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
+ARG NEXT_PUBLIC_STOREFRONT_DOMAIN=
+ENV NEXT_PUBLIC_STOREFRONT_DOMAIN=$NEXT_PUBLIC_STOREFRONT_DOMAIN
 
 RUN npm run build
 

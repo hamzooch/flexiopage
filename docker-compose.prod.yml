@@ -78,6 +78,7 @@ services:
       dockerfile: Dockerfile
       args:
         NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL}
+        NEXT_PUBLIC_STOREFRONT_DOMAIN: ${NEXT_PUBLIC_STOREFRONT_DOMAIN}
     restart: unless-stopped
     ports:
       - "127.0.0.1:3000:3000"
