@@ -38,16 +38,17 @@ async function main(): Promise<void> {
     throw new Error(`Store ${store.slug} has delivery integration disabled`);
   }
 
-  // Pick the 2 first products
-  const products = await Product.find({ storeId: store._id }).limit(2).lean();
+  // Pick up to 5 products with varying quantities to stress multi-item payload
+  const products = await Product.find({ storeId: store._id }).limit(5).lean();
   if (products.length < 2) {
     throw new Error(`Not enough products on ${store.slug} — re-run the seed`);
   }
 
-  const items = products.map((p) => ({
+  const quantities = [3, 1, 2, 1, 4];
+  const items = products.map((p, i) => ({
     productId: p._id.toString(),
     name: p.name,
-    quantity: 1,
+    quantity: quantities[i] ?? 1,
     price: p.price,
     sku: p.sku,
   }));
