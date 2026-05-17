@@ -49,12 +49,23 @@ export interface IStore extends Document {
      */
     storefront?: {
       /**
+       * Thin promo bar above the navbar. Either a fixed centered message or
+       * a scrolling ticker that cycles through `messages[]`.
+       */
+      announcementBar?: {
+        enabled?: boolean;          // default false
+        messages?: string[];        // short promo lines
+        mode?: 'fixed' | 'animated';
+      };
+      /**
        * Navbar (sticky top bar). Logo + optional menu links. Sellers add
        * their own links (Catalogue, À propos, Contact, etc.). Always visible.
        */
       navbar?: {
         showSearch?: boolean;       // default false
         menuLinks?: Array<{ label: string; url: string }>;
+        /** How the brand shows in the navbar: logo+name, logo only, or name only. */
+        brandDisplay?: 'logo+name' | 'logo' | 'name';
       };
       showHero?: boolean;            // default true
       heroTitle?: string;            // overrides store.name when set
@@ -249,6 +260,11 @@ const StoreSchema = new Schema<IStore>(
         reassurance: { type: String },
       },
       storefront: {
+        announcementBar: {
+          enabled: { type: Boolean, default: false },
+          messages: [{ type: String }],
+          mode: { type: String, enum: ['fixed', 'animated'], default: 'fixed' },
+        },
         navbar: {
           showSearch: { type: Boolean, default: false },
           menuLinks: [
@@ -257,6 +273,7 @@ const StoreSchema = new Schema<IStore>(
               url: { type: String, required: true },
             },
           ],
+          brandDisplay: { type: String, enum: ['logo+name', 'logo', 'name'], default: 'logo+name' },
         },
         showHero: { type: Boolean, default: true },
         heroTitle: { type: String },
