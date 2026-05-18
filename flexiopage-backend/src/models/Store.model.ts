@@ -121,6 +121,8 @@ export interface IStore extends Document {
         menuLinks?: Array<{ label: string; url: string }>;
         /** How the brand shows in the navbar: logo+name, logo only, or name only. */
         brandDisplay?: 'logo+name' | 'logo' | 'name';
+        /** Logo height tier (drives the bar height too on lg/xl). */
+        logoSize?: 'sm' | 'md' | 'lg' | 'xl';
         /** Show the storefront language switcher in the navbar. Default false — opt-in. */
         showLanguageSwitcher?: boolean;
       };
@@ -245,6 +247,10 @@ export interface IStore extends Document {
           title: string;
           links: Array<{ label: string; url: string }>;
         }>;
+        /** How the brand shows in the footer about-block. */
+        brandDisplay?: 'logo+name' | 'logo' | 'name';
+        /** Logo size when brandDisplay includes the logo. */
+        logoSize?: 'sm' | 'md' | 'lg' | 'xl';
       };
       /**
        * Carousel/slider displayed right under the navbar.
@@ -426,6 +432,7 @@ const StoreSchema = new Schema<IStore>(
             },
           ],
           brandDisplay: { type: String, enum: ['logo+name', 'logo', 'name'], default: 'logo+name' },
+          logoSize: { type: String, enum: ['sm', 'md', 'lg', 'xl'], default: 'md' },
           showLanguageSwitcher: { type: Boolean, default: false },
         },
         showHero: { type: Boolean, default: true },
@@ -521,6 +528,8 @@ const StoreSchema = new Schema<IStore>(
               ],
             },
           ],
+          brandDisplay: { type: String, enum: ['logo+name', 'logo', 'name'], default: 'name' },
+          logoSize: { type: String, enum: ['sm', 'md', 'lg', 'xl'], default: 'md' },
         },
         slider: {
           enabled: { type: Boolean, default: false },
