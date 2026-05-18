@@ -162,6 +162,24 @@ export function ProductPageEditor({ cfg, onChange }: Props) {
               onChange={(c) => setStyle({ backgroundColor: c, paletteId: undefined })}
               defaultLabel="Thème"
             />
+            <PpColorField
+              label="Texte description"
+              value={style.descriptionColor}
+              onChange={(c) => setStyle({ descriptionColor: c, paletteId: undefined })}
+              defaultLabel="Auto"
+            />
+            <PpColorField
+              label="Fond navbar"
+              value={style.navbarColor}
+              onChange={(c) => setStyle({ navbarColor: c, paletteId: undefined })}
+              defaultLabel="Thème"
+            />
+            <PpColorField
+              label="Texte navbar"
+              value={style.navbarTextColor}
+              onChange={(c) => setStyle({ navbarTextColor: c, paletteId: undefined })}
+              defaultLabel="Auto"
+            />
           </div>
         </details>
 
@@ -536,6 +554,13 @@ function ProductPageLivePreview({ cfg }: { cfg: ProductPageSettings }) {
   const buttonBg = style.buttonColor || accent;
   const buttonFg = style.buttonTextColor || '#ffffff';
   const pageBg = style.backgroundColor || '#ffffff';
+  // Description body text — falls back to title color so dark palettes
+  // (mode sombre) read legibly on the dark background.
+  const descColor = style.descriptionColor || style.titleColor || '#374151';
+  // Navbar bar in the mock — palette-driven so the seller can confirm the
+  // navbar override before publishing.
+  const navBg = style.navbarColor || '#ffffff';
+  const navFg = style.navbarTextColor || '#0a0a0a';
   const layout = style.galleryLayout || 'thumbnails';
   const order = resolveProductPageOrder(cfg.sectionOrder);
   const badges = (cfg.badges && cfg.badges.length > 0) ? cfg.badges : DEFAULT_BADGES;
@@ -624,6 +649,22 @@ function ProductPageLivePreview({ cfg }: { cfg: ProductPageSettings }) {
             <span className="h-1.5 w-1.5 rounded-full bg-amber-400/60" />
             <span className="h-1.5 w-1.5 rounded-full bg-emerald-400/60" />
             <span className="ml-2 truncate text-[9px] text-muted-foreground">/produit/mon-produit</span>
+          </div>
+
+          {/* Mock navbar — reflects palette navbarColor/navbarTextColor so the
+              seller validates the navbar override before publishing. */}
+          <div
+            className="flex items-center justify-between border-b border-border/40 px-2 py-1.5"
+            style={{ backgroundColor: navBg }}
+          >
+            <span className="truncate text-[9px] font-bold" style={{ color: navFg }}>
+              MA BOUTIQUE
+            </span>
+            <div className="flex items-center gap-2 text-[8px]" style={{ color: navFg }}>
+              <span>Accueil</span>
+              <span>Catalogue</span>
+              <span>Contact</span>
+            </div>
           </div>
 
           <div className="space-y-3 p-3">
@@ -746,10 +787,11 @@ function ProductPageLivePreview({ cfg }: { cfg: ProductPageSettings }) {
                     <div className="mb-1 text-[10px] font-bold uppercase tracking-wider" style={{ color: titleColor }}>
                       Description
                     </div>
-                    <div className="space-y-1">
-                      <div className="h-1.5 w-full rounded bg-muted/80" />
-                      <div className="h-1.5 w-11/12 rounded bg-muted/80" />
-                      <div className="h-1.5 w-3/4 rounded bg-muted/80" />
+                    {/* Render real description body in the palette color so
+                        the seller previews exactly how their description reads. */}
+                    <div className="space-y-1 text-[9px] leading-snug" style={{ color: descColor }}>
+                      <p>Lorem ipsum dolor sit amet — voici le ton de la description.</p>
+                      <p>Chaque ligne se rendra dans cette couleur sur la fiche publique.</p>
                     </div>
                   </div>
                 );

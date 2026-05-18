@@ -56,6 +56,11 @@ interface Props {
   defaultLocale?: string;
   /** Optional rendered to the right of the menu (e.g. cart button later). */
   trailing?: React.ReactNode;
+  /** Per-page background override (e.g. product page palette wants its own
+   *  navbar color). Wins over the theme background when set. */
+  bgOverride?: string;
+  /** Paired text/icon color when bgOverride is used — keeps contrast right. */
+  fgOverride?: string;
 }
 
 /**
@@ -87,7 +92,12 @@ function resolveHref(url: string, storeSlug: string): string {
   return `/${storeSlug}/${url.replace(/^\/+/, '')}`;
 }
 
-export function StoreNavbar({ storeName, storeSlug, storeLogo, theme, config, defaultLocale, trailing }: Props) {
+export function StoreNavbar({ storeName, storeSlug, storeLogo, theme, config, defaultLocale, trailing, bgOverride, fgOverride }: Props) {
+  // Effective colors — per-page override (e.g. product page palette) wins
+  // over the theme tokens. Header bg becomes opaque when overridden so the
+  // chosen color stays true instead of being softened by the backdrop blur.
+  const effectiveFg = fgOverride || theme.foreground;
+  const effectiveBg = bgOverride || hexA(theme.background, 0.88);
   const configured = (config?.menuLinks || []).filter((l) => l.label?.trim() && l.url?.trim());
   // Every theme gets a default menu when the seller hasn't set one.
   const links = configured.length > 0 ? configured : defaultNavLinks(storeSlug);
@@ -123,7 +133,7 @@ export function StoreNavbar({ storeName, storeSlug, storeLogo, theme, config, de
             ? 'text-lg sm:text-2xl'
             : 'text-base sm:text-xl')
       }
-      style={{ fontFamily: theme.fontHeading, color: theme.foreground }}
+      style={{ fontFamily: theme.fontHeading, color: effectiveFg }}
     >
       {wantLogo && hasLogo && (
         /* eslint-disable-next-line @next/next/no-img-element */
@@ -171,7 +181,7 @@ export function StoreNavbar({ storeName, storeSlug, storeLogo, theme, config, de
           key={i}
           href={resolveHref(l.url, storeSlug)}
           className={linkClass}
-          style={{ color: theme.foreground, fontFamily: theme.fontBody }}
+          style={{ color: effectiveFg, fontFamily: theme.fontBody }}
         >
           {l.label}
         </a>
@@ -183,7 +193,7 @@ export function StoreNavbar({ storeName, storeSlug, storeLogo, theme, config, de
     <Link
       href="/login"
       className={'hidden transition-colors md:inline-block ' + (isBold ? 'text-xs font-semibold uppercase tracking-wider' : 'text-sm')}
-      style={{ color: theme.muted }}
+      style={{ color: fgOverride ? hexA(fgOverride, 0.7) : theme.muted }}
     >
       Espace marchand
     </Link>
@@ -196,7 +206,7 @@ export function StoreNavbar({ storeName, storeSlug, storeLogo, theme, config, de
       aria-expanded={open}
       aria-label="Menu"
       className="grid h-9 w-9 place-items-center rounded-md md:hidden"
-      style={{ color: theme.foreground, backgroundColor: hexA(theme.surface, 0.6) }}
+      style={{ color: effectiveFg, backgroundColor: hexA(theme.surface, 0.6) }}
     >
       {open ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
     </button>
@@ -207,7 +217,7 @@ export function StoreNavbar({ storeName, storeSlug, storeLogo, theme, config, de
       className="sticky top-0 z-40 backdrop-blur-xl"
       style={{
         borderBottom: `${isBold ? 3 : 1}px solid ${theme.border}`,
-        backgroundColor: hexA(theme.background, 0.88),
+        backgroundColor: effectiveBg,
       }}
     >
       {isCentered ? (
@@ -228,7 +238,7 @@ export function StoreNavbar({ storeName, storeSlug, storeLogo, theme, config, de
                   key={i}
                   href={resolveHref(l.url, storeSlug)}
                   className="rounded-md px-3 py-1 text-sm font-medium uppercase tracking-wide transition-colors hover:bg-black/5"
-                  style={{ color: theme.foreground, fontFamily: theme.fontBody }}
+                  style={{ color: effectiveFg, fontFamily: theme.fontBody }}
                 >
                   {l.label}
                 </a>
@@ -268,7 +278,7 @@ export function StoreNavbar({ storeName, storeSlug, storeLogo, theme, config, de
       {open && links.length > 0 && (
         <div
           className="border-t md:hidden"
-          style={{ borderColor: theme.border, backgroundColor: theme.background }}
+          style={{ borderColor: theme.border, backgroundColor: bgOverride || theme.background }}
         >
           <nav className="mx-auto flex max-w-6xl flex-col gap-1 px-3 py-3 sm:px-6">
             {links.map((l, i) => (
@@ -277,7 +287,7 @@ export function StoreNavbar({ storeName, storeSlug, storeLogo, theme, config, de
                 href={resolveHref(l.url, storeSlug)}
                 onClick={() => setOpen(false)}
                 className="rounded-md px-3 py-2.5 text-sm font-medium"
-                style={{ color: theme.foreground, fontFamily: theme.fontBody }}
+                style={{ color: effectiveFg, fontFamily: theme.fontBody }}
               >
                 {l.label}
               </a>

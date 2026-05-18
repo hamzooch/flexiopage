@@ -21,6 +21,13 @@ export interface ProductPalette {
   buttonColor?: string;
   buttonTextColor?: string;
   backgroundColor?: string;
+  /** Body color of the long description block. Each preset picks a tone
+   *  that's readable on its background and visually quieter than titleColor. */
+  descriptionColor?: string;
+  /** Navbar background — applied only on product pages. */
+  navbarColor?: string;
+  /** Text/icon color paired with navbarColor for legibility. */
+  navbarTextColor?: string;
 }
 
 interface PaletteDef extends ProductPalette {
@@ -45,6 +52,9 @@ export const PRODUCT_PALETTES: PaletteDef[] = [
     buttonColor: '#0a0a0a',
     buttonTextColor: '#ffffff',
     backgroundColor: '#ffffff',
+    descriptionColor: '#374151',     // slate-700 — calme et lisible
+    navbarColor: '#ffffff',
+    navbarTextColor: '#0a0a0a',
   },
   {
     id: 'or-luxe',
@@ -56,6 +66,9 @@ export const PRODUCT_PALETTES: PaletteDef[] = [
     buttonColor: '#1b1410',
     buttonTextColor: '#f7eed7',
     backgroundColor: '#fbf6ec',
+    descriptionColor: '#5b4d3f',     // brun chaud assorti au champagne
+    navbarColor: '#1b1410',
+    navbarTextColor: '#f7eed7',
   },
   {
     id: 'vibrant-rose',
@@ -67,6 +80,9 @@ export const PRODUCT_PALETTES: PaletteDef[] = [
     buttonColor: '#db2777',
     buttonTextColor: '#ffffff',
     backgroundColor: '#fff1f5',
+    descriptionColor: '#5d2640',     // bordeaux discret
+    navbarColor: '#ffffff',
+    navbarTextColor: '#3a0f24',
   },
   {
     id: 'tech-cyan',
@@ -78,6 +94,9 @@ export const PRODUCT_PALETTES: PaletteDef[] = [
     buttonColor: '#0891b2',
     buttonTextColor: '#ffffff',
     backgroundColor: '#f0f9ff',
+    descriptionColor: '#3a4a63',     // bleu acier muted
+    navbarColor: '#0c1428',
+    navbarTextColor: '#e0f2fe',
   },
   {
     id: 'urbain-violet',
@@ -89,6 +108,9 @@ export const PRODUCT_PALETTES: PaletteDef[] = [
     buttonColor: '#7c3aed',
     buttonTextColor: '#ffffff',
     backgroundColor: '#faf5ff',
+    descriptionColor: '#4a2670',     // violet poussiéreux
+    navbarColor: '#1f0a32',
+    navbarTextColor: '#f3e8ff',
   },
   {
     id: 'organique-vert',
@@ -100,6 +122,9 @@ export const PRODUCT_PALETTES: PaletteDef[] = [
     buttonColor: '#15803d',
     buttonTextColor: '#ffffff',
     backgroundColor: '#f0fdf4',
+    descriptionColor: '#365a44',     // vert forêt assourdi
+    navbarColor: '#0f2e1e',
+    navbarTextColor: '#dcfce7',
   },
   {
     id: 'urgence-rouge',
@@ -111,6 +136,9 @@ export const PRODUCT_PALETTES: PaletteDef[] = [
     buttonColor: '#dc2626',
     buttonTextColor: '#ffffff',
     backgroundColor: '#fef2f2',
+    descriptionColor: '#52525b',     // neutre — laisse le rouge crier seul
+    navbarColor: '#dc2626',
+    navbarTextColor: '#ffffff',
   },
   {
     id: 'dark-mode',
@@ -122,6 +150,9 @@ export const PRODUCT_PALETTES: PaletteDef[] = [
     buttonColor: '#a3e635',
     buttonTextColor: '#0a0a0a',
     backgroundColor: '#0a0a0a',
+    descriptionColor: '#a3a3a3',     // gris clair — lisible sur fond noir
+    navbarColor: '#0a0a0a',
+    navbarTextColor: '#f5f5f5',
   },
 ];
 
@@ -171,6 +202,9 @@ export function PalettePresetPicker({ value, onApply }: Props) {
                 buttonColor: p.buttonColor,
                 buttonTextColor: p.buttonTextColor,
                 backgroundColor: p.backgroundColor,
+                descriptionColor: p.descriptionColor,
+                navbarColor: p.navbarColor,
+                navbarTextColor: p.navbarTextColor,
               })}
               className={cn(
                 'group flex flex-col gap-2 rounded-xl border p-2.5 text-left transition-all',
@@ -180,12 +214,32 @@ export function PalettePresetPicker({ value, onApply }: Props) {
               )}
               title={p.hint}
             >
-              {/* Mini swatch preview — 4 stripes that visually summarize the palette */}
+              {/* Mini swatch preview — top band = navbar, then 4 stripes for the
+                  rest of the palette so the seller sees the whole picture at a glance. */}
               <div
-                className="relative h-12 w-full overflow-hidden rounded-lg border border-border/40"
+                className="relative h-14 w-full overflow-hidden rounded-lg border border-border/40"
                 style={{ backgroundColor: p.backgroundColor || '#ffffff' }}
               >
-                <div className="flex h-full">
+                {/* Navbar band */}
+                <div
+                  className="flex h-3 items-center justify-between px-1"
+                  style={{ backgroundColor: p.navbarColor || '#ffffff' }}
+                >
+                  <span
+                    className="text-[6px] font-bold leading-none"
+                    style={{ color: p.navbarTextColor || '#0a0a0a' }}
+                  >
+                    ●
+                  </span>
+                  <span
+                    className="text-[5px] leading-none"
+                    style={{ color: p.navbarTextColor || '#0a0a0a' }}
+                  >
+                    ≡
+                  </span>
+                </div>
+                {/* Palette stripes (bg / title / accent / button) */}
+                <div className="flex h-[44px]">
                   <div className="flex-1" style={{ backgroundColor: p.backgroundColor || '#ffffff' }} />
                   <div className="flex-1" style={{ backgroundColor: p.titleColor || '#0a0a0a' }} />
                   <div className="flex-1" style={{ backgroundColor: p.accentColor || '#7c3aed' }} />
@@ -217,6 +271,9 @@ export function PalettePresetPicker({ value, onApply }: Props) {
           buttonColor: undefined,
           buttonTextColor: undefined,
           backgroundColor: undefined,
+          descriptionColor: undefined,
+          navbarColor: undefined,
+          navbarTextColor: undefined,
         })}
         className="text-[11px] text-muted-foreground underline-offset-2 hover:underline"
       >

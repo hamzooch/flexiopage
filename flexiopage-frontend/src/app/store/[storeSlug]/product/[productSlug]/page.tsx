@@ -226,6 +226,8 @@ export default async function PublicProductPage({ params }: Props) {
           storeLogo={store?.logo}
           theme={theme}
           config={store?.settings?.storefront?.navbar}
+          bgOverride={ppStyle.navbarColor}
+          fgOverride={ppStyle.navbarTextColor}
         />
 
         {/* Main split — tight padding on mobile so the gallery + form fit in
@@ -550,7 +552,12 @@ export default async function PublicProductPage({ params }: Props) {
                 </section>
               ) : null,
               description: showProductDesc ? (
-                <ProductDescriptionSection key="description" description={product.description!} theme={theme} />
+                <ProductDescriptionSection
+                  key="description"
+                  description={product.description!}
+                  theme={theme}
+                  bodyColor={ppStyle.descriptionColor}
+                />
               ) : null,
               testimonials: showTestimonialsSection ? (
                 <section key="testimonials" className="mt-8 sm:mt-12">
@@ -618,10 +625,14 @@ function hexA(hex: string | undefined | null, a: number): string {
 function ProductDescriptionSection({
   description,
   theme,
+  bodyColor,
 }: {
   description: string;
   theme: ThemeTokensType;
+  /** Palette override for the description body. Falls back to theme.foreground. */
+  bodyColor?: string;
 }) {
+  const color = bodyColor || theme.foreground;
   return (
     <section className="mt-8 max-w-3xl sm:mt-14">
       <div className="mb-5 flex items-center gap-3">
@@ -631,7 +642,7 @@ function ProductDescriptionSection({
         </h2>
         <span className="inline-block h-px flex-1" style={{ backgroundColor: theme.border }} aria-hidden />
       </div>
-      <div className="space-y-4 text-base leading-relaxed sm:text-lg" style={{ color: theme.foreground }}>
+      <div className="space-y-4 text-base leading-relaxed sm:text-lg" style={{ color }}>
         {description.split(/\n\s*\n/).map((para, i) => {
           const trimmed = para.trim();
           if (!trimmed) return null;
@@ -650,7 +661,7 @@ function ProductDescriptionSection({
             );
           }
           return (
-            <p key={i} style={{ color: theme.foreground }}>{trimmed}</p>
+            <p key={i} style={{ color }}>{trimmed}</p>
           );
         })}
       </div>

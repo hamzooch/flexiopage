@@ -191,6 +191,14 @@ export interface IStore extends Document {
           buttonTextColor?: string;
           /** Page background override. */
           backgroundColor?: string;
+          /** Long description body text color (under-the-fold section). */
+          descriptionColor?: string;
+          /** Navbar background override — applies only on product pages so the
+           *  seller can give product pages their own "vibe" without affecting
+           *  the rest of the store. */
+          navbarColor?: string;
+          /** Navbar text/icon color override (paired with navbarColor). */
+          navbarTextColor?: string;
           galleryLayout?: 'single' | 'thumbnails' | 'grid';
           showRatingStrip?: boolean;
           /** Id of the preset palette currently active (for the picker UI). */
@@ -474,6 +482,9 @@ const StoreSchema = new Schema<IStore>(
             buttonColor: { type: String, trim: true },
             buttonTextColor: { type: String, trim: true },
             backgroundColor: { type: String, trim: true },
+            descriptionColor: { type: String, trim: true },
+            navbarColor: { type: String, trim: true },
+            navbarTextColor: { type: String, trim: true },
             galleryLayout: { type: String, enum: ['single', 'thumbnails', 'grid'], default: 'thumbnails' },
             showRatingStrip: { type: Boolean, default: false },
             paletteId: { type: String, trim: true },

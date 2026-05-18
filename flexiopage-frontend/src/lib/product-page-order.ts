@@ -76,6 +76,13 @@ export interface ProductPageStyle {
   buttonTextColor?: string;
   /** Page background override. */
   backgroundColor?: string;
+  /** Long description body text color (under-the-fold "Description" section). */
+  descriptionColor?: string;
+  /** Navbar background override — applies only on product pages so palettes
+   *  can give product pages their own vibe without touching the homepage. */
+  navbarColor?: string;
+  /** Navbar text/icon color override paired with navbarColor. */
+  navbarTextColor?: string;
   /** Layout of the image gallery on the left column. */
   galleryLayout?: 'single' | 'thumbnails' | 'grid';
   /** Show a 5-star rating row under the title (decorative — no real reviews wired). */
