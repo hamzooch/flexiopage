@@ -183,8 +183,16 @@ export interface IStore extends Document {
           titleColor?: string;
           priceColor?: string;
           accentColor?: string;
+          /** CTA button background (Commander). Falls back to accentColor / theme primary. */
+          buttonColor?: string;
+          /** Text color on the CTA button. */
+          buttonTextColor?: string;
+          /** Page background override. */
+          backgroundColor?: string;
           galleryLayout?: 'single' | 'thumbnails' | 'grid';
           showRatingStrip?: boolean;
+          /** Id of the preset palette currently active (for the picker UI). */
+          paletteId?: string;
         };
       };
       /**
@@ -456,8 +464,12 @@ const StoreSchema = new Schema<IStore>(
             titleColor: { type: String, trim: true },
             priceColor: { type: String, trim: true },
             accentColor: { type: String, trim: true },
+            buttonColor: { type: String, trim: true },
+            buttonTextColor: { type: String, trim: true },
+            backgroundColor: { type: String, trim: true },
             galleryLayout: { type: String, enum: ['single', 'thumbnails', 'grid'], default: 'thumbnails' },
             showRatingStrip: { type: Boolean, default: false },
+            paletteId: { type: String, trim: true },
           },
         },
         testimonials: {

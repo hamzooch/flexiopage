@@ -36,6 +36,7 @@ import {
 } from '@/lib/product-page-order';
 import { FieldToggle } from '@/components/dashboard/store-editor';
 import { TimerPresetPicker } from '@/components/dashboard/timer-presets';
+import { PalettePresetPicker } from '@/components/dashboard/palette-presets';
 
 const BADGE_ICONS: Record<BadgeIcon, typeof Truck> = {
   truck: Truck,
@@ -101,7 +102,7 @@ export function ProductPageEditor({ cfg, onChange }: Props) {
   return (
     <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_380px]">
       <div className="space-y-6">
-      {/* ── STYLE — colors + gallery layout ──────────────────── */}
+      {/* ── STYLE — palette + colors + gallery layout ────────── */}
       <section className="rounded-xl border border-fuchsia-500/20 bg-gradient-to-br from-fuchsia-500/5 to-card p-4">
         <div className="mb-3 inline-flex items-center gap-1.5 text-sm font-semibold">
           <PaletteIcon className="h-4 w-4 text-fuchsia-600" />
@@ -110,26 +111,59 @@ export function ProductPageEditor({ cfg, onChange }: Props) {
             Surcharge le thème
           </span>
         </div>
-        <div className="grid gap-3 sm:grid-cols-3">
-          <PpColorField
-            label="Titre du produit"
-            value={style.titleColor}
-            onChange={(c) => setStyle({ titleColor: c })}
-            defaultLabel="Thème"
-          />
-          <PpColorField
-            label="Prix"
-            value={style.priceColor}
-            onChange={(c) => setStyle({ priceColor: c })}
-            defaultLabel="Primaire"
-          />
-          <PpColorField
-            label="Accent (badges/timer)"
-            value={style.accentColor}
-            onChange={(c) => setStyle({ accentColor: c })}
-            defaultLabel="Primaire"
-          />
-        </div>
+
+        {/* Preset palette picker — one click sets all 6 colors at once */}
+        <PalettePresetPicker
+          value={style}
+          onApply={(next) => setStyle({ ...next })}
+        />
+
+        {/* Fine-tune — exposed as a collapsible advanced area so the
+            seller can tweak individual colors after picking a palette,
+            without the form looking overwhelming on first open. */}
+        <details className="mt-4 group">
+          <summary className="cursor-pointer text-[11px] font-semibold text-fuchsia-700 hover:underline">
+            Personnaliser couleur par couleur
+          </summary>
+          <div className="mt-3 grid gap-3 sm:grid-cols-3">
+            <PpColorField
+              label="Titre du produit"
+              value={style.titleColor}
+              onChange={(c) => setStyle({ titleColor: c, paletteId: undefined })}
+              defaultLabel="Thème"
+            />
+            <PpColorField
+              label="Prix"
+              value={style.priceColor}
+              onChange={(c) => setStyle({ priceColor: c, paletteId: undefined })}
+              defaultLabel="Primaire"
+            />
+            <PpColorField
+              label="Accent (badges/timer)"
+              value={style.accentColor}
+              onChange={(c) => setStyle({ accentColor: c, paletteId: undefined })}
+              defaultLabel="Primaire"
+            />
+            <PpColorField
+              label="Bouton « Commander »"
+              value={style.buttonColor}
+              onChange={(c) => setStyle({ buttonColor: c, paletteId: undefined })}
+              defaultLabel="Accent"
+            />
+            <PpColorField
+              label="Texte du bouton"
+              value={style.buttonTextColor}
+              onChange={(c) => setStyle({ buttonTextColor: c, paletteId: undefined })}
+              defaultLabel="Auto"
+            />
+            <PpColorField
+              label="Fond de page"
+              value={style.backgroundColor}
+              onChange={(c) => setStyle({ backgroundColor: c, paletteId: undefined })}
+              defaultLabel="Thème"
+            />
+          </div>
+        </details>
 
         <div className="mt-4">
           <Label className="text-xs">Disposition de la galerie</Label>
@@ -497,6 +531,11 @@ function ProductPageLivePreview({ cfg }: { cfg: ProductPageSettings }) {
   const accent = style.accentColor || '#7c3aed';
   const titleColor = style.titleColor || '#0f172a';
   const priceColor = style.priceColor || accent;
+  // Button colors fall back to accent so legacy configs still render the CTA
+  // in the right family. Background falls back to white for the mock.
+  const buttonBg = style.buttonColor || accent;
+  const buttonFg = style.buttonTextColor || '#ffffff';
+  const pageBg = style.backgroundColor || '#ffffff';
   const layout = style.galleryLayout || 'thumbnails';
   const order = resolveProductPageOrder(cfg.sectionOrder);
   const badges = (cfg.badges && cfg.badges.length > 0) ? cfg.badges : DEFAULT_BADGES;
@@ -573,10 +612,12 @@ function ProductPageLivePreview({ cfg }: { cfg: ProductPageSettings }) {
       </div>
 
       <div className="max-h-[80vh] overflow-y-auto bg-muted/20 p-3">
-        {/* Mini browser frame — width changes with device */}
+        {/* Mini browser frame — width changes with device. Background is
+            driven by the palette so dark-mode palettes flip the whole
+            inner page (and not just text/buttons). */}
         <div
-          className="mx-auto overflow-hidden rounded-xl bg-card shadow-sm transition-all"
-          style={{ maxWidth: frameMaxWidth }}
+          className="mx-auto overflow-hidden rounded-xl shadow-sm transition-all"
+          style={{ maxWidth: frameMaxWidth, backgroundColor: pageBg }}
         >
           <div className="flex items-center gap-1 border-b border-border/40 bg-muted/30 px-2 py-1.5">
             <span className="h-1.5 w-1.5 rounded-full bg-rose-400/60" />
@@ -645,8 +686,8 @@ function ProductPageLivePreview({ cfg }: { cfg: ProductPageSettings }) {
                 </div>
                 <button
                   type="button"
-                  className="mt-1 inline-flex h-7 w-full items-center justify-center rounded-md text-[10px] font-bold text-white"
-                  style={{ backgroundColor: accent }}
+                  className="mt-1 inline-flex h-7 w-full items-center justify-center rounded-md text-[10px] font-bold"
+                  style={{ backgroundColor: buttonBg, color: buttonFg }}
                 >
                   Commander · {fakePrice} TND
                 </button>

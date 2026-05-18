@@ -177,12 +177,20 @@ export default async function PublicProductPage({ params }: Props) {
   const showGallery = ps.showGallery !== false;
   const showDescription = ps.showDescription !== false;
   const showTrustBadges = ps.showTrustBadges !== false;
-  // Per-product overrides merged over the store-level COD form config.
+  // Store-wide product page palette (productPage.style). When set, the
+  // palette's button color flows into the COD form so the entire page
+  // reads as one coherent visual.
+  const ppStyle = store?.settings?.storefront?.productPage?.style || {};
+  // Per-product overrides merged over the store-level COD form config +
+  // palette overrides from productPage.style.
   const codConfig: CodFormConfig = {
     ...(store?.settings?.codForm || {}),
+    ...(ppStyle.buttonColor ? { buttonColor: ppStyle.buttonColor } : {}),
+    ...(ppStyle.buttonTextColor ? { buttonTextColor: ppStyle.buttonTextColor } : {}),
     ...(ps.codFormTitle ? { headline: ps.codFormTitle } : {}),
     ...(ps.reassuranceText ? { reassurance: ps.reassuranceText } : {}),
   };
+  const pageBg = ppStyle.backgroundColor;
 
   return (
     <>
@@ -205,7 +213,12 @@ export default async function PublicProductPage({ params }: Props) {
         dir={direction}
         lang={language}
         className="min-h-screen"
-        style={tokensToCssVars(theme)}
+        style={{
+          ...tokensToCssVars(theme),
+          // Apply the palette's page background when set — wins over the theme bg
+          // so a dark palette flips the whole product page convincingly.
+          ...(pageBg ? { backgroundColor: pageBg } : {}),
+        }}
       >
         <StoreNavbar
           storeName={store?.name || storeSlug}

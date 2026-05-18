@@ -70,10 +70,18 @@ export interface ProductPageStyle {
   priceColor?: string;
   /** Accent color used by badges + timer + small decorative hits. */
   accentColor?: string;
+  /** CTA button background ("Commander"). Falls back to accentColor / theme primary. */
+  buttonColor?: string;
+  /** Text color on the CTA button. */
+  buttonTextColor?: string;
+  /** Page background override. */
+  backgroundColor?: string;
   /** Layout of the image gallery on the left column. */
   galleryLayout?: 'single' | 'thumbnails' | 'grid';
   /** Show a 5-star rating row under the title (decorative — no real reviews wired). */
   showRatingStrip?: boolean;
+  /** Id of the active preset palette — drives the picker highlight. */
+  paletteId?: string;
 }
 
 export interface ProductPageSettings {
