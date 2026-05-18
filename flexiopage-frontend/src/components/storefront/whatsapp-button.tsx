@@ -24,11 +24,14 @@ export interface WhatsappConfig {
   pulse?: boolean;
 }
 
+// Bottom positions get a bigger mobile offset (80px) so the button clears
+// the mobile sticky CTA bar on product pages AND the iOS safe-area inset on
+// iPhones with a home-indicator. Desktop stays modest.
 const POSITION_CLASSES: Record<NonNullable<WhatsappConfig['position']>, string> = {
-  'bottom-right': 'bottom-4 right-4 sm:bottom-6 sm:right-6',
-  'bottom-left':  'bottom-4 left-4 sm:bottom-6 sm:left-6',
-  'top-right':    'top-4 right-4 sm:top-6 sm:right-6',
-  'top-left':     'top-4 left-4 sm:top-6 sm:left-6',
+  'bottom-right': 'bottom-20 right-4 sm:bottom-8 sm:right-6',
+  'bottom-left':  'bottom-20 left-4 sm:bottom-8 sm:left-6',
+  'top-right':    'top-20 right-4 sm:top-8 sm:right-6',
+  'top-left':     'top-20 left-4 sm:top-8 sm:left-6',
 };
 
 /** Strip everything that's not a digit — wa.me expects no '+' / spaces / dashes. */
