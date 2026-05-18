@@ -73,7 +73,6 @@ export function GoogleSignInButton({ onSuccess, text = 'continue_with' }: Props)
           theme="outline"
           size="large"
           width="100%"
-          locale="fr"
         />
       </div>
       {error && (

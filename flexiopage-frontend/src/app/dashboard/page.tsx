@@ -248,9 +248,10 @@ export default function DashboardOverviewPage() {
       {/* ── No-store fallback ─────────────────────────────────── */}
       {!loadingStores && stores.length === 0 && <EmptyState />}
 
-      {/* ── KPI cards (4) ─────────────────────────────────────── */}
+      {/* ── KPI cards (4) — 4 columns on every breakpoint so the seller
+            scans the whole picture at a glance, including on mobile. ── */}
       {activeStore && (
-        <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <section className="grid grid-cols-4 gap-2 sm:gap-3">
           <KpiCard
             label="Revenu (payé)"
             value={formatCurrency(k?.revenue.value ?? 0, currency)}
@@ -441,34 +442,43 @@ function KpiCard({
   const negative = typeof deltaPct === 'number' && deltaPct < 0;
   const TrendIcon = positive ? TrendingUp : negative ? TrendingDown : Activity;
   return (
-    <div className="group relative overflow-hidden rounded-2xl border border-border/60 bg-card p-4 transition-all hover:-translate-y-0.5 hover:shadow-md">
-      <div className="flex items-start justify-between gap-2">
-        <div className="min-w-0">
-          <div className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">{label}</div>
-          <div className="mt-1.5 text-2xl font-extrabold tracking-tight">
-            {loading ? <span className="inline-block h-6 w-20 animate-pulse rounded bg-muted" /> : value}
+    <div className="group relative overflow-hidden rounded-xl border border-border/60 bg-card p-2.5 transition-all hover:-translate-y-0.5 hover:shadow-md sm:rounded-2xl sm:p-4">
+      {/* Mobile: icon on top, value below — keeps the card narrow enough
+          for 4 to fit on a 375px phone. Desktop: classic side-by-side. */}
+      <div className="flex flex-col gap-1.5 sm:flex-row sm:items-start sm:justify-between sm:gap-2">
+        <div
+          className={cn(
+            'grid h-7 w-7 shrink-0 place-items-center rounded-lg bg-gradient-to-br text-white shadow-sm sm:order-2 sm:h-10 sm:w-10 sm:rounded-xl',
+            t.iconBg,
+            t.glow
+          )}
+        >
+          <Icon className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
+        </div>
+        <div className="min-w-0 sm:order-1">
+          <div className="truncate text-[9px] font-bold uppercase tracking-wider text-muted-foreground sm:text-[10px]">
+            {label}
           </div>
-          {!loading && (
-            <div className="mt-1 flex items-center gap-1.5 text-[11px]">
-              {deltaPct !== null ? (
-                <span
-                  className={cn(
-                    'inline-flex items-center gap-0.5 rounded-full px-1.5 py-0.5 font-semibold',
-                    positive ? 'bg-emerald-500/10 text-emerald-700' : negative ? 'bg-rose-500/10 text-rose-700' : 'bg-muted text-muted-foreground'
-                  )}
-                >
-                  <TrendIcon className="h-2.5 w-2.5" />
-                  {positive ? '+' : ''}{deltaPct.toFixed(0)}%
-                </span>
-              ) : (
-                <span className="text-muted-foreground">—</span>
-              )}
-              <span className="truncate text-muted-foreground">vs {previousValue}</span>
+          <div className="mt-0.5 truncate text-base font-extrabold tracking-tight sm:mt-1.5 sm:text-2xl">
+            {loading ? <span className="inline-block h-5 w-14 animate-pulse rounded bg-muted sm:h-6 sm:w-20" /> : value}
+          </div>
+          {!loading && deltaPct !== null && (
+            <div className="mt-0.5 flex items-center gap-1 sm:mt-1 sm:gap-1.5">
+              <span
+                className={cn(
+                  'inline-flex items-center gap-0.5 rounded-full px-1 py-0.5 text-[9px] font-semibold sm:px-1.5 sm:text-[11px]',
+                  positive ? 'bg-emerald-500/10 text-emerald-700' : negative ? 'bg-rose-500/10 text-rose-700' : 'bg-muted text-muted-foreground'
+                )}
+              >
+                <TrendIcon className="h-2 w-2 sm:h-2.5 sm:w-2.5" />
+                {positive ? '+' : ''}{deltaPct.toFixed(0)}%
+              </span>
+              {/* "vs prev" only shown on tablet+ where there's room */}
+              <span className="hidden truncate text-[11px] text-muted-foreground sm:inline">
+                vs {previousValue}
+              </span>
             </div>
           )}
-        </div>
-        <div className={cn('grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-gradient-to-br text-white shadow-md', t.iconBg, t.glow)}>
-          <Icon className="h-4 w-4" />
         </div>
       </div>
     </div>
