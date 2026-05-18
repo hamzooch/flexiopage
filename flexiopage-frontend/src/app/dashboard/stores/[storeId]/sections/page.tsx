@@ -23,6 +23,7 @@ import {
   TestimonialsEditor,
   type StorefrontSettings,
   type StoreType,
+  type WhatsappSettings,
 } from '@/components/dashboard/store-editor';
 import {
   Megaphone,
@@ -34,6 +35,7 @@ import {
   PanelBottom,
   CheckCircle2,
   Circle,
+  MessageCircle,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -99,6 +101,23 @@ const SECTIONS: SectionDef[] = [
   },
 ];
 
+// Whatsapp is configured here too but lives outside `storefront` settings,
+// so it gets its own definition driven by the WhatsappSettings object.
+interface WhatsappSectionDef {
+  id: 'whatsapp';
+  icon: typeof MessageCircle;
+  title: string;
+  isActive: (w: WhatsappSettings) => boolean;
+  isCustomized: (w: WhatsappSettings) => boolean;
+}
+const WHATSAPP_SECTION: WhatsappSectionDef = {
+  id: 'whatsapp',
+  icon: MessageCircle,
+  title: 'Bouton WhatsApp',
+  isActive: (w) => !!w.enabled && !!w.phoneNumber?.trim(),
+  isCustomized: (w) => !!w.phoneNumber?.trim(),
+};
+
 export default function StoreSectionsPage() {
   const params = useParams();
   const storeId = params.storeId as string;
@@ -111,6 +130,12 @@ export default function StoreSectionsPage() {
     showProductsGrid: true,
     showFeatures: true,
     showFooter: true,
+  });
+  const [whatsapp, setWhatsapp] = useState<WhatsappSettings>({
+    enabled: false,
+    position: 'bottom-right',
+    accentColor: '#25D366',
+    pulse: true,
   });
   // Tracks which section card is currently in the user's viewport so the
   // sticky left nav can highlight the matching nav item.
@@ -130,6 +155,15 @@ export default function StoreSectionsPage() {
             showFeatures: true,
             showFooter: true,
             ...s.settings.storefront,
+          });
+        }
+        if (s.settings?.whatsapp) {
+          setWhatsapp({
+            enabled: false,
+            position: 'bottom-right',
+            accentColor: '#25D366',
+            pulse: true,
+            ...s.settings.whatsapp,
           });
         }
       })
@@ -165,7 +199,7 @@ export default function StoreSectionsPage() {
     setStatus('saving');
     setErrorMessage('');
     try {
-      const newSettings = { ...(store.settings || {}), storefront };
+      const newSettings = { ...(store.settings || {}), storefront, whatsapp };
       const res = await storesApi.update(storeId, { settings: newSettings });
       const updated = (res.data as { store: StoreType }).store;
       setStore(updated);
@@ -176,6 +210,15 @@ export default function StoreSectionsPage() {
           showFeatures: true,
           showFooter: true,
           ...updated.settings.storefront,
+        });
+      }
+      if (updated.settings?.whatsapp) {
+        setWhatsapp({
+          enabled: false,
+          position: 'bottom-right',
+          accentColor: '#25D366',
+          pulse: true,
+          ...updated.settings.whatsapp,
         });
       }
       setStatus('saved');
@@ -191,7 +234,9 @@ export default function StoreSectionsPage() {
     return <p className="text-muted-foreground">Loading...</p>;
   }
 
-  const activeCount = SECTIONS.filter((s) => s.isActive(storefront)).length;
+  const storefrontActiveCount = SECTIONS.filter((s) => s.isActive(storefront)).length;
+  const totalSections = SECTIONS.length + 1; // + Whatsapp
+  const activeCount = storefrontActiveCount + (WHATSAPP_SECTION.isActive(whatsapp) ? 1 : 0);
 
   return (
     <StoreSubPageShell
@@ -212,7 +257,7 @@ export default function StoreSectionsPage() {
                 Sections
               </span>
               <span className="rounded-full bg-emerald-500/10 px-2 py-0.5 text-[10px] font-semibold text-emerald-700">
-                {activeCount}/{SECTIONS.length} actives
+                {activeCount}/{totalSections} actives
               </span>
             </div>
             <nav className="space-y-0.5">
@@ -257,6 +302,42 @@ export default function StoreSectionsPage() {
                   </button>
                 );
               })}
+              {/* Whatsapp lives in settings.whatsapp, not storefront — same nav
+                  shape so the seller sees it alongside the section toggles. */}
+              {(() => {
+                const Icon = WHATSAPP_SECTION.icon;
+                const isActive = WHATSAPP_SECTION.isActive(whatsapp);
+                const isCustom = WHATSAPP_SECTION.isCustomized(whatsapp);
+                const isCurrent = activeSection === WHATSAPP_SECTION.id;
+                return (
+                  <button
+                    key={WHATSAPP_SECTION.id}
+                    type="button"
+                    onClick={() => jumpTo(WHATSAPP_SECTION.id)}
+                    className={cn(
+                      'group flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left transition-all',
+                      isCurrent
+                        ? 'bg-gradient-to-r from-primary/10 to-fuchsia-500/5 text-foreground shadow-sm'
+                        : 'text-muted-foreground hover:bg-muted/60 hover:text-foreground'
+                    )}
+                  >
+                    <span
+                      className={cn(
+                        'grid h-7 w-7 shrink-0 place-items-center rounded-md',
+                        isActive ? 'bg-emerald-500 text-white shadow-sm' : 'bg-muted text-muted-foreground'
+                      )}
+                    >
+                      <Icon className="h-3.5 w-3.5" />
+                    </span>
+                    <span className="min-w-0 flex-1 text-xs font-medium">{WHATSAPP_SECTION.title}</span>
+                    {isActive ? (
+                      <CheckCircle2 className={cn('h-3.5 w-3.5 shrink-0', isCustom ? 'text-emerald-500' : 'text-emerald-400/50')} />
+                    ) : (
+                      <Circle className="h-3.5 w-3.5 shrink-0 text-muted-foreground/40" />
+                    )}
+                  </button>
+                );
+              })()}
             </nav>
             <div className="mt-2 rounded-lg bg-muted/40 px-2.5 py-2 text-[10px] leading-snug text-muted-foreground">
               <strong className="text-foreground">Astuce :</strong> clique sur une section pour
@@ -475,8 +556,210 @@ export default function StoreSectionsPage() {
               )}
             </CardContent>
           </Card>
+
+          <Card id="whatsapp" className="scroll-mt-6">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-base">
+                <MessageCircle className="h-4 w-4 text-emerald-600" />
+                Bouton WhatsApp
+              </CardTitle>
+              <CardDescription>
+                Un bouton flottant sur ta vitrine — le client te contacte
+                directement sur WhatsApp en un clic.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <WhatsappEditor cfg={whatsapp} onChange={setWhatsapp} />
+            </CardContent>
+          </Card>
         </div>
       </div>
     </StoreSubPageShell>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// WhatsApp editor — toggle + phone + message + position + color + preview
+// ─────────────────────────────────────────────────────────────────────
+
+function WhatsappEditor({
+  cfg,
+  onChange,
+}: {
+  cfg: WhatsappSettings;
+  onChange: (next: WhatsappSettings) => void;
+}) {
+  const positions: Array<{ v: NonNullable<WhatsappSettings['position']>; label: string; cls: string }> = [
+    { v: 'top-left',     label: '↖ Haut gauche',  cls: 'top-1 left-1' },
+    { v: 'top-right',    label: '↗ Haut droite',  cls: 'top-1 right-1' },
+    { v: 'bottom-left',  label: '↙ Bas gauche',   cls: 'bottom-1 left-1' },
+    { v: 'bottom-right', label: '↘ Bas droite',   cls: 'bottom-1 right-1' },
+  ];
+  const accent = cfg.accentColor || '#25D366';
+  const active = !!cfg.enabled && !!cfg.phoneNumber?.trim();
+
+  return (
+    <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_240px]">
+      {/* ── LEFT — form ────────────────────────────────────────── */}
+      <div className="space-y-4">
+        <FieldToggle
+          label="Activer le bouton WhatsApp"
+          sublabel="Affiché sur toutes les pages de la boutique"
+          checked={!!cfg.enabled}
+          onChange={(v) => onChange({ ...cfg, enabled: v })}
+        />
+
+        {cfg.enabled && (
+          <>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div className="space-y-1.5">
+                <Label htmlFor="wa-phone">Numéro WhatsApp (avec indicatif)</Label>
+                <Input
+                  id="wa-phone"
+                  placeholder="+216 55 000 000"
+                  value={cfg.phoneNumber || ''}
+                  onChange={(e) => onChange({ ...cfg, phoneNumber: e.target.value })}
+                />
+                <p className="text-[11px] text-muted-foreground">
+                  Format international. Les espaces / tirets sont supprimés automatiquement.
+                </p>
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="wa-color">Couleur du bouton</Label>
+                <div className="flex h-10 items-center gap-2">
+                  <input
+                    id="wa-color"
+                    type="color"
+                    value={accent}
+                    onChange={(e) => onChange({ ...cfg, accentColor: e.target.value })}
+                    className="h-9 w-11 cursor-pointer rounded-md border border-border/60 bg-background p-0"
+                  />
+                  <Input
+                    value={cfg.accentColor || ''}
+                    onChange={(e) => onChange({ ...cfg, accentColor: e.target.value || undefined })}
+                    placeholder="#25D366"
+                    className="h-9 flex-1 font-mono text-xs"
+                  />
+                  {cfg.accentColor && (
+                    <button
+                      type="button"
+                      onClick={() => onChange({ ...cfg, accentColor: undefined })}
+                      className="rounded-md px-1.5 text-[11px] text-muted-foreground hover:bg-muted hover:text-foreground"
+                      title="Effacer (vert WhatsApp par défaut)"
+                    >
+                      ×
+                    </button>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            <div className="space-y-1.5">
+              <Label htmlFor="wa-msg">Message pré-rempli (optionnel)</Label>
+              <Input
+                id="wa-msg"
+                placeholder="Bonjour, j'ai une question sur un produit…"
+                value={cfg.message || ''}
+                onChange={(e) => onChange({ ...cfg, message: e.target.value })}
+              />
+              <p className="text-[11px] text-muted-foreground">
+                Pré-rempli dans WhatsApp à l&apos;ouverture. Vide = aucun message.
+              </p>
+            </div>
+
+            <div className="space-y-1.5">
+              <Label>Position du bouton</Label>
+              <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-4">
+                {positions.map((opt) => {
+                  const isActive = (cfg.position || 'bottom-right') === opt.v;
+                  return (
+                    <button
+                      key={opt.v}
+                      type="button"
+                      onClick={() => onChange({ ...cfg, position: opt.v })}
+                      className={cn(
+                        'rounded-lg border px-2.5 py-2 text-xs font-medium transition-all',
+                        isActive
+                          ? 'border-emerald-500 bg-emerald-500/5 text-foreground shadow-sm'
+                          : 'border-border/60 text-muted-foreground hover:border-emerald-500/40'
+                      )}
+                    >
+                      {opt.label}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            <FieldToggle
+              label="Animation de pulsation"
+              sublabel="Ondes vertes autour du bouton — attire l'œil"
+              checked={cfg.pulse !== false}
+              onChange={(v) => onChange({ ...cfg, pulse: v })}
+            />
+          </>
+        )}
+      </div>
+
+      {/* ── RIGHT — live preview ───────────────────────────────── */}
+      <aside className="space-y-2">
+        <Label className="text-[10px] uppercase tracking-wider text-muted-foreground">
+          Aperçu position
+        </Label>
+        <div className="relative h-56 overflow-hidden rounded-xl border border-border/60 bg-gradient-to-br from-muted/40 to-card">
+          {/* Fake browser chrome to convey "this is on the storefront" */}
+          <div className="absolute inset-x-0 top-0 flex items-center gap-1 border-b border-border/40 bg-card/60 px-2 py-1">
+            <span className="h-1.5 w-1.5 rounded-full bg-rose-400/60" />
+            <span className="h-1.5 w-1.5 rounded-full bg-amber-400/60" />
+            <span className="h-1.5 w-1.5 rounded-full bg-emerald-400/60" />
+          </div>
+          <div className="absolute inset-x-3 top-7 space-y-1">
+            <div className="h-2 w-2/3 rounded bg-muted-foreground/15" />
+            <div className="h-2 w-1/2 rounded bg-muted-foreground/15" />
+            <div className="h-12 rounded bg-muted-foreground/10" />
+            <div className="h-2 w-1/3 rounded bg-muted-foreground/15" />
+          </div>
+
+          {active && (
+            <div
+              className={cn(
+                'absolute',
+                positions.find((p) => p.v === (cfg.position || 'bottom-right'))?.cls
+              )}
+            >
+              <span
+                className="relative grid h-8 w-8 place-items-center rounded-full text-white shadow-md"
+                style={{ backgroundColor: accent }}
+              >
+                <MessageCircle className="h-4 w-4" />
+                {cfg.pulse !== false && (
+                  <span
+                    aria-hidden
+                    className="wa-prev-pulse pointer-events-none absolute inset-0 rounded-full"
+                    style={{ border: `2px solid ${accent}` }}
+                  />
+                )}
+              </span>
+            </div>
+          )}
+          {!active && (
+            <div className="absolute inset-x-2 bottom-2 text-center text-[10px] text-muted-foreground">
+              Active + numéro pour voir l&apos;aperçu
+            </div>
+          )}
+          <style jsx>{`
+            @keyframes waPrevPulse {
+              0%   { transform: scale(1);    opacity: 0.55; }
+              70%  { transform: scale(1.85); opacity: 0;    }
+              100% { transform: scale(1.85); opacity: 0;    }
+            }
+            .wa-prev-pulse { animation: waPrevPulse 2.2s ease-out infinite; }
+          `}</style>
+        </div>
+        <p className="text-[10px] text-muted-foreground">
+          Le bouton apparaît sur chaque page de la boutique (accueil, produit, info, checkout).
+        </p>
+      </aside>
+    </div>
   );
 }

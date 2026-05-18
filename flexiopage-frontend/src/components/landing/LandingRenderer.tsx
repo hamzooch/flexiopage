@@ -32,8 +32,6 @@ import { cn, formatCurrency } from '@/lib/utils';
 import type { PageSection } from './SectionEditor';
 import { CodOrderForm, type CodFormConfig } from '@/components/storefront/cod-order-form';
 import { STORE_THEME_TEMPLATES } from '@/data/store-themes';
-import { ChatBot } from '@/components/chatbot/ChatBot';
-import { buildStoreScript } from '@/components/chatbot/scripts';
 
 interface Props {
   sections: PageSection[];
@@ -65,9 +63,10 @@ interface Props {
   /** Theme template id (volt|atelier|bloom) for cod-form styling. */
   themeId?: string;
   /**
-   * Optional store identity for the floating chatbot. When provided
-   * (typically by the public store page), a scripted help bot appears
-   * bottom-right with quick replies and WhatsApp/phone fallbacks.
+   * @deprecated The in-store chatbot was removed in favor of a
+   * dedicated WhatsApp floating button (rendered by the storefront
+   * page itself via `<WhatsappButton>`). Kept here for type-compat with
+   * existing callers; the value is ignored.
    */
   storeChat?: {
     name: string;
@@ -87,7 +86,9 @@ export function LandingRenderer({
   storeSlug,
   country,
   themeId,
-  storeChat,
+  // `storeChat` is intentionally NOT destructured — the in-store chatbot
+  // was retired in favor of the WhatsApp button; ignoring the prop keeps
+  // existing callers building.
 }: Props) {
   const ordered = [...sections].sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
 
@@ -121,17 +122,8 @@ export function LandingRenderer({
         />
       ))}
       {stickyCta && <StickyMobileCta {...stickyCta} />}
-      {storeChat && (
-        <ChatBot
-          script={buildStoreScript({
-            storeName: storeChat.name,
-            whatsapp: storeChat.whatsapp,
-            phone: storeChat.phone,
-          })}
-          storageKey={`flexiopage-store-chat:${storeSlug ?? 'preview'}`}
-          triggerLabel="Besoin d'aide ?"
-        />
-      )}
+      {/* In-store chatbot removed — storefront now uses a dedicated
+          configurable WhatsApp floating button (see WhatsappButton). */}
     </div>
   );
 }

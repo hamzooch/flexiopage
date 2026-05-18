@@ -16,6 +16,7 @@ import { StoreNavbar, type NavbarConfig } from '@/components/storefront/StoreNav
 import { StoreFooter, type FooterConfig } from '@/components/storefront/StoreFooter';
 import { StorefrontTestimonials, type TestimonialsConfig } from '@/components/storefront/Testimonials';
 import { AnnouncementBar, type AnnouncementBarConfig } from '@/components/storefront/AnnouncementBar';
+import type { WhatsappConfig } from '@/components/storefront/whatsapp-button';
 
 interface Props {
   params: Promise<{ storeSlug: string }>;
@@ -52,6 +53,7 @@ interface StoreDoc {
     language?: string;
     direction?: 'ltr' | 'rtl';
     storefront?: StorefrontConfig;
+    whatsapp?: WhatsappConfig;
   };
   integrations?: {
     marketing?: MarketingConfig;
@@ -204,6 +206,8 @@ export default async function PublicStorePage({ params }: Props) {
             theme={theme}
           />
         )}
+        {/* WhatsApp button is mounted by the parent /store/[slug]/layout.tsx
+            so it appears on every storefront route, not just the homepage. */}
       </div>
     </>
   );

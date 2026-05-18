@@ -63,6 +63,24 @@ export interface IStore extends Document {
       buttonAnimation?: 'pulse' | 'shimmer' | 'bounce' | 'none';
     };
     /**
+     * Floating WhatsApp button shown on every storefront page. Lets the
+     * buyer open a wa.me chat with the seller in one tap. Replaces the
+     * previous in-store chatbot — same goal, simpler UX.
+     */
+    whatsapp?: {
+      enabled?: boolean;          // default false
+      /** E.164 phone (e.g. "+216551234"). Required when enabled. */
+      phoneNumber?: string;
+      /** Pre-filled message opened in WhatsApp (encoded into wa.me URL). */
+      message?: string;
+      /** Where the floating button sits on the page. */
+      position?: 'bottom-right' | 'bottom-left' | 'top-right' | 'top-left';
+      /** Brand accent (hex). Defaults to WhatsApp green (#25D366). */
+      accentColor?: string;
+      /** When true, a subtle pulse ring draws the eye. */
+      pulse?: boolean;
+    };
+    /**
      * Storefront sections — what to render on the public store page.
      * Sellers toggle each section on/off and customize hero copy.
      */
@@ -284,6 +302,18 @@ const StoreSchema = new Schema<IStore>(
         buttonShape: { type: String, enum: ['pill', 'rounded', 'square'], default: 'pill' },
         buttonAnimated: { type: Boolean, default: false },
         buttonAnimation: { type: String, enum: ['pulse', 'shimmer', 'bounce', 'none'], default: 'pulse' },
+      },
+      whatsapp: {
+        enabled: { type: Boolean, default: false },
+        phoneNumber: { type: String, trim: true },
+        message: { type: String, trim: true },
+        position: {
+          type: String,
+          enum: ['bottom-right', 'bottom-left', 'top-right', 'top-left'],
+          default: 'bottom-right',
+        },
+        accentColor: { type: String, trim: true },
+        pulse: { type: Boolean, default: true },
       },
       storefront: {
         announcementBar: {

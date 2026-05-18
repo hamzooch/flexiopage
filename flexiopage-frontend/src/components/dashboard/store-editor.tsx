@@ -34,6 +34,16 @@ export interface DeliveryIntegration {
   };
 }
 
+/** Floating WhatsApp button shown on every storefront page. */
+export interface WhatsappSettings {
+  enabled?: boolean;
+  phoneNumber?: string;
+  message?: string;
+  position?: 'bottom-right' | 'bottom-left' | 'top-right' | 'top-left';
+  accentColor?: string;
+  pulse?: boolean;
+}
+
 export interface CodFormSettings {
   headline?: string;
   submitLabel?: string;
@@ -176,6 +186,7 @@ export interface StoreType {
     seoDescription?: string;
     codForm?: CodFormSettings;
     storefront?: StorefrontSettings;
+    whatsapp?: WhatsappSettings;
   };
   integrations?: { delivery?: DeliveryIntegration };
 }
