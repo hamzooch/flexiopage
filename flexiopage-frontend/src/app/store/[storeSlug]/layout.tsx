@@ -14,7 +14,7 @@
  * <head> and the wa.me link is rendered without a client roundtrip.
  */
 import type { Metadata } from 'next';
-import { mediaUrl } from '@/lib/utils';
+import { mediaUrl, storeAbsoluteUrl } from '@/lib/utils';
 import { WhatsappButton, type WhatsappConfig } from '@/components/storefront/whatsapp-button';
 import { NewsletterPopup, type NewsletterConfig } from '@/components/storefront/newsletter-popup';
 import { LocaleBootstrap } from '@/components/storefront/locale-bootstrap';
@@ -35,9 +35,18 @@ const BLANK_FAVICON =
 
 interface StoreLite {
   name?: string;
+  description?: string;
   favicon?: string;
   logo?: string;
-  settings?: { whatsapp?: WhatsappConfig; newsletter?: NewsletterConfig; language?: string };
+  slug?: string;
+  settings?: {
+    whatsapp?: WhatsappConfig;
+    newsletter?: NewsletterConfig;
+    language?: string;
+    seoTitle?: string;
+    seoDescription?: string;
+    storefront?: { heroImage?: string };
+  };
 }
 
 async function fetchStore(storeSlug: string): Promise<StoreLite | null> {
@@ -63,12 +72,67 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   // a blank icon so the root layout's FlexioPage favicon doesn't leak in.
   const sellerIcon = mediaUrl(store?.favicon || store?.logo);
   const icon = sellerIcon || BLANK_FAVICON;
+
+  // ── Per-store Open Graph + Twitter cards ────────────────────────
+  // When someone shares the storefront URL on WhatsApp / Facebook / X /
+  // LinkedIn, the preview MUST show the seller's brand, not FlexioPage's.
+  // The root layout sets FlexioPage defaults; overriding here cascades
+  // to every page under /store/<slug>/* (home, product, collection, info).
+  // Each child page can still refine with its own openGraph block (e.g.
+  // the product page later swaps in the product image).
+  const name = store?.name?.trim();
+  const description = (
+    store?.settings?.seoDescription
+    || store?.description
+    || (name ? `Découvre les produits de ${name}.` : undefined)
+  );
+  // Prefer the hero image (1920×1080) for a proper rectangular card. Fall
+  // back to the logo when no hero is set — most social platforms still
+  // render it cleanly (Facebook/WhatsApp center-crop, OK for a square logo).
+  const ogImage = mediaUrl(
+    store?.settings?.storefront?.heroImage || store?.logo || store?.favicon
+  );
+  const canonicalUrl = storeAbsoluteUrl(storeSlug);
+
+  const title = store?.settings?.seoTitle?.trim() || name;
+
+  // No store? Don't leak FlexioPage branding either — return the icons only.
+  if (!store || !name) {
+    return { icons: { icon, shortcut: icon, apple: icon } };
+  }
+
   return {
-    icons: {
-      icon,
-      shortcut: icon,
-      apple: icon,
+    title,
+    description,
+    icons: { icon, shortcut: icon, apple: icon },
+    openGraph: {
+      type: 'website',
+      siteName: name,
+      title: title || name,
+      description,
+      url: canonicalUrl,
+      ...(ogImage
+        ? {
+            images: [
+              {
+                url: ogImage,
+                // Hero is wide; logo is usually square. We pass dimensions only
+                // when we know them — undefined lets the crawler infer.
+                alt: name,
+              },
+            ],
+          }
+        : {}),
     },
+    twitter: {
+      card: ogImage ? 'summary_large_image' : 'summary',
+      title: title || name,
+      description,
+      ...(ogImage ? { images: [ogImage] } : {}),
+    },
+    // Helps social bots find the canonical URL when accessed via /store/<slug>
+    // path-based fallback rather than the subdomain.
+    alternates: canonicalUrl?.startsWith('http') ? { canonical: canonicalUrl } : undefined,
   };
 }
 
