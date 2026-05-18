@@ -31,17 +31,11 @@ export function GoogleSignInButton({ onSuccess, text = 'continue_with' }: Props)
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
-  // Detect missing client ID and tell the seller why nothing happens.
-  // The OAuth provider in the layout already short-circuits; this is the
-  // user-visible message so we don't ship a dead silent button.
+  // No client ID configured → render nothing. The parent pages (/login,
+  // /register) also drop the surrounding divider via isGoogleAuthAvailable()
+  // so the email form keeps its original layout while Google is off.
   const clientId = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID || '';
-  if (!clientId) {
-    return (
-      <div className="rounded-lg border border-dashed border-border/60 bg-muted/30 p-3 text-center text-[11px] text-muted-foreground">
-        Google sign-in à configurer (variable <code>NEXT_PUBLIC_GOOGLE_CLIENT_ID</code> manquante).
-      </div>
-    );
-  }
+  if (!clientId) return null;
 
   async function handleSuccess(res: CredentialResponse) {
     if (!res.credential) {

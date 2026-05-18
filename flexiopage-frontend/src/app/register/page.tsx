@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button';
 import { authApi } from '@/lib/api';
 import { useAuthStore } from '@/stores/auth-store';
 import { BrandLogo } from '@/components/brand-logo';
-import { GoogleOAuthWrapper } from '@/components/auth/google-oauth-wrapper';
+import { GoogleOAuthWrapper, isGoogleAuthAvailable } from '@/components/auth/google-oauth-wrapper';
 import { GoogleSignInButton } from '@/components/auth/google-sign-in-button';
 
 export default function RegisterPage() {
@@ -81,7 +81,7 @@ export default function RegisterPage() {
               </div>
             </GoogleOAuthWrapper>
 
-            <form onSubmit={handleSubmit} className="space-y-5">
+            <form onSubmit={handleSubmit} className={`space-y-5 ${isGoogleAuthAvailable() ? '' : 'mt-8'}`}>
               {error && (
                 <div
                   role="alert"
