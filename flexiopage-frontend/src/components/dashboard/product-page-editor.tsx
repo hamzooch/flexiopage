@@ -18,6 +18,7 @@ import {
   Star, Leaf, Banknote, Plus, Trash2, ChevronUp, ChevronDown,
   Timer, Award, MessageSquareQuote, FileText, Palette as PaletteIcon,
   LayoutGrid, Image as ImgIcon, Columns2,
+  Smartphone, Tablet, Monitor,
 } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -502,6 +503,18 @@ function ProductPageLivePreview({ cfg }: { cfg: ProductPageSettings }) {
   const badges = (cfg.badges && cfg.badges.length > 0) ? cfg.badges : DEFAULT_BADGES;
   const fakePrice = '49.90';
 
+  // Viewport selector — drives the mock's max-width AND its column layout
+  // so the seller actually sees how the page wraps on each device, not a
+  // simple width clamp that would look like a narrow desktop.
+  const [device, setDevice] = useState<'mobile' | 'tablet' | 'desktop'>('mobile');
+  const isMobile = device === 'mobile';
+  const frameMaxWidth =
+    device === 'mobile'  ? 280
+    : device === 'tablet' ? 420
+    : 9999;
+  // On mobile the hero stacks gallery → info; tablet/desktop keep 2-col.
+  const heroGridClass = isMobile ? 'space-y-2' : 'grid grid-cols-2 gap-2';
+
   // Live timer countdown for the preview — same self-update pattern as
   // the real component, capped to "demo" granularity.
   const [tick, setTick] = useState(0);
@@ -530,15 +543,42 @@ function ProductPageLivePreview({ cfg }: { cfg: ProductPageSettings }) {
           <FileText className="h-3 w-3" />
           Aperçu temps réel
         </div>
-        <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/15 px-1.5 py-0.5 text-[9px] font-bold text-emerald-700">
-          <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
-          Live
-        </span>
+        {/* Viewport switcher — adapts the mock browser width AND the hero
+            layout (mobile = single column, tablet/desktop = 2 columns). */}
+        <div className="inline-flex items-center gap-0.5 rounded-lg border border-border/60 bg-muted/40 p-0.5">
+          {([
+            { id: 'mobile',  icon: Smartphone, label: 'Mobile' },
+            { id: 'tablet',  icon: Tablet,     label: 'Tablette' },
+            { id: 'desktop', icon: Monitor,    label: 'Desktop' },
+          ] as const).map((d) => {
+            const Icon = d.icon;
+            const active = device === d.id;
+            return (
+              <button
+                key={d.id}
+                type="button"
+                onClick={() => setDevice(d.id)}
+                title={d.label}
+                aria-label={d.label}
+                aria-pressed={active}
+                className={cn(
+                  'grid h-6 w-6 place-items-center rounded transition-all',
+                  active ? 'bg-card text-primary shadow-sm' : 'text-muted-foreground hover:text-foreground'
+                )}
+              >
+                <Icon className="h-3 w-3" />
+              </button>
+            );
+          })}
+        </div>
       </div>
 
       <div className="max-h-[80vh] overflow-y-auto bg-muted/20 p-3">
-        {/* Mini browser frame */}
-        <div className="overflow-hidden rounded-xl bg-card shadow-sm">
+        {/* Mini browser frame — width changes with device */}
+        <div
+          className="mx-auto overflow-hidden rounded-xl bg-card shadow-sm transition-all"
+          style={{ maxWidth: frameMaxWidth }}
+        >
           <div className="flex items-center gap-1 border-b border-border/40 bg-muted/30 px-2 py-1.5">
             <span className="h-1.5 w-1.5 rounded-full bg-rose-400/60" />
             <span className="h-1.5 w-1.5 rounded-full bg-amber-400/60" />
@@ -547,8 +587,8 @@ function ProductPageLivePreview({ cfg }: { cfg: ProductPageSettings }) {
           </div>
 
           <div className="space-y-3 p-3">
-            {/* HERO — gallery + info */}
-            <div className="grid grid-cols-2 gap-2">
+            {/* HERO — gallery + info (stacks on mobile, side-by-side otherwise) */}
+            <div className={heroGridClass}>
               {/* Gallery */}
               <div className="space-y-1">
                 {layout === 'grid' ? (
