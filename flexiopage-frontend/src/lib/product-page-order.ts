@@ -107,6 +107,8 @@ export interface ProductPageSettings {
   badges?: TrustBadge[];
   showTestimonials?: boolean;
   showDescription?: boolean;
+  /** Show the "Ajouter au panier" CTA on the product page. Default true. */
+  showAddToCart?: boolean;
   sectionOrder?: ProductPageSectionId[];
   /** Visual style overrides — colors + gallery layout. */
   style?: ProductPageStyle;

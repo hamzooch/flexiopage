@@ -407,20 +407,23 @@ export default async function PublicProductPage({ params }: Props) {
                 <>
                   {/* Add-to-cart — secondary path for buyers who want to grab
                       several items before checking out. The primary "Commander"
-                      flow stays in the COD form below. */}
-                  <AddToCartButton
-                    storeSlug={storeSlug}
-                    product={{
-                      id: product._id,
-                      slug: product.slug,
-                      name: product.name,
-                      image: product.images?.[0],
-                      price: product.price,
-                      currency,
-                    }}
-                    theme={theme}
-                    radius={radius}
-                  />
+                      flow stays in the COD form below. Sellers can hide this CTA
+                      to run a pure-COD funnel (productPage.showAddToCart). */}
+                  {store?.settings?.storefront?.productPage?.showAddToCart !== false && (
+                    <AddToCartButton
+                      storeSlug={storeSlug}
+                      product={{
+                        id: product._id,
+                        slug: product.slug,
+                        name: product.name,
+                        image: product.images?.[0],
+                        price: product.price,
+                        currency,
+                      }}
+                      theme={theme}
+                      radius={radius}
+                    />
+                  )}
                   <div className="scroll-mt-24" id="cod-form">
                     <CodOrderForm
                       storeSlug={storeSlug}

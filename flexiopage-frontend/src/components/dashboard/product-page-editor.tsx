@@ -577,8 +577,8 @@ export function ProductPageEditor({ cfg, onChange, codForm, onCodFormChange, cur
         )}
       </section>
 
-      {/* ── TESTIMONIALS + DESCRIPTION TOGGLE ──────────────────── */}
-      <section className="grid gap-3 sm:grid-cols-2">
+      {/* ── TESTIMONIALS + DESCRIPTION + ADD-TO-CART TOGGLES ──── */}
+      <section className="grid gap-3 sm:grid-cols-3">
         <div className="rounded-xl border border-border/60 bg-card p-4">
           <FieldToggle
             label="Avis clients sur la page produit"
@@ -593,6 +593,14 @@ export function ProductPageEditor({ cfg, onChange, codForm, onCodFormChange, cur
             sublabel="Affiche la description sous la fiche"
             checked={cfg.showDescription !== false}
             onChange={(v) => onChange({ ...cfg, showDescription: v })}
+          />
+        </div>
+        <div className="rounded-xl border border-border/60 bg-card p-4">
+          <FieldToggle
+            label="Bouton « Ajouter au panier »"
+            sublabel="Désactive pour une page 100% COD"
+            checked={cfg.showAddToCart !== false}
+            onChange={(v) => onChange({ ...cfg, showAddToCart: v })}
           />
         </div>
       </section>

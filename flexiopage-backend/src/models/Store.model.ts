@@ -180,6 +180,10 @@ export interface IStore extends Document {
         showTestimonials?: boolean;
         /** Show the long description section (already supported per-product, this is a store-wide default). */
         showDescription?: boolean;
+        /** Show the secondary "Ajouter au panier" CTA on the product page.
+         *  Default true. Sellers running pure-COD funnels often want only the
+         *  Commander form visible, so this lets them hide the cart path. */
+        showAddToCart?: boolean;
         /** Render order of the movable body sections of the product page. */
         sectionOrder?: Array<'badges' | 'timer' | 'description' | 'testimonials'>;
         /** Visual style overrides — colors + gallery layout. */
@@ -489,6 +493,7 @@ const StoreSchema = new Schema<IStore>(
           ],
           showTestimonials: { type: Boolean, default: false },
           showDescription: { type: Boolean, default: true },
+          showAddToCart: { type: Boolean, default: true },
           sectionOrder: [{ type: String, enum: ['badges', 'timer', 'description', 'testimonials'] }],
           style: {
             useCustomPalette: { type: Boolean, default: false },
