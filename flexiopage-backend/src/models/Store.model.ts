@@ -42,6 +42,25 @@ export interface IStore extends Document {
       showNotes?: boolean;        // default true
       showQuantity?: boolean;     // default true
       reassurance?: string;       // bullet shown under the button
+      /**
+       * Flat per-store shipping fee added on top of the product subtotal in
+       * the COD checkout. 0 (or unset) = no fee. Always trusted from this
+       * server-side value — the storefront only displays it.
+       */
+      shippingFee?: number;
+      /** ── Visual customization (overrides the active theme on the COD form) ── */
+      /** Background fill of the form card (hex). Defaults to theme.surface. */
+      backgroundColor?: string;
+      /** Hex color for the submit button. Defaults to theme.primary. */
+      buttonColor?: string;
+      /** Hex color for text rendered on the submit button. Defaults to theme.primaryFg. */
+      buttonTextColor?: string;
+      /** Border-radius style for the submit button. */
+      buttonShape?: 'pill' | 'rounded' | 'square';
+      /** When true, the submit button gets a subtle pulse animation. */
+      buttonAnimated?: boolean;
+      /** Animation flavor. */
+      buttonAnimation?: 'pulse' | 'shimmer' | 'bounce' | 'none';
     };
     /**
      * Storefront sections — what to render on the public store page.
@@ -258,6 +277,13 @@ const StoreSchema = new Schema<IStore>(
         showNotes: { type: Boolean, default: true },
         showQuantity: { type: Boolean, default: true },
         reassurance: { type: String },
+        shippingFee: { type: Number, default: 0, min: 0 },
+        backgroundColor: { type: String, trim: true },
+        buttonColor: { type: String, trim: true },
+        buttonTextColor: { type: String, trim: true },
+        buttonShape: { type: String, enum: ['pill', 'rounded', 'square'], default: 'pill' },
+        buttonAnimated: { type: Boolean, default: false },
+        buttonAnimation: { type: String, enum: ['pulse', 'shimmer', 'bounce', 'none'], default: 'pulse' },
       },
       storefront: {
         announcementBar: {

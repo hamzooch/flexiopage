@@ -46,6 +46,15 @@ export interface CodFormSettings {
   showNotes?: boolean;
   showQuantity?: boolean;
   reassurance?: string;
+  /** Flat shipping fee added to every COD order in this store. */
+  shippingFee?: number;
+  // ── Visual customization (overrides the active theme on the COD form) ──
+  backgroundColor?: string;
+  buttonColor?: string;
+  buttonTextColor?: string;
+  buttonShape?: 'pill' | 'rounded' | 'square';
+  buttonAnimated?: boolean;
+  buttonAnimation?: 'pulse' | 'shimmer' | 'bounce' | 'none';
 }
 
 export interface SlideItem {

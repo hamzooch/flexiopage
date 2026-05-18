@@ -486,7 +486,10 @@ router.post('/checkout/cod', async (req: Request, res: Response): Promise<void> 
   }
 
   const subtotal = resolved.reduce((s, it) => s + it.price * it.quantity, 0);
-  const shippingCost = 0; // Flat-fee policy TBD per store; courier sets the real fee.
+  // Flat per-store shipping fee configured by the seller in /dashboard/stores/[id]/checkout.
+  // Always trusted from the store doc — the client never sets this. orderService
+  // adds it on top of `subtotal` to produce the final `total`.
+  const shippingCost = Math.max(0, Number(store.settings?.codForm?.shippingFee) || 0);
 
   // ── Create order ─────────────────────────────────────────────────
   let order;

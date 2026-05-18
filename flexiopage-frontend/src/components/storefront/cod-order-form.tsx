@@ -33,6 +33,15 @@ export interface CodFormConfig {
   showNotes?: boolean;
   showQuantity?: boolean;
   reassurance?: string;
+  /** Flat per-store shipping fee added on top of the product subtotal. */
+  shippingFee?: number;
+  // Visual customization
+  backgroundColor?: string;
+  buttonColor?: string;
+  buttonTextColor?: string;
+  buttonShape?: 'pill' | 'rounded' | 'square';
+  buttonAnimated?: boolean;
+  buttonAnimation?: 'pulse' | 'shimmer' | 'bounce' | 'none';
 }
 
 interface Props {
@@ -173,7 +182,12 @@ export function CodOrderForm({
       ]
     : [];
 
-  const total = bundleTotal(productPrice, bundle, quantity);
+  // Server-side flat shipping fee applied once per COD order. Display-only —
+  // the backend re-reads the same value from the store doc to compute the
+  // authoritative total, so a tampered client never charges the wrong amount.
+  const shippingFee = Math.max(0, Number(config?.shippingFee) || 0);
+  const productsTotal = bundleTotal(productPrice, bundle, quantity);
+  const total = productsTotal + shippingFee;
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -236,7 +250,11 @@ export function CodOrderForm({
       onSubmit={handleSubmit}
       onFocusCapture={handleFirstEngagement}
       className="space-y-5 border p-5 sm:p-6"
-      style={{ backgroundColor: theme.surface, borderColor: theme.border, borderRadius: radius }}
+      style={{
+        backgroundColor: config?.backgroundColor || theme.surface,
+        borderColor: theme.border,
+        borderRadius: radius,
+      }}
     >
       <div>
         <h2
@@ -414,13 +432,32 @@ export function CodOrderForm({
         </div>
       ) : null}
 
-      {/* Total */}
-      <div className="flex items-center justify-between border-t pt-4" style={{ borderColor: theme.border }}>
-        <span className="text-sm" style={{ color: theme.muted }}>À payer à la livraison</span>
-        <span className="text-2xl font-extrabold" style={{ color: theme.primary }}>
-          {formatCurrency(total, currency)}
-        </span>
-      </div>
+      {/* Total — with shipping breakdown when a fee is configured */}
+      {shippingFee > 0 ? (
+        <div className="space-y-1.5 border-t pt-4" style={{ borderColor: theme.border }}>
+          <div className="flex items-center justify-between text-sm" style={{ color: theme.muted }}>
+            <span>Sous-total</span>
+            <span>{formatCurrency(productsTotal, currency)}</span>
+          </div>
+          <div className="flex items-center justify-between text-sm" style={{ color: theme.muted }}>
+            <span>Livraison</span>
+            <span>+ {formatCurrency(shippingFee, currency)}</span>
+          </div>
+          <div className="flex items-center justify-between pt-2">
+            <span className="text-sm font-medium" style={{ color: theme.foreground }}>À payer à la livraison</span>
+            <span className="text-2xl font-extrabold" style={{ color: theme.primary }}>
+              {formatCurrency(total, currency)}
+            </span>
+          </div>
+        </div>
+      ) : (
+        <div className="flex items-center justify-between border-t pt-4" style={{ borderColor: theme.border }}>
+          <span className="text-sm" style={{ color: theme.muted }}>À payer à la livraison</span>
+          <span className="text-2xl font-extrabold" style={{ color: theme.primary }}>
+            {formatCurrency(total, currency)}
+          </span>
+        </div>
+      )}
 
       {error && (
         <div
@@ -431,27 +468,70 @@ export function CodOrderForm({
         </div>
       )}
 
-      <button
-        type="submit"
-        disabled={submitting}
-        className="inline-flex h-13 w-full items-center justify-center gap-2 px-7 py-4 text-base font-bold transition-all hover:scale-[1.01] disabled:opacity-60"
-        style={{
-          background: theme.style === 'tech'
-            ? `linear-gradient(135deg, ${theme.gradientFrom}, ${theme.gradientTo})`
-            : theme.primary,
-          color: theme.primaryFg,
-          borderRadius: radius === '0px' ? '0' : '999px',
-        }}
-      >
-        {submitting ? (
-          <Loader2 className="h-5 w-5 animate-spin" />
-        ) : (
+      {(() => {
+        // Resolve the visual config — fall back to the active theme so old
+        // stores without custom values keep their previous look.
+        const btnBg = config?.buttonColor
+          || (theme.style === 'tech'
+              ? `linear-gradient(135deg, ${theme.gradientFrom}, ${theme.gradientTo})`
+              : theme.primary);
+        const btnFg = config?.buttonTextColor || theme.primaryFg;
+        const shape = config?.buttonShape || 'pill';
+        const btnRadius =
+          shape === 'pill'    ? '999px'
+          : shape === 'rounded' ? '12px'
+          : '0';
+        const animEnabled = config?.buttonAnimated !== false;
+        const animKind = animEnabled ? (config?.buttonAnimation || 'pulse') : 'none';
+        const animClass =
+          animKind === 'pulse'   ? 'cod-submit-pulse'
+          : animKind === 'shimmer' ? 'cod-submit-shimmer'
+          : animKind === 'bounce'  ? 'cod-submit-bounce'
+          : '';
+        const accentForGlow = config?.buttonColor || theme.primary;
+        return (
           <>
-            <Wallet className="h-5 w-5" />
-            {submitLabel} · {formatCurrency(total, currency)}
+            <button
+              type="submit"
+              disabled={submitting}
+              className={`relative inline-flex h-13 w-full items-center justify-center gap-2 overflow-hidden px-7 py-4 text-base font-bold transition-all hover:scale-[1.01] disabled:opacity-60 ${animClass}`}
+              style={{ background: btnBg, color: btnFg, borderRadius: btnRadius }}
+            >
+              {submitting ? (
+                <Loader2 className="h-5 w-5 animate-spin" />
+              ) : (
+                <>
+                  <Wallet className="h-5 w-5" />
+                  {submitLabel} · {formatCurrency(total, currency)}
+                </>
+              )}
+            </button>
+            {/* Inline keyframes — colocated so the form is self-contained and
+                survives an SSR/CSR boundary without a separate stylesheet. */}
+            <style>{`
+              @keyframes codSubmitPulse {
+                0%, 100% { box-shadow: 0 0 0 0 ${accentForGlow}66; transform: scale(1); }
+                50%      { box-shadow: 0 0 0 14px ${accentForGlow}00; transform: scale(1.02); }
+              }
+              @keyframes codSubmitBounce {
+                0%, 100% { transform: translateY(0); }
+                50%      { transform: translateY(-4px); }
+              }
+              @keyframes codSubmitShimmerBg {
+                0%   { background-position: -200% center; }
+                100% { background-position:  200% center; }
+              }
+              .cod-submit-pulse  { animation: codSubmitPulse 1.6s ease-in-out infinite; }
+              .cod-submit-bounce { animation: codSubmitBounce 1.2s ease-in-out infinite; }
+              .cod-submit-shimmer {
+                background-image: linear-gradient(110deg, ${typeof btnBg === 'string' ? btnBg : accentForGlow} 30%, ${accentForGlow}cc 50%, ${typeof btnBg === 'string' ? btnBg : accentForGlow} 70%) !important;
+                background-size: 200% 100% !important;
+                animation: codSubmitShimmerBg 2.4s linear infinite;
+              }
+            `}</style>
           </>
-        )}
-      </button>
+        );
+      })()}
 
       <div
         className="flex flex-wrap items-center justify-center gap-4 text-[11px]"
