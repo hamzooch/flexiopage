@@ -25,6 +25,16 @@ function deepUnescape(value: unknown): unknown {
   return value;
 }
 
+/**
+ * Per-account store creation cap. Keeps the platform from being abused as
+ * a free multi-account playground. Staff roles (admin/superadmin/owner)
+ * are exempt because they may need to spin up test stores. To override
+ * for a specific seller, bump their User.role or set
+ * `STORE_LIMIT_PER_USER` higher via env.
+ */
+const STORE_LIMIT_PER_USER = Number(process.env.STORE_LIMIT_PER_USER) || 3;
+const STAFF_ROLES = new Set(['admin', 'superadmin', 'owner', 'supervisor']);
+
 export async function createStore(req: AuthRequest, res: Response): Promise<void> {
   if (!req.user) {
     res.status(401).json({ error: 'Not authenticated' });
@@ -35,6 +45,20 @@ export async function createStore(req: AuthRequest, res: Response): Promise<void
   if (isTeamMember(req.user)) {
     res.status(403).json({ error: 'Les membres d’équipe ne peuvent pas créer de boutique.' });
     return;
+  }
+  // Per-account limit: a seller can own at most STORE_LIMIT_PER_USER stores.
+  // Skipped for staff (admin/superadmin) so they can manage support/test stores.
+  if (!STAFF_ROLES.has(req.user.role || 'user')) {
+    const existing = await storeService.getStoresByOwner(req.user._id);
+    if (existing.length >= STORE_LIMIT_PER_USER) {
+      res.status(403).json({
+        error: `Limite atteinte : tu ne peux créer que ${STORE_LIMIT_PER_USER} boutiques par compte. Contacte le support si tu as besoin de plus.`,
+        code: 'store_limit_reached',
+        limit: STORE_LIMIT_PER_USER,
+        current: existing.length,
+      });
+      return;
+    }
   }
   const { name, slug, description, theme, storeType, currency, language, country } = req.body as {
     name?: string;

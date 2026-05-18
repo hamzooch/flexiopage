@@ -79,8 +79,19 @@ export async function updatePage(
   );
 }
 
-export async function getPagesByStore(storeId: string): Promise<ILandingPage[]> {
-  return LandingPage.find({ storeId }).sort({ updatedAt: -1 }).lean<ILandingPage[]>();
+/**
+ * List pages for a store, optionally filtered by `kind`. The dashboard's
+ * landing-pages list passes `kind=landing` so the seeded info pages
+ * (Conditions, FAQ, Contact…) stay hidden from the marketing-pages flow
+ * and are edited only via the store's footer settings.
+ */
+export async function getPagesByStore(
+  storeId: string,
+  filter?: { kind?: 'landing' | 'info' }
+): Promise<ILandingPage[]> {
+  const query: Record<string, unknown> = { storeId };
+  if (filter?.kind) query.kind = filter.kind;
+  return LandingPage.find(query).sort({ updatedAt: -1 }).lean<ILandingPage[]>();
 }
 
 export async function getPageById(pageId: string, storeId: string): Promise<ILandingPage | null> {

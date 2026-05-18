@@ -250,10 +250,36 @@ export default function StoreHubPage() {
         </Button>
       </div>
 
+      {/* Quick config status — theme name + 3 swatches, at-a-glance */}
+      {savedTheme?.primary && (
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-border/60 bg-gradient-to-r from-muted/40 via-card to-muted/30 p-4">
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="flex -space-x-1.5">
+              <span className="h-7 w-7 rounded-full border-2 border-card" style={{ backgroundColor: savedTheme.primary }} />
+              <span className="h-7 w-7 rounded-full border-2 border-card" style={{ backgroundColor: savedTheme.accent || '#999' }} />
+              <span className="h-7 w-7 rounded-full border-2 border-card" style={{ backgroundColor: savedTheme.background || '#fff' }} />
+            </div>
+            <div className="min-w-0">
+              <div className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Thème actif</div>
+              <div className="truncate text-sm font-semibold">
+                {currentThemeName || 'Personnalisé'}
+                <span className="ml-1.5 text-xs font-normal text-muted-foreground">
+                  · {savedTheme.dark ? 'mode sombre' : 'mode clair'}
+                </span>
+              </div>
+            </div>
+          </div>
+          <Button variant="outline" size="sm" className="gap-1.5" onClick={() => setThemePickerOpen(true)}>
+            <Palette className="h-3.5 w-3.5" />
+            Changer
+          </Button>
+        </div>
+      )}
+
       {/* Two-column on PC: section cards stacked vertically (left) + live preview (right) */}
       <div className="grid gap-6 lg:grid-cols-[minmax(0,380px)_minmax(0,1fr)]">
         {/* LEFT — section cards aligned vertically */}
-        <div className="space-y-4">
+        <div className="space-y-3">
           {visibleCards.map((c) => {
             const Icon = c.icon;
             const tone = TONE_CLASSES[c.tone];
@@ -261,23 +287,21 @@ export default function StoreHubPage() {
               <Link
                 key={c.href}
                 href={`/dashboard/stores/${storeId}/${c.href}`}
-                className="group relative block overflow-hidden rounded-2xl border border-border/60 bg-card p-5 transition-all duration-300 hover:-translate-y-1 hover:border-primary/30 hover:shadow-xl"
+                className="group relative block overflow-hidden rounded-2xl border border-border/60 bg-card p-4 transition-all duration-300 hover:-translate-y-0.5 hover:border-primary/30 hover:shadow-lg"
               >
                 <div
-                  className={cn('pointer-events-none absolute -right-10 -top-10 h-32 w-32 rounded-full bg-gradient-to-br opacity-10 blur-2xl transition-opacity duration-300 group-hover:opacity-25', tone.iconBg)}
+                  className={cn('pointer-events-none absolute -right-10 -top-10 h-28 w-28 rounded-full bg-gradient-to-br opacity-10 blur-2xl transition-opacity duration-300 group-hover:opacity-25', tone.iconBg)}
                   aria-hidden
                 />
-                <div className="relative flex items-start gap-3">
-                  <div className={cn('grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-gradient-to-br text-white shadow-md', tone.iconBg, tone.glow)}>
-                    <Icon className="h-5 w-5" />
+                <div className="relative flex items-center gap-3">
+                  <div className={cn('grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-gradient-to-br text-white shadow-md', tone.iconBg, tone.glow)}>
+                    <Icon className="h-4 w-4" />
                   </div>
                   <div className="min-w-0 flex-1">
-                    <h3 className="text-base font-semibold tracking-tight">{c.title}</h3>
-                    <p className="mt-1 text-xs text-muted-foreground leading-relaxed">{c.description}</p>
+                    <h3 className="text-sm font-semibold tracking-tight">{c.title}</h3>
+                    <p className="mt-0.5 line-clamp-1 text-[11px] text-muted-foreground">{c.description}</p>
                   </div>
-                </div>
-                <div className="mt-3 flex items-center gap-1.5 text-xs font-medium text-primary opacity-0 transition-opacity group-hover:opacity-100">
-                  Ouvrir <ArrowLeft className="h-3 w-3 rotate-180" />
+                  <ArrowLeft className="h-4 w-4 shrink-0 rotate-180 text-muted-foreground opacity-0 transition-all group-hover:opacity-100 group-hover:text-primary" />
                 </div>
               </Link>
             );

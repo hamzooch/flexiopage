@@ -47,8 +47,11 @@ export default function DashboardPagesPage() {
       return;
     }
     setLoading(true);
+    // Only show LANDING pages here — the auto-seeded info pages (Conditions,
+    // FAQ, Contact…) are edited from /dashboard/stores/[id]/info-pages and
+    // the footer editor, not from this marketing-pages list.
     storesApi
-      .listPages(selectedStoreId)
+      .listPages(selectedStoreId, { kind: 'landing' })
       .then((res) => setPages((res.data as { pages: PageType[] }).pages))
       .catch(() => setPages([]))
       .finally(() => setLoading(false));

@@ -252,7 +252,9 @@ export async function createPage(req: AuthRequest, res: Response): Promise<void>
 
 export async function listPages(req: AuthRequest, res: Response): Promise<void> {
   const store = req.store!;
-  const pages = await pageService.getPagesByStore(store._id.toString());
+  const kindParam = (req.query.kind as string | undefined)?.toLowerCase();
+  const kind = kindParam === 'landing' || kindParam === 'info' ? kindParam : undefined;
+  const pages = await pageService.getPagesByStore(store._id.toString(), kind ? { kind } : undefined);
   res.json({ pages });
 }
 

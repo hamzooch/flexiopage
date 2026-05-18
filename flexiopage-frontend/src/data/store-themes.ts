@@ -217,32 +217,32 @@ export function deriveTheme(
 }
 
 // ─────────────────────────────────────────────────────────────────────
-// 1. VOLT — Electronics  ·  Shopify "Ride"-inspired
-// Pure black, volt-lime accent, oversized geometric type, sharp corners,
-// full-bleed hero, image-overlay product cards. Loud and high-energy.
+// 1. VOLT — Electronics  ·  Modern tech / arcade
+// Carbon black with a refined volt-lime, fresher orange accent. The
+// pattern is a soft grid that fades — less wireframe, more sci-fi.
 // ─────────────────────────────────────────────────────────────────────
 const volt: StoreThemeTemplate = {
   id: 'volt',
   name: 'Volt',
-  tagline: 'Tech, brut, haute énergie',
+  tagline: 'Tech · gaming · audio',
   description:
-    'Noir absolu, accent vert volt, typo géante, angles vifs. Hero plein cadre, cartes en surimpression. Pour smartphones, gaming, audio.',
+    'Noir carbone, volt-lime électrique, accent orange flame. Typo géométrique géante, grilles techniques, cartes immersives en plein cadre. Pour smartphones, casques, gaming, audio premium.',
   niche: 'electronics',
   nicheLabel: 'Électronique',
   forStoreTypes: ['physical'],
   theme: makeTheme({
     templateId: 'volt',
-    primary: '#ccff00',          // volt lime
+    primary: '#d4ff3a',          // refined volt — slightly less harsh
     primaryFg: '#0a0a0a',
-    accent: '#ff4d00',           // blaze orange
-    background: '#0a0a0a',       // pure black
-    surface: '#161616',
-    surfaceMuted: '#121212',
-    foreground: '#f4f4f4',
-    muted: '#8a8a8a',
-    border: '#2a2a2a',
-    gradientFrom: '#ccff00',
-    gradientTo: '#ff4d00',
+    accent: '#ff5a1f',           // flame orange
+    background: '#080808',       // carbon black
+    surface: '#141414',
+    surfaceMuted: '#0f0f0f',
+    foreground: '#f5f5f5',
+    muted: '#909090',
+    border: '#262626',
+    gradientFrom: '#d4ff3a',
+    gradientTo: '#ff5a1f',
     fontHeading: '"Space Grotesk", "Inter", system-ui, sans-serif',
     fontBody: '"Inter", system-ui, -apple-system, sans-serif',
     fontDisplaySize: 'xlarge',
@@ -273,17 +273,17 @@ const atelier: StoreThemeTemplate = {
   forStoreTypes: ['physical'],
   theme: makeTheme({
     templateId: 'atelier',
-    primary: '#1a1714',
-    primaryFg: '#f7f4ee',
-    accent: '#9a7b4f',           // antique brass
-    background: '#f3efe7',       // warm paper
+    primary: '#181513',          // deep ink
+    primaryFg: '#f7f3eb',
+    accent: '#a98455',           // refined brass (warmer than antique)
+    background: '#f4f0e7',       // warm cream paper
     surface: '#ffffff',
-    surfaceMuted: '#e9e4d8',
-    foreground: '#1a1714',
-    muted: '#76706a',
-    border: '#ddd6c8',
-    gradientFrom: '#9a7b4f',
-    gradientTo: '#1a1714',
+    surfaceMuted: '#ebe5d6',
+    foreground: '#181513',
+    muted: '#7a7269',
+    border: '#dcd4c4',
+    gradientFrom: '#a98455',
+    gradientTo: '#181513',
     fontHeading: '"Playfair Display", "Cormorant Garamond", Georgia, serif',
     fontBody: '"Inter", "Helvetica Neue", system-ui, sans-serif',
     fontDisplaySize: 'xlarge',
@@ -313,18 +313,18 @@ const bloom: StoreThemeTemplate = {
   forStoreTypes: ['physical'],
   theme: makeTheme({
     templateId: 'bloom',
-    primary: '#c81d6b',          // berry rose
+    primary: '#b8195e',          // refined berry — slightly deeper, more couture
     primaryFg: '#ffffff',
-    accent: '#f59ec4',           // petal pink
-    background: '#fdeef3',       // pale blush
+    accent: '#f4a3c4',           // petal pink, more muted
+    background: '#fcf3f5',       // soft blush cream
     surface: '#ffffff',
-    surfaceMuted: '#fbdce8',
-    foreground: '#3f2436',
-    muted: '#9a7f8d',
-    border: '#f6cdde',
-    gradientFrom: '#f59ec4',
-    gradientTo: '#c81d6b',
-    fontHeading: '"Outfit", "DM Serif Display", "Inter", sans-serif',
+    surfaceMuted: '#fae1ea',
+    foreground: '#3a2030',
+    muted: '#9c7e8a',
+    border: '#f4cfdb',
+    gradientFrom: '#f4a3c4',
+    gradientTo: '#b8195e',
+    fontHeading: '"DM Serif Display", "Outfit", "Inter", sans-serif',
     fontBody: '"Inter", system-ui, sans-serif',
     fontDisplaySize: 'large',
     borderRadius: 'xl',
@@ -357,17 +357,17 @@ const pulse: StoreThemeTemplate = {
   forStoreTypes: ['digital'],
   theme: makeTheme({
     templateId: 'pulse',
-    primary: '#7c5cff',          // violet
+    primary: '#8b5cf6',          // contemporary violet (Vercel-ish)
     primaryFg: '#ffffff',
-    accent: '#1fd5c8',           // teal-cyan
-    background: '#0c0a1d',       // indigo night
-    surface: '#16142c',
-    surfaceMuted: '#110f24',
-    foreground: '#e6e4f5',
-    muted: '#8e8aa8',
-    border: '#272447',
-    gradientFrom: '#7c5cff',
-    gradientTo: '#1fd5c8',
+    accent: '#22d3ee',            // electric cyan
+    background: '#0a0a1a',        // near-black indigo (cleaner than night blue)
+    surface: '#14142a',
+    surfaceMuted: '#0e0e22',
+    foreground: '#ebeaf5',
+    muted: '#8a87a8',
+    border: '#252244',
+    gradientFrom: '#8b5cf6',
+    gradientTo: '#22d3ee',
     fontHeading: '"Space Grotesk", "Inter", system-ui, sans-serif',
     fontBody: '"Inter", system-ui, sans-serif',
     fontDisplaySize: 'xlarge',
@@ -397,17 +397,17 @@ const sage: StoreThemeTemplate = {
   forStoreTypes: ['digital'],
   theme: makeTheme({
     templateId: 'sage',
-    primary: '#b5512f',           // terracotta
-    primaryFg: '#fdf6ef',
-    accent: '#5c7a5c',            // sage green
-    background: '#f4efe4',        // warm oat
+    primary: '#b5532f',            // refined terracotta
+    primaryFg: '#fdf7f0',
+    accent: '#637a5c',             // muted sage
+    background: '#f5f0e4',         // softer oat
     surface: '#ffffff',
-    surfaceMuted: '#ebe4d3',
+    surfaceMuted: '#ece5d4',
     foreground: '#2c2820',
-    muted: '#766f5f',
-    border: '#ddd4bf',
-    gradientFrom: '#b5512f',
-    gradientTo: '#5c7a5c',
+    muted: '#7a7363',
+    border: '#dbd3bf',
+    gradientFrom: '#b5532f',
+    gradientTo: '#637a5c',
     fontHeading: '"DM Serif Display", "Cormorant Garamond", Georgia, serif',
     fontBody: '"Inter", system-ui, sans-serif',
     fontDisplaySize: 'xlarge',
@@ -437,17 +437,17 @@ const studio: StoreThemeTemplate = {
   forStoreTypes: ['digital'],
   theme: makeTheme({
     templateId: 'studio',
-    primary: '#0b0b0b',
+    primary: '#0a0a0a',           // pure ink
     primaryFg: '#ffffff',
-    accent: '#2f5cff',            // electric blue
+    accent: '#3d5afe',            // electric cobalt
     background: '#ffffff',
     surface: '#ffffff',
-    surfaceMuted: '#f0f0f0',
-    foreground: '#0b0b0b',
-    muted: '#6e6e6e',
-    border: '#e2e2e2',
-    gradientFrom: '#0b0b0b',
-    gradientTo: '#2f5cff',
+    surfaceMuted: '#f5f5f5',
+    foreground: '#0a0a0a',
+    muted: '#737373',
+    border: '#e5e5e5',
+    gradientFrom: '#0a0a0a',
+    gradientTo: '#3d5afe',
     fontHeading: '"Inter", system-ui, sans-serif',
     fontBody: '"Inter", system-ui, sans-serif',
     fontDisplaySize: 'xlarge',
@@ -478,16 +478,16 @@ const lumen: StoreThemeTemplate = {
   forStoreTypes: ['digital'],
   theme: makeTheme({
     templateId: 'lumen',
-    primary: '#4f46e5',           // indigo
+    primary: '#4338ca',            // deeper indigo, more premium
     primaryFg: '#ffffff',
-    accent: '#f59e0b',            // amber
-    background: '#ffffff',
+    accent: '#f59e0b',             // amber gold
+    background: '#fbfbfd',         // very soft off-white (less harsh than pure white)
     surface: '#ffffff',
-    surfaceMuted: '#f1f2fb',
-    foreground: '#10153a',
+    surfaceMuted: '#eef0fa',
+    foreground: '#0f1530',
     muted: '#5b6184',
-    border: '#e3e4f4',
-    gradientFrom: '#4f46e5',
+    border: '#e1e3f2',
+    gradientFrom: '#4338ca',
     gradientTo: '#f59e0b',
     fontHeading: '"Outfit", "Inter", system-ui, sans-serif',
     fontBody: '"Inter", system-ui, sans-serif',

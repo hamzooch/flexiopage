@@ -34,7 +34,7 @@ const STANDARD_INFO_PAGES: Array<{
   {
     name: 'Contactez-nous',
     slug: 'contact',
-    body: "# Contactez-nous\n\nUne question, une commande à modifier ?\n\n- **Téléphone** : +XXX XX XX XX XX\n- **Email** : contact@example.com\n- **WhatsApp** : +XXX XX XX XX XX\n\nNous répondons sous 24 h en semaine.\n\n*— Mets ici tes vraies coordonnées.*",
+    body: "# Contactez-nous\n\nUne question, une commande à modifier ?\n\n- **Téléphone** : +216 55 oooooo\n- **Email** : exemple@gmail.com\n- **WhatsApp** : +216 55 oooooo\n\nNous répondons sous 24 h en semaine.\n\n*— Mets ici tes vraies coordonnées.*",
   },
   {
     name: 'Questions fréquemment posées',

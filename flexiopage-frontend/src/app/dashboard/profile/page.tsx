@@ -277,23 +277,23 @@ export default function ProfilePage() {
       </section>
 
       {/* Stats */}
-      <section className="grid gap-4 sm:grid-cols-3">
+      <section className="grid gap-3 sm:grid-cols-3">
         <StatCard
-          icon={<StoreIcon className="h-5 w-5" />}
+          icon={<StoreIcon className="h-4 w-4" />}
           tone="indigo"
           label="Boutiques"
           value={String(stores.length)}
           href="#stores"
         />
         <StatCard
-          icon={<Wallet className="h-5 w-5" />}
+          icon={<Wallet className="h-4 w-4" />}
           tone="emerald"
           label="Solde principal"
           value={wallet ? fmtCur(wallet.balance, wallet.currency) : '—'}
           href="/dashboard/wallet"
         />
         <StatCard
-          icon={<Sparkles className="h-5 w-5" />}
+          icon={<Sparkles className="h-4 w-4" />}
           tone="fuchsia"
           label="Solde IA"
           value={wallet ? fmtCur(wallet.aiBalance, wallet.currency) : '—'}
@@ -312,17 +312,42 @@ export default function ProfilePage() {
           </div>
         </div>
 
-        {/* Wizard (auto-opens with ?create=1) */}
+        {/* Wizard (auto-opens with ?create=1). Soft-blocks at the per-account
+            store-creation cap; backend enforces the same limit as a hard guard. */}
         <div className="rounded-2xl border border-border/60 bg-card p-5">
-          <CreateStoreWizard
-            onCreated={handleStoreCreated}
-            triggerLabel={stores.length === 0 ? 'Créer ma première boutique' : 'Créer une boutique'}
-          />
-          {autoStartCreate && stores.length === 0 && (
-            <p className="mt-3 text-xs text-muted-foreground">
-              Astuce : tu peux lancer le wizard en cliquant sur le bouton ci-dessus.
-            </p>
-          )}
+          {(() => {
+            const MAX_STORES = 3;
+            const reached = stores.length >= MAX_STORES;
+            return reached ? (
+              <div className="flex flex-wrap items-start gap-3 rounded-xl border border-amber-500/30 bg-amber-500/5 p-4">
+                <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-700" />
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-semibold text-amber-900">
+                    Limite atteinte — {stores.length}/{MAX_STORES} boutiques
+                  </p>
+                  <p className="mt-0.5 text-xs text-amber-800/80">
+                    Chaque compte peut créer jusqu&apos;à {MAX_STORES} boutiques. Supprime
+                    une boutique existante ou contacte le support pour augmenter ta limite.
+                  </p>
+                </div>
+              </div>
+            ) : (
+              <>
+                <CreateStoreWizard
+                  onCreated={handleStoreCreated}
+                  triggerLabel={stores.length === 0 ? 'Créer ma première boutique' : 'Créer une boutique'}
+                />
+                <p className="mt-2 text-[11px] text-muted-foreground">
+                  {stores.length}/{MAX_STORES} boutiques utilisées
+                </p>
+                {autoStartCreate && stores.length === 0 && (
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Astuce : tu peux lancer le wizard en cliquant sur le bouton ci-dessus.
+                  </p>
+                )}
+              </>
+            );
+          })()}
         </div>
 
         {/* Store list — each one as its own card, with explicit "Active" badge */}
@@ -696,21 +721,21 @@ function StatCard({
   return (
     <Link
       href={href}
-      className="group relative overflow-hidden rounded-2xl border border-border/60 bg-card p-5 transition-all duration-300 hover:-translate-y-1 hover:border-primary/30 hover:shadow-xl"
+      className="group relative overflow-hidden rounded-xl border border-border/60 bg-card p-3 transition-all duration-300 hover:-translate-y-0.5 hover:border-primary/30 hover:shadow-lg"
     >
-      <div className={`pointer-events-none absolute -right-12 -top-12 h-32 w-32 rounded-full bg-gradient-to-br ${grad} blur-3xl`} aria-hidden />
-      <div className="relative flex items-start justify-between">
-        <div>
-          <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{label}</div>
-          <div className="mt-2 text-3xl font-bold tracking-tight">{value}</div>
+      <div className={`pointer-events-none absolute -right-10 -top-10 h-24 w-24 rounded-full bg-gradient-to-br ${grad} blur-3xl`} aria-hidden />
+      <div className="relative flex items-start justify-between gap-2">
+        <div className="min-w-0">
+          <div className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">{label}</div>
+          <div className="mt-1 truncate text-lg font-bold tracking-tight">{value}</div>
         </div>
-        <div className={`grid h-11 w-11 place-items-center rounded-xl ${bgColor} ${textColor} transition-transform duration-300 group-hover:scale-110 group-hover:rotate-3`}>
+        <div className={`grid h-8 w-8 shrink-0 place-items-center rounded-lg ${bgColor} ${textColor} transition-transform duration-300 group-hover:scale-110 group-hover:rotate-3`}>
           {icon}
         </div>
       </div>
-      <div className="relative mt-3 inline-flex items-center gap-1 text-xs text-muted-foreground transition-colors group-hover:text-foreground">
+      <div className="relative mt-1.5 inline-flex items-center gap-1 text-[10px] text-muted-foreground transition-colors group-hover:text-foreground">
         Voir
-        <ArrowRight className="h-3 w-3 transition-transform group-hover:translate-x-0.5" />
+        <ArrowRight className="h-2.5 w-2.5 transition-transform group-hover:translate-x-0.5" />
       </div>
     </Link>
   );

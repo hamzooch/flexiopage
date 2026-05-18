@@ -57,18 +57,31 @@ export function ThemePreviewCard({ template, selected, onUse, onPreview }: CardP
   const t = template.theme;
   const NicheIcon = NICHE_ICON[template.niche] || Sparkles;
   const radius = RADIUS_PX[t.borderRadius];
+  const fontsUrl = googleFontsHref(t);
 
   return (
     <div
       className={cn(
-        'group relative flex flex-col overflow-hidden rounded-2xl border-2 bg-card transition-all duration-300',
-        'hover:-translate-y-1 hover:shadow-2xl',
-        selected ? 'border-primary ring-4 ring-primary/15' : 'border-border/60 hover:border-primary/40'
+        'group relative flex flex-col overflow-hidden rounded-3xl border bg-card transition-all duration-500',
+        'hover:-translate-y-1 hover:shadow-[0_24px_60px_-20px_rgba(0,0,0,0.18)]',
+        selected
+          ? 'border-primary ring-4 ring-primary/15 shadow-[0_20px_50px_-20px_rgba(124,92,255,0.45)]'
+          : 'border-border/60 hover:border-primary/40'
       )}
     >
-      {/* Mini storefront mock */}
+      {fontsUrl && <link rel="stylesheet" href={fontsUrl} />}
+
+      {/* Floating selected badge */}
+      {selected && (
+        <span className="absolute right-3 top-3 z-20 inline-flex items-center gap-1 rounded-full bg-primary px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-white shadow-lg">
+          <Check className="h-3 w-3" strokeWidth={3} />
+          Actif
+        </span>
+      )}
+
+      {/* ── Polished mini-mockup — feels like a real design preview ── */}
       <div
-        className="relative h-44 overflow-hidden border-b border-border/40"
+        className="relative h-56 overflow-hidden border-b border-border/40"
         style={{
           backgroundColor: t.background,
           color: t.foreground,
@@ -77,10 +90,11 @@ export function ThemePreviewCard({ template, selected, onUse, onPreview }: CardP
       >
         {t.pattern === 'grid' && (
           <div
-            className="absolute inset-0 opacity-30"
+            className="absolute inset-0 opacity-25"
             style={{
               backgroundImage: `linear-gradient(${t.border} 1px, transparent 1px), linear-gradient(90deg, ${t.border} 1px, transparent 1px)`,
-              backgroundSize: '24px 24px',
+              backgroundSize: '28px 28px',
+              maskImage: 'radial-gradient(ellipse at center, black 40%, transparent 80%)',
             }}
             aria-hidden
           />
@@ -88,159 +102,185 @@ export function ThemePreviewCard({ template, selected, onUse, onPreview }: CardP
         {t.pattern === 'mesh' && (
           <>
             <div
-              className="pointer-events-none absolute -left-8 -top-8 h-32 w-32 rounded-full blur-2xl opacity-60"
+              className="pointer-events-none absolute -left-12 -top-10 h-44 w-44 rounded-full blur-3xl opacity-55"
               style={{ backgroundColor: t.gradientFrom }}
               aria-hidden
             />
             <div
-              className="pointer-events-none absolute -right-8 bottom-0 h-32 w-32 rounded-full blur-2xl opacity-50"
+              className="pointer-events-none absolute -right-10 bottom-0 h-44 w-44 rounded-full blur-3xl opacity-45"
               style={{ backgroundColor: t.gradientTo }}
               aria-hidden
             />
           </>
         )}
 
+        {/* Tiny navbar with brand mark */}
         <div
-          className="relative flex items-center justify-between border-b px-4 py-2.5 text-[10px]"
+          className="relative flex items-center justify-between border-b px-4 py-2"
           style={{ borderColor: t.border }}
         >
-          <span className="font-bold tracking-tight" style={{ fontFamily: t.fontHeading, color: t.foreground }}>
-            {template.name.toUpperCase()}
+          <span
+            className="text-[11px] font-bold tracking-tight"
+            style={{ fontFamily: t.fontHeading, color: t.foreground, letterSpacing: t.layout?.nav === 'bold' ? '0.12em' : '0' }}
+          >
+            {(STORE_NAMES[template.niche] || STORE_NAMES.general).toUpperCase()}
           </span>
-          <div className="flex gap-1.5">
-            <span className="h-1 w-1 rounded-full" style={{ backgroundColor: t.muted }} />
-            <span className="h-1 w-1 rounded-full" style={{ backgroundColor: t.muted }} />
-            <span className="h-1 w-1 rounded-full" style={{ backgroundColor: t.muted }} />
+          <div className="flex items-center gap-2">
+            <span className="h-1 w-5 rounded" style={{ backgroundColor: t.muted, opacity: 0.5 }} />
+            <span className="h-1 w-5 rounded" style={{ backgroundColor: t.muted, opacity: 0.5 }} />
+            <span className="grid h-4 w-4 place-items-center rounded-full" style={{ backgroundColor: t.primary, color: t.primaryFg }}>
+              <span className="text-[7px] font-bold">2</span>
+            </span>
           </div>
         </div>
 
+        {/* Hero pill + headline + sub */}
         <div className="relative px-4 pt-3">
+          <span
+            className="inline-block rounded-full px-2 py-0.5 text-[8px] font-bold uppercase tracking-[0.15em]"
+            style={{
+              backgroundColor: t.primary,
+              color: t.primaryFg,
+              borderRadius: t.borderRadius === 'none' ? '0' : '999px',
+            }}
+          >
+            Nouveau
+          </span>
           <div
-            className="text-[15px] font-bold leading-tight tracking-tight"
+            className="mt-1.5 text-[16px] font-bold leading-[1.1] tracking-tight"
             style={{ fontFamily: t.fontHeading, color: t.foreground }}
           >
             {nicheHeadline(template.niche)}
           </div>
-          <div className="mt-1 text-[9px] leading-snug" style={{ color: t.muted }}>
+          <div className="mt-0.5 line-clamp-1 text-[9px] leading-snug" style={{ color: t.muted }}>
             {nicheSub(template.niche)}
           </div>
         </div>
 
-        <div className="absolute inset-x-3 bottom-3 flex gap-2">
-          {[0, 1].map((i) => (
-            <div
-              key={i}
-              className="flex-1 overflow-hidden border"
-              style={{
-                backgroundColor: t.surface,
-                borderColor: t.border,
-                borderRadius: radius,
-                boxShadow:
-                  t.shadow === 'glow'
-                    ? `0 0 14px ${withAlpha(t.primary, 0.25)}`
-                    : t.shadow === 'soft'
-                      ? '0 6px 16px rgba(0,0,0,0.04)'
-                      : '0 1px 0 rgba(0,0,0,0.05)',
-              }}
-            >
+        {/* 3-card product strip — denser preview */}
+        <div className="absolute inset-x-3 bottom-3 grid grid-cols-3 gap-1.5">
+          {[0, 1, 2].map((i) => {
+            const fillBg = i === 0
+              ? `linear-gradient(135deg, ${t.gradientFrom}, ${t.gradientTo})`
+              : i === 1
+                ? t.surfaceMuted
+                : t.primary;
+            return (
               <div
-                className="h-10 w-full"
+                key={i}
+                className="flex flex-col overflow-hidden border"
                 style={{
-                  background:
-                    i === 0 ? `linear-gradient(135deg, ${t.gradientFrom}, ${t.gradientTo})` : t.surfaceMuted,
+                  backgroundColor: t.surface,
+                  borderColor: t.border,
+                  borderRadius: radius,
+                  boxShadow:
+                    t.shadow === 'glow'
+                      ? `0 0 12px ${withAlpha(t.primary, 0.25)}`
+                      : t.shadow === 'soft'
+                        ? '0 4px 12px rgba(0,0,0,0.05)'
+                        : '0 1px 0 rgba(0,0,0,0.05)',
                 }}
-              />
-              <div className="px-1.5 py-1">
-                <div className="h-1.5 w-3/4 rounded" style={{ backgroundColor: t.muted, opacity: 0.6 }} />
-                <div className="mt-1 flex items-center justify-between">
-                  <div className="h-1 w-1/3 rounded" style={{ backgroundColor: t.primary }} />
-                  <div
-                    className="rounded px-1 text-[7px] font-semibold"
-                    style={{
-                      backgroundColor: t.primary,
-                      color: t.primaryFg,
-                      borderRadius: t.borderRadius === 'none' ? '0' : '4px',
-                    }}
-                  >
-                    {i === 0 ? '–30%' : 'NEW'}
+              >
+                <div className="h-12 w-full" style={{ background: fillBg }} />
+                <div className="px-1.5 py-1">
+                  <div className="h-1 w-3/4 rounded" style={{ backgroundColor: t.muted, opacity: 0.55 }} />
+                  <div className="mt-1 flex items-center justify-between">
+                    <div className="h-1 w-1/2 rounded" style={{ backgroundColor: t.primary }} />
+                    {i === 0 && (
+                      <span
+                        className="rounded px-1 text-[7px] font-bold"
+                        style={{
+                          backgroundColor: t.primary,
+                          color: t.primaryFg,
+                          borderRadius: t.borderRadius === 'none' ? '0' : '4px',
+                        }}
+                      >
+                        −30%
+                      </span>
+                    )}
                   </div>
                 </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
-
-        {selected && (
-          <span className="absolute right-3 top-3 grid h-6 w-6 place-items-center rounded-full bg-primary text-white shadow-md">
-            <Check className="h-3.5 w-3.5" strokeWidth={3} />
-          </span>
-        )}
       </div>
 
-      {/* Card body */}
+      {/* Card body — cleaner hierarchy */}
       <div className="flex flex-1 flex-col gap-3 p-5">
+        {/* Niche chip + radius hint */}
         <div className="flex items-center gap-2">
           <span
-            className="grid h-7 w-7 place-items-center rounded-lg text-white"
+            className="grid h-6 w-6 place-items-center rounded-md text-white"
             style={{ background: `linear-gradient(135deg, ${t.gradientFrom}, ${t.gradientTo})` }}
           >
-            <NicheIcon className="h-3.5 w-3.5" />
+            <NicheIcon className="h-3 w-3" />
           </span>
-          <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+          <span className="text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
             {template.nicheLabel}
           </span>
-        </div>
-        <div>
-          <h3 className="text-base font-semibold tracking-tight">{template.name}</h3>
-          <p className="text-xs text-muted-foreground">{template.tagline}</p>
-        </div>
-        <p className="line-clamp-2 text-xs leading-relaxed text-muted-foreground">{template.description}</p>
-
-        {/* Tokens row */}
-        <div className="flex items-center gap-1.5">
-          <span className="h-3.5 w-3.5 rounded-full ring-1 ring-border" style={{ backgroundColor: t.primary }} />
-          <span className="h-3.5 w-3.5 rounded-full ring-1 ring-border" style={{ backgroundColor: t.accent }} />
-          <span className="h-3.5 w-3.5 rounded-full ring-1 ring-border" style={{ backgroundColor: t.background }} />
-          <span className="ml-auto rounded-md bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
-            {t.borderRadius === 'none' ? 'Sharp' : t.borderRadius === 'xl' ? 'Très arrondi' : 'Arrondi'}
+          <span className="ml-auto inline-flex items-center gap-1 rounded-md bg-muted/60 px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-wider text-muted-foreground">
+            {t.dark ? '◑ Dark' : '◐ Light'}
           </span>
         </div>
 
-        {/* Action buttons */}
-        <div className="mt-auto flex gap-2 pt-2">
+        {/* Theme name + tagline */}
+        <div>
+          <h3 className="text-lg font-bold tracking-tight" style={{ fontFamily: t.fontHeading }}>
+            {template.name}
+          </h3>
+          <p className="text-xs text-muted-foreground">{template.tagline}</p>
+        </div>
+
+        {/* Description */}
+        <p className="line-clamp-2 text-[11px] leading-relaxed text-muted-foreground">
+          {template.description}
+        </p>
+
+        {/* Palette swatches + style chip */}
+        <div className="flex items-center justify-between gap-2 rounded-xl border border-border/40 bg-muted/20 px-2.5 py-1.5">
+          <div className="flex items-center gap-1.5">
+            <span className="h-4 w-4 rounded-full ring-1 ring-black/5" style={{ backgroundColor: t.primary }} />
+            <span className="h-4 w-4 rounded-full ring-1 ring-black/5" style={{ backgroundColor: t.accent }} />
+            <span className="h-4 w-4 rounded-full ring-1 ring-black/5" style={{ backgroundColor: t.background }} />
+            <span className="h-4 w-4 rounded-full ring-1 ring-black/5" style={{ backgroundColor: t.foreground }} />
+          </div>
+          <span className="text-[9px] font-semibold uppercase tracking-wider text-muted-foreground">
+            {t.borderRadius === 'none' ? 'Sharp' : t.borderRadius === 'xl' ? 'Round XL' : t.borderRadius === 'large' ? 'Round L' : 'Soft'}
+            <span className="mx-1 opacity-40">·</span>
+            {t.layout?.gridColumns || 3} cols
+          </span>
+        </div>
+
+        {/* Actions */}
+        <div className="mt-auto flex gap-2 pt-1">
           <Button
             type="button"
             variant="outline"
             size="sm"
-            onClick={(e) => {
-              e.stopPropagation();
-              onPreview();
-            }}
-            className="h-9 flex-1 gap-1.5 rounded-lg"
+            onClick={(e) => { e.stopPropagation(); onPreview(); }}
+            className="h-9 flex-1 gap-1.5 rounded-lg border-border/60"
           >
             <Eye className="h-3.5 w-3.5" />
-            Voir
+            Voir en grand
           </Button>
           <Button
             type="button"
             size="sm"
-            onClick={(e) => {
-              e.stopPropagation();
-              onUse();
-            }}
+            onClick={(e) => { e.stopPropagation(); onUse(); }}
             className={cn(
-              'h-9 flex-1 gap-1.5 rounded-lg gradient-brand text-white shadow-md shadow-primary/25',
+              'h-9 flex-1 gap-1.5 rounded-lg gradient-brand text-white shadow-md shadow-primary/20',
               selected && 'opacity-90'
             )}
           >
             {selected ? (
               <>
                 <Check className="h-3.5 w-3.5" strokeWidth={3} />
-                Sélectionné
+                Actif
               </>
             ) : (
               <>
-                Utiliser
+                Choisir
                 <ArrowRight className="h-3.5 w-3.5" />
               </>
             )}
@@ -756,6 +796,292 @@ function ModalTestimonials({ template }: { template: StoreThemeTemplate }) {
   );
 }
 
+// ── Modal mock — top announcement bar (promo strip above navbar) ────
+function ModalAnnouncementBar({ template }: { template: StoreThemeTemplate }) {
+  const t = template.theme;
+  const msg = template.forStoreTypes.includes('digital')
+    ? 'Black Week — 30% sur tous les bundles · Code BFCM30'
+    : 'Livraison offerte dès 50€ · Retours gratuits sous 30 jours';
+  return (
+    <div
+      className="border-b"
+      style={{
+        background: `linear-gradient(90deg, ${t.gradientFrom}, ${t.gradientTo})`,
+        color: t.primaryFg,
+        borderColor: t.border,
+      }}
+    >
+      <div className="mx-auto flex max-w-5xl items-center justify-center gap-2 px-6 py-2 text-[11px] font-semibold uppercase tracking-[0.12em]">
+        <Sparkles className="h-3 w-3" />
+        {msg}
+      </div>
+    </div>
+  );
+}
+
+// ── Modal mock — 3 highlighted "best-seller" cards above the main grid ──
+function ModalFeaturedRow({ template }: { template: StoreThemeTemplate }) {
+  const t = template.theme;
+  const radius = RADIUS_PX[t.borderRadius];
+  const items = (MOCK_PRODUCTS[template.niche] || MOCK_PRODUCTS.general).slice(0, 3);
+  const leftAlign = t.layout?.hero === 'editorial' || t.layout?.hero === 'minimal';
+  const uppercase = t.layout?.nav === 'bold';
+
+  return (
+    <section className="border-b" style={{ borderColor: t.border, backgroundColor: t.background }}>
+      <div className="mx-auto max-w-5xl px-6 py-12">
+        <div className={`mb-7 flex items-end justify-between gap-4 ${leftAlign ? '' : 'flex-col text-center'}`}>
+          <div className={leftAlign ? '' : 'mx-auto'}>
+            <div
+              className="mb-1.5 text-[11px] font-semibold uppercase tracking-[0.25em]"
+              style={{ color: t.accent }}
+            >
+              ★ Best-sellers de la semaine
+            </div>
+            <h2
+              className={`text-2xl font-bold tracking-tight sm:text-3xl ${uppercase ? 'uppercase' : ''}`}
+              style={{ fontFamily: t.fontHeading, color: t.foreground }}
+            >
+              Coup de cœur clients
+            </h2>
+          </div>
+          {leftAlign && (
+            <span
+              className="text-xs font-semibold underline underline-offset-4"
+              style={{ color: t.primary }}
+            >
+              Tout voir →
+            </span>
+          )}
+        </div>
+
+        <div className="grid gap-5 sm:grid-cols-3">
+          {items.map((p, i) => {
+            const fill =
+              i === 0 ? `linear-gradient(135deg, ${t.gradientFrom}, ${t.gradientTo})`
+                : i === 1 ? t.surfaceMuted
+                : `linear-gradient(160deg, ${t.accent}, ${t.primary})`;
+            return (
+              <div
+                key={i}
+                className="group relative overflow-hidden border transition-transform hover:-translate-y-1"
+                style={{
+                  backgroundColor: t.surface,
+                  borderColor: t.border,
+                  borderRadius: radius,
+                  boxShadow:
+                    t.shadow === 'glow' ? `0 6px 32px ${hexA(t.primary, 0.18)}`
+                    : t.shadow === 'soft' ? '0 8px 24px rgba(0,0,0,0.06)'
+                    : '0 1px 0 rgba(0,0,0,0.05)',
+                }}
+              >
+                <div className="relative aspect-[4/3]" style={{ background: fill }}>
+                  <span
+                    className="absolute left-3 top-3 inline-flex items-center gap-1 px-2 py-1 text-[10px] font-bold uppercase tracking-wider"
+                    style={{
+                      backgroundColor: t.surface,
+                      color: t.foreground,
+                      borderRadius: t.borderRadius === 'none' ? '0' : '999px',
+                    }}
+                  >
+                    <Star className="h-3 w-3" fill={t.primary} stroke={t.primary} />
+                    Best
+                  </span>
+                  {p.tag && (
+                    <span
+                      className="absolute right-3 top-3 px-2 py-1 text-[10px] font-bold uppercase tracking-wider"
+                      style={{
+                        backgroundColor: t.primary,
+                        color: t.primaryFg,
+                        borderRadius: t.borderRadius === 'none' ? '0' : '999px',
+                      }}
+                    >
+                      {p.tag}
+                    </span>
+                  )}
+                </div>
+                <div className="p-4">
+                  <h3
+                    className="text-base font-semibold leading-tight tracking-tight"
+                    style={{ fontFamily: t.fontHeading, color: t.foreground }}
+                  >
+                    {p.name}
+                  </h3>
+                  <div className="mt-2 flex items-center justify-between">
+                    <div className="flex items-baseline gap-2">
+                      <span className="font-bold" style={{ color: t.primary }}>{p.price}</span>
+                      {p.before && <span className="text-xs line-through" style={{ color: t.muted }}>{p.before}</span>}
+                    </div>
+                    <span
+                      className="grid h-7 w-7 place-items-center"
+                      style={{
+                        backgroundColor: t.primary,
+                        color: t.primaryFg,
+                        borderRadius: t.borderRadius === 'none' ? '0' : '999px',
+                      }}
+                    >
+                      <ArrowRight className="h-3.5 w-3.5" />
+                    </span>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+// ── Modal mock — final CTA banner just above the footer ─────────────
+function ModalCtaBanner({ template }: { template: StoreThemeTemplate }) {
+  const t = template.theme;
+  const radius = RADIUS_PX[t.borderRadius];
+  const isDigital = template.forStoreTypes.includes('digital');
+
+  return (
+    <section className="border-t" style={{ borderColor: t.border, backgroundColor: t.background }}>
+      <div className="mx-auto max-w-5xl px-6 py-14">
+        <div
+          className="relative overflow-hidden p-8 sm:p-12"
+          style={{
+            background: `linear-gradient(135deg, ${t.gradientFrom}, ${t.gradientTo})`,
+            borderRadius: radius,
+          }}
+        >
+          <div className="pointer-events-none absolute -right-12 -top-12 h-48 w-48 rounded-full bg-white/10 blur-3xl" aria-hidden />
+          <div className="pointer-events-none absolute -bottom-12 -left-8 h-44 w-44 rounded-full bg-black/15 blur-3xl" aria-hidden />
+          <div className="relative grid gap-6 sm:grid-cols-[1fr_auto] sm:items-center">
+            <div>
+              <div className="mb-2 text-[11px] font-semibold uppercase tracking-[0.25em]" style={{ color: t.primaryFg, opacity: 0.85 }}>
+                ★ Offre limitée
+              </div>
+              <h3
+                className="text-2xl font-bold leading-tight sm:text-3xl"
+                style={{ fontFamily: t.fontHeading, color: t.primaryFg }}
+              >
+                {isDigital ? 'Débloque le bundle complet aujourd\'hui' : 'Prêt à commander ta sélection ?'}
+              </h3>
+              <p className="mt-2 max-w-md text-sm" style={{ color: t.primaryFg, opacity: 0.85 }}>
+                {isDigital
+                  ? 'Accès instantané, mises à jour à vie, garantie satisfait ou remboursé 14 jours.'
+                  : 'Livraison rapide, paiement à la livraison disponible, satisfait ou remboursé sous 30 jours.'}
+              </p>
+            </div>
+            <div className="flex flex-wrap gap-3">
+              <span
+                className="inline-flex h-11 items-center gap-2 px-6 text-sm font-bold"
+                style={{
+                  backgroundColor: t.surface,
+                  color: t.foreground,
+                  borderRadius: t.borderRadius === 'none' ? '0' : '999px',
+                  boxShadow: '0 12px 28px rgba(0,0,0,0.20)',
+                }}
+              >
+                {isDigital ? 'Acheter le bundle' : 'Commander maintenant'}
+                <ArrowRight className="h-4 w-4" />
+              </span>
+              <span
+                className="inline-flex h-11 items-center px-6 text-sm font-semibold underline underline-offset-4"
+                style={{ color: t.primaryFg, opacity: 0.9 }}
+              >
+                Voir tous les produits
+              </span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+// ── Modal mock — proper multi-column footer (links, social, legal) ──
+function ModalFooter({ template, storeName }: { template: StoreThemeTemplate; storeName: string }) {
+  const t = template.theme;
+  const columns = [
+    { title: 'Boutique', links: ['Tous les produits', 'Nouveautés', 'Meilleures ventes', 'Promotions'] },
+    { title: 'Support', links: ['Contact', 'FAQ', 'Livraison', 'Retours'] },
+    { title: 'Maison', links: ['À propos', 'Histoire', 'Engagements', 'Partenariats'] },
+    { title: 'Légal', links: ['CGV', 'Mentions légales', 'Confidentialité', 'Cookies'] },
+  ];
+  return (
+    <footer
+      className="border-t"
+      style={{ borderColor: t.border, backgroundColor: t.surfaceMuted, color: t.muted }}
+    >
+      <div className="mx-auto max-w-5xl px-6 py-12">
+        <div className="grid gap-8 sm:grid-cols-2 lg:grid-cols-[1.4fr_repeat(4,1fr)]">
+          <div>
+            <span
+              className="text-xl font-bold tracking-tight"
+              style={{ fontFamily: t.fontHeading, color: t.foreground }}
+            >
+              {storeName}
+            </span>
+            <p className="mt-3 max-w-xs text-xs leading-relaxed">
+              Une marque indépendante qui met la qualité, le service et la transparence
+              au cœur de chaque commande.
+            </p>
+            <div className="mt-4 flex gap-2">
+              {['IG', 'TT', 'FB', 'YT'].map((s) => (
+                <span
+                  key={s}
+                  className="grid h-8 w-8 place-items-center text-[10px] font-bold"
+                  style={{
+                    backgroundColor: t.surface,
+                    color: t.foreground,
+                    border: `1px solid ${t.border}`,
+                    borderRadius: t.borderRadius === 'none' ? '0' : '999px',
+                  }}
+                >
+                  {s}
+                </span>
+              ))}
+            </div>
+          </div>
+          {columns.map((col) => (
+            <div key={col.title}>
+              <div
+                className="mb-3 text-[11px] font-semibold uppercase tracking-[0.15em]"
+                style={{ color: t.foreground }}
+              >
+                {col.title}
+              </div>
+              <ul className="space-y-1.5 text-xs">
+                {col.links.map((l) => (
+                  <li key={l}>{l}</li>
+                ))}
+              </ul>
+            </div>
+          ))}
+        </div>
+        <div
+          className="mt-10 flex flex-wrap items-center justify-between gap-3 border-t pt-6 text-[11px]"
+          style={{ borderColor: t.border }}
+        >
+          <span>© 2026 {storeName}. Tous droits réservés.</span>
+          <span className="flex items-center gap-2">
+            <span>Paiements sécurisés</span>
+            {['VISA', 'MC', 'PAYPAL', 'COD'].map((p) => (
+              <span
+                key={p}
+                className="rounded px-1.5 py-0.5 text-[9px] font-bold"
+                style={{
+                  backgroundColor: t.surface,
+                  color: t.muted,
+                  border: `1px solid ${t.border}`,
+                }}
+              >
+                {p}
+              </span>
+            ))}
+          </span>
+        </div>
+      </div>
+    </footer>
+  );
+}
+
 export function ThemePreviewModal({ template, onClose, onUse }: ModalProps) {
   // Lock scroll + Escape to close
   useEffect(() => {
@@ -824,20 +1150,37 @@ export function ThemePreviewModal({ template, onClose, onUse }: ModalProps) {
             style={tokensToCssVars(t)}
             dir="ltr"
           >
+            {/* ANNOUNCEMENT BAR — top promo strip */}
+            <ModalAnnouncementBar template={template} />
+
             {/* HEADER */}
             <header
               className="sticky top-0 z-10 border-b backdrop-blur-xl"
               style={{ borderColor: t.border, backgroundColor: hexA(t.background, 0.85) }}
             >
               <div className="mx-auto flex h-14 max-w-5xl items-center justify-between px-6">
-                <span className="text-lg font-bold tracking-tight" style={{ fontFamily: t.fontHeading, color: t.foreground }}>
-                  {storeName}
+                <span
+                  className="text-lg font-bold tracking-tight"
+                  style={{
+                    fontFamily: t.fontHeading,
+                    color: t.foreground,
+                    letterSpacing: t.layout?.nav === 'bold' ? '0.08em' : '0',
+                  }}
+                >
+                  {t.layout?.nav === 'bold' ? storeName.toUpperCase() : storeName}
                 </span>
                 <div className="flex items-center gap-5 text-xs" style={{ color: t.muted }}>
                   <span>Boutique</span>
                   <span>Nouveautés</span>
+                  <span>À propos</span>
                   <span>Contact</span>
                 </div>
+                <span
+                  className="grid h-7 w-7 place-items-center rounded-full text-[10px] font-bold"
+                  style={{ backgroundColor: t.primary, color: t.primaryFg }}
+                >
+                  2
+                </span>
               </div>
             </header>
 
@@ -874,6 +1217,9 @@ export function ThemePreviewModal({ template, onClose, onUse }: ModalProps) {
               </div>
             </section>
 
+            {/* FEATURED / BEST-SELLERS — 3 big highlighted cards */}
+            <ModalFeaturedRow template={template} />
+
             {/* PRODUCTS GRID — layout-aware columns + card style */}
             <ModalProductGrid template={template} />
 
@@ -881,18 +1227,11 @@ export function ThemePreviewModal({ template, onClose, onUse }: ModalProps) {
                 a populated "Avis clients" section will look like */}
             <ModalTestimonials template={template} />
 
-            {/* FOOTER */}
-            <footer
-              className="border-t"
-              style={{ borderColor: t.border, backgroundColor: t.surfaceMuted, color: t.muted }}
-            >
-              <div className="mx-auto max-w-5xl px-6 py-10 text-center">
-                <span className="text-base font-bold tracking-tight" style={{ fontFamily: t.fontHeading, color: t.foreground }}>
-                  {storeName}
-                </span>
-                <p className="mt-2 text-xs">© 2026 {storeName}. Tous droits réservés.</p>
-              </div>
-            </footer>
+            {/* CTA BANNER — final conversion strip before footer */}
+            <ModalCtaBanner template={template} />
+
+            {/* FOOTER — multi-column shop footer */}
+            <ModalFooter template={template} storeName={storeName} />
           </div>
         </div>
       </div>
