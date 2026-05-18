@@ -134,22 +134,28 @@ export function StoreFooter({ storeName, storeSlug, storeLogo, footerNote, confi
         borderColor: theme.border,
         backgroundColor: theme.surfaceMuted,
         color: theme.muted,
+        // Push the bottom row above the mobile sticky CTA bar (h≈64px + safe area)
+        // so the © row never gets hidden under it on phones.
+        paddingBottom: 'env(safe-area-inset-bottom)',
       }}
     >
-      <div className="mx-auto max-w-6xl px-4 py-8 sm:px-6 sm:py-12">
+      {/* Compact paddings — generous breathing room on desktop, tight on mobile */}
+      <div className="mx-auto max-w-6xl px-4 py-5 sm:px-6 sm:py-10">
         {hasExtras && (
           <div
-            className="grid gap-6 border-b pb-8 sm:gap-10 sm:pb-10"
+            className="grid grid-cols-2 gap-x-4 gap-y-5 border-b pb-5 sm:gap-x-8 sm:gap-y-8 sm:pb-8"
             style={{
               borderColor: theme.border,
-              gridTemplateColumns: `repeat(auto-fit, minmax(180px, 1fr))`,
+              // On sm+, switch to auto-fit grid for natural column widths.
+              // The inline override applies above the sm breakpoint via @media.
+              // Mobile stays at 2 cols for compact 4-tile layouts.
             }}
           >
-            {/* Brand block — wider on lg screens */}
-            <div className="sm:col-span-2">
+            {/* Brand block — spans both mobile columns; sits naturally first on desktop */}
+            <div className="col-span-2 sm:col-span-2">
               <Link
                 href={`/${storeSlug}`}
-                className="inline-flex items-center gap-3 text-lg font-bold tracking-tight"
+                className="inline-flex items-center gap-2 text-base font-bold tracking-tight sm:gap-3 sm:text-lg"
                 style={{ fontFamily: theme.fontHeading, color: theme.foreground }}
                 aria-label={storeName}
               >
@@ -159,18 +165,21 @@ export function StoreFooter({ storeName, storeSlug, storeLogo, footerNote, confi
                     src={mediaUrl(storeLogo!)}
                     alt={storeName}
                     className="shrink-0 rounded-md object-contain"
-                    style={{ width: logoPx, height: logoPx }}
+                    style={{ width: Math.min(logoPx, 40), height: Math.min(logoPx, 40) }}
                   />
                 )}
                 {wantName && <span>{storeName}</span>}
               </Link>
               {footerNote && (
-                <p className="mt-3 max-w-md text-sm leading-relaxed" style={{ color: theme.muted }}>
+                <p
+                  className="mt-2 line-clamp-2 max-w-md text-[12px] leading-snug sm:mt-3 sm:line-clamp-none sm:text-sm sm:leading-relaxed"
+                  style={{ color: theme.muted }}
+                >
                   {footerNote}
                 </p>
               )}
               {hasSocial && (
-                <div className="mt-5 flex flex-wrap items-center gap-2">
+                <div className="mt-3 flex flex-wrap items-center gap-1.5 sm:mt-4 sm:gap-2">
                   {SOCIAL_DEFS.map(({ key, label, Icon }) => {
                     const val = social[key as keyof typeof social];
                     if (!val) return null;
@@ -181,14 +190,14 @@ export function StoreFooter({ storeName, storeSlug, storeLogo, footerNote, confi
                         target="_blank"
                         rel="noopener noreferrer"
                         aria-label={label}
-                        className="grid h-9 w-9 place-items-center rounded-full border transition-colors hover:opacity-80"
+                        className="grid h-8 w-8 place-items-center rounded-full border transition-colors hover:opacity-80 sm:h-9 sm:w-9"
                         style={{
                           borderColor: theme.border,
                           backgroundColor: theme.surface,
                           color: theme.foreground,
                         }}
                       >
-                        <Icon className="h-4 w-4" />
+                        <Icon className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
                       </a>
                     );
                   })}
@@ -200,20 +209,20 @@ export function StoreFooter({ storeName, storeSlug, storeLogo, footerNote, confi
             {hasContact && (
               <div>
                 <h4
-                  className="mb-3 text-sm font-semibold uppercase tracking-wider"
+                  className="mb-2 text-[11px] font-semibold uppercase tracking-wider sm:mb-3 sm:text-sm"
                   style={{ color: theme.foreground, fontFamily: theme.fontHeading }}
                 >
                   Contact
                 </h4>
-                <ul className="space-y-2 text-sm">
+                <ul className="space-y-1.5 text-[12px] sm:space-y-2 sm:text-sm">
                   {contact.email && (
                     <li>
                       <a
                         href={`mailto:${contact.email}`}
-                        className="inline-flex items-center gap-2 hover:underline"
+                        className="inline-flex items-center gap-1.5 break-all hover:underline sm:gap-2"
                         style={{ color: theme.muted }}
                       >
-                        <Mail className="h-3.5 w-3.5" />
+                        <Mail className="h-3 w-3 shrink-0 sm:h-3.5 sm:w-3.5" />
                         {contact.email}
                       </a>
                     </li>
@@ -222,17 +231,17 @@ export function StoreFooter({ storeName, storeSlug, storeLogo, footerNote, confi
                     <li>
                       <a
                         href={`tel:${contact.phone}`}
-                        className="inline-flex items-center gap-2 hover:underline"
+                        className="inline-flex items-center gap-1.5 hover:underline sm:gap-2"
                         style={{ color: theme.muted }}
                       >
-                        <Phone className="h-3.5 w-3.5" />
+                        <Phone className="h-3 w-3 shrink-0 sm:h-3.5 sm:w-3.5" />
                         {contact.phone}
                       </a>
                     </li>
                   )}
                   {contact.address && (
-                    <li className="inline-flex items-start gap-2" style={{ color: theme.muted }}>
-                      <MapPin className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                    <li className="inline-flex items-start gap-1.5 sm:gap-2" style={{ color: theme.muted }}>
+                      <MapPin className="mt-0.5 h-3 w-3 shrink-0 sm:h-3.5 sm:w-3.5" />
                       <span>{contact.address}</span>
                     </li>
                   )}
@@ -244,17 +253,17 @@ export function StoreFooter({ storeName, storeSlug, storeLogo, footerNote, confi
             {columns.map((col) => (
               <div key={col.title}>
                 <h4
-                  className="mb-3 text-sm font-semibold uppercase tracking-wider"
+                  className="mb-2 text-[11px] font-semibold uppercase tracking-wider sm:mb-3 sm:text-sm"
                   style={{ color: theme.foreground, fontFamily: theme.fontHeading }}
                 >
                   {col.title}
                 </h4>
-                <ul className="space-y-2 text-sm">
+                <ul className="space-y-1.5 text-[12px] sm:space-y-2 sm:text-sm">
                   {col.links.map((l, i) => (
                     <li key={i}>
                       <Link
                         href={storeLink(storeSlug, l.url)}
-                        className="hover:underline"
+                        className="line-clamp-1 hover:underline"
                         style={{ color: theme.muted }}
                       >
                         {l.label}
@@ -269,17 +278,17 @@ export function StoreFooter({ storeName, storeSlug, storeLogo, footerNote, confi
             {columns.length === 0 && legacyLinks.length > 0 && (
               <div>
                 <h4
-                  className="mb-3 text-sm font-semibold uppercase tracking-wider"
+                  className="mb-2 text-[11px] font-semibold uppercase tracking-wider sm:mb-3 sm:text-sm"
                   style={{ color: theme.foreground, fontFamily: theme.fontHeading }}
                 >
                   Liens
                 </h4>
-                <ul className="space-y-2 text-sm">
+                <ul className="space-y-1.5 text-[12px] sm:space-y-2 sm:text-sm">
                   {legacyLinks.map((l, i) => (
                     <li key={i}>
                       <a
                         href={l.url.startsWith('http') || l.url.startsWith('/') ? l.url : `/${storeSlug}/${l.url.replace(/^\/+/, '')}`}
-                        className="hover:underline"
+                        className="line-clamp-1 hover:underline"
                         style={{ color: theme.muted }}
                       >
                         {l.label}
@@ -292,9 +301,11 @@ export function StoreFooter({ storeName, storeSlug, storeLogo, footerNote, confi
           </div>
         )}
 
-        <div className="mt-8 flex flex-col items-center justify-between gap-3 text-xs sm:flex-row">
+        {/* Bottom row — single line on mobile, copyright + brand inline.
+            Reserve extra bottom space when the mobile sticky CTA might overlap. */}
+        <div className="mt-4 flex flex-col items-center justify-between gap-1.5 pb-[68px] text-[11px] sm:mt-6 sm:flex-row sm:gap-3 sm:pb-0 sm:text-xs">
           <span
-            className="inline-flex items-center gap-2 font-bold tracking-tight"
+            className="inline-flex items-center gap-1.5 font-bold tracking-tight sm:gap-2"
             style={{ color: theme.foreground, fontFamily: theme.fontHeading }}
           >
             {wantLogo && (
@@ -303,12 +314,12 @@ export function StoreFooter({ storeName, storeSlug, storeLogo, footerNote, confi
                 src={mediaUrl(storeLogo!)}
                 alt=""
                 className="rounded object-contain"
-                style={{ height: Math.min(28, Math.round(logoPx / 1.6)), width: 'auto' }}
+                style={{ height: Math.min(22, Math.round(logoPx / 2)), width: 'auto' }}
               />
             )}
             {wantName && <span>{storeName}</span>}
           </span>
-          <p style={{ color: theme.muted }}>
+          <p className="text-center sm:text-right" style={{ color: theme.muted }}>
             © {new Date().getFullYear()} {storeName}. Tous droits réservés.
             {!hasExtras && footerNote ? ` · ${footerNote}` : ''}
           </p>

@@ -448,7 +448,7 @@ export function CodOrderForm({
       onSubmit={handleSubmit}
       onFocusCapture={handleFirstEngagement}
       onBlurCapture={captureAbandonedCart}
-      className="space-y-5 border p-5 sm:p-6"
+      className="space-y-4 border p-4 sm:space-y-5 sm:p-6"
       style={{
         backgroundColor: config?.backgroundColor || theme.surface,
         borderColor: theme.border,
@@ -457,12 +457,12 @@ export function CodOrderForm({
     >
       <div>
         <h2
-          className="text-xl font-bold tracking-tight sm:text-2xl"
+          className="text-lg font-bold leading-tight tracking-tight sm:text-2xl"
           style={{ fontFamily: theme.fontHeading, color: theme.foreground }}
         >
           {headline}
         </h2>
-        <p className="mt-1 text-sm" style={{ color: theme.muted }}>
+        <p className="mt-0.5 text-xs sm:mt-1 sm:text-sm" style={{ color: theme.muted }}>
           Tu paies <strong>{formatCurrency(total, currency)}</strong> en espèces au livreur.
         </p>
       </div>

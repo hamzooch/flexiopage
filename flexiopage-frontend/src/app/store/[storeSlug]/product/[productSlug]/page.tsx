@@ -228,9 +228,10 @@ export default async function PublicProductPage({ params }: Props) {
           config={store?.settings?.storefront?.navbar}
         />
 
-        {/* Main split */}
-        <main className="mx-auto max-w-6xl px-3 py-6 sm:px-6 sm:py-14">
-          <div className="grid gap-6 sm:gap-10 lg:grid-cols-[1fr_1fr]">
+        {/* Main split — tight padding on mobile so the gallery + form fit in
+            one screen scroll, generous on desktop where the layout has room. */}
+        <main className="mx-auto max-w-6xl px-3 py-4 sm:px-6 sm:py-14">
+          <div className="grid gap-4 sm:gap-10 lg:grid-cols-[1fr_1fr]">
             {/* LEFT — gallery */}
             <div className="space-y-3">
               <div
@@ -308,10 +309,10 @@ export default async function PublicProductPage({ params }: Props) {
             </div>
 
             {/* RIGHT — sticky details */}
-            <div className="lg:sticky lg:top-24 lg:self-start space-y-5 sm:space-y-6">
+            <div className="lg:sticky lg:top-24 lg:self-start space-y-4 sm:space-y-6">
               <div>
                 <h1
-                  className="text-2xl font-bold tracking-tight sm:text-3xl lg:text-4xl"
+                  className="text-xl font-bold leading-tight tracking-tight sm:text-3xl lg:text-4xl"
                   style={{
                     fontFamily: theme.fontHeading,
                     color: store?.settings?.storefront?.productPage?.style?.titleColor || theme.foreground,
@@ -351,24 +352,24 @@ export default async function PublicProductPage({ params }: Props) {
                 })()}
               </div>
 
-              {/* Pricing block */}
+              {/* Pricing block — compact prices on mobile so the CTA stays above the fold. */}
               <div className="flex flex-wrap items-baseline gap-2 sm:gap-3">
                 <span
-                  className="text-3xl font-extrabold tracking-tight sm:text-4xl"
+                  className="text-2xl font-extrabold tracking-tight sm:text-4xl"
                   style={{ color: store?.settings?.storefront?.productPage?.style?.priceColor || theme.primary }}
                 >
                   {formatCurrency(product.price, currency)}
                 </span>
                 {hasDiscount && (
                   <>
-                    <span className="text-xl line-through" style={{ color: theme.muted }}>
+                    <span className="text-base line-through sm:text-xl" style={{ color: theme.muted }}>
                       {formatCurrency(product.compareAtPrice!, currency)}
                     </span>
                     <span
-                      className="rounded-full px-2.5 py-1 text-xs font-bold"
+                      className="rounded-full px-2 py-0.5 text-[10px] font-bold sm:px-2.5 sm:py-1 sm:text-xs"
                       style={{ backgroundColor: '#10b98115', color: '#047857' }}
                     >
-                      Économise {formatCurrency(product.compareAtPrice! - product.price, currency)}
+                      −{formatCurrency(product.compareAtPrice! - product.price, currency)}
                     </span>
                   </>
                 )}
@@ -535,12 +536,12 @@ export default async function PublicProductPage({ params }: Props) {
 
             const blocks: Record<ProductPageSectionId, React.ReactNode> = {
               badges: showBadgesSection ? (
-                <section key="badges" className="mt-10">
+                <section key="badges" className="mt-6 sm:mt-10">
                   <ProductPageBadges badges={badges} theme={theme} />
                 </section>
               ) : null,
               timer: showTimerSection ? (
-                <section key="timer" className="mt-10">
+                <section key="timer" className="mt-6 sm:mt-10">
                   <ProductPageTimer
                     endsAt={pp.timer!.endsAt!}
                     headline={pp.timer?.headline}
@@ -552,7 +553,7 @@ export default async function PublicProductPage({ params }: Props) {
                 <ProductDescriptionSection key="description" description={product.description!} theme={theme} />
               ) : null,
               testimonials: showTestimonialsSection ? (
-                <section key="testimonials" className="mt-12">
+                <section key="testimonials" className="mt-8 sm:mt-12">
                   <StorefrontTestimonials
                     config={(store?.settings as { storefront?: { testimonials?: unknown } } | undefined)?.storefront?.testimonials as never}
                     theme={theme}
@@ -622,7 +623,7 @@ function ProductDescriptionSection({
   theme: ThemeTokensType;
 }) {
   return (
-    <section className="mt-16 max-w-3xl">
+    <section className="mt-8 max-w-3xl sm:mt-14">
       <div className="mb-5 flex items-center gap-3">
         <span className="inline-block h-px flex-1" style={{ backgroundColor: theme.border }} aria-hidden />
         <h2 className="text-2xl font-bold tracking-tight sm:text-3xl" style={{ fontFamily: theme.fontHeading, color: theme.foreground }}>

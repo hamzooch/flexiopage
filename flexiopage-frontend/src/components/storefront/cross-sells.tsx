@@ -38,7 +38,7 @@ export function CrossSells({ items, storeSlug, currency, theme }: Props) {
   const pillRadius = theme.borderRadius === 'none' ? 0 : 999;
 
   return (
-    <section className="mt-12">
+    <section className="mt-8 sm:mt-12">
       <div className="mb-5 flex items-center gap-3">
         <span className="inline-block h-px flex-1" style={{ backgroundColor: theme.border }} aria-hidden />
         <h2
