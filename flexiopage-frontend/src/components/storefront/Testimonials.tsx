@@ -7,6 +7,7 @@
  */
 import type { ThemeTokens } from '@/data/store-themes';
 import { RADIUS_PX } from '@/data/store-themes';
+import { mediaUrl } from '@/lib/utils';
 
 export interface TestimonialItem {
   author: string;
@@ -152,7 +153,7 @@ export function StorefrontTestimonials({ config, theme, defaultTitle = 'Ils nous
                 {t.avatar ? (
                   /* eslint-disable-next-line @next/next/no-img-element */
                   <img
-                    src={t.avatar}
+                    src={mediaUrl(t.avatar) || t.avatar}
                     alt={t.author}
                     className="h-11 w-11 shrink-0 rounded-full object-cover"
                     style={{ border: `2px solid ${theme.border}` }}

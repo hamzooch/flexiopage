@@ -308,7 +308,10 @@ function Hero({ store, theme, isDigital = false }: { store: StoreDoc; theme: The
   const layout = theme.layout?.hero || 'centered';
   const title = store.settings?.storefront?.heroTitle || store.name;
   const subtitle = store.settings?.storefront?.heroSubtitle || store.description;
-  const heroImage = store.settings?.storefront?.heroImage;
+  // Storefront images are stored as relative paths (e.g. /uploads/...) which
+  // are served by the BACKEND. Without mediaUrl(), the browser would request
+  // them from the frontend origin and 404. Absolutize before rendering.
+  const heroImage = mediaUrl(store.settings?.storefront?.heroImage);
   const eyebrow = isDigital ? 'Téléchargement instantané' : 'Nouvelle collection';
   const radius = RADIUS_PX[theme.borderRadius];
 
@@ -616,7 +619,7 @@ function ProductCard({
       {p.images?.[0] ? (
         // eslint-disable-next-line @next/next/no-img-element
         <img
-          src={p.images[0]}
+          src={mediaUrl(p.images[0]) || p.images[0]}
           alt={p.name}
           className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
         />

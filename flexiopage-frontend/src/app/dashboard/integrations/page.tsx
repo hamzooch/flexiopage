@@ -511,14 +511,9 @@ const CARRIER_PROVIDERS = [
 ] as const;
 
 const LOGISTICS_PROVIDERS = [
-  { id: 'mogadelivery', label: 'MogaDelivery',        description: 'Stockage + dispatch automatique Afrique. SKU matching natif.', logoUrl: '/integrations/mogadelivery.png' },
-  { id: 'shipbob',      label: 'ShipBob',             description: '3PL global — entrepôts US, EU, AU, CA' },
-  { id: 'cubyn',        label: 'Cubyn',               description: '3PL européen rapide, SLA strict' },
-  { id: 'amazon-mcf',   label: 'Amazon MCF',          description: 'Utilise ton stock FBA pour commandes hors Amazon' },
-  { id: 'sendcloud',    label: 'Sendcloud',           description: 'Plateforme multi-carriers européenne' },
-  { id: 'easyship',     label: 'Easyship',            description: 'Comparateur 250+ transporteurs' },
-  { id: 'manual',       label: 'Manuel',              description: 'Pas de logistique externe' },
-  { id: 'other',        label: 'Autre',               description: 'Autre 3PL' },
+  { id: 'mogadelivery', label: 'MogaDelivery', description: 'Stockage + dispatch automatique Afrique. SKU matching natif.', logoUrl: '/integrations/mogadelivery.png' },
+  { id: 'shipbob',      label: 'ShipBob',      description: '3PL global — entrepôts US, EU, AU, CA' },
+  { id: 'manual',       label: 'Manuel',       description: 'Pas de logistique externe' },
 ] as const;
 
 function ShippingPanel({ store, onSaved, saving, setSaving }: PanelProps) {

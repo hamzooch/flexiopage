@@ -1,5 +1,5 @@
 /**
- * Scripted chatbot trees for FlexioPage.
+ * Scripted chatbot trees for FlexiooPage.
  *
  * Two flavours:
  *   - flexiopageScript    → marketing landing (prospects asking about the SaaS)
@@ -32,15 +32,15 @@ export type ChatScript = {
   nodes: Record<string, ChatScriptNode>;
 };
 
-// ── FlexioPage marketing landing ──────────────────────────────────────
+// ── FlexiooPage marketing landing ──────────────────────────────────────
 export const flexiopageScript: ChatScript = {
   start: 'welcome',
-  botName: 'Flexi',
-  botRole: 'Assistant FlexioPage',
+  botName: 'Flexio',
+  botRole: 'Assistant FlexiooPage',
   nodes: {
     welcome: {
       message:
-        "Salut 👋 Je suis Flexi, l'assistant FlexioPage. Comment je peux t'aider ?",
+        "Salut 👋 Je suis Flexio, l'assistant FlexiooPage. Comment je peux t'aider ?",
       quickReplies: [
         { label: 'Comment ça marche ?', goto: 'how' },
         { label: 'Combien ça coûte ?', goto: 'pricing' },
