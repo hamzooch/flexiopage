@@ -161,3 +161,11 @@ html {
 .prose-storefront hr { margin: 2em 0; opacity: 0.3; }
 .prose-storefront h1:first-child,
 .prose-storefront h2:first-child { margin-top: 0; }
+/* Images / GIFs embedded in markdown — responsive, soft corners. */
+.prose-storefront img {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  margin: 1.2em auto;
+  border-radius: 0.75rem;
+}

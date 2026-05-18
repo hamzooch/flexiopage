@@ -38,6 +38,7 @@ import { TagsInput } from '@/components/dashboard/tags-input';
 import { VariantsEditor, type ProductVariant } from '@/components/dashboard/variants-editor';
 import { ProductImagesPicker } from '@/components/dashboard/product-images-picker';
 import { ProductLivePreview } from '@/components/dashboard/product-live-preview';
+import { ProductDescriptionEditor } from '@/components/dashboard/product-description-editor';
 import { TimerPresetPicker } from '@/components/dashboard/timer-presets';
 import { FieldToggle } from '@/components/dashboard/store-editor';
 
@@ -329,18 +330,13 @@ export default function EditProductPage() {
                 />
               </div>
               <div className="space-y-1.5">
-                <Label htmlFor="description">Description longue</Label>
-                <textarea
-                  id="description"
+                <Label>Description longue</Label>
+                <ProductDescriptionEditor
+                  storeId={storeId}
                   value={description}
-                  onChange={(e) => setDescription(e.target.value)}
+                  onChange={setDescription}
                   placeholder="Présente les bénéfices, la composition, les détails. Sépare les paragraphes par une ligne vide pour de jolis blocs."
-                  rows={5}
-                  className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm leading-relaxed"
                 />
-                <p className="text-[11px] text-muted-foreground">
-                  La 1<sup>re</sup> ligne sert de teaser sous le titre · le reste s&apos;affiche dans la section « Description » sous la fiche.
-                </p>
               </div>
               <div className="grid gap-3 sm:grid-cols-2">
                 <div className="space-y-1.5">

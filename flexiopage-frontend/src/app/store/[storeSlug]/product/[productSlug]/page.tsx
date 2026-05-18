@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import { formatCurrency, mediaUrl } from '@/lib/utils';
+import { renderMarkdown } from '@/lib/markdown';
 import {
   resolveProductPageOrder,
   DEFAULT_BADGES,
@@ -354,19 +355,6 @@ export default async function PublicProductPage({ params }: Props) {
                     </span>
                   </div>
                 )}
-                {/* Teaser = first paragraph. Only render when the description
-                    has multiple paragraphs so we don't duplicate the same
-                    text right above the full "Description" section below. */}
-                {(() => {
-                  if (!product.description) return null;
-                  const paragraphs = product.description.split(/\n\s*\n/).filter((p) => p.trim());
-                  if (paragraphs.length <= 1) return null;
-                  return (
-                    <p className="mt-3 line-clamp-3 text-sm leading-relaxed sm:mt-4 sm:text-base" style={{ color: theme.muted }}>
-                      {paragraphs[0]}
-                    </p>
-                  );
-                })()}
               </div>
 
               {/* Pricing block — compact prices on mobile so the CTA stays above the fold. */}
@@ -675,29 +663,16 @@ function ProductDescriptionSection({
         </h2>
         <span className="inline-block h-px flex-1" style={{ backgroundColor: theme.border }} aria-hidden />
       </div>
-      <div className="space-y-4 text-base leading-relaxed sm:text-lg" style={{ color }}>
-        {description.split(/\n\s*\n/).map((para, i) => {
-          const trimmed = para.trim();
-          if (!trimmed) return null;
-          const lines = trimmed.split('\n').map((l) => l.trim()).filter(Boolean);
-          const allBullets = lines.length > 1 && lines.every((l) => /^[-•]\s+/.test(l));
-          if (allBullets) {
-            return (
-              <ul key={i} className="space-y-2 pl-1">
-                {lines.map((l, j) => (
-                  <li key={j} className="flex gap-2">
-                    <span className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full" style={{ backgroundColor: theme.primary }} aria-hidden />
-                    <span>{l.replace(/^[-•]\s+/, '')}</span>
-                  </li>
-                ))}
-              </ul>
-            );
-          }
-          return (
-            <p key={i} style={{ color }}>{trimmed}</p>
-          );
-        })}
-      </div>
+      {/* Render the description via the shared markdown helper — gives the
+          seller paragraphs, bullets, bold/italic, links AND inline images
+          (incl. GIFs via ![alt](url)). The prose-storefront class styles
+          headings/p/ul/li/img; we set the body color via inline style so
+          the palette descriptionColor still applies. */}
+      <div
+        className="prose-storefront text-base leading-relaxed sm:text-lg"
+        style={{ color }}
+        dangerouslySetInnerHTML={{ __html: renderMarkdown(description) }}
+      />
     </section>
   );
 }

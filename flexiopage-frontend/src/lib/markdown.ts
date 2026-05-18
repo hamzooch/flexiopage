@@ -33,6 +33,15 @@ function renderInline(line: string): string {
   out = out.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
   // Italic *x* (skip **)
   out = out.replace(/(^|[^*])\*([^*\n]+)\*(?!\*)/g, '$1<em>$2</em>');
+  // Images / GIFs ![alt](url) — must run BEFORE the [label](url) link rule
+  // since the syntax is a superset. URL is validated to http(s):// or a
+  // store-relative path so a malicious description can't embed a
+  // javascript: pseudo-URL. Lazy-loaded so the page text renders fast.
+  out = out.replace(/!\[([^\]]*)\]\(([^)]+)\)/g, (_m, alt: string, url: string) => {
+    const safe = url.startsWith('http://') || url.startsWith('https://') || url.startsWith('/') ? url : '';
+    if (!safe) return '';
+    return `<img src="${escapeHtml(safe)}" alt="${escapeHtml(alt || '')}" loading="lazy" />`;
+  });
   // Links [label](url)
   out = out.replace(/\[([^\]]+)\]\(([^)]+)\)/g, (_m, label: string, url: string) => {
     const safe = url.startsWith('http://') || url.startsWith('https://') || url.startsWith('/') || url.startsWith('#') ? url : `#`;
