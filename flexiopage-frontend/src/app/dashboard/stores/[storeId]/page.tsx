@@ -7,7 +7,7 @@
  * only the quick "publish toggle" inline because it's the most-used action.
  */
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import {
@@ -23,6 +23,10 @@ import {
   Settings as SettingsIcon,
   Truck,
   Wallet,
+  Monitor,
+  Tablet,
+  Smartphone,
+  RotateCw,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -116,6 +120,10 @@ export default function StoreHubPage() {
   // Bumped every time the theme changes so the preview iframe reloads
   // with the new style without a full page refresh.
   const [previewBust, setPreviewBust] = useState(0);
+  // Viewport device chosen by the seller. Drives the iframe width so the
+  // seller sees how the storefront responds at each breakpoint without
+  // having to resize their actual browser.
+  const [previewDevice, setPreviewDevice] = useState<'mobile' | 'tablet' | 'desktop'>('desktop');
 
   useEffect(() => {
     if (!storeId) return;
@@ -308,29 +316,67 @@ export default function StoreHubPage() {
           })}
         </div>
 
-        {/* RIGHT — live visual preview */}
+        {/* RIGHT — live visual preview with viewport switcher */}
         <Card className="lg:sticky lg:top-6 lg:self-start">
-          <CardHeader>
-            <CardTitle className="text-base">
-              <span className="inline-flex items-center gap-2">
-                <ImageIcon className="h-4 w-4" />
-                Aperçu visuel
-              </span>
-            </CardTitle>
-            <CardDescription className="text-xs">
-              Le logo, le thème et les sections de la vitrine tels que les voient tes clients.
-            </CardDescription>
+          <CardHeader className="pb-3">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <CardTitle className="text-base">
+                  <span className="inline-flex items-center gap-2">
+                    <ImageIcon className="h-4 w-4" />
+                    Aperçu visuel
+                  </span>
+                </CardTitle>
+                <CardDescription className="text-xs">
+                  Logo, thème et sections — comme tes clients les voient.
+                </CardDescription>
+              </div>
+              {/* Viewport switcher — pick the device width to preview */}
+              <div className="inline-flex items-center gap-0.5 rounded-lg border border-border/60 bg-muted/40 p-0.5">
+                {([
+                  { id: 'mobile',  icon: Smartphone, label: 'Mobile',   width: 375 },
+                  { id: 'tablet',  icon: Tablet,     label: 'Tablette', width: 768 },
+                  { id: 'desktop', icon: Monitor,    label: 'Desktop',  width: 1280 },
+                ] as const).map((d) => {
+                  const Icon = d.icon;
+                  const active = previewDevice === d.id;
+                  return (
+                    <button
+                      key={d.id}
+                      type="button"
+                      onClick={() => setPreviewDevice(d.id)}
+                      title={`${d.label} · ${d.width}px`}
+                      aria-label={d.label}
+                      aria-pressed={active}
+                      className={cn(
+                        'grid h-7 w-7 place-items-center rounded-md transition-all',
+                        active
+                          ? 'bg-card text-primary shadow-sm'
+                          : 'text-muted-foreground hover:text-foreground'
+                      )}
+                    >
+                      <Icon className="h-3.5 w-3.5" />
+                    </button>
+                  );
+                })}
+                <button
+                  type="button"
+                  onClick={() => setPreviewBust((n) => n + 1)}
+                  title="Recharger l'aperçu"
+                  aria-label="Recharger"
+                  className="ml-0.5 grid h-7 w-7 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-card hover:text-foreground"
+                >
+                  <RotateCw className="h-3.5 w-3.5" />
+                </button>
+              </div>
+            </div>
           </CardHeader>
           <CardContent>
-            <div className="overflow-hidden rounded-xl border border-border/60 bg-muted/30">
-              <iframe
-                key={previewBust}
-                src={`/${store.slug}`}
-                title="Aperçu de la boutique"
-                className="h-[480px] w-full lg:h-[calc(100vh-260px)]"
-                loading="lazy"
-              />
-            </div>
+            <ViewportPreview
+              device={previewDevice}
+              src={`/${store.slug}`}
+              previewBust={previewBust}
+            />
             <div className="mt-3 flex items-center justify-between gap-2">
               <div className="min-w-0 text-xs text-muted-foreground">
                 Thème actuel : <span className="font-medium text-foreground">{currentThemeName || 'Par défaut'}</span>
@@ -383,6 +429,85 @@ export default function StoreHubPage() {
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// Viewport preview — iframe sized to a device width, scaled-to-fit
+// ─────────────────────────────────────────────────────────────────────
+//
+// We render the storefront iframe at its TRUE device width (375 / 768 /
+// 1280) and scale it down via `transform: scale()` so it fits the
+// available preview column. This is critical because the storefront
+// uses CSS media queries — if we just shrank the iframe element to
+// 375px-wide without preserving the inner document width, the mobile
+// layout would never trigger. Scale-to-fit keeps the inner page
+// thinking it's on a real 375-wide phone.
+function ViewportPreview({
+  device,
+  src,
+  previewBust,
+}: {
+  device: 'mobile' | 'tablet' | 'desktop';
+  src: string;
+  previewBust: number;
+}) {
+  // True device dimensions used by the iframe content.
+  const dims = {
+    mobile:  { width: 375,  height: 720 },
+    tablet:  { width: 768,  height: 1024 },
+    desktop: { width: 1280, height: 800 },
+  }[device];
+
+  const wrapRef = useRef<HTMLDivElement | null>(null);
+  const [scale, setScale] = useState(1);
+
+  // Recompute scale = wrapperWidth / trueWidth whenever the wrapper or
+  // device changes. Clamped at 1 so we never upscale (would blur).
+  useEffect(() => {
+    if (!wrapRef.current) return;
+    const el = wrapRef.current;
+    const compute = () => {
+      const available = el.clientWidth;
+      const s = Math.min(1, available / dims.width);
+      setScale(s);
+    };
+    compute();
+    const obs = new ResizeObserver(compute);
+    obs.observe(el);
+    return () => obs.disconnect();
+  }, [dims.width]);
+
+  // Visual frame max width per device — mobile-shaped column, tablet
+  // medium, desktop fills the available space.
+  const maxFrameWidth =
+    device === 'mobile'  ? 320
+    : device === 'tablet' ? 560
+    : 9999;
+
+  return (
+    <div
+      ref={wrapRef}
+      className="mx-auto overflow-hidden rounded-xl border border-border/60 bg-muted/30"
+      style={{
+        maxWidth: maxFrameWidth,
+        height: dims.height * scale,
+        transition: 'height 0.25s ease, max-width 0.25s ease',
+      }}
+    >
+      <iframe
+        key={`${device}-${previewBust}`}
+        src={src}
+        title="Aperçu de la boutique"
+        loading="lazy"
+        className="origin-top-left border-0 bg-background"
+        style={{
+          width: dims.width,
+          height: dims.height,
+          transform: `scale(${scale})`,
+        }}
+      />
     </div>
   );
 }
