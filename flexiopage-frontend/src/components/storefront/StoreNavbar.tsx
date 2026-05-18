@@ -32,6 +32,8 @@ export interface NavbarConfig {
   brandDisplay?: BrandDisplay;
   /** Hauteur du logo. Par défaut: 'md'. */
   logoSize?: LogoSize;
+  /** Opt-in language switcher in the navbar. Default: false (hidden). */
+  showLanguageSwitcher?: boolean;
 }
 
 /** Tailles utilisées par la navbar : valeurs PX gardées explicites pour rester
@@ -252,7 +254,9 @@ export function StoreNavbar({ storeName, storeSlug, storeLogo, theme, config, de
           {brand}
           {desktopLinks}
           <div className="flex items-center gap-2">
-            <LanguageSwitcher storeSlug={storeSlug} defaultLocale={defaultLocale} />
+            {config?.showLanguageSwitcher && (
+              <LanguageSwitcher storeSlug={storeSlug} defaultLocale={defaultLocale} />
+            )}
             {trailing}
             {merchantLink}
             {mobileToggle}

@@ -119,6 +119,8 @@ export interface NavbarSettings {
   brandDisplay?: BrandDisplay;
   /** Hauteur visuelle du logo dans la navbar. Par défaut: 'md'. */
   logoSize?: LogoSize;
+  /** Afficher le sélecteur de langue. Par défaut: false (opt-in). */
+  showLanguageSwitcher?: boolean;
 }
 
 export interface AnnouncementBarSettings {
@@ -779,6 +781,18 @@ export function NavbarEditor({
           </div>
         </div>
       )}
+
+      {/* Language switcher — opt-in. Hidden on the storefront unless
+          the seller explicitly turns it on, since most single-language
+          shops don't want the flag/locale dropdown cluttering the navbar. */}
+      <div className="border-t border-border/50 pt-3">
+        <FieldToggle
+          label="Sélecteur de langue dans la navbar"
+          sublabel="Affiche un drapeau et un menu déroulant fr / ar / en … pour les visiteurs"
+          checked={!!cfg.showLanguageSwitcher}
+          onChange={(v) => update({ showLanguageSwitcher: v })}
+        />
+      </div>
 
       <div className="flex items-start justify-between gap-3 border-t border-border/50 pt-3">
         <div>

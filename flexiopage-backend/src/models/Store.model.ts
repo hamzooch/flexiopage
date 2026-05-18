@@ -121,6 +121,8 @@ export interface IStore extends Document {
         menuLinks?: Array<{ label: string; url: string }>;
         /** How the brand shows in the navbar: logo+name, logo only, or name only. */
         brandDisplay?: 'logo+name' | 'logo' | 'name';
+        /** Show the storefront language switcher in the navbar. Default false — opt-in. */
+        showLanguageSwitcher?: boolean;
       };
       showHero?: boolean;            // default true
       heroTitle?: string;            // overrides store.name when set
@@ -416,6 +418,7 @@ const StoreSchema = new Schema<IStore>(
             },
           ],
           brandDisplay: { type: String, enum: ['logo+name', 'logo', 'name'], default: 'logo+name' },
+          showLanguageSwitcher: { type: Boolean, default: false },
         },
         showHero: { type: Boolean, default: true },
         heroTitle: { type: String },
