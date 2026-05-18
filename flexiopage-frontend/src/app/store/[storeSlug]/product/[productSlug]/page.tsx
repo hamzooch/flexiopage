@@ -25,6 +25,7 @@ import { StorefrontTestimonials } from '@/components/storefront/Testimonials';
 import { MobileStickyCta } from '@/components/storefront/mobile-sticky-cta';
 import { CrossSells, type CrossSellItem } from '@/components/storefront/cross-sells';
 import { WishlistButton } from '@/components/storefront/wishlist-button';
+import { AddToCartButton } from '@/components/storefront/add-to-cart-button';
 import { ProductReviews } from '@/components/storefront/product-reviews';
 import type { ThemeTokens as ThemeTokensType } from '@/data/store-themes';
 
@@ -409,26 +410,44 @@ export default async function PublicProductPage({ params }: Props) {
                   ⚡ Acheter — accès immédiat
                 </Link>
               ) : (
-                <div className="scroll-mt-24" id="cod-form">
-                  <CodOrderForm
+                <>
+                  {/* Add-to-cart — secondary path for buyers who want to grab
+                      several items before checking out. The primary "Commander"
+                      flow stays in the COD form below. */}
+                  <AddToCartButton
                     storeSlug={storeSlug}
-                    storeId={store?._id}
-                    productId={product._id}
-                    productSlug={product.slug}
-                    productName={product.name}
-                    productPrice={product.price}
-                    productStock={product.stock ?? 0}
-                    trackInventory={!!product.trackInventory}
-                    allowBackorder={!!product.allowBackorder}
-                    currency={currency}
-                    defaultCountry={store?.settings?.country}
-                    config={codConfig}
-                    bundle={product.bundle}
-                    variants={product.variants}
+                    product={{
+                      id: product._id,
+                      slug: product.slug,
+                      name: product.name,
+                      image: product.images?.[0],
+                      price: product.price,
+                      currency,
+                    }}
                     theme={theme}
                     radius={radius}
                   />
-                </div>
+                  <div className="scroll-mt-24" id="cod-form">
+                    <CodOrderForm
+                      storeSlug={storeSlug}
+                      storeId={store?._id}
+                      productId={product._id}
+                      productSlug={product.slug}
+                      productName={product.name}
+                      productPrice={product.price}
+                      productStock={product.stock ?? 0}
+                      trackInventory={!!product.trackInventory}
+                      allowBackorder={!!product.allowBackorder}
+                      currency={currency}
+                      defaultCountry={store?.settings?.country}
+                      config={codConfig}
+                      bundle={product.bundle}
+                      variants={product.variants}
+                      theme={theme}
+                      radius={radius}
+                    />
+                  </div>
+                </>
               )}
 
               {/* Stock indicator (physical only) */}

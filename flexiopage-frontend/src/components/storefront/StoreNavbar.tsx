@@ -15,6 +15,7 @@ import { Menu, X } from 'lucide-react';
 import type { ThemeTokens, NavStyle } from '@/data/store-themes';
 import { mediaUrl } from '@/lib/utils';
 import { LanguageSwitcher } from '@/components/storefront/language-switcher';
+import { CartIcon } from '@/components/storefront/cart-icon';
 
 export interface NavMenuLink {
   label: string;
@@ -189,14 +190,16 @@ export function StoreNavbar({ storeName, storeSlug, storeLogo, theme, config, de
     </nav>
   );
 
-  const merchantLink = (
-    <Link
-      href="/login"
-      className={'hidden transition-colors md:inline-block ' + (isBold ? 'text-xs font-semibold uppercase tracking-wider' : 'text-sm')}
-      style={{ color: fgOverride ? hexA(fgOverride, 0.7) : theme.muted }}
-    >
-      Espace marchand
-    </Link>
+  // Buyer-facing cart icon — replaces the old "Espace marchand" admin
+  // link. Sellers still access the dashboard via /dashboard (header link
+  // on the marketing site), so removing the public-facing entry here is
+  // safe and gives the storefront the standard e-commerce affordance.
+  const cartIcon = (
+    <CartIcon
+      storeSlug={storeSlug}
+      color={effectiveFg}
+      variant={isBold ? 'bold' : 'standard'}
+    />
   );
 
   const mobileToggle = links.length > 0 && (
@@ -226,7 +229,10 @@ export function StoreNavbar({ storeName, storeSlug, storeLogo, theme, config, de
           <div className="flex h-14 items-center justify-between gap-3 sm:h-16">
             <div className="flex w-24 items-center">{mobileToggle}</div>
             <div className="flex flex-1 justify-center">{brand}</div>
-            <div className="flex w-24 items-center justify-end gap-2">{trailing}</div>
+            <div className="flex w-24 items-center justify-end gap-2">
+              {trailing}
+              {cartIcon}
+            </div>
           </div>
           {links.length > 0 && (
             <nav
@@ -268,7 +274,7 @@ export function StoreNavbar({ storeName, storeSlug, storeLogo, theme, config, de
               <LanguageSwitcher storeSlug={storeSlug} defaultLocale={defaultLocale} />
             )}
             {trailing}
-            {merchantLink}
+            {cartIcon}
             {mobileToggle}
           </div>
         </div>
@@ -292,9 +298,6 @@ export function StoreNavbar({ storeName, storeSlug, storeLogo, theme, config, de
                 {l.label}
               </a>
             ))}
-            <Link href="/login" className="rounded-md px-3 py-2.5 text-sm" style={{ color: theme.muted }}>
-              Espace marchand
-            </Link>
           </nav>
         </div>
       )}
