@@ -34,9 +34,10 @@ import {
   type ProductPageStyle,
   type TrustBadge,
 } from '@/lib/product-page-order';
-import { FieldToggle } from '@/components/dashboard/store-editor';
+import { FieldToggle, type CodFormSettings } from '@/components/dashboard/store-editor';
 import { TimerPresetPicker } from '@/components/dashboard/timer-presets';
 import { PalettePresetPicker } from '@/components/dashboard/palette-presets';
+import { Wallet } from 'lucide-react';
 
 const BADGE_ICONS: Record<BadgeIcon, typeof Truck> = {
   truck: Truck,
@@ -63,9 +64,19 @@ const SECTION_META: Record<ProductPageSectionId, { label: string; icon: typeof A
 interface Props {
   cfg: ProductPageSettings;
   onChange: (next: ProductPageSettings) => void;
+  /** Optional: when provided, the editor surfaces the COD form fields
+   *  inline (texts, shipping fee, field toggles) so the seller manages
+   *  everything about the product page from one place instead of
+   *  bouncing between /sections and /checkout. */
+  codForm?: CodFormSettings;
+  onCodFormChange?: (next: CodFormSettings) => void;
+  /** Store currency — used as the shipping fee unit. */
+  currency?: string;
+  /** Storefront-wide accent color for the COD button preview. */
+  storeType?: 'physical' | 'digital';
 }
 
-export function ProductPageEditor({ cfg, onChange }: Props) {
+export function ProductPageEditor({ cfg, onChange, codForm, onCodFormChange, currency = 'TND', storeType = 'physical' }: Props) {
   const order = resolveProductPageOrder(cfg.sectionOrder);
   const badges = cfg.badges ?? [];
 
@@ -562,11 +573,138 @@ export function ProductPageEditor({ cfg, onChange }: Props) {
           />
         </div>
       </section>
+
+      {/* ── FORMULAIRE COD — only when the seller wired this editor to
+            store.codForm via the optional props. Surfaces texts + shipping
+            + field toggles inline so the page produit tab is now the single
+            source of truth for the seller's product page experience. ── */}
+      {codForm && onCodFormChange && storeType === 'physical' && (
+        <section className="rounded-xl border border-emerald-500/30 bg-gradient-to-br from-emerald-500/5 to-card p-4">
+          <div className="mb-2 inline-flex items-center gap-1.5 text-sm font-semibold">
+            <Wallet className="h-4 w-4 text-emerald-600" />
+            Formulaire de commande (COD)
+            <span className="ml-1 rounded-full bg-emerald-500/10 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-700">
+              Au cœur de la fiche
+            </span>
+          </div>
+          <p className="mb-4 text-[11px] text-muted-foreground">
+            Textes affichés, champs visibles + frais de livraison. Le design (couleurs, forme du bouton) se règle dans <strong>Style visuel</strong> juste au-dessus.
+          </p>
+
+          {/* Texts */}
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div className="space-y-1.5">
+              <Label className="text-xs">Titre du formulaire</Label>
+              <Input
+                value={codForm.headline || ''}
+                onChange={(e) => onCodFormChange({ ...codForm, headline: e.target.value })}
+                placeholder="Commander · Paiement à la livraison"
+                className="h-9"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs">Texte du bouton</Label>
+              <Input
+                value={codForm.submitLabel || ''}
+                onChange={(e) => onCodFormChange({ ...codForm, submitLabel: e.target.value })}
+                placeholder="Commander"
+                className="h-9"
+              />
+            </div>
+            <div className="space-y-1.5 sm:col-span-2">
+              <Label className="text-xs">Phrase rassurante (sous le bouton)</Label>
+              <Input
+                value={codForm.reassurance || ''}
+                onChange={(e) => onCodFormChange({ ...codForm, reassurance: e.target.value })}
+                placeholder="Aucun prépaiement, paiement à la livraison uniquement"
+                className="h-9"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs">Frais de livraison ({currency})</Label>
+              <Input
+                type="number"
+                min={0}
+                step="0.01"
+                value={codForm.shippingFee ?? ''}
+                onChange={(e) => {
+                  const v = parseFloat(e.target.value);
+                  onCodFormChange({ ...codForm, shippingFee: Number.isFinite(v) && v >= 0 ? v : undefined });
+                }}
+                placeholder="0"
+                className="h-9"
+              />
+              <p className="text-[10px] text-muted-foreground">Ajouté au total à payer.</p>
+            </div>
+          </div>
+
+          {/* Field toggles */}
+          <div className="mt-4 border-t border-border/60 pt-3">
+            <div className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+              Champs visibles
+            </div>
+            <div className="grid gap-2 sm:grid-cols-2">
+              <FieldToggle
+                label="Email"
+                sublabel="On peut envoyer la confirmation par email"
+                checked={!!codForm.showEmail}
+                onChange={(v) => onCodFormChange({ ...codForm, showEmail: v })}
+              />
+              <FieldToggle
+                label="Email obligatoire"
+                sublabel="Force le client à saisir un email"
+                disabled={!codForm.showEmail}
+                checked={!!codForm.requireEmail}
+                onChange={(v) => onCodFormChange({ ...codForm, requireEmail: v })}
+              />
+              <FieldToggle
+                label="Ville"
+                sublabel="Demande la ville de livraison"
+                checked={!!codForm.showCity}
+                onChange={(v) => onCodFormChange({ ...codForm, showCity: v })}
+              />
+              <FieldToggle
+                label="Complément d'adresse"
+                sublabel="Étage, repère, appartement…"
+                checked={!!codForm.showAddressLine2}
+                onChange={(v) => onCodFormChange({ ...codForm, showAddressLine2: v })}
+              />
+              <FieldToggle
+                label="Code postal"
+                sublabel="Recommandé Maroc / Tunisie"
+                checked={!!codForm.showPostalCode}
+                onChange={(v) => onCodFormChange({ ...codForm, showPostalCode: v })}
+              />
+              <FieldToggle
+                label="Région / État"
+                sublabel="Province, wilaya, etc."
+                checked={!!codForm.showState}
+                onChange={(v) => onCodFormChange({ ...codForm, showState: v })}
+              />
+              <FieldToggle
+                label="Note pour le livreur"
+                sublabel="Repère, étage, instructions"
+                checked={!!codForm.showNotes}
+                onChange={(v) => onCodFormChange({ ...codForm, showNotes: v })}
+              />
+              <FieldToggle
+                label="Sélecteur de quantité"
+                sublabel="Permet d'augmenter / diminuer"
+                checked={!!codForm.showQuantity}
+                onChange={(v) => onCodFormChange({ ...codForm, showQuantity: v })}
+              />
+            </div>
+            <p className="mt-3 text-[10px] text-muted-foreground">
+              Nom, téléphone et adresse sont toujours affichés (obligatoires). Les autres champs sont opt-in.
+            </p>
+          </div>
+        </section>
+      )}
       </div>
 
       {/* ── LIVE PREVIEW (sticky right) ─────────────────────── */}
       <aside className="lg:sticky lg:top-4 lg:self-start">
-        <ProductPageLivePreview cfg={cfg} />
+        <ProductPageLivePreview cfg={cfg} codForm={codForm} currency={currency} storeType={storeType} />
       </aside>
     </div>
   );
@@ -575,6 +713,16 @@ export function ProductPageEditor({ cfg, onChange }: Props) {
 // ─────────────────────────────────────────────────────────────────────
 // Helpers
 // ─────────────────────────────────────────────────────────────────────
+
+/** Compact form-field stub used by the COD form mock in the live preview. */
+function PpFieldStub({ label }: { label: string }) {
+  return (
+    <div className="space-y-[2px]">
+      <div className="text-[7px] font-medium" style={{ color: '#64748b' }}>{label}</div>
+      <div className="h-4 rounded border border-border/40 bg-background/80" />
+    </div>
+  );
+}
 
 function PpColorField({
   label, value, onChange, defaultLabel,
@@ -619,7 +767,17 @@ function PpColorField({
  * in real-time as the seller edits — no save needed. The actual public
  * page uses the same data once persisted.
  */
-function ProductPageLivePreview({ cfg }: { cfg: ProductPageSettings }) {
+function ProductPageLivePreview({
+  cfg,
+  codForm,
+  currency = 'TND',
+  storeType = 'physical',
+}: {
+  cfg: ProductPageSettings;
+  codForm?: CodFormSettings;
+  currency?: string;
+  storeType?: 'physical' | 'digital';
+}) {
   const style = cfg.style || {};
   const accent = style.accentColor || '#7c3aed';
   const titleColor = style.titleColor || '#0f172a';
@@ -794,19 +952,95 @@ function ProductPageLivePreview({ cfg }: { cfg: ProductPageSettings }) {
                   </div>
                 )}
                 <div className="text-base font-extrabold leading-none" style={{ color: priceColor }}>
-                  {fakePrice} TND
+                  {fakePrice} {currency}
                 </div>
-                <div className="space-y-1 pt-1">
-                  <div className="h-1.5 w-full rounded bg-muted" />
-                  <div className="h-1.5 w-2/3 rounded bg-muted" />
-                </div>
-                <button
-                  type="button"
-                  className="mt-1 inline-flex h-7 w-full items-center justify-center rounded-md text-[10px] font-bold"
-                  style={{ backgroundColor: buttonBg, color: buttonFg }}
-                >
-                  Commander · {fakePrice} TND
-                </button>
+                {/* COD form mock — replaces the stub button with the real form
+                    structure when this preview was wired with a codForm. Shows
+                    the seller's headline, every opted-in field, the totals
+                    breakdown and the configured button. */}
+                {storeType === 'physical' ? (
+                  <div
+                    className="space-y-1.5 rounded border border-border/40 p-1.5"
+                    style={{ backgroundColor: codForm?.backgroundColor || '#ffffff' }}
+                  >
+                    <div className="text-[9px] font-bold leading-tight" style={{ color: '#0f172a' }}>
+                      {codForm?.headline || 'Commander · Paiement à la livraison'}
+                    </div>
+
+                    {/* Mandatory fields — always rendered */}
+                    <div className="grid grid-cols-2 gap-1">
+                      <PpFieldStub label="Nom *" />
+                      <PpFieldStub label="Tél *" />
+                    </div>
+                    {codForm?.showEmail && (
+                      <PpFieldStub label={codForm.requireEmail ? 'Email *' : 'Email'} />
+                    )}
+                    <PpFieldStub label="Pays *" />
+                    <PpFieldStub label="Adresse *" />
+                    {codForm?.showAddressLine2 && <PpFieldStub label="Complément" />}
+                    {(codForm?.showCity || codForm?.showState || codForm?.showPostalCode) && (
+                      <div className="grid grid-cols-3 gap-1">
+                        {codForm?.showCity && <PpFieldStub label="Ville *" />}
+                        {codForm?.showState && <PpFieldStub label="Région" />}
+                        {codForm?.showPostalCode && <PpFieldStub label="CP" />}
+                      </div>
+                    )}
+                    {codForm?.showNotes && <PpFieldStub label="Note livreur" />}
+                    {codForm?.showQuantity && (
+                      <div className="flex items-center justify-between border-t border-border/40 pt-1 text-[8px]">
+                        <span style={{ color: '#64748b' }}>Quantité</span>
+                        <span className="inline-flex items-center gap-1 rounded border border-border/40 px-1">−<span className="px-1 font-bold">1</span>+</span>
+                      </div>
+                    )}
+
+                    {/* Totals — render shipping line when fee configured */}
+                    {(codForm?.shippingFee ?? 0) > 0 ? (
+                      <div className="space-y-0.5 border-t border-border/40 pt-1 text-[8px]" style={{ color: '#64748b' }}>
+                        <div className="flex items-center justify-between">
+                          <span>Sous-total</span><span>{fakePrice} {currency}</span>
+                        </div>
+                        <div className="flex items-center justify-between">
+                          <span>Livraison</span><span>+ {(codForm?.shippingFee ?? 0).toFixed(2)} {currency}</span>
+                        </div>
+                        <div className="flex items-center justify-between pt-0.5" style={{ color: '#0f172a' }}>
+                          <span className="font-medium">À payer</span>
+                          <span className="font-extrabold" style={{ color: priceColor }}>
+                            {(parseFloat(fakePrice) + (codForm?.shippingFee ?? 0)).toFixed(2)} {currency}
+                          </span>
+                        </div>
+                      </div>
+                    ) : null}
+
+                    <button
+                      type="button"
+                      className="inline-flex h-7 w-full items-center justify-center text-[10px] font-bold"
+                      style={{
+                        backgroundColor: buttonBg,
+                        color: buttonFg,
+                        borderRadius:
+                          (style.buttonShape || 'pill') === 'pill' ? 999
+                          : (style.buttonShape === 'square') ? 0 : 8,
+                      }}
+                    >
+                      {codForm?.submitLabel || 'Commander'} ·{' '}
+                      {(parseFloat(fakePrice) + (codForm?.shippingFee ?? 0)).toFixed(2)} {currency}
+                    </button>
+                    {codForm?.reassurance && (
+                      <p className="text-center text-[7px]" style={{ color: '#64748b' }}>
+                        {codForm.reassurance}
+                      </p>
+                    )}
+                  </div>
+                ) : (
+                  // Digital — no COD form, just the "Acheter" CTA
+                  <button
+                    type="button"
+                    className="mt-1 inline-flex h-7 w-full items-center justify-center rounded-md text-[10px] font-bold"
+                    style={{ backgroundColor: buttonBg, color: buttonFg }}
+                  >
+                    ⚡ Acheter · {fakePrice} {currency}
+                  </button>
+                )}
               </div>
             </div>
 

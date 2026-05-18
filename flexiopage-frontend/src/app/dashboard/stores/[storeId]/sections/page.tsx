@@ -21,6 +21,7 @@ import {
   NavbarEditor,
   SliderEditor,
   TestimonialsEditor,
+  type CodFormSettings,
   type StorefrontSettings,
   type StoreType,
   type WhatsappSettings,
@@ -145,6 +146,18 @@ export default function StoreSectionsPage() {
     accentColor: '#25D366',
     pulse: true,
   });
+  // COD form — shared with /checkout. Living here lets the seller manage
+  // the entire product-page experience (sections + form) from one tab.
+  const [codForm, setCodForm] = useState<CodFormSettings>({
+    showEmail: false,
+    requireEmail: false,
+    showAddressLine2: false,
+    showCity: false,
+    showPostalCode: false,
+    showState: false,
+    showNotes: false,
+    showQuantity: true,
+  });
   // Tracks which section card is currently in the user's viewport so the
   // sticky left nav can highlight the matching nav item.
   const [activeSection, setActiveSection] = useState<string>('announcement');
@@ -180,6 +193,19 @@ export default function StoreSectionsPage() {
             ...s.settings.whatsapp,
           });
         }
+        if (s.settings?.codForm) {
+          setCodForm({
+            showEmail: false,
+            requireEmail: false,
+            showAddressLine2: false,
+            showCity: false,
+            showPostalCode: false,
+            showState: false,
+            showNotes: false,
+            showQuantity: true,
+            ...s.settings.codForm,
+          });
+        }
       })
       .catch(() => setStore(null))
       .finally(() => setLoading(false));
@@ -213,7 +239,7 @@ export default function StoreSectionsPage() {
     setStatus('saving');
     setErrorMessage('');
     try {
-      const newSettings = { ...(store.settings || {}), storefront, whatsapp };
+      const newSettings = { ...(store.settings || {}), storefront, whatsapp, codForm };
       const res = await storesApi.update(storeId, { settings: newSettings });
       const updated = (res.data as { store: StoreType }).store;
       setStore(updated);
@@ -233,6 +259,19 @@ export default function StoreSectionsPage() {
           accentColor: '#25D366',
           pulse: true,
           ...updated.settings.whatsapp,
+        });
+      }
+      if (updated.settings?.codForm) {
+        setCodForm({
+          showEmail: false,
+          requireEmail: false,
+          showAddressLine2: false,
+          showCity: false,
+          showPostalCode: false,
+          showState: false,
+          showNotes: false,
+          showQuantity: true,
+          ...updated.settings.codForm,
         });
       }
       setStatus('saved');
@@ -295,7 +334,14 @@ export default function StoreSectionsPage() {
       </div>
 
       {scope === 'product' ? (
-        <ProductPageEditor cfg={productPage} onChange={setProductPage} />
+        <ProductPageEditor
+          cfg={productPage}
+          onChange={setProductPage}
+          codForm={codForm}
+          onCodFormChange={setCodForm}
+          currency={store.settings?.currency || 'TND'}
+          storeType={store.storeType}
+        />
       ) : (
       <div className="grid gap-6 lg:grid-cols-[220px_minmax(0,1fr)_320px]">
         {/* ── STICKY LEFT NAV — quick-jump to any section ────────── */}
