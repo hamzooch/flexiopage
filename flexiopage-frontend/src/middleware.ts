@@ -52,6 +52,17 @@ const RESERVED_TOP_LEVEL = new Set([
 /** Subdomains that are NOT a store — never rewrite their requests. */
 const RESERVED_SUBDOMAINS = new Set(['www', 'api', 'admin', 'app', 'staging', 'preview']);
 
+/**
+ * Top-level paths that live at the root of the app and are reachable from
+ * a store subdomain or custom domain — buyer journey pages, not seller
+ * tools. /thanks/cod/<id> is the canonical example: the COD form pushes
+ * to /thanks/cod/<id> after a successful order, and the buyer is still
+ * on hayla-tn.flexiopage.com, so we must NOT rewrite that to
+ * /store/hayla-tn/thanks/... (which doesn't exist). /d/<token> is the
+ * same idea for digital-download tokens emailed to buyers.
+ */
+const GLOBAL_BUYER_PATHS = new Set(['thanks', 'd']);
+
 // Strip port — in dev the env may include one (lvh.me:3002), but Host
 // matching is done after we've stripped the port from the incoming host.
 const ROOT_DOMAIN = (process.env.NEXT_PUBLIC_STOREFRONT_DOMAIN || 'flexiopage.com')
@@ -114,10 +125,18 @@ export async function middleware(request: NextRequest) {
     pathname === '/favicon.ico' ||
     pathname.includes('.');
 
+  // First segment of the path — used by the global-buyer-path check
+  // shared across the subdomain + custom-domain branches below.
+  const firstSegOfPath = pathname.split('/')[1] || '';
+
   // ── 1. Subdomain-based storefront (canonical) ─────────────────────
   const subSlug = subdomainStoreSlug(rawHost);
   if (subSlug) {
     if (isFrameworkPath) return NextResponse.next();
+    // Pass through global buyer-journey routes (/thanks/..., /d/...)
+    // so they resolve to the app-level page instead of being rewritten
+    // into a non-existent /store/<slug>/thanks/... path.
+    if (GLOBAL_BUYER_PATHS.has(firstSegOfPath)) return NextResponse.next();
     // Storefront link helpers (storeUrl, StoreNavbar, StoreFooter, etc.)
     // emit relative paths like `/<slug>/product/foo` which work fine on
     // the legacy path-based access (flexiopage.com/<slug>/...). On the
@@ -139,6 +158,7 @@ export async function middleware(request: NextRequest) {
   // is a candidate. We ask the backend to look it up (verified domains only).
   if (host && !isAppOrLocalHost(host)) {
     if (isFrameworkPath) return NextResponse.next();
+    if (GLOBAL_BUYER_PATHS.has(firstSegOfPath)) return NextResponse.next();
     const slug = await customDomainStoreSlug(host);
     if (slug) {
       // Same dedup as the subdomain case — a custom domain like
