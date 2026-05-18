@@ -53,14 +53,14 @@ const SECTIONS: SectionDef[] = [
     icon: Megaphone,
     title: 'Bandeau d\'annonce',
     isActive: (s) => !!s.announcementBar?.enabled,
-    isCustomized: (s) => !!(s.announcementBar?.message),
+    isCustomized: (s) => Array.isArray(s.announcementBar?.messages) && (s.announcementBar?.messages?.length || 0) > 0,
   },
   {
     id: 'navbar',
     icon: Navigation,
     title: 'Navbar',
     isActive: () => true,
-    isCustomized: (s) => Array.isArray(s.navbar?.links) && (s.navbar?.links?.length || 0) > 0,
+    isCustomized: (s) => Array.isArray(s.navbar?.menuLinks) && (s.navbar?.menuLinks?.length || 0) > 0,
   },
   {
     id: 'hero',

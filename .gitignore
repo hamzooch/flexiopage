@@ -29,3 +29,4 @@ yarn-error.log*
 
 # Local uploads
 flexiopage-backend/uploads/
+tsconfig.tsbuildinfo

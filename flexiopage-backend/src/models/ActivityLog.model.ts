@@ -11,6 +11,7 @@ export type ActivityType =
   | 'order.created'
   | 'order.paid'
   | 'order.status_changed'
+  | 'order.confirmation_updated'
   | 'store.published'
   | 'delivery.dispatched'
   | 'delivery.dispatch_failed';

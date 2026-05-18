@@ -49,7 +49,7 @@ export async function createStore(req: AuthRequest, res: Response): Promise<void
   // Per-account limit: a seller can own at most STORE_LIMIT_PER_USER stores.
   // Skipped for staff (admin/superadmin) so they can manage support/test stores.
   if (!STAFF_ROLES.has(req.user.role || 'user')) {
-    const existing = await storeService.getStoresByOwner(req.user._id);
+    const existing = await storeService.getStoresByOwner(req.user._id.toString());
     if (existing.length >= STORE_LIMIT_PER_USER) {
       res.status(403).json({
         error: `Limite atteinte : tu ne peux créer que ${STORE_LIMIT_PER_USER} boutiques par compte. Contacte le support si tu as besoin de plus.`,

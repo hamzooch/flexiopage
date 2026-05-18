@@ -31,6 +31,19 @@ interface Props {
   triggerLabel?: string;
 }
 
+/**
+ * Generate a unique message id. Prefers `crypto.randomUUID` (modern browsers
+ * over HTTPS / localhost) but falls back to a Math.random string when
+ * unavailable — e.g. on insecure-context dev URLs like `<slug>.lvh.me:3002`
+ * where `crypto.randomUUID` is undefined in some Chrome builds.
+ */
+function safeId(): string {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    try { return crypto.randomUUID(); } catch { /* fall through */ }
+  }
+  return `m-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
 export function ChatBot({
   script,
   storageKey = 'flexiopage-chat',
@@ -95,7 +108,7 @@ export function ChatBot({
   function pushBot(text: string) {
     setMessages((m) => [
       ...m,
-      { id: crypto.randomUUID(), role: 'bot', text },
+      { id: safeId(), role: 'bot', text },
     ]);
     if (!open) setUnread((u) => u + 1);
   }
@@ -103,7 +116,7 @@ export function ChatBot({
   function pushUser(text: string) {
     setMessages((m) => [
       ...m,
-      { id: crypto.randomUUID(), role: 'user', text },
+      { id: safeId(), role: 'user', text },
     ]);
   }
 
