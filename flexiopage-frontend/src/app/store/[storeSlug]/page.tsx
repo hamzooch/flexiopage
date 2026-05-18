@@ -1,5 +1,10 @@
 import type { Metadata } from 'next';
+import React from 'react';
 import Link from 'next/link';
+import {
+  resolveSectionOrder,
+  type MovableSectionId,
+} from '@/lib/section-order';
 import { formatCurrency, mediaUrl } from '@/lib/utils';
 import {
   STORE_THEME_TEMPLATES,
@@ -37,6 +42,7 @@ interface StorefrontConfig {
   footerNote?: string;
   footer?: FooterConfig;
   slider?: SliderConfig;
+  sectionOrder?: MovableSectionId[];
 }
 
 interface StoreDoc {
@@ -177,25 +183,44 @@ export default async function PublicStorePage({ params }: Props) {
           theme={theme}
           config={sf.navbar}
         />
-        <StorefrontSlider
-          config={sf.slider}
-          primary={theme.primary}
-          primaryFg={theme.primaryFg}
-          borderRadius={theme.borderRadius === 'none' ? 0 : 9999}
-        />
-        {showHero && <Hero store={store} theme={theme} isDigital={isDigital} />}
+        {/* The 4 body sections (hero / slider / products / testimonials) are
+            rendered in the order the seller picked in the dashboard, with
+            the default being hero → slider → products → testimonials.
+            Each entry checks its own enabled flag so a section with no
+            content stays out of the DOM. */}
+        {(() => {
+          const order = resolveSectionOrder(sf.sectionOrder);
+          const blocks: Record<MovableSectionId, React.ReactNode> = {
+            hero: showHero ? <Hero store={store} theme={theme} isDigital={isDigital} /> : null,
+            slider: (
+              <StorefrontSlider
+                config={sf.slider}
+                primary={theme.primary}
+                primaryFg={theme.primaryFg}
+                borderRadius={theme.borderRadius === 'none' ? 0 : 9999}
+              />
+            ),
+            products: showGrid ? (
+              <ProductsGrid
+                theme={theme}
+                products={products}
+                storeSlug={store.slug}
+                currency={currency}
+                isDigital={isDigital}
+                title={sf.productsGridTitle}
+              />
+            ) : null,
+            testimonials: <StorefrontTestimonials config={sf.testimonials} theme={theme} />,
+          };
+          return (
+            <>
+              {order.map((id) => (
+                <React.Fragment key={id}>{blocks[id]}</React.Fragment>
+              ))}
+            </>
+          );
+        })()}
         {isDigital && showFeatures && <DigitalTrustStrip theme={theme} />}
-        {showGrid && (
-          <ProductsGrid
-            theme={theme}
-            products={products}
-            storeSlug={store.slug}
-            currency={currency}
-            isDigital={isDigital}
-            title={sf.productsGridTitle}
-          />
-        )}
-        <StorefrontTestimonials config={sf.testimonials} theme={theme} />
         {isDigital && showFeatures && <DigitalGuarantee theme={theme} />}
         {showFooter && (
           <StoreFooter

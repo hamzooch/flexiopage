@@ -24,6 +24,8 @@ import {
   type StorefrontSettings,
   type StoreType,
   type WhatsappSettings,
+  type MovableSectionId,
+  resolveSectionOrder,
 } from '@/components/dashboard/store-editor';
 import {
   Megaphone,
@@ -36,6 +38,8 @@ import {
   CheckCircle2,
   Circle,
   MessageCircle,
+  ChevronUp,
+  ChevronDown,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -261,11 +265,49 @@ export default function StoreSectionsPage() {
               </span>
             </div>
             <nav className="space-y-0.5">
-              {SECTIONS.map((s) => {
+              {(() => {
+                // Reorder the 4 movable sections (hero/slider/products/
+                // testimonials) according to the seller's saved order; the
+                // 3 fixed ones (announcement/navbar/footer) keep their
+                // canonical position. Returns SECTIONS reshuffled.
+                const movableIds = new Set<MovableSectionId>(['hero', 'slider', 'products', 'testimonials']);
+                const order = resolveSectionOrder(storefront.sectionOrder);
+                const byId = new Map(SECTIONS.map((s) => [s.id, s]));
+                const ordered: typeof SECTIONS = [];
+                for (const s of SECTIONS) {
+                  if (movableIds.has(s.id as MovableSectionId)) break;
+                  ordered.push(s);
+                }
+                for (const mid of order) {
+                  const s = byId.get(mid);
+                  if (s) ordered.push(s);
+                }
+                for (const s of SECTIONS) {
+                  if (!movableIds.has(s.id as MovableSectionId) && !ordered.includes(s)) {
+                    ordered.push(s);
+                  }
+                }
+                return ordered;
+              })().map((s, navIndex, navArr) => {
                 const Icon = s.icon;
                 const isActive = s.isActive(storefront);
                 const isCustom = s.isCustomized(storefront);
                 const isCurrent = activeSection === s.id;
+                const isMovable = (['hero', 'slider', 'products', 'testimonials'] as const).includes(
+                  s.id as MovableSectionId
+                );
+                const order = resolveSectionOrder(storefront.sectionOrder);
+                const orderIdx = order.indexOf(s.id as MovableSectionId);
+                const canMoveUp = isMovable && orderIdx > 0;
+                const canMoveDown = isMovable && orderIdx >= 0 && orderIdx < order.length - 1;
+                const move = (dir: -1 | 1) => {
+                  const next = order.slice();
+                  const swap = orderIdx + dir;
+                  if (swap < 0 || swap >= next.length) return;
+                  [next[orderIdx], next[swap]] = [next[swap], next[orderIdx]];
+                  setStorefront({ ...storefront, sectionOrder: next });
+                };
+                void navIndex; void navArr;
                 return (
                   <button
                     key={s.id}
@@ -289,6 +331,43 @@ export default function StoreSectionsPage() {
                       <Icon className="h-3.5 w-3.5" />
                     </span>
                     <span className="min-w-0 flex-1 text-xs font-medium">{s.title}</span>
+                    {/* Reorder arrows — only on movable sections. Click bubbles
+                        up to the parent <button>, so we stopPropagation to keep
+                        the jumpTo behavior intact. */}
+                    {isMovable && (
+                      <span className="flex items-center" onClick={(e) => e.stopPropagation()}>
+                        <span
+                          role="button"
+                          tabIndex={canMoveUp ? 0 : -1}
+                          aria-label="Monter"
+                          onClick={(e) => { e.stopPropagation(); if (canMoveUp) move(-1); }}
+                          onKeyDown={(e) => { if (e.key === 'Enter' && canMoveUp) { e.preventDefault(); move(-1); } }}
+                          className={cn(
+                            'grid h-5 w-5 place-items-center rounded transition-colors',
+                            canMoveUp
+                              ? 'cursor-pointer text-muted-foreground hover:bg-muted hover:text-foreground'
+                              : 'cursor-not-allowed text-muted-foreground/30'
+                          )}
+                        >
+                          <ChevronUp className="h-3 w-3" />
+                        </span>
+                        <span
+                          role="button"
+                          tabIndex={canMoveDown ? 0 : -1}
+                          aria-label="Descendre"
+                          onClick={(e) => { e.stopPropagation(); if (canMoveDown) move(1); }}
+                          onKeyDown={(e) => { if (e.key === 'Enter' && canMoveDown) { e.preventDefault(); move(1); } }}
+                          className={cn(
+                            'grid h-5 w-5 place-items-center rounded transition-colors',
+                            canMoveDown
+                              ? 'cursor-pointer text-muted-foreground hover:bg-muted hover:text-foreground'
+                              : 'cursor-not-allowed text-muted-foreground/30'
+                          )}
+                        >
+                          <ChevronDown className="h-3 w-3" />
+                        </span>
+                      </span>
+                    )}
                     {isActive ? (
                       <CheckCircle2
                         className={cn(

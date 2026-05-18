@@ -18,7 +18,7 @@ import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import { ArrowLeft, Loader2, ShieldCheck, Truck, Wallet } from 'lucide-react';
-import { cn, formatCurrency } from '@/lib/utils';
+import { cn, formatCurrency, mediaUrl } from '@/lib/utils';
 import {
   STORE_THEME_TEMPLATES,
   RADIUS_PX,
@@ -58,6 +58,16 @@ interface StoreDoc {
     country?: string;
     direction?: 'ltr' | 'rtl';
     storefront?: { navbar?: NavbarConfig };
+    /** Seller-customizable COD form (colors + button shape + animation). */
+    codForm?: {
+      backgroundColor?: string;
+      buttonColor?: string;
+      buttonTextColor?: string;
+      buttonShape?: 'pill' | 'rounded' | 'square';
+      buttonAnimated?: boolean;
+      buttonAnimation?: 'pulse' | 'shimmer' | 'bounce' | 'none';
+      submitLabel?: string;
+    };
   };
   integrations?: { marketing?: MarketingConfig };
 }
@@ -283,7 +293,7 @@ export default function CodCheckoutPage() {
               {/* Identity */}
               <section
                 className="space-y-4 border p-5"
-                style={{ backgroundColor: theme.surface, borderColor: theme.border, borderRadius: radius }}
+                style={{ backgroundColor: store.settings?.codForm?.backgroundColor || theme.surface, borderColor: theme.border, borderRadius: radius }}
               >
                 <div>
                   <h2 className="text-sm font-semibold">Tes coordonnées</h2>
@@ -307,7 +317,7 @@ export default function CodCheckoutPage() {
               {/* Shipping */}
               <section
                 className="space-y-4 border p-5"
-                style={{ backgroundColor: theme.surface, borderColor: theme.border, borderRadius: radius }}
+                style={{ backgroundColor: store.settings?.codForm?.backgroundColor || theme.surface, borderColor: theme.border, borderRadius: radius }}
               >
                 <div>
                   <h2 className="text-sm font-semibold">Adresse de livraison</h2>
@@ -342,27 +352,70 @@ export default function CodCheckoutPage() {
                 </div>
               )}
 
-              <button
-                type="submit"
-                disabled={submitting}
-                className="inline-flex h-14 w-full items-center justify-center gap-2 px-7 text-base font-bold transition-all hover:scale-[1.01] disabled:opacity-60"
-                style={{
-                  background: theme.style === 'tech'
-                    ? `linear-gradient(135deg, ${theme.gradientFrom}, ${theme.gradientTo})`
-                    : theme.primary,
-                  color: theme.primaryFg,
-                  borderRadius: radius === '0px' ? '0' : '999px',
-                }}
-              >
-                {submitting ? (
-                  <Loader2 className="h-5 w-5 animate-spin" />
-                ) : (
+              {/* Seller-customizable submit button — picks the codForm overrides
+                  with theme fallbacks, mirroring CodOrderForm so the standalone
+                  checkout page stays visually consistent. */}
+              {(() => {
+                const cf = store.settings?.codForm || {};
+                const btnBg = cf.buttonColor
+                  || (theme.style === 'tech'
+                      ? `linear-gradient(135deg, ${theme.gradientFrom}, ${theme.gradientTo})`
+                      : theme.primary);
+                const btnFg = cf.buttonTextColor || theme.primaryFg;
+                const shape = cf.buttonShape || 'pill';
+                const btnRadius = shape === 'pill' ? '999px'
+                  : shape === 'rounded' ? '12px'
+                  : '0';
+                const animEnabled = cf.buttonAnimated !== false;
+                const animKind = animEnabled ? (cf.buttonAnimation || 'pulse') : 'none';
+                const animClass =
+                  animKind === 'pulse'   ? 'cod2-submit-pulse'
+                  : animKind === 'shimmer' ? 'cod2-submit-shimmer'
+                  : animKind === 'bounce'  ? 'cod2-submit-bounce'
+                  : '';
+                const glowColor = cf.buttonColor || theme.primary;
+                const submitLabel = cf.submitLabel || 'Confirmer la commande';
+                return (
                   <>
-                    <Wallet className="h-5 w-5" />
-                    Confirmer la commande · {formatCurrency(total, currency)}
+                    <button
+                      type="submit"
+                      disabled={submitting}
+                      className={`relative inline-flex h-14 w-full items-center justify-center gap-2 overflow-hidden px-7 text-base font-bold transition-all hover:scale-[1.01] disabled:opacity-60 ${animClass}`}
+                      style={{ background: btnBg, color: btnFg, borderRadius: btnRadius }}
+                    >
+                      {submitting ? (
+                        <Loader2 className="h-5 w-5 animate-spin" />
+                      ) : (
+                        <>
+                          <Wallet className="h-5 w-5" />
+                          {submitLabel} · {formatCurrency(total, currency)}
+                        </>
+                      )}
+                    </button>
+                    <style>{`
+                      @keyframes cod2Pulse {
+                        0%, 100% { box-shadow: 0 0 0 0 ${glowColor}66; transform: scale(1); }
+                        50%      { box-shadow: 0 0 0 14px ${glowColor}00; transform: scale(1.02); }
+                      }
+                      @keyframes cod2Bounce {
+                        0%, 100% { transform: translateY(0); }
+                        50%      { transform: translateY(-4px); }
+                      }
+                      @keyframes cod2ShimmerBg {
+                        0%   { background-position: -200% center; }
+                        100% { background-position:  200% center; }
+                      }
+                      .cod2-submit-pulse  { animation: cod2Pulse 1.6s ease-in-out infinite; }
+                      .cod2-submit-bounce { animation: cod2Bounce 1.2s ease-in-out infinite; }
+                      .cod2-submit-shimmer {
+                        background-image: linear-gradient(110deg, ${typeof btnBg === 'string' ? btnBg : glowColor} 30%, ${glowColor}cc 50%, ${typeof btnBg === 'string' ? btnBg : glowColor} 70%) !important;
+                        background-size: 200% 100% !important;
+                        animation: cod2ShimmerBg 2.4s linear infinite;
+                      }
+                    `}</style>
                   </>
-                )}
-              </button>
+                );
+              })()}
 
               <div className="flex flex-wrap items-center justify-center gap-4 text-[11px] opacity-70">
                 <span className="inline-flex items-center gap-1"><Wallet className="h-3 w-3" /> Paiement à la livraison</span>
@@ -375,7 +428,7 @@ export default function CodCheckoutPage() {
             <aside className="lg:sticky lg:top-24 lg:self-start">
               <div
                 className="overflow-hidden border"
-                style={{ backgroundColor: theme.surface, borderColor: theme.border, borderRadius: radius }}
+                style={{ backgroundColor: store.settings?.codForm?.backgroundColor || theme.surface, borderColor: theme.border, borderRadius: radius }}
               >
                 <div className="px-5 py-3 text-xs font-semibold uppercase tracking-wider opacity-60" style={{ backgroundColor: theme.surfaceMuted }}>
                   Récapitulatif
@@ -384,7 +437,7 @@ export default function CodCheckoutPage() {
                   <div className="flex items-start gap-3">
                     {product.images?.[0] ? (
                       /* eslint-disable-next-line @next/next/no-img-element */
-                      <img src={product.images[0]} alt="" className="h-20 w-20 shrink-0 border object-cover" style={{ borderColor: theme.border, borderRadius: radius }} />
+                      <img src={mediaUrl(product.images[0]) || product.images[0]} alt="" className="h-20 w-20 shrink-0 border object-cover" style={{ borderColor: theme.border, borderRadius: radius }} />
                     ) : (
                       <div className="grid h-20 w-20 shrink-0 place-items-center text-2xl" style={{ backgroundColor: theme.surfaceMuted, borderRadius: radius }}>📦</div>
                     )}

@@ -112,6 +112,13 @@ export interface IStore extends Document {
       productsGridTitle?: string;    // default "Nos produits"
       showFeatures?: boolean;        // default true (3 reassurance pills)
       /**
+       * Render order of the four movable body sections. Unknown / missing
+       * entries are appended at the end in their default position. The
+       * fixed-position sections (announcement, navbar, footer) are NOT in
+       * this array — they always stay at their canonical position.
+       */
+      sectionOrder?: Array<'hero' | 'slider' | 'products' | 'testimonials'>;
+      /**
        * Customer testimonials / reviews section managed by the seller.
        * Each testimonial has the buyer's name, optional photo, rating 1-5
        * and a short quote.
@@ -338,6 +345,7 @@ const StoreSchema = new Schema<IStore>(
         showProductsGrid: { type: Boolean, default: true },
         productsGridTitle: { type: String },
         showFeatures: { type: Boolean, default: true },
+        sectionOrder: [{ type: String, enum: ['hero', 'slider', 'products', 'testimonials'] }],
         testimonials: {
           enabled: { type: Boolean, default: false },
           title: { type: String },

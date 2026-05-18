@@ -163,7 +163,14 @@ export interface StorefrontSettings {
   footerNote?: string;
   footer?: FooterSettings;
   slider?: SliderSettings;
+  /** Order of the 4 movable body sections on the public storefront. */
+  sectionOrder?: Array<'hero' | 'slider' | 'products' | 'testimonials'>;
 }
+
+// Re-export the pure section-order helpers so existing imports from
+// '@/components/dashboard/store-editor' keep working unchanged.
+export { resolveSectionOrder, DEFAULT_SECTION_ORDER } from '@/lib/section-order';
+export type { MovableSectionId } from '@/lib/section-order';
 
 export interface StoreType {
   _id: string;

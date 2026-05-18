@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { formatCurrency } from '@/lib/utils';
+import { formatCurrency, mediaUrl } from '@/lib/utils';
 import type { ProductBundle } from '@/lib/api';
 import {
   STORE_THEME_TEMPLATES,
@@ -207,7 +207,7 @@ export default async function PublicProductPage({ params }: Props) {
                 {product.images?.[0] ? (
                   // eslint-disable-next-line @next/next/no-img-element
                   <img
-                    src={product.images[0]}
+                    src={mediaUrl(product.images[0]) || product.images[0]}
                     alt={product.name}
                     className="h-full w-full object-cover"
                   />
@@ -252,7 +252,7 @@ export default async function PublicProductPage({ params }: Props) {
                       style={{ borderColor: theme.border, borderRadius: radius }}
                     >
                       {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img src={img} alt="" className="h-full w-full object-cover" />
+                      <img src={mediaUrl(img) || img} alt="" className="h-full w-full object-cover" />
                     </div>
                   ))}
                 </div>
@@ -268,11 +268,19 @@ export default async function PublicProductPage({ params }: Props) {
                 >
                   {product.name}
                 </h1>
-                {product.description && (
-                  <p className="mt-3 line-clamp-3 text-sm leading-relaxed sm:mt-4 sm:text-base" style={{ color: theme.muted }}>
-                    {product.description.split(/\n\s*\n/)[0]}
-                  </p>
-                )}
+                {/* Teaser = first paragraph. Only render when the description
+                    has multiple paragraphs so we don't duplicate the same
+                    text right above the full "Description" section below. */}
+                {(() => {
+                  if (!product.description) return null;
+                  const paragraphs = product.description.split(/\n\s*\n/).filter((p) => p.trim());
+                  if (paragraphs.length <= 1) return null;
+                  return (
+                    <p className="mt-3 line-clamp-3 text-sm leading-relaxed sm:mt-4 sm:text-base" style={{ color: theme.muted }}>
+                      {paragraphs[0]}
+                    </p>
+                  );
+                })()}
               </div>
 
               {/* Pricing block */}
