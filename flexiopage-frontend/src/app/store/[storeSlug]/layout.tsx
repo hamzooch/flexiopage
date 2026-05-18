@@ -1,13 +1,20 @@
 /**
- * Shared layout for every storefront page (`/store/<slug>/...`). Today its
- * sole job is to fetch the store's WhatsApp config once and render the
- * floating button across the homepage, product pages, info pages and
- * checkout flows so the seller doesn't have to wire it page-by-page.
+ * Shared layout for every storefront page (`/store/<slug>/...`).
  *
- * Kept as a Server Component so the wa.me link is rendered without a
- * client-side roundtrip — the button itself is a 'use client' component
- * for the animation/SVG markup.
+ * Two responsibilities:
+ *   1. Set the per-store favicon — the seller's own icon when configured,
+ *      otherwise a blank 1x1 PNG so the FlexioPage favicon (from the root
+ *      layout) does NOT bleed into a customer-facing shop. Dashboard,
+ *      login, marketing, etc. keep the FlexioPage favicon untouched
+ *      because they live outside this route group.
+ *   2. Render the floating WhatsApp button on every storefront page so
+ *      we don't have to wire it page-by-page.
+ *
+ * Kept as a Server Component: the favicon link is part of the static
+ * <head> and the wa.me link is rendered without a client roundtrip.
  */
+import type { Metadata } from 'next';
+import { mediaUrl } from '@/lib/utils';
 import { WhatsappButton, type WhatsappConfig } from '@/components/storefront/whatsapp-button';
 
 interface Props {
@@ -15,29 +22,60 @@ interface Props {
   params: Promise<{ storeSlug: string }>;
 }
 
-async function fetchWhatsapp(storeSlug: string): Promise<WhatsappConfig | undefined> {
+/**
+ * 1×1 transparent PNG used to suppress the inherited FlexioPage favicon
+ * on stores where the seller hasn't uploaded one. We deliberately do
+ * NOT fall back to /favicon.ico — that would brand the customer's shop
+ * with the platform logo, which is exactly what the seller doesn't want.
+ */
+const BLANK_FAVICON =
+  'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=';
+
+interface StoreLite {
+  favicon?: string;
+  logo?: string;
+  settings?: { whatsapp?: WhatsappConfig };
+}
+
+async function fetchStore(storeSlug: string): Promise<StoreLite | null> {
   const apiBase = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
   try {
     const res = await fetch(`${apiBase}/api/public/store-by-slug/${storeSlug}`, {
-      // Same fetch policy as the storefront pages — no cache so a config
-      // change in the dashboard shows up immediately on the public site.
+      // No cache so a favicon/whatsapp change in the dashboard reflects
+      // immediately on the public site.
       cache: 'no-store',
     });
-    if (!res.ok) return undefined;
-    const { store } = (await res.json()) as { store?: { settings?: { whatsapp?: WhatsappConfig } } };
-    return store?.settings?.whatsapp;
+    if (!res.ok) return null;
+    const { store } = (await res.json()) as { store?: StoreLite };
+    return store || null;
   } catch {
-    return undefined;
+    return null;
   }
+}
+
+export async function generateMetadata({ params }: Props): Promise<Metadata> {
+  const { storeSlug } = await params;
+  const store = await fetchStore(storeSlug);
+  // Seller's favicon (or logo as a fallback). When neither is set we ship
+  // a blank icon so the root layout's FlexioPage favicon doesn't leak in.
+  const sellerIcon = mediaUrl(store?.favicon || store?.logo);
+  const icon = sellerIcon || BLANK_FAVICON;
+  return {
+    icons: {
+      icon,
+      shortcut: icon,
+      apple: icon,
+    },
+  };
 }
 
 export default async function StoreLayout({ children, params }: Props) {
   const { storeSlug } = await params;
-  const wa = await fetchWhatsapp(storeSlug);
+  const store = await fetchStore(storeSlug);
   return (
     <>
       {children}
-      <WhatsappButton config={wa} />
+      <WhatsappButton config={store?.settings?.whatsapp} />
     </>
   );
 }
