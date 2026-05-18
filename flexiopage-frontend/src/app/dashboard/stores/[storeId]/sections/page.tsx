@@ -7,7 +7,7 @@
  */
 
 import { useEffect, useState } from 'react';
-import { useParams } from 'next/navigation';
+import { useParams, useSearchParams } from 'next/navigation';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -149,7 +149,11 @@ export default function StoreSectionsPage() {
   // sticky left nav can highlight the matching nav item.
   const [activeSection, setActiveSection] = useState<string>('announcement');
   // Top-level scope: homepage sections vs product-page sections.
-  const [scope, setScope] = useState<'home' | 'product'>('home');
+  // Seeded from ?scope=product so the per-product editor can deep-link
+  // straight to the product-page tab + a named anchor (e.g. #product-page-style).
+  const searchParams = useSearchParams();
+  const initialScope = searchParams?.get('scope') === 'product' ? 'product' : 'home';
+  const [scope, setScope] = useState<'home' | 'product'>(initialScope);
 
   useEffect(() => {
     if (!storeId) return;

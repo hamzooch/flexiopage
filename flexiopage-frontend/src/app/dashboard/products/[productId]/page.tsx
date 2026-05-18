@@ -25,6 +25,7 @@ import {
   Image as ImageIcon, Package, Layers, Tag, TrendingUp, Search as SearchIcon,
   Settings as SettingsIcon, Plus, Trash2, Clock,
   Truck, ShieldCheck, RefreshCcw, Lock, Headphones, Gift, Star, Leaf, Banknote,
+  Palette, ArrowRight,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -528,6 +529,25 @@ export default function EditProductPage() {
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-5">
+              {/* Shortcut to the store-wide design — the visual identity (palette,
+                  colors, button shape, animation) is shared by ALL product pages
+                  of the store, so it lives in Sections > Page produit > Style
+                  visuel rather than per-product. Linking here makes that obvious. */}
+              <Link
+                href={`/dashboard/stores/${storeId}/sections?scope=product#product-page-style`}
+                className="flex items-center gap-3 rounded-xl border border-fuchsia-500/30 bg-gradient-to-br from-fuchsia-500/5 to-card p-3 transition-all hover:-translate-y-0.5 hover:border-fuchsia-500/50 hover:shadow-md"
+              >
+                <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-gradient-to-br from-primary to-fuchsia-600 text-white shadow-sm">
+                  <Palette className="h-4 w-4" />
+                </span>
+                <div className="min-w-0 flex-1">
+                  <div className="text-sm font-bold">Design du formulaire & des couleurs</div>
+                  <p className="mt-0.5 text-[11px] text-muted-foreground">
+                    Palette, couleurs (titre, prix, bouton, navbar), forme + animation du bouton Commander — réglés globalement pour <strong>tous</strong> les produits.
+                  </p>
+                </div>
+                <ArrowRight className="h-4 w-4 shrink-0 text-fuchsia-600" />
+              </Link>
               {/* Toggles row */}
               <div className="grid gap-2 sm:grid-cols-2">
                 <FieldToggle

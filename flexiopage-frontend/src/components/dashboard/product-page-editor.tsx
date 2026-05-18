@@ -103,14 +103,20 @@ export function ProductPageEditor({ cfg, onChange }: Props) {
     <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_380px]">
       <div className="space-y-6">
       {/* ── STYLE — palette + colors + gallery layout ────────── */}
-      <section className="rounded-xl border border-fuchsia-500/20 bg-gradient-to-br from-fuchsia-500/5 to-card p-4">
-        <div className="mb-3 inline-flex items-center gap-1.5 text-sm font-semibold">
+      <section
+        id="product-page-style"
+        className="scroll-mt-6 rounded-xl border border-fuchsia-500/20 bg-gradient-to-br from-fuchsia-500/5 to-card p-4"
+      >
+        <div className="mb-1 inline-flex items-center gap-1.5 text-sm font-semibold">
           <PaletteIcon className="h-4 w-4 text-fuchsia-600" />
-          Style visuel
+          Style visuel & design du formulaire
           <span className="ml-1 rounded-full bg-fuchsia-500/10 px-1.5 py-0.5 text-[10px] font-semibold text-fuchsia-700">
             Surcharge le thème
           </span>
         </div>
+        <p className="mb-3 text-[11px] text-muted-foreground">
+          Une palette = couleurs (titre, prix, accent, bouton, navbar), forme + animation du bouton Commander. S&apos;applique à <strong>toutes</strong> les pages produit de cette boutique.
+        </p>
 
         {/* Preset palette picker — one click sets all 6 colors at once */}
         <PalettePresetPicker
