@@ -10,6 +10,7 @@ import { Label } from '@/components/ui/label';
 import { storesApi } from '@/lib/api';
 import { Plus, Trash2, ImagePlus, Loader2, Star, ArrowUp, ArrowDown, Sparkles, Upload, X, Download, Video, Key, Crown, Wrench, FileText } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { AiDescriptionButton } from '@/components/dashboard/ai-description-button';
 
 type DigitalKind = 'download' | 'course' | 'license' | 'membership' | 'service';
 
@@ -94,14 +95,17 @@ export default function NewProductPage() {
   const [dragOver, setDragOver] = useState(false);
   const [error, setError] = useState('');
 
+  const [storeSettings, setStoreSettings] = useState<{ language?: string; country?: string; currency?: string }>({});
+
   useEffect(() => {
     if (!storeId) { setError('No store selected'); return; }
     // If the store is digital, redirect to the dedicated digital form (better UX).
     storesApi.get(storeId).then((res) => {
-      const s = (res.data as { store?: { storeType?: string } }).store;
+      const s = (res.data as { store?: { storeType?: string; settings?: { language?: string; country?: string; currency?: string } } }).store;
       if (s?.storeType === 'digital') {
         router.replace(`/dashboard/products/new/digital?storeId=${storeId}`);
       }
+      if (s?.settings) setStoreSettings(s.settings);
     }).catch(() => { /* non-blocking */ });
   }, [storeId, router]);
 
@@ -389,7 +393,20 @@ export default function NewProductPage() {
               <p className="text-[11px] text-muted-foreground">Court et descriptif. C&apos;est ce que voient tes clients.</p>
             </div>
             <div className="space-y-1.5">
-              <Label htmlFor="description">Description du produit</Label>
+              <div className="flex items-center justify-between gap-2">
+                <Label htmlFor="description">Description du produit</Label>
+                {storeId && (
+                  <AiDescriptionButton
+                    storeId={storeId}
+                    productName={name}
+                    price={parseFloat(price) || undefined}
+                    currency={storeSettings.currency}
+                    defaultLanguage={storeSettings.language}
+                    defaultCountry={storeSettings.country}
+                    onResult={(text) => setDescription(text)}
+                  />
+                )}
+              </div>
               <textarea
                 id="description"
                 value={description}
@@ -397,7 +414,10 @@ export default function NewProductPage() {
                 className="flex min-h-[100px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
                 placeholder="Ex: Caftan en soie brodée à la main, finitions dorées. Coupe ample, idéal pour les occasions."
               />
-              <p className="text-[11px] text-muted-foreground">Saute des lignes pour faire des paragraphes. Lignes commençant par « - » deviennent des listes à puces.</p>
+              <p className="text-[11px] text-muted-foreground">
+                Saute des lignes pour les paragraphes · lignes commençant par « - » deviennent des puces.
+                Tu peux laisser l&apos;IA écrire pour toi puis ajuster, ou tout taper à la main.
+              </p>
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="type">Type de produit *</Label>

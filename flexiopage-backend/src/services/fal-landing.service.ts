@@ -10,7 +10,7 @@
  *
  * Env overrides:
  *   - FAL_KEY                  required
- *   - FAL_LLM_MODEL            default 'anthropic/claude-sonnet-4.6'
+ *   - FAL_LLM_MODEL            default 'anthropic/claude-sonnet-4.5' (top Claude on fal)
  *   - FAL_LLM_TEMPERATURE      default '0.85' — bump for more creativity, drop for consistency
  *   - FAL_IMAGE_MODEL          default 'fal-ai/flux/schnell'
  *   - FAL_AVATAR_MODEL         default same as FAL_IMAGE_MODEL
@@ -152,7 +152,13 @@ function deriveDirection(language: string): 'ltr' | 'rtl' {
   return RTL_LANGS.has(language.split('-')[0]) ? 'rtl' : 'ltr';
 }
 
-function getDialect(country?: string, language?: string): string {
+/**
+ * Returns the dialect/voice guidance for a given country (TN → Tunisian Derja,
+ * MA → Moroccan Darija, etc.). Used by every LLM prompt so the copy actually
+ * sounds local. Exported so the poster + landing-image services can reuse
+ * the same dialect tables.
+ */
+export function getDialect(country?: string, language?: string): string {
   if (!country) {
     if (language === 'ar') return 'Modern Standard Arabic (فصحى) — neutral pan-Arab tone.';
     return '';
@@ -161,9 +167,18 @@ function getDialect(country?: string, language?: string): string {
   return DIALECT_MAP[code] || (isArabCountry(code) ? 'Modern Standard Arabic (فصحى).' : '');
 }
 
-function getPhotoCulture(country?: string): string {
+/**
+ * Returns the photo / scene cultural cue for a given country code. Used by
+ * the image prompts so testimonials and lifestyle shots look local.
+ */
+export function getPhotoCulture(country?: string): string {
   if (!country) return 'modern, warm natural light, lifestyle photography';
   return PHOTO_CULTURE[country.toUpperCase()] || 'modern, warm natural light, lifestyle photography';
+}
+
+/** Exposed so the controllers / other services can validate / default. */
+export function isArabCountryCode(code?: string): boolean {
+  return isArabCountry(code);
 }
 
 const LANGUAGE_LABEL: Record<string, string> = {
@@ -410,7 +425,15 @@ async function captionProductImages(images: string[], max = 3): Promise<string> 
   return list.map((c, i) => `Image ${i + 1}: ${c}`).join('\n');
 }
 
-const LLM_MODEL = process.env.FAL_LLM_MODEL || 'anthropic/claude-sonnet-4.6';
+// fal.ai any-llm registry (as of this edit) accepts these Claude models:
+//   anthropic/claude-sonnet-4.5  (best Claude available on fal)
+//   anthropic/claude-haiku-4.5
+//   anthropic/claude-3.7-sonnet
+//   anthropic/claude-3.5-sonnet
+// Other strong picks for marketing copy: openai/gpt-5-chat, openai/gpt-4.1,
+// google/gemini-2.5-pro, deepseek/deepseek-v3.1-terminus.
+// Override via FAL_LLM_MODEL env when you want to test alternatives.
+const LLM_MODEL = process.env.FAL_LLM_MODEL || 'anthropic/claude-sonnet-4.5';
 // Marketing copy lives at the upper end of the creativity dial — too cold
 // (≤0.5) and every page sounds identical; too hot (≥1.0) and we get
 // hallucinations of fake stats / made-up product features. 0.85 is the
@@ -418,10 +441,11 @@ const LLM_MODEL = process.env.FAL_LLM_MODEL || 'anthropic/claude-sonnet-4.6';
 const LLM_TEMPERATURE = parseFloat(process.env.FAL_LLM_TEMPERATURE || '0.85');
 
 /**
- * Run the strategic LLM through fal's queue endpoint. Claude Sonnet 4.6
- * by default — sharper at dialect copy and richer at structured JSON than
- * 3.5 or 4.5, and much better than Gemini Flash for the volume of arabic
- * derja / french conversion copy this pipeline needs.
+ * Run the strategic LLM through fal's queue endpoint. Claude Sonnet 4.5
+ * by default — top Claude available via fal.ai any-llm, sharper at dialect
+ * copy and richer at structured JSON than Sonnet 3.5 / 3.7, and much better
+ * than Gemini Flash for the volume of arabic derja / french conversion copy
+ * this pipeline needs.
  *
  * We use the queue API (queue.fal.run) instead of the sync API (fal.run)
  * because Claude generating ~10 sections of structured JSON with image
@@ -1128,14 +1152,15 @@ async function buildImageGenInput(slot: ImageSlot): Promise<ImageGenInput> {
     }
   }
 
-  // Nano Banana Edit fidelity guard. When we hand it a reference photo we
-  // want it to PLACE THE SAME PRODUCT in a new scene — not invent a similar
-  // object. The model honours strong, explicit, repeated identity locks at
-  // the very start of the prompt much better than vague "based on this
-  // product" wording, so we prepend a hard lock and re-anchor at the end.
-  const model = modelForKind(slot.kind) || '';
-  const isNanoBananaEdit = /nano-banana/i.test(model) && referenceImages && referenceImages.length > 0;
-  if (isNanoBananaEdit) {
+  // Img2img fidelity guard. When we hand the model a reference photo we want
+  // it to PLACE THE SAME PRODUCT in a new scene — not invent a similar object.
+  // Any img2img-capable model (Nano Banana Edit, Flux Pro Kontext, …) honours
+  // strong, explicit, repeated identity locks at the very start of the prompt
+  // much better than vague "based on this product" wording. Trigger as soon
+  // as we have a reference image, regardless of the model name — the new
+  // routing layer will pick the right img2img endpoint.
+  const hasReference = !!(referenceImages && referenceImages.length > 0);
+  if (hasReference) {
     const fidelityHead =
       'CRITICAL IDENTITY LOCK — READ FIRST: The product in the reference image is FIXED and IMMUTABLE. ' +
       'You MUST preserve, pixel by pixel, every visible detail of that exact product: its silhouette, ' +
@@ -1157,7 +1182,7 @@ async function buildImageGenInput(slot: ImageSlot): Promise<ImageGenInput> {
   const baseNeg = 'text, watermark, logo, deformed, blurry, lowres, ugly, extra fingers, distorted face';
   const negativePrompt = isBanner
     ? 'blurry, lowres, distorted, deformed'
-    : isNanoBananaEdit
+    : hasReference
       ? `${baseNeg}, different product, alternative product, redesigned product, similar but different, wrong color variant, wrong branding, generic look-alike`
       : baseNeg;
 

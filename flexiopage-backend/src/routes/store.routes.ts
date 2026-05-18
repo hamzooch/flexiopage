@@ -36,6 +36,7 @@ router.post('/:storeId/integrations/sheets/test', storeController.testSheetsCont
 // Nested resources
 router.get('/:storeId/products', productController.listProducts);
 router.post('/:storeId/products', productController.createProduct);
+router.post('/:storeId/products/generate-description', productController.generateProductDescription);
 router.get('/:storeId/products/:productId', productController.getProduct);
 router.patch('/:storeId/products/:productId', productController.updateProduct);
 router.delete('/:storeId/products/:productId', productController.deleteProduct);
@@ -62,6 +63,7 @@ router.patch('/:storeId/orders/:orderId/payment', orderController.updateOrderPay
 router.patch('/:storeId/orders/:orderId/fulfillment', orderController.updateOrderFulfillment);
 router.post('/:storeId/orders/:orderId/dispatch', orderController.dispatchOrderToCourier);
 router.patch('/:storeId/orders/:orderId/manual-status', orderController.manualStatusOverride);
+router.patch('/:storeId/orders/:orderId/confirmation', orderController.updateConfirmationStatus);
 
 router.post('/:storeId/media', mediaController.uploadSingle, mediaController.uploadMedia);
 router.get('/:storeId/media', mediaController.listMedia);

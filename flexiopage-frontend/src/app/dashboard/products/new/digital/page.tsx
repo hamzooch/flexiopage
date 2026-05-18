@@ -23,6 +23,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { storesApi } from '@/lib/api';
 import { cn } from '@/lib/utils';
+import { AiDescriptionButton } from '@/components/dashboard/ai-description-button';
 import {
   Download,
   Video,
@@ -166,6 +167,16 @@ export default function NewDigitalProductPage() {
   const storeId = searchParams.get('storeId');
   const coverInputRef = useRef<HTMLInputElement>(null);
   const assetsInputRef = useRef<HTMLInputElement>(null);
+
+  // Store defaults so the AI description picker pre-selects the right language.
+  const [storeSettings, setStoreSettings] = useState<{ language?: string; country?: string; currency?: string }>({});
+  useEffect(() => {
+    if (!storeId) return;
+    storesApi.get(storeId).then((res) => {
+      const s = (res.data as { store?: { settings?: { language?: string; country?: string; currency?: string } } }).store;
+      if (s?.settings) setStoreSettings(s.settings);
+    }).catch(() => { /* non-blocking */ });
+  }, [storeId]);
 
   // ── Form state ──────────────────────────────────────────────────────
   const [kind, setKind] = useState<DigitalKind>('download');
@@ -494,7 +505,21 @@ export default function NewDigitalProductPage() {
               />
             </div>
             <div className="space-y-1.5">
-              <Label htmlFor="description">Description</Label>
+              <div className="flex items-center justify-between gap-2">
+                <Label htmlFor="description">Description</Label>
+                {storeId && (
+                  <AiDescriptionButton
+                    storeId={storeId}
+                    productName={name}
+                    category={kind === 'course' ? 'cours en ligne' : kind === 'license' ? 'licence logicielle' : kind === 'membership' ? 'abonnement / membership' : 'téléchargement digital'}
+                    price={parseFloat(price) || undefined}
+                    currency={storeSettings.currency}
+                    defaultLanguage={storeSettings.language}
+                    defaultCountry={storeSettings.country}
+                    onResult={(text) => setDescription(text)}
+                  />
+                )}
+              </div>
               <textarea
                 id="description"
                 value={description}
@@ -502,6 +527,9 @@ export default function NewDigitalProductPage() {
                 className="flex min-h-[100px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
                 placeholder="Explique ce que le client va obtenir. Vise 3-5 phrases. Sois concret : ce qu'il apprend, ce qu'il télécharge, ce qu'il pourra faire."
               />
+              <p className="text-[11px] text-muted-foreground">
+                Tu peux faire écrire l&apos;IA puis ajuster, ou tout taper à la main.
+              </p>
             </div>
           </CardContent>
         </Card>

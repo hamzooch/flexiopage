@@ -16,7 +16,7 @@
  *
  * Cost: charged through the existing AI wallet bucket as a `landing`.
  */
-import { runLLM } from './fal-landing.service';
+import { runLLM, getDialect, getPhotoCulture } from './fal-landing.service';
 import { generateImage } from './image-generation.service';
 
 const LANDING_IMAGE_MODEL = process.env.FAL_LANDING_IMAGE_MODEL || 'fal-ai/nano-banana';
@@ -81,38 +81,47 @@ function buildCopyPrompt(input: LandingImageInput): string {
   const country = input.country || 'TN';
   const p = input.product;
 
-  return `You are a conversion-focused ecommerce copywriter for the ${country} market.
-Write the copy for a high-converting landing page, in ${langName}.
+  const dialect = getDialect(country, lang);
 
+  return `You are a senior creative copywriter at a top MENA ecommerce agency. You have written 800+ winning landing pages and you OWN the voice of the ${country} market — direct, vivid, locally idiomatic, scroll-stopping, never corporate.
+Write the copy for a HIGH-CONVERTING, EMOTIONALLY-CHARGED landing page in ${langName}.
+${dialect ? `\nLOCAL VOICE / DIALECT (${country}) — MANDATORY:\n${dialect}\nThe reader must INSTANTLY recognise their own way of speaking. NEVER fall back to neutral Modern Standard Arabic if a dialect is specified.\n` : ''}
 PRODUCT
 - Name: ${p.name}
 - Category: ${p.category || 'general'}
 ${p.description ? `- Description: ${p.description}\n` : ''}${p.price != null ? `- Price: ${p.price} ${currency}\n` : ''}${p.compareAtPrice != null ? `- Old price: ${p.compareAtPrice} ${currency}\n` : ''}
 
+COPY PHILOSOPHY (critical — read carefully):
+- Sell the TRANSFORMATION, not the spec. ("a screen that hurts your eyes" → "the kind of screen you forget is there").
+- Every line earns its place. If a sentence could appear on any competitor's page, REWRITE IT.
+- One concrete sensory detail per benefit (a sound, a texture, a number, a moment).
+- BAN this list of clichés: "premium", "haute qualité", "the best", "amazing", "revolutionary", "découvrez", "profitez", "n'attendez plus".
+- Prefer: punchy verbs, specific numbers, micro-stories, fresh metaphors, friendly slang that locals actually say.
+- Tone: like a smart friend recommending it in a voice message — confident, warm, never salesy.
+
 Return JSON ONLY (no markdown), exactly this shape:
 {
-  "headline": "punchy emotional hook, 5-9 words, in ${langName}",
-  "subheadline": "optional one-line support, 8-14 words",
-  "reassurance": ["free delivery phrase", "cash on delivery phrase"],
+  "headline": "BIG emotional hook, 5-9 words, ${langName}. A scroll-stopper. State the transformation or pose a vivid question. Not a feature, a feeling.",
+  "subheadline": "one supporting line 10-16 words, adds the 'why now' or a sensory detail",
+  "reassurance": ["free-delivery phrase 2-4 words, ${langName}", "cash-on-delivery phrase 2-4 words, ${langName}"],
   "benefits": [
-    { "title": "short 2-4 words", "body": "1 sentence, 8-14 words" },
-    { "title": "short 2-4 words", "body": "1 sentence, 8-14 words" },
-    { "title": "short 2-4 words", "body": "1 sentence, 8-14 words" },
-    { "title": "short 2-4 words", "body": "1 sentence, 8-14 words" }
+    { "title": "2-4 words concrete title", "body": "1 sentence 10-16 words: ONE benefit, ONE sensory detail or number, no fluff" },
+    { "title": "2-4 words DIFFERENT angle", "body": "1 sentence 10-16 words, different angle (ease, speed, durability, status, joy, time-saved)" },
+    { "title": "2-4 words DIFFERENT angle", "body": "1 sentence 10-16 words, yet another angle" },
+    { "title": "2-4 words DIFFERENT angle", "body": "1 sentence 10-16 words, the last angle" }
   ],
-  "socialProof": "one short trust line, e.g. local handcrafted service",
+  "socialProof": "one specific trust line with a precise (non-round) number — e.g. '1 247 clients depuis mars', 'note 4.8/5 sur 312 avis'",
   "testimonials": [
-    { "quote": "1 sentence customer review, 12-18 words", "author": "First name M. - City, ${country}" },
-    { "quote": "different 1 sentence review", "author": "First name M. - City, ${country}" }
+    { "quote": "1 sentence 14-22 words. A REAL moment — sensory, specific. Local voice. NOT 'super produit je recommande'.", "author": "First name M. - City, ${country}" },
+    { "quote": "another 1 sentence 14-22 words. Different angle from the first (if first = quality, this one = service / speed / status)", "author": "Different first name M. - different City, ${country}" }
   ],
-  "cta": "2-3 word call to action, e.g. Order Now",
-  "ctaReassurance": "2-3 word quality guarantee phrase"
+  "cta": "2-3 word call to action ALL CAPS, direct action verb, ${langName}",
+  "ctaReassurance": "2-4 word reassurance that kills the last objection (returns, guarantee, safe payment), ${langName}"
 }
 
-RULES
-- EVERY string must be written in ${langName} (not English), except keep it natural for ${country}.
-- Tone: direct, punchy, mobile ad style.
-- No markdown, no explanation — JSON only.`;
+STRICT RULES
+- EVERY string in ${langName}${RTL_LANGS.has(lang) ? ' (proper script, natural local register, no romanisation)' : ''}.
+- No markdown, no commentary — valid JSON only.`;
 }
 
 /** Step 2 — the design-director prompt for the image model, copy baked in. */
@@ -121,6 +130,8 @@ function buildImagePrompt(input: LandingImageInput, copy: LandingCopy): string {
   const langName = LANG_NAME[lang] || input.language || 'French';
   const rtl = RTL_LANGS.has(lang);
   const currency = input.currency || 'TND';
+  const country = input.country || 'TN';
+  const photoCulture = getPhotoCulture(country);
   const p = input.product;
   const priceLine = p.price != null
     ? `${p.price} ${currency}${p.compareAtPrice != null ? ` (old price ${p.compareAtPrice} ${currency}, crossed out)` : ''}`
@@ -133,45 +144,57 @@ function buildImagePrompt(input: LandingImageInput, copy: LandingCopy): string {
     .map((t) => `   - "${t.quote}" — ${t.author} (5 stars)`)
     .join('\n');
 
-  return `Act as a top-tier ecommerce landing page designer and conversion-focused creative director.
-Create a premium, high-converting vertical landing page DESIGN MOCKUP for "${p.name}" (${p.category || 'Electronics & Gadgets'}).
+  return `You are an AWARD-WINNING senior product / brand designer (Awwwards, CSS Design Awards). You design landing pages for premium DTC brands — your work looks like Linear, Apple Store, Tesla, On Running, Aesop, Glossier, Notion, Stripe. You compose, you don't decorate.
 
-LANGUAGE: ${langName}${rtl ? ' — proper RIGHT-TO-LEFT (RTL) layout' : ''}.
+MISSION: design and render a single, production-ready, premium vertical 9:16 ECOMMERCE LANDING PAGE MOCKUP for "${p.name}" (${p.category || 'consumer product'}).
 
-DESIGN RULES (CRITICAL):
-- Vertical 9:16 long-scroll format, single connected page split into stacked sections.
-- ${rtl ? 'Proper RTL layout — text aligned right, reading right-to-left.' : 'Clean LTR layout.'}
-- Typography: BOLD, MODERN, HIGH-CONTRAST. ${rtl ? 'Use a clean Arabic font (Cairo / Almarai style).' : 'Use a clean modern sans-serif.'}
-- Visuals: premium, realistic, modern, visually rich. Production-ready mockup, NOT a wireframe.
-- All text must be SHARP, LARGE and perfectly READABLE. No tiny unreadable text. No gibberish text.
-- Modern ecommerce palette: clean white cards on a dark charcoal background, one strong accent color.
+LANGUAGE: ${langName}${rtl ? ' — full RIGHT-TO-LEFT (RTL) layout. Text aligned right, reading right-to-left, numerals also rendered in the appropriate locale.' : ' — clean LTR layout.'}
+LOCAL CULTURE (${country}): all human / lifestyle photos must feel authentic to this market — ${photoCulture}. Cast diverse REAL-looking local people (correct skin tones, clothing styles, interiors). No generic stock.
 
-USE EXACTLY THIS COPY (render it as the on-image text, do not invent other text):
+VISUAL DESIGN LANGUAGE (CRITICAL — this is what makes it "modern and inspiring"):
+- Editorial DTC aesthetic 2026 — generous whitespace, confident typographic hierarchy, restrained palette, bold accent moments. Not a template, not a wireframe, not a brochure. A REAL product page.
+- Palette: ONE strong base (off-white #F7F5F2 OR deep charcoal #0E0E10) + ONE refined accent (warm terracotta, brushed brass, electric cobalt, sage green or muted plum — pick what fits the product). No rainbow, no random gradients.
+- Typography: oversized headline (display sans, geometric or modern serif — like General Sans, Inter Display, GT Super, Cabinet Grotesk${rtl ? ' / for Arabic use a clean modern Arabic display font such as Cairo Bold, Almarai Black or 29LT Bukra' : ''}). Tight tracking on the hero, comfortable leading on body. Mix weights for hierarchy (300 / 500 / 800).
+- Layout: asymmetric, magazine-grade. Use the full canvas — let the product breathe, let images bleed to edges. Vary section rhythm: full-bleed hero → 2-col cards → full-bleed photo → grid → CTA.
+- Photography: cinematic, editorial. Soft natural light, real human moments, shallow depth of field, subtle film grain. The product is REAL (use the reference image as the truth source for the product itself). Lifestyle shots feel candid, never stock.
+- Cards: subtle (1px hairline borders OR soft 10-20% shadows, never both). Generous internal padding. Rounded radius 12-20px, consistent across the page.
+- Micro-details that lift the design: a small kerned eyebrow label above each section, a thin divider line, a tiny price-currency superscript, a 5-star row in solid accent color, a discreet trust pill, a "as seen on" logo strip (faded grayscale, generic shape).
+- All text PERFECTLY LEGIBLE and CRISP. No gibberish, no Lorem Ipsum, no garbled letters, no placeholder Latin in an Arabic block. Big body sizes (mobile-readable). Real characters in the target script.
 
-1. HERO SECTION
-   - Brand mark: "${input.storeName}"
-   - Headline: "${copy.headline}"
-   ${copy.subheadline ? `- Subheadline: "${copy.subheadline}"` : ''}
-   - Premium realistic packshot of the product "${p.name}".
-   - Price block: ${priceLine}
-   - Two reassurance pills: "${copy.reassurance.join('", "')}"
+USE EXACTLY THIS COPY (render it verbatim — do NOT translate, do NOT shorten, do NOT invent extra text):
 
-2. PRODUCT DETAILS & BENEFITS
-   - A grid of 4 white benefit cards, each with a product/lifestyle photo, a bold title and a short body:
+1. HERO (full bleed, ~32% of page height)
+   - Tiny eyebrow label: "${input.storeName}"
+   - OVERSIZED display headline: "${copy.headline}"
+   ${copy.subheadline ? `- Subheadline beneath, 60% size of headline: "${copy.subheadline}"` : ''}
+   - Premium realistic packshot of "${p.name}" — IDENTICAL to the reference image (same shape, colors, materials, branding). Hero composition, soft contact shadow, breathing room.
+   - Price block beside or below the product: ${priceLine}
+   - Two reassurance pills with tiny icons: "${copy.reassurance.join('", "')}"
+
+2. PRODUCT DETAILS & BENEFITS (~28% of page height)
+   - Section eyebrow: a one-word label like "BENEFITS" / "FONCTIONNALITÉS" / "المميزات" in the target language.
+   - 2×2 grid of 4 benefit cards. Each card: a small editorial product / lifestyle photo OR a single iconic line illustration, a bold short title, a one-line body. Cards aligned, equal heights, consistent spacing:
 ${benefitsText}
 
-3. AUTHORITY & SOCIAL PROOF
-   - A collage of happy real customers using the product.
-   - Trust line: "${copy.socialProof}"
-   - 2 testimonial cards, each with a clear 5-star row, large readable text:
+3. AUTHORITY & SOCIAL PROOF (~22% of page height)
+   - One striking full-bleed lifestyle photo of a real diverse customer naturally using the product (genuine candid moment, not posed stock).
+   - Trust line under it, centered, medium weight: "${copy.socialProof}"
+   - 2 testimonial cards stacked or side-by-side. Each card: 5 filled stars in the accent color, a large readable quote, the author line below in muted gray:
 ${testimonialsText}
 
-4. FINAL OFFER
-   - A bold lifestyle hero shot of the product.
-   - A massive, impossible-to-miss CTA button: "${copy.cta}"
-   - Reassurance under the button: "${copy.ctaReassurance}"
+4. FINAL OFFER & CTA (~18% of page height)
+   - A bold cinematic hero shot of the product (different angle from the hero — lifestyle context, dramatic lighting).
+   - Massive CTA button, full-width, accent color, oversized weight, rounded radius matching cards: "${copy.cta}"
+   - Tiny reassurance line under the button, muted gray: "${copy.ctaReassurance}"
+   - At the very bottom, a faint footer line with a single brand mark "${input.storeName}".
 
-The final image must look like a polished, production-ready landing page mockup. Text must be crisp and legible.`;
+ABSOLUTE RULES:
+- ONE single connected page composition, not multiple disconnected screens. Sections flow into each other vertically.
+- NO browser chrome, NO phone mockup frame, NO device bezel — design AS IF rendered at full bleed.
+- NO Lorem Ipsum, NO duplicated text, NO English where ${langName} is asked, NO placeholder text anywhere.
+- Product fidelity is sacred: every appearance of the product must match the reference image exactly — same shape, colors, materials, logos.
+- AVOID: cluttered layouts, decorative emojis, clip-art, neon glow gradients, web-3 holographic styles, generic icon sets, low-effort centered-everything compositions, AI-looking smooth plastic illustrations.
+- The result should feel like it was hand-crafted in Figma by a senior designer, then shot for a portfolio.`;
 }
 
 export async function generateLandingImage(input: LandingImageInput): Promise<LandingImageResult> {

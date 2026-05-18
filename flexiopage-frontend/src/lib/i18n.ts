@@ -64,8 +64,11 @@ const DICTIONARY = {
   'sidebar.products': { fr: 'Produits', en: 'Products', ar: 'المنتجات' },
   'sidebar.offers': { fr: 'Offres', en: 'Offers', ar: 'العروض' },
   'sidebar.landingPages': { fr: 'Landing pages', en: 'Landing pages', ar: 'صفحات الهبوط' },
-  'sidebar.aiLanding': { fr: 'Landing IA', en: 'AI landing', ar: 'هبوط بالذكاء الاصطناعي' },
-  'sidebar.aiPoster': { fr: 'Affiche IA', en: 'AI poster', ar: 'ملصق بالذكاء الاصطناعي' },
+  'sidebar.aiStudio': { fr: 'Studio IA', en: 'AI Studio', ar: 'استوديو الذكاء الاصطناعي' },
+  // Kept for backwards-compat with code that still reads these keys, both point
+  // to the unified Studio IA page now.
+  'sidebar.aiLanding': { fr: 'Studio IA', en: 'AI Studio', ar: 'استوديو الذكاء الاصطناعي' },
+  'sidebar.aiPoster': { fr: 'Studio IA', en: 'AI Studio', ar: 'استوديو الذكاء الاصطناعي' },
   'sidebar.tracking': { fr: 'Suivi', en: 'Tracking', ar: 'التتبع' },
   'sidebar.customers': { fr: 'Clients', en: 'Customers', ar: 'العملاء' },
   'sidebar.profitCalculator': {

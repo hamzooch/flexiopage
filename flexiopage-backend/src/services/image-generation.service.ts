@@ -151,14 +151,29 @@ async function inlinePrivateUrl(url: string): Promise<string> {
 
 /**
  * Decide the actual fal endpoint to use. When the caller passes
- * referenceImages, route to the model's image-to-image / edit endpoint so
- * the output contains the real reference product.
+ * referenceImages, route to an image-to-image endpoint so the output
+ * contains the REAL reference product — not a similar-looking invention.
+ *
+ * Previous bug: only Nano-Banana base models were rewritten to `/edit`.
+ * Other base models (e.g. `fal-ai/flux-pro/v1.1`) silently fell through
+ * to the FLUX text-to-image branch which DROPS the reference, so hero /
+ * product slots regenerated a generic look-alike instead of preserving
+ * the seller's actual product.
+ *
+ * Fix: any reference-bearing call is forced onto an img2img endpoint.
+ * Override the fallback with `FAL_IMG2IMG_MODEL` (e.g. set it to
+ * `fal-ai/flux-pro/kontext` for Flux-quality product-preserving scenes).
  */
 function resolveEndpoint(model: string, hasReference: boolean): string {
-  if (hasReference && isNanoBanana(model) && !/edit/.test(model)) {
-    return 'fal-ai/nano-banana/edit';
-  }
-  return model;
+  if (!hasReference) return model;
+  // Already an img2img endpoint — keep it.
+  if (/\/(edit|kontext|image-to-image|img2img)/i.test(model)) return model;
+  // Nano-Banana base → /edit.
+  if (isNanoBanana(model)) return 'fal-ai/nano-banana/edit';
+  // Any other text-to-image model (flux-pro, flux-schnell, flux-realism,
+  // ideogram, etc.) cannot honour a reference image. Fall back to a real
+  // img2img endpoint — Nano-Banana Edit by default, configurable.
+  return process.env.FAL_IMG2IMG_MODEL || 'fal-ai/nano-banana/edit';
 }
 
 /**
@@ -176,6 +191,20 @@ function buildBody(endpoint: string, input: ImageGenInput): Record<string, unkno
       image_urls: refs,
       num_images: 1,
       output_format: 'jpeg',
+    };
+  }
+
+  // Flux Pro Kontext (and the /max variant) — premium img2img that keeps the
+  // subject identity while letting Flux compose the surrounding scene. Schema
+  // is single `image_url` (not `image_urls`) + Nano-style aspect ratio token.
+  if (/flux-pro\/kontext/i.test(endpoint)) {
+    return {
+      prompt: input.prompt,
+      image_url: refs[0],
+      aspect_ratio: NANO_ASPECT[aspect].ratio,
+      num_images: 1,
+      output_format: 'jpeg',
+      ...(input.negativePrompt ? { negative_prompt: input.negativePrompt } : {}),
     };
   }
 

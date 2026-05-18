@@ -27,14 +27,13 @@ import {
   UserRound,
   X,
   LifeBuoy,
-  Image as ImageIcon,
   ShieldCheck,
   ArrowRight,
   UsersRound,
-  LayoutTemplate,
   Layers,
   Activity,
   Calculator,
+  Wand2,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAuthStore, type TeamRole } from '@/stores/auth-store';
@@ -91,8 +90,7 @@ const SECTIONS: { titleKey: TKey; items: NavItem[] }[] = [
       { href: '/dashboard/products', labelKey: 'sidebar.products', icon: Package },
       { href: '/dashboard/offers', labelKey: 'sidebar.offers', icon: Layers },
       { href: '/dashboard/pages', labelKey: 'sidebar.landingPages', icon: FileText },
-      { href: '/dashboard/pages/landing-image', labelKey: 'sidebar.aiLanding', icon: LayoutTemplate },
-      { href: '/dashboard/pages/poster', labelKey: 'sidebar.aiPoster', icon: ImageIcon },
+      { href: '/dashboard/pages/poster', labelKey: 'sidebar.aiStudio', icon: Wand2 },
       { href: '/dashboard/tracking', labelKey: 'sidebar.tracking', icon: Activity },
       { href: '/dashboard/customers', labelKey: 'sidebar.customers', icon: Users },
       { href: '/dashboard/calculator', labelKey: 'sidebar.profitCalculator', icon: Calculator },
