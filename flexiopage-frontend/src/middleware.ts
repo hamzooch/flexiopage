@@ -118,8 +118,19 @@ export async function middleware(request: NextRequest) {
   const subSlug = subdomainStoreSlug(rawHost);
   if (subSlug) {
     if (isFrameworkPath) return NextResponse.next();
+    // Storefront link helpers (storeUrl, StoreNavbar, StoreFooter, etc.)
+    // emit relative paths like `/<slug>/product/foo` which work fine on
+    // the legacy path-based access (flexiopage.com/<slug>/...). On the
+    // canonical subdomain (<slug>.flexiopage.com/<slug>/...) the same
+    // links produce a duplicate slug → /store/<slug>/<slug>/... → 404.
+    // Strip the leading duplicate so both URL shapes resolve to the
+    // same internal route without having to refactor every <Link>.
+    let cleanPath = pathname;
+    if (cleanPath === `/${subSlug}` || cleanPath.startsWith(`/${subSlug}/`)) {
+      cleanPath = cleanPath.slice(subSlug.length + 1) || '/';
+    }
     const url = request.nextUrl.clone();
-    url.pathname = `/store/${subSlug}${pathname === '/' ? '' : pathname}`;
+    url.pathname = `/store/${subSlug}${cleanPath === '/' ? '' : cleanPath}`;
     return NextResponse.rewrite(url);
   }
 
@@ -130,8 +141,15 @@ export async function middleware(request: NextRequest) {
     if (isFrameworkPath) return NextResponse.next();
     const slug = await customDomainStoreSlug(host);
     if (slug) {
+      // Same dedup as the subdomain case — a custom domain like
+      // mystore.com that hosts the same storefront could still receive
+      // a /<slug>/... link from an emitter helper. Strip the duplicate.
+      let cleanPath = pathname;
+      if (cleanPath === `/${slug}` || cleanPath.startsWith(`/${slug}/`)) {
+        cleanPath = cleanPath.slice(slug.length + 1) || '/';
+      }
       const url = request.nextUrl.clone();
-      url.pathname = `/store/${slug}${pathname === '/' ? '' : pathname}`;
+      url.pathname = `/store/${slug}${cleanPath === '/' ? '' : cleanPath}`;
       return NextResponse.rewrite(url);
     }
     // Unknown custom host → fall through to the app (will likely 404),
