@@ -182,11 +182,19 @@ export default async function PublicProductPage({ params }: Props) {
   // reads as one coherent visual.
   const ppStyle = store?.settings?.storefront?.productPage?.style || {};
   // Per-product overrides merged over the store-level COD form config +
-  // palette overrides from productPage.style.
+  // palette overrides from productPage.style. Order matters: store codForm
+  // = baseline, palette wins over codForm, per-product wins over palette.
   const codConfig: CodFormConfig = {
     ...(store?.settings?.codForm || {}),
+    // Palette overrides — the seller's chosen palette in Sections > Page produit
+    // owns the COD form visual. These fields only override when explicitly set
+    // so old stores without a palette keep their codForm settings.
     ...(ppStyle.buttonColor ? { buttonColor: ppStyle.buttonColor } : {}),
     ...(ppStyle.buttonTextColor ? { buttonTextColor: ppStyle.buttonTextColor } : {}),
+    ...(ppStyle.buttonShape ? { buttonShape: ppStyle.buttonShape } : {}),
+    ...(typeof ppStyle.buttonAnimated === 'boolean' ? { buttonAnimated: ppStyle.buttonAnimated } : {}),
+    ...(ppStyle.buttonAnimation ? { buttonAnimation: ppStyle.buttonAnimation } : {}),
+    // Per-product overrides (highest priority) for copy.
     ...(ps.codFormTitle ? { headline: ps.codFormTitle } : {}),
     ...(ps.reassuranceText ? { reassurance: ps.reassuranceText } : {}),
   };

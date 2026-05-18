@@ -37,6 +37,8 @@ export interface IStore extends Document {
       submitLabel?: string;       // default "Commander"
       showEmail?: boolean;        // default true
       requireEmail?: boolean;     // default false
+      showAddressLine2?: boolean; // default false — "complément d'adresse"
+      showCity?: boolean;         // default false — opt-in ville
       showPostalCode?: boolean;   // default false
       showState?: boolean;        // default false
       showNotes?: boolean;        // default true
@@ -199,6 +201,12 @@ export interface IStore extends Document {
           navbarColor?: string;
           /** Navbar text/icon color override (paired with navbarColor). */
           navbarTextColor?: string;
+          /** Shape of the COD "Commander" button on the product page.
+           *  Wins over codForm.buttonShape so the palette owns the visual. */
+          buttonShape?: 'pill' | 'rounded' | 'square';
+          /** Animate the CTA button (pulse / shimmer / bounce / none). */
+          buttonAnimated?: boolean;
+          buttonAnimation?: 'pulse' | 'shimmer' | 'bounce' | 'none';
           galleryLayout?: 'single' | 'thumbnails' | 'grid';
           showRatingStrip?: boolean;
           /** Id of the preset palette currently active (for the picker UI). */
@@ -388,6 +396,8 @@ const StoreSchema = new Schema<IStore>(
         submitLabel: { type: String },
         showEmail: { type: Boolean, default: true },
         requireEmail: { type: Boolean, default: false },
+        showAddressLine2: { type: Boolean, default: false },
+        showCity: { type: Boolean, default: false },
         showPostalCode: { type: Boolean, default: false },
         showState: { type: Boolean, default: false },
         showNotes: { type: Boolean, default: true },
@@ -485,6 +495,9 @@ const StoreSchema = new Schema<IStore>(
             descriptionColor: { type: String, trim: true },
             navbarColor: { type: String, trim: true },
             navbarTextColor: { type: String, trim: true },
+            buttonShape: { type: String, enum: ['pill', 'rounded', 'square'] },
+            buttonAnimated: { type: Boolean },
+            buttonAnimation: { type: String, enum: ['pulse', 'shimmer', 'bounce', 'none'] },
             galleryLayout: { type: String, enum: ['single', 'thumbnails', 'grid'], default: 'thumbnails' },
             showRatingStrip: { type: Boolean, default: false },
             paletteId: { type: String, trim: true },

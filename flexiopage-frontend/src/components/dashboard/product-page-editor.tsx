@@ -183,6 +183,75 @@ export function ProductPageEditor({ cfg, onChange }: Props) {
           </div>
         </details>
 
+        {/* CTA button — shape + animation. Moved here from /checkout so the
+            entire visual identity of the product page (palette + button) lives
+            in one place. These win over store.codForm.button* on the storefront. */}
+        <div className="mt-4 grid gap-3 sm:grid-cols-2">
+          <div>
+            <Label className="text-xs">Forme du bouton « Commander »</Label>
+            <div className="mt-1.5 grid grid-cols-3 gap-1.5">
+              {([
+                { v: 'pill',    label: 'Pilule',  preview: 'rounded-full' },
+                { v: 'rounded', label: 'Arrondi', preview: 'rounded-lg' },
+                { v: 'square',  label: 'Carré',   preview: 'rounded-none' },
+              ] as const).map((opt) => {
+                const active = (style.buttonShape || 'pill') === opt.v;
+                return (
+                  <button
+                    key={opt.v}
+                    type="button"
+                    onClick={() => setStyle({ buttonShape: opt.v, paletteId: undefined })}
+                    className={cn(
+                      'flex flex-col items-center gap-1.5 rounded-lg border p-2 text-[11px] font-medium transition-all',
+                      active
+                        ? 'border-fuchsia-500 bg-fuchsia-500/10 text-fuchsia-800 shadow-sm'
+                        : 'border-border/60 text-muted-foreground hover:border-fuchsia-500/40'
+                    )}
+                  >
+                    <div className={cn('h-3 w-10 bg-gradient-to-r from-fuchsia-500 to-pink-500', opt.preview)} />
+                    {opt.label}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+          <div>
+            <Label className="text-xs">Animation du bouton</Label>
+            <div className="mt-1.5 grid grid-cols-2 gap-1.5">
+              {([
+                { v: 'none',    label: 'Statique' },
+                { v: 'pulse',   label: 'Pulsation' },
+                { v: 'shimmer', label: 'Brillance' },
+                { v: 'bounce',  label: 'Bondi' },
+              ] as const).map((opt) => {
+                const current = style.buttonAnimated === false
+                  ? 'none'
+                  : (style.buttonAnimation || (style.buttonAnimated ? 'pulse' : 'none'));
+                const active = current === opt.v;
+                return (
+                  <button
+                    key={opt.v}
+                    type="button"
+                    onClick={() => setStyle({
+                      buttonAnimated: opt.v !== 'none',
+                      buttonAnimation: opt.v === 'none' ? 'none' : opt.v,
+                      paletteId: undefined,
+                    })}
+                    className={cn(
+                      'rounded-lg border px-2.5 py-1.5 text-[11px] font-medium transition-all',
+                      active
+                        ? 'border-fuchsia-500 bg-fuchsia-500/10 text-fuchsia-800 shadow-sm'
+                        : 'border-border/60 text-muted-foreground hover:border-fuchsia-500/40'
+                    )}
+                  >
+                    {opt.label}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+
         <div className="mt-4">
           <Label className="text-xs">Disposition de la galerie</Label>
           <div className="mt-1.5 grid grid-cols-3 gap-1.5">

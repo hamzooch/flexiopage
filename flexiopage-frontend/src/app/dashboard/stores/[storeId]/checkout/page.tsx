@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -146,106 +147,34 @@ export default function StoreCheckoutPage() {
         </CardContent>
       </Card>
 
-      <Card>
+      {/* Design notice — the COD form visual identity (colors, button shape,
+          animation) now lives in Sections > Page produit > Style visuel so the
+          seller picks one palette that drives BOTH the product page AND the
+          embedded COD form. Avoids the two-places-confused bug where changes
+          here weren't reflected on the public page. */}
+      <Card className="border-fuchsia-500/30 bg-gradient-to-br from-fuchsia-500/5 to-card">
         <CardHeader>
-          <CardTitle>Design du formulaire</CardTitle>
+          <CardTitle className="flex items-center gap-2">
+            <Wallet className="h-4 w-4 text-fuchsia-600" />
+            Design du formulaire — déplacé
+          </CardTitle>
           <CardDescription>
-            Personnalise les couleurs et l&apos;animation du bouton « Commander ».
-            Laisse vide pour suivre le thème de la boutique.
+            Pour cohérence avec la page produit, les couleurs et l&apos;animation du
+            bouton « Commander » se règlent maintenant dans <strong>Sections du storefront →
+            onglet « Page produit » → Style visuel</strong>. Une palette = toute la fiche
+            cohérente (titre, prix, bouton, fond, navbar).
           </CardDescription>
         </CardHeader>
-        <CardContent className="space-y-5">
-          <div className="grid gap-4 sm:grid-cols-3">
-            <ColorField
-              label="Fond du formulaire"
-              value={codForm.backgroundColor}
-              onChange={(c) => setCodForm({ ...codForm, backgroundColor: c })}
-              defaultLabel="Surface du thème"
-            />
-            <ColorField
-              label="Couleur du bouton"
-              value={codForm.buttonColor}
-              onChange={(c) => setCodForm({ ...codForm, buttonColor: c })}
-              defaultLabel="Primaire du thème"
-            />
-            <ColorField
-              label="Texte du bouton"
-              value={codForm.buttonTextColor}
-              onChange={(c) => setCodForm({ ...codForm, buttonTextColor: c })}
-              defaultLabel="Auto"
-            />
-          </div>
-
-          <div className="grid gap-4 sm:grid-cols-2">
-            <div className="space-y-1.5">
-              <Label>Forme du bouton</Label>
-              <div className="grid grid-cols-3 gap-1.5">
-                {([
-                  { v: 'pill',    label: 'Pilule',  preview: 'rounded-full' },
-                  { v: 'rounded', label: 'Arrondi', preview: 'rounded-lg' },
-                  { v: 'square',  label: 'Carré',   preview: 'rounded-none' },
-                ] as const).map((opt) => {
-                  const isActive = (codForm.buttonShape || 'pill') === opt.v;
-                  return (
-                    <button
-                      key={opt.v}
-                      type="button"
-                      onClick={() => setCodForm({ ...codForm, buttonShape: opt.v })}
-                      className={cn(
-                        'flex flex-col items-center gap-1.5 rounded-lg border p-2 text-xs font-medium transition-all',
-                        isActive
-                          ? 'border-primary bg-primary/5 text-foreground shadow-sm'
-                          : 'border-border/60 text-muted-foreground hover:border-primary/40'
-                      )}
-                    >
-                      <div className={cn('h-3 w-12 bg-gradient-to-r from-fuchsia-500 to-pink-500', opt.preview)} />
-                      {opt.label}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-
-            <div className="space-y-1.5">
-              <Label>Animation du bouton</Label>
-              <div className="grid grid-cols-2 gap-1.5">
-                {([
-                  { v: 'none',     label: 'Statique' },
-                  { v: 'pulse',    label: 'Pulsation' },
-                  { v: 'shimmer',  label: 'Brillance' },
-                  { v: 'bounce',   label: 'Bondi' },
-                ] as const).map((opt) => {
-                  const current = codForm.buttonAnimated === false
-                    ? 'none'
-                    : (codForm.buttonAnimation || 'pulse');
-                  const isActive = current === opt.v;
-                  return (
-                    <button
-                      key={opt.v}
-                      type="button"
-                      onClick={() => setCodForm({
-                        ...codForm,
-                        buttonAnimated: opt.v !== 'none',
-                        buttonAnimation: opt.v === 'none' ? 'none' : opt.v,
-                      })}
-                      className={cn(
-                        'rounded-lg border px-2.5 py-1.5 text-xs font-medium transition-all',
-                        isActive
-                          ? 'border-primary bg-primary/5 text-foreground shadow-sm'
-                          : 'border-border/60 text-muted-foreground hover:border-primary/40'
-                      )}
-                    >
-                      {opt.label}
-                    </button>
-                  );
-                })}
-              </div>
-              <p className="text-[11px] text-muted-foreground">
-                L&apos;animation attire l&apos;œil sur l&apos;action de commander — utile pour les pubs.
-              </p>
-            </div>
-          </div>
-
+        <CardContent>
+          <Link href={`/dashboard/stores/${storeId}/sections`}>
+            <button
+              type="button"
+              className="inline-flex h-9 items-center gap-1.5 rounded-md bg-gradient-to-br from-primary to-fuchsia-600 px-4 text-sm font-semibold text-white shadow-sm"
+            >
+              Aller au Style visuel
+              <span aria-hidden>→</span>
+            </button>
+          </Link>
         </CardContent>
       </Card>
 
@@ -360,42 +289,8 @@ export default function StoreCheckoutPage() {
 }
 
 // ─────────────────────────────────────────────────────────────────────
-// Small UI helpers — color picker row + animated button preview
+// Live preview helper
 // ─────────────────────────────────────────────────────────────────────
-
-function ColorField({
-  label, value, onChange, defaultLabel,
-}: { label: string; value?: string; onChange: (v?: string) => void; defaultLabel: string }) {
-  return (
-    <div className="space-y-1.5">
-      <Label className="text-xs">{label}</Label>
-      <div className="flex items-center gap-2">
-        <input
-          type="color"
-          value={value || '#7c3aed'}
-          onChange={(e) => onChange(e.target.value)}
-          className="h-9 w-11 cursor-pointer rounded-md border border-border/60 bg-background p-0"
-        />
-        <Input
-          value={value || ''}
-          onChange={(e) => onChange(e.target.value || undefined)}
-          placeholder={defaultLabel}
-          className="h-9 flex-1 font-mono text-xs"
-        />
-        {value && (
-          <button
-            type="button"
-            onClick={() => onChange(undefined)}
-            className="rounded-md px-1.5 text-[11px] font-medium text-muted-foreground hover:bg-muted hover:text-foreground"
-            title="Effacer (reprend le thème)"
-          >
-            ×
-          </button>
-        )}
-      </div>
-    </div>
-  );
-}
 
 /**
  * Live preview of the full COD form. Mirrors the storefront cod-order-form

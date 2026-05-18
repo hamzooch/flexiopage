@@ -83,6 +83,11 @@ export interface ProductPageStyle {
   navbarColor?: string;
   /** Navbar text/icon color override paired with navbarColor. */
   navbarTextColor?: string;
+  /** CTA button shape — wins over codForm.buttonShape on the product page. */
+  buttonShape?: 'pill' | 'rounded' | 'square';
+  /** CTA button animation — wins over codForm.buttonAnimated/Animation. */
+  buttonAnimated?: boolean;
+  buttonAnimation?: 'pulse' | 'shimmer' | 'bounce' | 'none';
   /** Layout of the image gallery on the left column. */
   galleryLayout?: 'single' | 'thumbnails' | 'grid';
   /** Show a 5-star rating row under the title (decorative — no real reviews wired). */
