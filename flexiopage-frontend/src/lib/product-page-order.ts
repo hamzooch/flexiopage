@@ -58,6 +58,24 @@ export interface ProductPageTimer {
   accentColor?: string;
 }
 
+/**
+ * Visual customization of the storefront product page. Every field is
+ * optional — the storefront falls back to the active theme when a value
+ * is undefined.
+ */
+export interface ProductPageStyle {
+  /** Color of the product title heading. */
+  titleColor?: string;
+  /** Color of the price digits (the big number). */
+  priceColor?: string;
+  /** Accent color used by badges + timer + small decorative hits. */
+  accentColor?: string;
+  /** Layout of the image gallery on the left column. */
+  galleryLayout?: 'single' | 'thumbnails' | 'grid';
+  /** Show a 5-star rating row under the title (decorative — no real reviews wired). */
+  showRatingStrip?: boolean;
+}
+
 export interface ProductPageSettings {
   showTimer?: boolean;
   timer?: ProductPageTimer;
@@ -66,6 +84,8 @@ export interface ProductPageSettings {
   showTestimonials?: boolean;
   showDescription?: boolean;
   sectionOrder?: ProductPageSectionId[];
+  /** Visual style overrides — colors + gallery layout. */
+  style?: ProductPageStyle;
 }
 
 /** Sensible defaults when the seller hasn't added any badge yet. */

@@ -12,10 +12,12 @@
  * (via product.pageSettings — separate path, not handled here).
  */
 
+import { useEffect, useState } from 'react';
 import {
   Truck, ShieldCheck, RefreshCcw, Lock, Headphones, Gift, Clock,
   Star, Leaf, Banknote, Plus, Trash2, ChevronUp, ChevronDown,
-  Timer, Award, MessageSquareQuote, FileText,
+  Timer, Award, MessageSquareQuote, FileText, Palette as PaletteIcon,
+  LayoutGrid, Image as ImgIcon, Columns2,
 } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -28,6 +30,7 @@ import {
   type BadgeIcon,
   type ProductPageSectionId,
   type ProductPageSettings,
+  type ProductPageStyle,
   type TrustBadge,
 } from '@/lib/product-page-order';
 import { FieldToggle } from '@/components/dashboard/store-editor';
@@ -89,8 +92,84 @@ export function ProductPageEditor({ cfg, onChange }: Props) {
     onChange({ ...cfg, badges: DEFAULT_BADGES });
   }
 
+  const style = cfg.style || {};
+  const setStyle = (patch: Partial<ProductPageStyle>) =>
+    onChange({ ...cfg, style: { ...style, ...patch } });
+
   return (
-    <div className="space-y-6">
+    <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_380px]">
+      <div className="space-y-6">
+      {/* ── STYLE — colors + gallery layout ──────────────────── */}
+      <section className="rounded-xl border border-fuchsia-500/20 bg-gradient-to-br from-fuchsia-500/5 to-card p-4">
+        <div className="mb-3 inline-flex items-center gap-1.5 text-sm font-semibold">
+          <PaletteIcon className="h-4 w-4 text-fuchsia-600" />
+          Style visuel
+          <span className="ml-1 rounded-full bg-fuchsia-500/10 px-1.5 py-0.5 text-[10px] font-semibold text-fuchsia-700">
+            Surcharge le thème
+          </span>
+        </div>
+        <div className="grid gap-3 sm:grid-cols-3">
+          <PpColorField
+            label="Titre du produit"
+            value={style.titleColor}
+            onChange={(c) => setStyle({ titleColor: c })}
+            defaultLabel="Thème"
+          />
+          <PpColorField
+            label="Prix"
+            value={style.priceColor}
+            onChange={(c) => setStyle({ priceColor: c })}
+            defaultLabel="Primaire"
+          />
+          <PpColorField
+            label="Accent (badges/timer)"
+            value={style.accentColor}
+            onChange={(c) => setStyle({ accentColor: c })}
+            defaultLabel="Primaire"
+          />
+        </div>
+
+        <div className="mt-4">
+          <Label className="text-xs">Disposition de la galerie</Label>
+          <div className="mt-1.5 grid grid-cols-3 gap-1.5">
+            {([
+              { v: 'single',     label: 'Image unique', icon: ImgIcon,    hint: 'Une seule grande image' },
+              { v: 'thumbnails', label: 'Miniatures',   icon: Columns2,   hint: 'Image + bande de miniatures' },
+              { v: 'grid',       label: 'Mosaïque',     icon: LayoutGrid, hint: 'Grille 2×2 (jusqu’à 4 photos)' },
+            ] as const).map((opt) => {
+              const Icon = opt.icon;
+              const active = (style.galleryLayout || 'thumbnails') === opt.v;
+              return (
+                <button
+                  key={opt.v}
+                  type="button"
+                  onClick={() => setStyle({ galleryLayout: opt.v })}
+                  title={opt.hint}
+                  className={cn(
+                    'flex flex-col items-center gap-1 rounded-lg border p-2 text-[11px] font-medium transition-all',
+                    active
+                      ? 'border-fuchsia-500 bg-fuchsia-500/10 text-fuchsia-800 shadow-sm'
+                      : 'border-border/60 text-muted-foreground hover:border-fuchsia-500/40'
+                  )}
+                >
+                  <Icon className="h-4 w-4" />
+                  {opt.label}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        <div className="mt-3">
+          <FieldToggle
+            label="Bande d'avis (5 étoiles)"
+            sublabel="Petite ligne décorative ★★★★★ sous le titre"
+            checked={!!style.showRatingStrip}
+            onChange={(v) => setStyle({ showRatingStrip: v })}
+          />
+        </div>
+      </section>
+
       {/* ── SECTION ORDER ─────────────────────────────────────── */}
       <section className="rounded-xl border border-border/60 bg-card p-4">
         <div className="mb-2 flex items-center justify-between">
@@ -356,6 +435,280 @@ export function ProductPageEditor({ cfg, onChange }: Props) {
           />
         </div>
       </section>
+      </div>
+
+      {/* ── LIVE PREVIEW (sticky right) ─────────────────────── */}
+      <aside className="lg:sticky lg:top-4 lg:self-start">
+        <ProductPageLivePreview cfg={cfg} />
+      </aside>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// Helpers
+// ─────────────────────────────────────────────────────────────────────
+
+function PpColorField({
+  label, value, onChange, defaultLabel,
+}: { label: string; value?: string; onChange: (v?: string) => void; defaultLabel: string }) {
+  return (
+    <div className="space-y-1">
+      <Label className="text-[10px] uppercase tracking-wider text-muted-foreground">{label}</Label>
+      <div className="flex items-center gap-1.5">
+        <input
+          type="color"
+          value={value || '#7c3aed'}
+          onChange={(e) => onChange(e.target.value)}
+          className="h-9 w-10 cursor-pointer rounded-md border border-border/60 bg-background p-0"
+        />
+        <Input
+          value={value || ''}
+          onChange={(e) => onChange(e.target.value || undefined)}
+          placeholder={defaultLabel}
+          className="h-9 flex-1 font-mono text-[11px]"
+        />
+        {value && (
+          <button
+            type="button"
+            onClick={() => onChange(undefined)}
+            className="rounded px-1.5 text-[10px] text-muted-foreground hover:bg-muted hover:text-foreground"
+            title="Reset"
+          >
+            ×
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// Live preview — mini mock of the public product page
+// ─────────────────────────────────────────────────────────────────────
+
+/**
+ * Faithful but compact mock of the storefront product page. Re-renders
+ * in real-time as the seller edits — no save needed. The actual public
+ * page uses the same data once persisted.
+ */
+function ProductPageLivePreview({ cfg }: { cfg: ProductPageSettings }) {
+  const style = cfg.style || {};
+  const accent = style.accentColor || '#7c3aed';
+  const titleColor = style.titleColor || '#0f172a';
+  const priceColor = style.priceColor || accent;
+  const layout = style.galleryLayout || 'thumbnails';
+  const order = resolveProductPageOrder(cfg.sectionOrder);
+  const badges = (cfg.badges && cfg.badges.length > 0) ? cfg.badges : DEFAULT_BADGES;
+  const fakePrice = '49.90';
+
+  // Live timer countdown for the preview — same self-update pattern as
+  // the real component, capped to "demo" granularity.
+  const [tick, setTick] = useState(0);
+  useEffect(() => {
+    const id = window.setInterval(() => setTick((t) => t + 1), 1000);
+    return () => window.clearInterval(id);
+  }, []);
+  void tick;
+
+  const timerEnds = cfg.timer?.endsAt ? new Date(cfg.timer.endsAt).getTime() : 0;
+  const timerDelta = Math.max(0, timerEnds - Date.now());
+  const timerActive = !!cfg.showTimer && timerDelta > 0;
+  const tparts = (() => {
+    const s = Math.floor(timerDelta / 1000);
+    const d = Math.floor(s / 86400);
+    const h = Math.floor((s % 86400) / 3600);
+    const m = Math.floor((s % 3600) / 60);
+    const ss = s % 60;
+    return [d, h, m, ss];
+  })();
+
+  return (
+    <div className="overflow-hidden rounded-2xl border border-border/60 bg-card">
+      <div className="flex items-center justify-between gap-2 border-b border-border/40 bg-gradient-to-r from-muted/30 to-muted/10 px-3 py-2">
+        <div className="inline-flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+          <FileText className="h-3 w-3" />
+          Aperçu temps réel
+        </div>
+        <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/15 px-1.5 py-0.5 text-[9px] font-bold text-emerald-700">
+          <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+          Live
+        </span>
+      </div>
+
+      <div className="max-h-[80vh] overflow-y-auto bg-muted/20 p-3">
+        {/* Mini browser frame */}
+        <div className="overflow-hidden rounded-xl bg-card shadow-sm">
+          <div className="flex items-center gap-1 border-b border-border/40 bg-muted/30 px-2 py-1.5">
+            <span className="h-1.5 w-1.5 rounded-full bg-rose-400/60" />
+            <span className="h-1.5 w-1.5 rounded-full bg-amber-400/60" />
+            <span className="h-1.5 w-1.5 rounded-full bg-emerald-400/60" />
+            <span className="ml-2 truncate text-[9px] text-muted-foreground">/produit/mon-produit</span>
+          </div>
+
+          <div className="space-y-3 p-3">
+            {/* HERO — gallery + info */}
+            <div className="grid grid-cols-2 gap-2">
+              {/* Gallery */}
+              <div className="space-y-1">
+                {layout === 'grid' ? (
+                  <div className="grid grid-cols-2 gap-1">
+                    {[0, 1, 2, 3].map((i) => (
+                      <div
+                        key={i}
+                        className="aspect-square rounded"
+                        style={{ backgroundColor: `${accent}1a`, backgroundImage: `linear-gradient(135deg, ${accent}33, ${accent}10)` }}
+                      />
+                    ))}
+                  </div>
+                ) : (
+                  <>
+                    <div
+                      className="aspect-square rounded"
+                      style={{ backgroundColor: `${accent}1a`, backgroundImage: `linear-gradient(135deg, ${accent}33, ${accent}10)` }}
+                    />
+                    {layout === 'thumbnails' && (
+                      <div className="grid grid-cols-4 gap-1">
+                        {[0, 1, 2, 3].map((i) => (
+                          <div
+                            key={i}
+                            className="aspect-square rounded border"
+                            style={{ backgroundColor: `${accent}10`, borderColor: `${accent}30` }}
+                          />
+                        ))}
+                      </div>
+                    )}
+                  </>
+                )}
+              </div>
+              {/* Info */}
+              <div className="space-y-1.5">
+                <h3
+                  className="text-sm font-bold leading-tight"
+                  style={{ color: titleColor }}
+                >
+                  Mon Produit
+                </h3>
+                {style.showRatingStrip && (
+                  <div className="flex items-center gap-0.5">
+                    {[0, 1, 2, 3, 4].map((i) => (
+                      <Star key={i} className="h-2.5 w-2.5" style={{ color: accent, fill: accent }} />
+                    ))}
+                    <span className="ml-1 text-[8px] text-muted-foreground">(127)</span>
+                  </div>
+                )}
+                <div className="text-base font-extrabold leading-none" style={{ color: priceColor }}>
+                  {fakePrice} TND
+                </div>
+                <div className="space-y-1 pt-1">
+                  <div className="h-1.5 w-full rounded bg-muted" />
+                  <div className="h-1.5 w-2/3 rounded bg-muted" />
+                </div>
+                <button
+                  type="button"
+                  className="mt-1 inline-flex h-7 w-full items-center justify-center rounded-md text-[10px] font-bold text-white"
+                  style={{ backgroundColor: accent }}
+                >
+                  Commander · {fakePrice} TND
+                </button>
+              </div>
+            </div>
+
+            {/* Reorderable body sections */}
+            {order.map((id) => {
+              if (id === 'badges' && cfg.showBadges !== false) {
+                return (
+                  <div key="badges" className="grid grid-cols-3 gap-1.5">
+                    {badges.slice(0, 3).map((b, i) => (
+                      <div key={i} className="flex items-center gap-1 rounded border border-border/60 bg-card px-1.5 py-1">
+                        <span
+                          className="grid h-4 w-4 shrink-0 place-items-center rounded text-[8px]"
+                          style={{ backgroundColor: `${accent}1a`, color: accent }}
+                        >
+                          ✓
+                        </span>
+                        <span className="min-w-0 truncate text-[9px] font-semibold" style={{ color: titleColor }}>
+                          {b.label}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                );
+              }
+              if (id === 'timer' && timerActive) {
+                return (
+                  <div
+                    key="timer"
+                    className="flex items-center justify-between rounded border px-2 py-1.5"
+                    style={{ borderColor: `${accent}40`, backgroundColor: `${accent}0d` }}
+                  >
+                    <span className="inline-flex items-center gap-1 text-[10px] font-semibold" style={{ color: accent }}>
+                      <Clock className="h-3 w-3" />
+                      {cfg.timer?.headline || 'Offre limitée'}
+                    </span>
+                    <span className="flex gap-0.5 tabular-nums">
+                      {tparts.map((v, i) => (
+                        <span
+                          key={i}
+                          className="rounded px-1 py-0.5 text-[9px] font-extrabold text-white"
+                          style={{ backgroundColor: accent }}
+                        >
+                          {String(v).padStart(2, '0')}
+                        </span>
+                      ))}
+                    </span>
+                  </div>
+                );
+              }
+              if (id === 'description' && cfg.showDescription !== false) {
+                return (
+                  <div key="description">
+                    <div className="mb-1 text-[10px] font-bold uppercase tracking-wider" style={{ color: titleColor }}>
+                      Description
+                    </div>
+                    <div className="space-y-1">
+                      <div className="h-1.5 w-full rounded bg-muted/80" />
+                      <div className="h-1.5 w-11/12 rounded bg-muted/80" />
+                      <div className="h-1.5 w-3/4 rounded bg-muted/80" />
+                    </div>
+                  </div>
+                );
+              }
+              if (id === 'testimonials' && cfg.showTestimonials) {
+                return (
+                  <div key="testimonials">
+                    <div className="mb-1 text-[10px] font-bold uppercase tracking-wider" style={{ color: titleColor }}>
+                      Avis clients
+                    </div>
+                    <div className="grid grid-cols-2 gap-1.5">
+                      {[0, 1].map((i) => (
+                        <div key={i} className="rounded border border-border/60 bg-card p-1.5">
+                          <div className="flex items-center gap-0.5">
+                            {[0, 1, 2, 3, 4].map((j) => (
+                              <Star key={j} className="h-2 w-2" style={{ color: accent, fill: accent }} />
+                            ))}
+                          </div>
+                          <div className="mt-1 space-y-0.5">
+                            <div className="h-1 w-full rounded bg-muted/80" />
+                            <div className="h-1 w-3/4 rounded bg-muted/80" />
+                          </div>
+                          <div className="mt-1.5 text-[8px] font-semibold" style={{ color: titleColor }}>
+                            — Client
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                );
+              }
+              return null;
+            })}
+          </div>
+        </div>
+        <p className="mt-2 text-center text-[9px] text-muted-foreground">
+          Reflète exactement ce qu'affichera la vraie page produit après sauvegarde
+        </p>
+      </div>
     </div>
   );
 }

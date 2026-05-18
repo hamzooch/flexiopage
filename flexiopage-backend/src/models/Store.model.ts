@@ -152,6 +152,14 @@ export interface IStore extends Document {
         showDescription?: boolean;
         /** Render order of the movable body sections of the product page. */
         sectionOrder?: Array<'badges' | 'timer' | 'description' | 'testimonials'>;
+        /** Visual style overrides — colors + gallery layout. */
+        style?: {
+          titleColor?: string;
+          priceColor?: string;
+          accentColor?: string;
+          galleryLayout?: 'single' | 'thumbnails' | 'grid';
+          showRatingStrip?: boolean;
+        };
       };
       /**
        * Customer testimonials / reviews section managed by the seller.
@@ -404,6 +412,13 @@ const StoreSchema = new Schema<IStore>(
           showTestimonials: { type: Boolean, default: false },
           showDescription: { type: Boolean, default: true },
           sectionOrder: [{ type: String, enum: ['badges', 'timer', 'description', 'testimonials'] }],
+          style: {
+            titleColor: { type: String, trim: true },
+            priceColor: { type: String, trim: true },
+            accentColor: { type: String, trim: true },
+            galleryLayout: { type: String, enum: ['single', 'thumbnails', 'grid'], default: 'thumbnails' },
+            showRatingStrip: { type: Boolean, default: false },
+          },
         },
         testimonials: {
           enabled: { type: Boolean, default: false },

@@ -274,10 +274,30 @@ export default async function PublicProductPage({ params }: Props) {
               <div>
                 <h1
                   className="text-2xl font-bold tracking-tight sm:text-3xl lg:text-4xl"
-                  style={{ fontFamily: theme.fontHeading, color: theme.foreground }}
+                  style={{
+                    fontFamily: theme.fontHeading,
+                    color: store?.settings?.storefront?.productPage?.style?.titleColor || theme.foreground,
+                  }}
                 >
                   {product.name}
                 </h1>
+                {store?.settings?.storefront?.productPage?.style?.showRatingStrip && (
+                  <div className="mt-1.5 flex items-center gap-1">
+                    {[0, 1, 2, 3, 4].map((i) => (
+                      <span
+                        key={i}
+                        aria-hidden
+                        className="text-sm"
+                        style={{ color: store?.settings?.storefront?.productPage?.style?.accentColor || theme.primary }}
+                      >
+                        ★
+                      </span>
+                    ))}
+                    <span className="ml-1 text-xs" style={{ color: theme.muted }}>
+                      (127 avis)
+                    </span>
+                  </div>
+                )}
                 {/* Teaser = first paragraph. Only render when the description
                     has multiple paragraphs so we don't duplicate the same
                     text right above the full "Description" section below. */}
@@ -295,7 +315,10 @@ export default async function PublicProductPage({ params }: Props) {
 
               {/* Pricing block */}
               <div className="flex flex-wrap items-baseline gap-2 sm:gap-3">
-                <span className="text-3xl font-extrabold tracking-tight sm:text-4xl" style={{ color: theme.primary }}>
+                <span
+                  className="text-3xl font-extrabold tracking-tight sm:text-4xl"
+                  style={{ color: store?.settings?.storefront?.productPage?.style?.priceColor || theme.primary }}
+                >
                   {formatCurrency(product.price, currency)}
                 </span>
                 {hasDiscount && (
@@ -482,7 +505,7 @@ export default async function PublicProductPage({ params }: Props) {
                   <ProductPageTimer
                     endsAt={pp.timer!.endsAt!}
                     headline={pp.timer?.headline}
-                    accentColor={pp.timer?.accentColor || theme.primary}
+                    accentColor={pp.timer?.accentColor || pp.style?.accentColor || theme.primary}
                   />
                 </section>
               ) : null,
