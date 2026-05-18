@@ -178,10 +178,16 @@ export default async function PublicProductPage({ params }: Props) {
   const showGallery = ps.showGallery !== false;
   const showDescription = ps.showDescription !== false;
   const showTrustBadges = ps.showTrustBadges !== false;
-  // Store-wide product page palette (productPage.style). When set, the
-  // palette's button color flows into the COD form so the entire page
-  // reads as one coherent visual.
-  const ppStyle = store?.settings?.storefront?.productPage?.style || {};
+  // Store-wide product page palette (productPage.style). Every palette
+  // field is gated behind useCustomPalette — when off, the storefront
+  // ignores all custom colors and renders with the active theme tokens.
+  // Lets the seller flip personalization on/off without losing their
+  // saved colors. Layout choices (gallery, rating strip) stay through.
+  const ppStyleRaw = store?.settings?.storefront?.productPage?.style || {};
+  const useCustom = !!ppStyleRaw.useCustomPalette;
+  const ppStyle = useCustom
+    ? ppStyleRaw
+    : ({ galleryLayout: ppStyleRaw.galleryLayout, showRatingStrip: ppStyleRaw.showRatingStrip } as typeof ppStyleRaw);
   // Per-product overrides merged over the store-level COD form config +
   // palette overrides from productPage.style. Order matters: store codForm
   // = baseline, palette wins over codForm, per-product wins over palette.

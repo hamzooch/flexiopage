@@ -129,11 +129,33 @@ export function ProductPageEditor({ cfg, onChange, codForm, onCodFormChange, cur
           Une palette = couleurs (titre, prix, accent, bouton, navbar), forme + animation du bouton Commander. S&apos;applique à <strong>toutes</strong> les pages produit de cette boutique.
         </p>
 
-        {/* Preset palette picker — one click sets all 6 colors at once */}
-        <PalettePresetPicker
-          value={style}
-          onApply={(next) => setStyle({ ...next })}
-        />
+        {/* Master toggle — without this on, the storefront ignores every
+            palette field below and uses the active theme. Picking a palette
+            or any color auto-flips this on so the seller sees their choice
+            applied without having to discover the toggle. */}
+        <div className="mb-4 rounded-xl border border-border/60 bg-card p-3">
+          <FieldToggle
+            label="Personnaliser le style de la page produit"
+            sublabel={
+              style.useCustomPalette
+                ? '✓ Tes couleurs personnalisées s\'appliquent sur la page produit publique.'
+                : 'Désactivé — la page produit utilise les couleurs du thème principal de la boutique.'
+            }
+            checked={!!style.useCustomPalette}
+            onChange={(v) => setStyle({ useCustomPalette: v })}
+          />
+        </div>
+
+        {/* When custom is OFF, dim the palette + color pickers so the
+            seller sees they're inert. Still clickable — that auto-flips
+            the master switch on for them. */}
+        <div className={style.useCustomPalette ? '' : 'opacity-60'}>
+          {/* Preset palette picker — one click sets all 6 colors at once.
+              Auto-enables useCustomPalette so the seller's choice takes effect. */}
+          <PalettePresetPicker
+            value={style}
+            onApply={(next) => setStyle({ ...next, useCustomPalette: true })}
+          />
 
         {/* Fine-tune — exposed as a collapsible advanced area so the
             seller can tweak individual colors after picking a palette,
@@ -146,55 +168,55 @@ export function ProductPageEditor({ cfg, onChange, codForm, onCodFormChange, cur
             <PpColorField
               label="Titre du produit"
               value={style.titleColor}
-              onChange={(c) => setStyle({ titleColor: c, paletteId: undefined })}
+              onChange={(c) => setStyle({ titleColor: c, paletteId: undefined, useCustomPalette: true })}
               defaultLabel="Thème"
             />
             <PpColorField
               label="Prix"
               value={style.priceColor}
-              onChange={(c) => setStyle({ priceColor: c, paletteId: undefined })}
+              onChange={(c) => setStyle({ priceColor: c, paletteId: undefined, useCustomPalette: true })}
               defaultLabel="Primaire"
             />
             <PpColorField
               label="Accent (badges/timer)"
               value={style.accentColor}
-              onChange={(c) => setStyle({ accentColor: c, paletteId: undefined })}
+              onChange={(c) => setStyle({ accentColor: c, paletteId: undefined, useCustomPalette: true })}
               defaultLabel="Primaire"
             />
             <PpColorField
               label="Bouton « Commander »"
               value={style.buttonColor}
-              onChange={(c) => setStyle({ buttonColor: c, paletteId: undefined })}
+              onChange={(c) => setStyle({ buttonColor: c, paletteId: undefined, useCustomPalette: true })}
               defaultLabel="Accent"
             />
             <PpColorField
               label="Texte du bouton"
               value={style.buttonTextColor}
-              onChange={(c) => setStyle({ buttonTextColor: c, paletteId: undefined })}
+              onChange={(c) => setStyle({ buttonTextColor: c, paletteId: undefined, useCustomPalette: true })}
               defaultLabel="Auto"
             />
             <PpColorField
               label="Fond de page"
               value={style.backgroundColor}
-              onChange={(c) => setStyle({ backgroundColor: c, paletteId: undefined })}
+              onChange={(c) => setStyle({ backgroundColor: c, paletteId: undefined, useCustomPalette: true })}
               defaultLabel="Thème"
             />
             <PpColorField
               label="Texte description"
               value={style.descriptionColor}
-              onChange={(c) => setStyle({ descriptionColor: c, paletteId: undefined })}
+              onChange={(c) => setStyle({ descriptionColor: c, paletteId: undefined, useCustomPalette: true })}
               defaultLabel="Auto"
             />
             <PpColorField
               label="Fond navbar"
               value={style.navbarColor}
-              onChange={(c) => setStyle({ navbarColor: c, paletteId: undefined })}
+              onChange={(c) => setStyle({ navbarColor: c, paletteId: undefined, useCustomPalette: true })}
               defaultLabel="Thème"
             />
             <PpColorField
               label="Texte navbar"
               value={style.navbarTextColor}
-              onChange={(c) => setStyle({ navbarTextColor: c, paletteId: undefined })}
+              onChange={(c) => setStyle({ navbarTextColor: c, paletteId: undefined, useCustomPalette: true })}
               defaultLabel="Auto"
             />
           </div>
@@ -217,7 +239,7 @@ export function ProductPageEditor({ cfg, onChange, codForm, onCodFormChange, cur
                   <button
                     key={opt.v}
                     type="button"
-                    onClick={() => setStyle({ buttonShape: opt.v, paletteId: undefined })}
+                    onClick={() => setStyle({ buttonShape: opt.v, paletteId: undefined, useCustomPalette: true })}
                     className={cn(
                       'flex flex-col items-center gap-1.5 rounded-lg border p-2 text-[11px] font-medium transition-all',
                       active
@@ -252,7 +274,7 @@ export function ProductPageEditor({ cfg, onChange, codForm, onCodFormChange, cur
                     onClick={() => setStyle({
                       buttonAnimated: opt.v !== 'none',
                       buttonAnimation: opt.v === 'none' ? 'none' : opt.v,
-                      paletteId: undefined,
+                      paletteId: undefined, useCustomPalette: true,
                     })}
                     className={cn(
                       'rounded-lg border px-2.5 py-1.5 text-[11px] font-medium transition-all',
@@ -268,6 +290,7 @@ export function ProductPageEditor({ cfg, onChange, codForm, onCodFormChange, cur
             </div>
           </div>
         </div>
+        </div>{/* /useCustomPalette dimmer */}
 
         <div className="mt-4">
           <Label className="text-xs">Disposition de la galerie</Label>
@@ -778,7 +801,14 @@ function ProductPageLivePreview({
   currency?: string;
   storeType?: 'physical' | 'digital';
 }) {
-  const style = cfg.style || {};
+  const rawStyle = cfg.style || {};
+  // Same gate as the storefront: when useCustomPalette is off, the preview
+  // shows neutral defaults so the seller sees exactly what the public page
+  // will render (= the theme). Layout choices (gallery, rating) still apply.
+  const customOn = !!rawStyle.useCustomPalette;
+  const style = customOn
+    ? rawStyle
+    : ({ galleryLayout: rawStyle.galleryLayout, showRatingStrip: rawStyle.showRatingStrip } as typeof rawStyle);
   const accent = style.accentColor || '#7c3aed';
   const titleColor = style.titleColor || '#0f172a';
   const priceColor = style.priceColor || accent;

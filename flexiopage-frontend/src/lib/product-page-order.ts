@@ -64,6 +64,10 @@ export interface ProductPageTimer {
  * is undefined.
  */
 export interface ProductPageStyle {
+  /** Master toggle — when false or undefined, the storefront ignores every
+   *  palette color below and uses the active theme. Lets the seller flip
+   *  custom styling on/off without losing their chosen colors. */
+  useCustomPalette?: boolean;
   /** Color of the product title heading. */
   titleColor?: string;
   /** Color of the price digits (the big number). */

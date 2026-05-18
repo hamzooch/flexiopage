@@ -184,6 +184,11 @@ export interface IStore extends Document {
         sectionOrder?: Array<'badges' | 'timer' | 'description' | 'testimonials'>;
         /** Visual style overrides — colors + gallery layout. */
         style?: {
+          /** Master switch: when false (or undefined), the storefront ignores
+           *  EVERY palette color below and uses the active theme's tokens
+           *  instead. Lets sellers toggle "custom design" on/off without
+           *  losing their chosen colors. */
+          useCustomPalette?: boolean;
           titleColor?: string;
           priceColor?: string;
           accentColor?: string;
@@ -486,6 +491,7 @@ const StoreSchema = new Schema<IStore>(
           showDescription: { type: Boolean, default: true },
           sectionOrder: [{ type: String, enum: ['badges', 'timer', 'description', 'testimonials'] }],
           style: {
+            useCustomPalette: { type: Boolean, default: false },
             titleColor: { type: String, trim: true },
             priceColor: { type: String, trim: true },
             accentColor: { type: String, trim: true },
