@@ -10,14 +10,15 @@
  * shape the form (email on/off, postalCode on/off, etc.) from the dashboard.
  */
 
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Loader2, ShieldCheck, Truck, Wallet, Check } from 'lucide-react';
-import { formatCurrency } from '@/lib/utils';
+import { Loader2, ShieldCheck, Truck, Wallet, Check, BadgePercent, X } from 'lucide-react';
+import { cn, formatCurrency } from '@/lib/utils';
 import type { ThemeTokens } from '@/data/store-themes';
 import type { ProductBundle } from '@/lib/api';
 import { getSessionId, trackStoreEvent } from '@/lib/storefront-track';
 import { fireMarketingEvent } from '@/components/storefront/TrackEvent';
+import type { CouponValidationResponse } from '@/types/coupon';
 
 const API_BASE = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5001').replace(/\/$/, '');
 
@@ -44,6 +45,15 @@ export interface CodFormConfig {
   buttonAnimation?: 'pulse' | 'shimmer' | 'bounce' | 'none';
 }
 
+/** A subset of the IProductVariant shape — only what the COD form needs. */
+export interface CodVariant {
+  name: string;
+  sku?: string;
+  price?: number;
+  stock?: number;
+  options?: Record<string, string>;
+}
+
 interface Props {
   storeSlug: string;
   /** Store + product ids — used for anonymous funnel tracking. */
@@ -60,6 +70,8 @@ interface Props {
   config?: CodFormConfig;
   /** Quantity-tier bundle — when enabled, replaces the quantity stepper with a tier picker. */
   bundle?: ProductBundle;
+  /** Per-product variants (Couleur/Taille). When set, the buyer must pick one. */
+  variants?: CodVariant[];
   theme: ThemeTokens;
   radius: string;
 }
@@ -106,6 +118,7 @@ export function CodOrderForm({
   defaultCountry,
   config,
   bundle,
+  variants,
   theme,
   radius,
 }: Props) {
@@ -138,8 +151,36 @@ export function CodOrderForm({
   const [notes, setNotes] = useState('');
   const [quantity, setQuantity] = useState(1);
 
+  // ── Variant selection ─────────────────────────────────────────────
+  // Active variant — defaults to the first one (or null if no variants).
+  // When variants exist, productPrice / productStock are effectively
+  // ignored in favor of the selected variant's price & stock.
+  const hasVariants = Array.isArray(variants) && variants.length > 0;
+  const [variantIdx, setVariantIdx] = useState(0);
+  const activeVariant = hasVariants ? variants![Math.min(variantIdx, variants!.length - 1)] : null;
+  // Group variants by their first attribute key for the picker UI (e.g.
+  // all "Couleur" values shown as swatches). When a variant has no
+  // options, it still appears as a single chip with its `name`.
+  const effectivePrice = activeVariant?.price ?? productPrice;
+  const effectiveStock = activeVariant?.stock ?? productStock;
+
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
+
+  // ── Promo code state ──────────────────────────────────────────────
+  // The seller-facing dashboard creates these in /coupons. The buyer
+  // expands the "J'ai un code promo" row, types, hits Apply → we hit
+  // /api/public/stores/<slug>/coupons/validate and store the discount.
+  const [couponOpen, setCouponOpen] = useState(false);
+  const [couponInput, setCouponInput] = useState('');
+  const [couponApplied, setCouponApplied] = useState<{
+    code: string;
+    discountAmount: number;
+    type: 'percent' | 'fixed';
+    value: number;
+  } | null>(null);
+  const [couponError, setCouponError] = useState('');
+  const [couponLoading, setCouponLoading] = useState(false);
 
   // Funnel tracking: fire `add_to_cart` once, the first time the visitor
   // engages with the order form. Both our anonymous tracker AND the seller's
@@ -160,12 +201,47 @@ export function CodOrderForm({
     });
   }
 
+  // Abandoned cart capture — fired on input blur once the buyer has
+  // typed enough to be chase-worthy (phone or email present). Uses
+  // navigator.sendBeacon when available so the request survives page-hide.
+  function captureAbandonedCart() {
+    if (!storeSlug) return;
+    if (!phone.trim() && !email.trim()) return;
+    const payload = {
+      sessionId: getSessionId(),
+      productSlug,
+      productName,
+      productPrice: effectivePrice,
+      name: name.trim() || undefined,
+      phone: phone.trim() || undefined,
+      email: email.trim() || undefined,
+      city: city.trim() || undefined,
+      country,
+    };
+    const url = `${API_BASE}/api/public/stores/${storeSlug}/abandoned-cart`;
+    try {
+      const blob = new Blob([JSON.stringify(payload)], { type: 'application/json' });
+      if (typeof navigator !== 'undefined' && 'sendBeacon' in navigator) {
+        navigator.sendBeacon(url, blob);
+        return;
+      }
+      void fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+        keepalive: true,
+      });
+    } catch {
+      // never block UI
+    }
+  }
+
   const phonePrefix = useMemo(
     () => COUNTRIES.find((c) => c.code === country)?.phonePrefix || '',
     [country]
   );
 
-  const stockLeft = trackInventory && !allowBackorder ? productStock : 999;
+  const stockLeft = trackInventory && !allowBackorder ? effectiveStock : 999;
   const maxQty = Math.max(1, Math.min(stockLeft, 10));
 
   // Bundle: when enabled with valid tiers, the customer picks a quantity
@@ -186,8 +262,122 @@ export function CodOrderForm({
   // the backend re-reads the same value from the store doc to compute the
   // authoritative total, so a tampered client never charges the wrong amount.
   const shippingFee = Math.max(0, Number(config?.shippingFee) || 0);
-  const productsTotal = bundleTotal(productPrice, bundle, quantity);
-  const total = productsTotal + shippingFee;
+  const productsTotal = bundleTotal(effectivePrice, bundle, quantity);
+  // Recompute the applied discount when the subtotal moves (qty / bundle tier
+  // change) — coupon stays applied but the absolute amount follows the cart.
+  // Percent coupons rescale automatically; fixed ones cap at the new subtotal.
+  const liveDiscount = useMemo(() => {
+    if (!couponApplied) return 0;
+    if (couponApplied.type === 'percent') {
+      return Math.round(productsTotal * (couponApplied.value / 100) * 100) / 100;
+    }
+    return Math.min(couponApplied.value, productsTotal);
+  }, [couponApplied, productsTotal]);
+  const total = Math.max(0, productsTotal - liveDiscount + shippingFee);
+
+  // Re-validate the coupon when the subtotal changes — the server may flip
+  // it to invalid if minPurchase is no longer met. We don't block the buyer
+  // while waiting; if it becomes invalid we just clear the discount.
+  useEffect(() => {
+    if (!couponApplied) return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const res = await fetch(`${API_BASE}/api/public/stores/${storeSlug}/coupons/validate`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            code: couponApplied.code,
+            subtotal: productsTotal,
+            productIds: productId ? [productId] : undefined,
+          }),
+        });
+        const data = (await res.json()) as CouponValidationResponse;
+        if (cancelled) return;
+        if (!data.ok) {
+          setCouponApplied(null);
+          setCouponError(data.message);
+        } else {
+          setCouponApplied({
+            code: data.code,
+            discountAmount: data.discountAmount,
+            type: data.type,
+            value: data.value,
+          });
+        }
+      } catch {
+        // Network blip — keep the optimistic local discount, server will
+        // re-validate at checkout-submit time.
+      }
+    })();
+    return () => { cancelled = true; };
+    // We only depend on subtotal here — re-running on couponApplied changes
+    // would loop because we setState inside.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [productsTotal]);
+
+  async function applyCoupon() {
+    const code = couponInput.trim().toUpperCase();
+    if (!code) return;
+    setCouponLoading(true);
+    setCouponError('');
+    try {
+      const res = await fetch(`${API_BASE}/api/public/stores/${storeSlug}/coupons/validate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          code,
+          subtotal: productsTotal,
+          productIds: productId ? [productId] : undefined,
+        }),
+      });
+      const data = (await res.json()) as CouponValidationResponse;
+      if (!data.ok) {
+        setCouponApplied(null);
+        setCouponError(data.message);
+        return;
+      }
+      setCouponApplied({
+        code: data.code,
+        discountAmount: data.discountAmount,
+        type: data.type,
+        value: data.value,
+      });
+      setCouponError('');
+      setCouponInput('');
+    } catch {
+      setCouponError('Impossible de vérifier le code. Réessaie.');
+    } finally {
+      setCouponLoading(false);
+    }
+  }
+
+  function removeCoupon() {
+    setCouponApplied(null);
+    setCouponInput('');
+    setCouponError('');
+  }
+
+  // Page-hide capture for abandoned carts — fires when the buyer tabs
+  // away or closes the window. Independent from blur so we always
+  // capture the latest state even if no field was blurred.
+  useEffect(() => {
+    function onHide() {
+      captureAbandonedCart();
+    }
+    window.addEventListener('pagehide', onHide);
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'hidden') onHide();
+    });
+    return () => {
+      window.removeEventListener('pagehide', onHide);
+    };
+    // captureAbandonedCart closes over latest state — re-binding on
+    // every render would be wasteful. We accept the trade-off of a
+    // slightly-stale snapshot in the listener (this is best-effort
+    // chase lead capture, not transactional).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -216,7 +406,7 @@ export function CodOrderForm({
         body: JSON.stringify({
           storeSlug,
           sessionId: getSessionId(),
-          items: [{ productSlug, quantity }],
+          items: [{ productSlug, quantity, variantId: activeVariant?.name }],
           email: email.trim() || `cod-${phone.replace(/\D/g, '')}@flexiopage.local`,
           customerName: name.trim(),
           customerPhone: phone.trim(),
@@ -229,11 +419,19 @@ export function CodOrderForm({
             country,
           },
           notes: showNotes ? (notes.trim() || undefined) : undefined,
+          couponCode: couponApplied?.code,
         }),
       });
       const data = await res.json();
       if (!res.ok) {
-        setError(data.error || 'Erreur lors de la commande');
+        // Surface coupon-specific errors in the coupon row so the buyer
+        // sees why their code didn't take rather than a generic banner.
+        if (data.code === 'coupon_invalid') {
+          setCouponApplied(null);
+          setCouponError(data.error || 'Code promo invalide.');
+        } else {
+          setError(data.error || 'Erreur lors de la commande');
+        }
         setSubmitting(false);
         return;
       }
@@ -249,6 +447,7 @@ export function CodOrderForm({
       id="cod-order-form"
       onSubmit={handleSubmit}
       onFocusCapture={handleFirstEngagement}
+      onBlurCapture={captureAbandonedCart}
       className="space-y-5 border p-5 sm:p-6"
       style={{
         backgroundColor: config?.backgroundColor || theme.surface,
@@ -327,6 +526,54 @@ export function CodOrderForm({
 
       {showNotes && (
         <Field label="Note pour le livreur (optionnel)" value={notes} onChange={setNotes} placeholder="Sonnez à la porte de droite…" theme={theme} radius={radius} />
+      )}
+
+      {/* Variant picker — Couleur/Taille swatches. Shown only when the
+          seller configured variants. Selecting one updates the unit
+          price + stock used by the rest of the form. */}
+      {hasVariants && (
+        <div className="border-t pt-4" style={{ borderColor: theme.border }}>
+          <div className="mb-2 text-xs font-semibold uppercase tracking-wider" style={{ color: theme.muted }}>
+            Choisis une variante
+          </div>
+          <div className="flex flex-wrap gap-1.5">
+            {variants!.map((v, i) => {
+              const active = i === variantIdx;
+              const outOfStock = (v.stock ?? 0) <= 0 && trackInventory && !allowBackorder;
+              return (
+                <button
+                  key={i}
+                  type="button"
+                  disabled={outOfStock}
+                  onClick={() => setVariantIdx(i)}
+                  className={cn(
+                    'inline-flex items-center gap-1.5 border px-3 py-1.5 text-xs font-semibold transition-all disabled:cursor-not-allowed disabled:line-through disabled:opacity-50'
+                  )}
+                  style={{
+                    borderColor: active ? theme.primary : theme.border,
+                    backgroundColor: active ? theme.primary : 'transparent',
+                    color: active ? theme.primaryFg : theme.foreground,
+                    borderRadius: radius,
+                    borderWidth: active ? 2 : 1,
+                  }}
+                  title={outOfStock ? 'En rupture' : v.name}
+                >
+                  {v.name}
+                  {typeof v.price === 'number' && v.price !== productPrice && (
+                    <span className="ml-1 opacity-80">· {formatCurrency(v.price, currency)}</span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+          {activeVariant && (
+            <p className="mt-1.5 text-[10px]" style={{ color: theme.muted }}>
+              {(activeVariant.stock ?? 0) > 0
+                ? `✓ ${activeVariant.stock} en stock`
+                : 'Rupture de stock'}
+            </p>
+          )}
+        </div>
       )}
 
       {/* Bundle tier picker — "buy more, save more" — replaces the stepper */}
@@ -432,17 +679,126 @@ export function CodOrderForm({
         </div>
       ) : null}
 
-      {/* Total — with shipping breakdown when a fee is configured */}
-      {shippingFee > 0 ? (
+      {/* Promo code — collapsible row, expands into "input + Apply" then
+          replaces itself with an applied chip once a code is accepted. */}
+      <div className="border-t pt-4" style={{ borderColor: theme.border }}>
+        {couponApplied ? (
+          <div
+            className="flex items-center justify-between gap-3 border p-3"
+            style={{ borderColor: theme.border, borderRadius: radius, backgroundColor: theme.surfaceMuted }}
+          >
+            <div className="flex min-w-0 items-center gap-2">
+              <span
+                className="grid h-7 w-7 shrink-0 place-items-center rounded-md"
+                style={{ backgroundColor: theme.primary, color: theme.primaryFg }}
+              >
+                <BadgePercent className="h-3.5 w-3.5" />
+              </span>
+              <div className="min-w-0">
+                <div className="flex items-center gap-1.5 text-sm font-bold" style={{ color: theme.foreground }}>
+                  <code className="font-mono">{couponApplied.code}</code>
+                  <span className="text-[10px] font-medium" style={{ color: theme.muted }}>
+                    appliqué
+                  </span>
+                </div>
+                <div className="text-[11px]" style={{ color: theme.muted }}>
+                  −{couponApplied.type === 'percent' ? `${couponApplied.value}%` : formatCurrency(couponApplied.value, currency)} sur la commande
+                </div>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={removeCoupon}
+              className="grid h-8 w-8 place-items-center transition-colors hover:opacity-80"
+              style={{ color: theme.muted, borderRadius: radius }}
+              aria-label="Retirer le code"
+              title="Retirer"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+        ) : !couponOpen ? (
+          <button
+            type="button"
+            onClick={() => setCouponOpen(true)}
+            className="inline-flex items-center gap-1.5 text-sm font-medium underline-offset-2 hover:underline"
+            style={{ color: theme.primary }}
+          >
+            <BadgePercent className="h-3.5 w-3.5" />
+            J&apos;ai un code promo
+          </button>
+        ) : (
+          <div className="space-y-2">
+            <div className="flex items-center gap-2">
+              <input
+                type="text"
+                value={couponInput}
+                onChange={(e) => { setCouponInput(e.target.value.toUpperCase()); setCouponError(''); }}
+                onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); void applyCoupon(); } }}
+                placeholder="CODE PROMO"
+                autoFocus
+                className="h-11 flex-1 border bg-transparent px-3 text-sm font-mono uppercase tracking-wider focus:outline-none"
+                style={{
+                  borderColor: couponError ? '#ef4444' : theme.border,
+                  borderRadius: radius,
+                  backgroundColor: theme.background,
+                  color: theme.foreground,
+                }}
+              />
+              <button
+                type="button"
+                onClick={() => void applyCoupon()}
+                disabled={couponLoading || !couponInput.trim()}
+                className="inline-flex h-11 items-center justify-center gap-1.5 px-4 text-sm font-bold disabled:opacity-50"
+                style={{
+                  backgroundColor: theme.primary,
+                  color: theme.primaryFg,
+                  borderRadius: radius,
+                }}
+              >
+                {couponLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Appliquer'}
+              </button>
+              <button
+                type="button"
+                onClick={() => { setCouponOpen(false); setCouponInput(''); setCouponError(''); }}
+                className="text-sm underline-offset-2 hover:underline"
+                style={{ color: theme.muted }}
+              >
+                Annuler
+              </button>
+            </div>
+            {couponError && (
+              <p className="text-xs" style={{ color: '#ef4444' }}>
+                {couponError}
+              </p>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* Total — adds a discount line when a coupon is applied, on top of
+          the existing shipping line when shipping is non-zero. */}
+      {(shippingFee > 0 || liveDiscount > 0) ? (
         <div className="space-y-1.5 border-t pt-4" style={{ borderColor: theme.border }}>
           <div className="flex items-center justify-between text-sm" style={{ color: theme.muted }}>
             <span>Sous-total</span>
             <span>{formatCurrency(productsTotal, currency)}</span>
           </div>
-          <div className="flex items-center justify-between text-sm" style={{ color: theme.muted }}>
-            <span>Livraison</span>
-            <span>+ {formatCurrency(shippingFee, currency)}</span>
-          </div>
+          {liveDiscount > 0 && couponApplied && (
+            <div className="flex items-center justify-between text-sm" style={{ color: theme.primary }}>
+              <span className="inline-flex items-center gap-1">
+                <BadgePercent className="h-3 w-3" />
+                Code <code className="font-mono">{couponApplied.code}</code>
+              </span>
+              <span>− {formatCurrency(liveDiscount, currency)}</span>
+            </div>
+          )}
+          {shippingFee > 0 && (
+            <div className="flex items-center justify-between text-sm" style={{ color: theme.muted }}>
+              <span>Livraison</span>
+              <span>+ {formatCurrency(shippingFee, currency)}</span>
+            </div>
+          )}
           <div className="flex items-center justify-between pt-2">
             <span className="text-sm font-medium" style={{ color: theme.foreground }}>À payer à la livraison</span>
             <span className="text-2xl font-extrabold" style={{ color: theme.primary }}>

@@ -1,14 +1,71 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+/**
+ * Pro product editor — 2-column layout (sectioned form left, sticky live
+ * preview right). Mirrors the storefront product page so the seller sees
+ * every change as they type. Sections are independent cards so the page
+ * scans top-to-bottom like a guided checklist.
+ *
+ * Sections:
+ *   1. Identité           — name + slug + description
+ *   2. Médias             — multi-image gallery (drag-reorder)
+ *   3. Prix & inventaire  — price, compareAt, stock, SKU/barcode
+ *   4. Variantes          — Couleur/Taille
+ *   5. Page produit       — toggles + per-product overrides (badges, timer, rating, accent)
+ *   6. Tags               — auto-collection keywords
+ *   7. Marge & profit     — ProfitCalculator
+ *   8. SEO                — title + description for search engines
+ */
+
+import { useEffect, useMemo, useState } from 'react';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
+import {
+  ArrowLeft, CheckCircle2, Loader2, Save, ExternalLink, Eye, EyeOff,
+  Image as ImageIcon, Package, Layers, Tag, TrendingUp, Search as SearchIcon,
+  Settings as SettingsIcon, Plus, Trash2, Clock,
+  Truck, ShieldCheck, RefreshCcw, Lock, Headphones, Gift, Star, Leaf, Banknote,
+} from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { storesApi } from '@/lib/api';
+import { cn, storeAbsoluteUrl } from '@/lib/utils';
 import { ProfitCalculator, EMPTY_PROFIT_INPUTS, type ProfitInputs } from '@/components/dashboard/ProfitCalculator';
+import { TagsInput } from '@/components/dashboard/tags-input';
+import { VariantsEditor, type ProductVariant } from '@/components/dashboard/variants-editor';
+import { ProductImagesPicker } from '@/components/dashboard/product-images-picker';
+import { ProductLivePreview } from '@/components/dashboard/product-live-preview';
+import { TimerPresetPicker } from '@/components/dashboard/timer-presets';
+import { FieldToggle } from '@/components/dashboard/store-editor';
+
+const BADGE_ICONS = {
+  truck: Truck, shield: ShieldCheck, refresh: RefreshCcw, lock: Lock,
+  headset: Headphones, gift: Gift, clock: Clock, star: Star, leaf: Leaf, banknote: Banknote,
+} as const;
+type BadgeIcon = keyof typeof BADGE_ICONS;
+const BADGE_ICON_LIST: BadgeIcon[] = ['truck', 'shield', 'refresh', 'lock', 'headset', 'gift', 'clock', 'star', 'leaf', 'banknote'];
+
+interface TrustBadge {
+  icon: BadgeIcon;
+  label: string;
+  sublabel?: string;
+}
+
+interface PageSettings {
+  showGallery: boolean;
+  showDescription: boolean;
+  showTrustBadges: boolean;
+  showRatingStrip?: boolean;
+  codFormTitle: string;
+  reassuranceText: string;
+  accentColor?: string;
+  timer?: { endsAt?: string; headline?: string; accentColor?: string };
+  badges?: TrustBadge[];
+}
+
+type SaveStatus = 'idle' | 'saving' | 'saved' | 'error';
 
 export default function EditProductPage() {
   const params = useParams();
@@ -16,53 +73,79 @@ export default function EditProductPage() {
   const searchParams = useSearchParams();
   const productId = params.productId as string;
   const storeId = searchParams.get('storeId');
+
+  // ── Form state ────────────────────────────────────────────────────
   const [name, setName] = useState('');
+  const [slug, setSlug] = useState('');
   const [description, setDescription] = useState('');
   const [price, setPrice] = useState('');
+  const [compareAtPrice, setCompareAtPrice] = useState('');
   const [type, setType] = useState<'physical' | 'digital'>('physical');
   const [stock, setStock] = useState('0');
-  // SKU is the matching key with external systems (MogaDelivery uses it to
-  // bind FlexioPage line_items to its own catalog).
   const [sku, setSku] = useState('');
   const [barcode, setBarcode] = useState('');
   const [isPublished, setIsPublished] = useState(false);
-  // Per-product storefront page customization. Toggles default to "shown".
-  const [pageSettings, setPageSettings] = useState({
+  const [tags, setTags] = useState<string[]>([]);
+  const [variants, setVariants] = useState<ProductVariant[]>([]);
+  const [images, setImages] = useState<string[]>([]);
+  const [seoTitle, setSeoTitle] = useState('');
+  const [seoDescription, setSeoDescription] = useState('');
+  const [pageSettings, setPageSettings] = useState<PageSettings>({
     showGallery: true,
     showDescription: true,
     showTrustBadges: true,
+    showRatingStrip: false,
     codFormTitle: '',
     reassuranceText: '',
   });
-  // Cost inputs powering the profit calculator. Persisted with the product so
-  // the seller's verdict survives reload.
   const [profit, setProfit] = useState<ProfitInputs>(EMPTY_PROFIT_INPUTS);
+
+  // ── Store metadata (for currency, slug, COD submit label fallback) ─
   const [currency, setCurrency] = useState('USD');
+  const [storeSlug, setStoreSlug] = useState('');
+  const [storeCodSubmit, setStoreCodSubmit] = useState('Commander');
+
   const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
+  const [status, setStatus] = useState<SaveStatus>('idle');
   const [error, setError] = useState('');
 
+  // ── Load product + store ──────────────────────────────────────────
   useEffect(() => {
     if (!storeId || !productId) return;
-    storesApi
-      .getProduct(storeId, productId)
-      .then((res) => {
-        const p = (res.data as { product: Record<string, unknown> }).product;
+    let alive = true;
+    Promise.all([
+      storesApi.getProduct(storeId, productId),
+      storesApi.get(storeId),
+    ])
+      .then(([prodRes, storeRes]) => {
+        if (!alive) return;
+        const p = (prodRes.data as { product: Record<string, unknown> }).product;
         setName((p.name as string) || '');
+        setSlug((p.slug as string) || '');
         setDescription((p.description as string) || '');
         setPrice(String(p.price ?? ''));
+        setCompareAtPrice(p.compareAtPrice ? String(p.compareAtPrice) : '');
         setType((p.type as 'physical' | 'digital') || 'physical');
         setStock(String(p.stock ?? '0'));
         setSku((p.sku as string) || '');
         setBarcode((p.barcode as string) || '');
         setIsPublished(!!p.isPublished);
+        setTags(Array.isArray(p.tags) ? (p.tags as string[]) : []);
+        setVariants(Array.isArray(p.variants) ? (p.variants as ProductVariant[]) : []);
+        setImages(Array.isArray(p.images) ? (p.images as string[]) : []);
+        setSeoTitle((p.seoTitle as string) || '');
+        setSeoDescription((p.seoDescription as string) || '');
         const ps = (p.pageSettings as Record<string, unknown>) || {};
         setPageSettings({
           showGallery: ps.showGallery !== false,
           showDescription: ps.showDescription !== false,
           showTrustBadges: ps.showTrustBadges !== false,
+          showRatingStrip: !!ps.showRatingStrip,
           codFormTitle: (ps.codFormTitle as string) || '',
           reassuranceText: (ps.reassuranceText as string) || '',
+          accentColor: (ps.accentColor as string) || undefined,
+          timer: (ps.timer as PageSettings['timer']) || undefined,
+          badges: Array.isArray(ps.badges) ? (ps.badges as TrustBadge[]) : undefined,
         });
         setProfit({
           price: Number(p.price) || 0,
@@ -73,42 +156,43 @@ export default function EditProductPage() {
           paymentFeePct: Number(p.paymentFeePct) || 0,
           paymentFeeFixed: Number(p.paymentFeeFixed) || 0,
         });
-      })
-      .catch(() => setError('Product not found'))
-      .finally(() => setLoading(false));
 
-    // Fetch the store once to know which currency to display in the calculator.
-    storesApi
-      .get(storeId)
-      .then((res) => {
-        const s = (res.data as { store: { settings?: { currency?: string } } }).store;
+        const s = (storeRes.data as { store: { slug?: string; settings?: { currency?: string; codForm?: { submitLabel?: string } } } }).store;
         if (s?.settings?.currency) setCurrency(s.settings.currency);
+        if (s?.slug) setStoreSlug(s.slug);
+        if (s?.settings?.codForm?.submitLabel) setStoreCodSubmit(s.settings.codForm.submitLabel);
       })
-      .catch(() => {});
+      .catch(() => setError('Produit introuvable'))
+      .finally(() => alive && setLoading(false));
+    return () => { alive = false; };
   }, [storeId, productId]);
 
-  // Keep the calculator's price in sync with the main price field — the
-  // seller edits price in one place but the verdict depends on it.
+  // Keep the profit calculator's price in sync with the main price field.
   useEffect(() => {
     const n = parseFloat(price) || 0;
     setProfit((prev) => (prev.price === n ? prev : { ...prev, price: n }));
   }, [price]);
 
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
+  async function handleSave() {
     if (!storeId) return;
-    setSaving(true);
+    setStatus('saving');
     setError('');
     try {
       await storesApi.updateProduct(storeId, productId, {
         name: name.trim(),
         description: description.trim() || undefined,
         price: parseFloat(price) || 0,
+        compareAtPrice: parseFloat(compareAtPrice) || undefined,
         type,
         stock: parseInt(stock, 10) || 0,
         sku: sku.trim() || undefined,
         barcode: barcode.trim() || undefined,
         isPublished,
+        tags,
+        variants,
+        images,
+        seoTitle: seoTitle.trim() || undefined,
+        seoDescription: seoDescription.trim() || undefined,
         cost: profit.cost || undefined,
         shippingCost: profit.shippingCost || undefined,
         packagingCost: profit.packagingCost || undefined,
@@ -119,223 +203,665 @@ export default function EditProductPage() {
           showGallery: pageSettings.showGallery,
           showDescription: pageSettings.showDescription,
           showTrustBadges: pageSettings.showTrustBadges,
+          showRatingStrip: pageSettings.showRatingStrip,
           codFormTitle: pageSettings.codFormTitle.trim() || undefined,
           reassuranceText: pageSettings.reassuranceText.trim() || undefined,
+          accentColor: pageSettings.accentColor || undefined,
+          timer: pageSettings.timer,
+          badges: pageSettings.badges,
         },
       });
-      router.push(`/dashboard/products?storeId=${storeId}`);
-      router.refresh();
+      setStatus('saved');
+      window.setTimeout(() => setStatus('idle'), 2200);
     } catch {
-      setError('Failed to update product');
-    } finally {
-      setSaving(false);
+      setError('La sauvegarde a échoué. Réessaie.');
+      setStatus('error');
     }
   }
 
+  const hasDiscount = useMemo(
+    () => !!compareAtPrice && parseFloat(compareAtPrice) > (parseFloat(price) || 0),
+    [compareAtPrice, price]
+  );
+
+  if (!storeId) {
+    return (
+      <div className="space-y-4">
+        <p className="text-destructive">Paramètre <code>storeId</code> manquant.</p>
+        <Link href="/dashboard/products"><Button variant="outline">Retour aux produits</Button></Link>
+      </div>
+    );
+  }
   if (loading) return <p className="text-muted-foreground">Loading...</p>;
-  if (error && !storeId) {
+  if (error && !name) {
     return (
       <div className="space-y-4">
         <p className="text-destructive">{error}</p>
-        <Link href="/dashboard/products">
-          <Button variant="outline">Back to products</Button>
-        </Link>
+        <Link href="/dashboard/products"><Button variant="outline">Retour</Button></Link>
       </div>
     );
   }
 
   return (
-    <div className="mx-auto max-w-2xl space-y-8">
-      <div className="flex items-center gap-4">
-        <Button variant="ghost" size="sm" onClick={() => router.push('/dashboard/products')}>
-          ← Back
-        </Button>
-        <h1 className="text-3xl font-bold">Edit product</h1>
-      </div>
+    <form onSubmit={(e) => { e.preventDefault(); void handleSave(); }} className="space-y-6 pb-28">
+      {/* ── Sticky top header — back, title, status, save ───────── */}
+      <header className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-center gap-3 min-w-0">
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            onClick={() => router.push(`/dashboard/products?storeId=${storeId}`)}
+            className="gap-1.5"
+          >
+            <ArrowLeft className="h-4 w-4" />
+            Produits
+          </Button>
+          <div className="min-w-0">
+            <h1 className="truncate text-xl font-bold tracking-tight sm:text-2xl">
+              {name || 'Nouveau produit'}
+            </h1>
+            <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
+              <code>/produit/{slug || '…'}</code>
+              {isPublished ? (
+                <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/10 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-700">
+                  <Eye className="h-2.5 w-2.5" /> Publié
+                </span>
+              ) : (
+                <span className="inline-flex items-center gap-1 rounded-full bg-amber-500/10 px-1.5 py-0.5 text-[10px] font-semibold text-amber-700">
+                  <EyeOff className="h-2.5 w-2.5" /> Brouillon
+                </span>
+              )}
+            </div>
+          </div>
+        </div>
+        <div className="flex items-center gap-2">
+          {storeSlug && slug && (
+            <Link
+              href={`${storeAbsoluteUrl(storeSlug)}/product/${slug}`}
+              target="_blank"
+              rel="noopener"
+            >
+              <Button type="button" variant="outline" size="sm" className="gap-1.5">
+                <ExternalLink className="h-3.5 w-3.5" />
+                Voir
+              </Button>
+            </Link>
+          )}
+          {status === 'saved' && (
+            <span className="inline-flex items-center gap-1 text-xs font-semibold text-emerald-600">
+              <CheckCircle2 className="h-3.5 w-3.5" />
+              Enregistré
+            </span>
+          )}
+          {status === 'error' && (
+            <span className="text-xs text-destructive">{error || 'Erreur'}</span>
+          )}
+          <Button type="submit" disabled={status === 'saving'} className="gap-1.5 gradient-brand text-white">
+            {status === 'saving' ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
+            Enregistrer
+          </Button>
+        </div>
+      </header>
 
-      <form onSubmit={handleSubmit} className="space-y-6">
-        <Card>
-          <CardHeader>
-            <CardTitle>Product details</CardTitle>
-            <CardDescription>Update name, price, and inventory.</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            {error && (
-              <p className="rounded-md bg-destructive/10 p-3 text-sm text-destructive">{error}</p>
-            )}
-            <div className="space-y-2">
-              <Label htmlFor="name">Name</Label>
-              <Input
-                id="name"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                required
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="description">Description</Label>
-              <textarea
-                id="description"
-                value={description}
-                onChange={(e) => setDescription(e.target.value)}
-                className="flex min-h-[80px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-              />
-            </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="price">Price</Label>
+      {/* ── Body — 2 columns ──────────────────────────────────── */}
+      <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_360px]">
+        <div className="space-y-5">
+          {/* ── 1. Identité ─────────────────────────────────── */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Package className="h-4 w-4 text-primary" />
+                Identité
+              </CardTitle>
+              <CardDescription>Comment le produit s&apos;appelle et ce qu&apos;il vend.</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="space-y-1.5">
+                <Label htmlFor="name">Nom *</Label>
                 <Input
-                  id="price"
-                  type="number"
-                  step="0.01"
-                  min="0"
-                  value={price}
-                  onChange={(e) => setPrice(e.target.value)}
+                  id="name"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
                   required
+                  placeholder="Ex: T-shirt Saharien — édition limitée"
                 />
               </div>
-              <div className="space-y-2">
-                <Label htmlFor="type">Type</Label>
-                <select
-                  id="type"
-                  value={type}
-                  onChange={(e) => setType(e.target.value as 'physical' | 'digital')}
-                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-                >
-                  <option value="physical">Physical</option>
-                  <option value="digital">Digital</option>
-                </select>
-              </div>
-            </div>
-            {type === 'physical' && (
-              <div className="space-y-2">
-                <Label htmlFor="stock">Stock</Label>
-                <Input
-                  id="stock"
-                  type="number"
-                  min="0"
-                  value={stock}
-                  onChange={(e) => setStock(e.target.value)}
-                />
-              </div>
-            )}
-            <div className="flex items-center gap-2">
-              <input
-                type="checkbox"
-                id="published"
-                checked={isPublished}
-                onChange={(e) => setIsPublished(e.target.checked)}
-                className="h-4 w-4 rounded border-input"
-              />
-              <Label htmlFor="published">Published</Label>
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Profit calculator — lets the seller know if the product is actually
-            making money once shipping, packaging, ads and payment fees are in. */}
-        <ProfitCalculator value={profit} onChange={setProfit} currency={currency} />
-
-        {/* Référence produit — SKU est la clé de matching avec MogaDelivery
-            et les autres 3PL ; barcode reste optionnel (EAN/UPC). */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Référence produit (SKU & code-barres)</CardTitle>
-            <CardDescription>Identifiants utilisés pour le stock et MogaDelivery.</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="grid gap-4 sm:grid-cols-2">
-              <div className="space-y-2">
-                <Label htmlFor="sku">SKU (référence interne)</Label>
-                <Input
-                  id="sku"
-                  value={sku}
-                  onChange={(e) => setSku(e.target.value)}
-                  placeholder="Ex: TSHIRT-RED-M"
+              <div className="space-y-1.5">
+                <Label htmlFor="description">Description longue</Label>
+                <textarea
+                  id="description"
+                  value={description}
+                  onChange={(e) => setDescription(e.target.value)}
+                  placeholder="Présente les bénéfices, la composition, les détails. Sépare les paragraphes par une ligne vide pour de jolis blocs."
+                  rows={5}
+                  className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm leading-relaxed"
                 />
                 <p className="text-[11px] text-muted-foreground">
-                  Ta référence interne. <strong>Doit être identique côté MogaDelivery</strong> pour que les commandes soient bien matchées.
+                  La 1<sup>re</sup> ligne sert de teaser sous le titre · le reste s&apos;affiche dans la section « Description » sous la fiche.
                 </p>
               </div>
-              <div className="space-y-2">
-                <Label htmlFor="barcode">Code-barres (EAN/UPC)</Label>
-                <Input
-                  id="barcode"
-                  value={barcode}
-                  onChange={(e) => setBarcode(e.target.value)}
-                  placeholder="Ex: 3760123456789"
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div className="space-y-1.5">
+                  <Label htmlFor="type">Type de produit</Label>
+                  <select
+                    id="type"
+                    value={type}
+                    onChange={(e) => setType(e.target.value as 'physical' | 'digital')}
+                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                  >
+                    <option value="physical">Physique (livraison COD)</option>
+                    <option value="digital">Digital (téléchargement / accès)</option>
+                  </select>
+                </div>
+                <div className="space-y-1.5">
+                  <Label>Statut</Label>
+                  <button
+                    type="button"
+                    onClick={() => setIsPublished(!isPublished)}
+                    className={cn(
+                      'flex h-10 w-full items-center justify-between rounded-md border px-3 text-sm font-medium transition-colors',
+                      isPublished
+                        ? 'border-emerald-500/30 bg-emerald-500/5 text-emerald-700'
+                        : 'border-amber-500/30 bg-amber-500/5 text-amber-700'
+                    )}
+                  >
+                    {isPublished ? (
+                      <>
+                        <span className="inline-flex items-center gap-1.5">
+                          <Eye className="h-3.5 w-3.5" /> Publié
+                        </span>
+                        <span className="text-[10px] opacity-70">cliquer pour passer en brouillon</span>
+                      </>
+                    ) : (
+                      <>
+                        <span className="inline-flex items-center gap-1.5">
+                          <EyeOff className="h-3.5 w-3.5" /> Brouillon
+                        </span>
+                        <span className="text-[10px] opacity-70">cliquer pour publier</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* ── 2. Médias ───────────────────────────────────── */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <ImageIcon className="h-4 w-4 text-primary" />
+                Médias
+              </CardTitle>
+              <CardDescription>
+                Premier visuel = image principale (carte produit + thumbnail). Les suivantes s&apos;empilent dans la galerie.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <ProductImagesPicker storeId={storeId} images={images} onChange={setImages} />
+            </CardContent>
+          </Card>
+
+          {/* ── 3. Prix & inventaire ────────────────────────── */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <TrendingUp className="h-4 w-4 text-primary" />
+                Prix & inventaire
+              </CardTitle>
+              <CardDescription>
+                Le prix barré (compareAt) déclenche l&apos;affichage d&apos;une remise calculée automatiquement.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div className="space-y-1.5">
+                  <Label htmlFor="price">Prix de vente *</Label>
+                  <div className="relative">
+                    <Input
+                      id="price"
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      value={price}
+                      onChange={(e) => setPrice(e.target.value)}
+                      required
+                      className="pr-12"
+                    />
+                    <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-xs font-medium text-muted-foreground">
+                      {currency}
+                    </span>
+                  </div>
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="compareAt">Prix barré (optionnel)</Label>
+                  <div className="relative">
+                    <Input
+                      id="compareAt"
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      value={compareAtPrice}
+                      onChange={(e) => setCompareAtPrice(e.target.value)}
+                      placeholder="ex: 79.90"
+                      className="pr-12"
+                    />
+                    <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-xs font-medium text-muted-foreground">
+                      {currency}
+                    </span>
+                  </div>
+                  {hasDiscount && (
+                    <p className="text-[11px] text-emerald-700">
+                      ✓ Badge promo automatique : −{Math.round(((parseFloat(compareAtPrice) - parseFloat(price)) / parseFloat(compareAtPrice)) * 100)}%
+                    </p>
+                  )}
+                </div>
+              </div>
+              {type === 'physical' && (
+                <div className="grid gap-3 sm:grid-cols-3">
+                  <div className="space-y-1.5">
+                    <Label htmlFor="stock">Stock</Label>
+                    <Input
+                      id="stock"
+                      type="number"
+                      min="0"
+                      value={stock}
+                      onChange={(e) => setStock(e.target.value)}
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="sku">SKU (référence interne)</Label>
+                    <Input
+                      id="sku"
+                      value={sku}
+                      onChange={(e) => setSku(e.target.value)}
+                      placeholder="TSHIRT-RED-M"
+                      className="font-mono text-xs"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="barcode">Code-barres (EAN/UPC)</Label>
+                    <Input
+                      id="barcode"
+                      value={barcode}
+                      onChange={(e) => setBarcode(e.target.value)}
+                      placeholder="3760123456789"
+                      className="font-mono text-xs"
+                    />
+                  </div>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* ── 4. Variantes ───────────────────────────────── */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Layers className="h-4 w-4 text-primary" />
+                Variantes (couleur, taille, format…)
+              </CardTitle>
+              <CardDescription>
+                Décline le produit. Le client choisit sa variante dans le formulaire de commande, chaque variante a son stock + prix.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <VariantsEditor
+                variants={variants}
+                onChange={setVariants}
+                currency={currency}
+                basePrice={parseFloat(price) || undefined}
+              />
+            </CardContent>
+          </Card>
+
+          {/* ── 5. Page produit (toggles + overrides) ──────── */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <SettingsIcon className="h-4 w-4 text-primary" />
+                Page publique du produit
+              </CardTitle>
+              <CardDescription>
+                Personnalise les sections de la fiche produit publique. Les réglages ci-dessous gagnent sur la config globale de la boutique.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-5">
+              {/* Toggles row */}
+              <div className="grid gap-2 sm:grid-cols-2">
+                <FieldToggle
+                  label="Galerie de miniatures"
+                  sublabel="Mini-images cliquables sous la photo principale"
+                  checked={pageSettings.showGallery}
+                  onChange={(v) => setPageSettings((s) => ({ ...s, showGallery: v }))}
                 />
-                <p className="text-[11px] text-muted-foreground">Optionnel. Scanné par la logistique.</p>
+                <FieldToggle
+                  label="Section description"
+                  sublabel="Texte long sous la fiche"
+                  checked={pageSettings.showDescription}
+                  onChange={(v) => setPageSettings((s) => ({ ...s, showDescription: v }))}
+                />
+                <FieldToggle
+                  label="Badges de confiance"
+                  sublabel="Livraison · garantie · paiement…"
+                  checked={pageSettings.showTrustBadges}
+                  onChange={(v) => setPageSettings((s) => ({ ...s, showTrustBadges: v }))}
+                />
+                <FieldToggle
+                  label="Bande d'avis (5 étoiles)"
+                  sublabel="Petite ligne ★★★★★ sous le titre"
+                  checked={!!pageSettings.showRatingStrip}
+                  onChange={(v) => setPageSettings((s) => ({ ...s, showRatingStrip: v }))}
+                />
               </div>
-            </div>
-          </CardContent>
-        </Card>
 
-        {/* Per-product storefront page customization */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Page produit</CardTitle>
-            <CardDescription>
-              Personnalise la page publique de ce produit — sections affichées et textes du
-              formulaire de commande.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="space-y-2.5">
-              {[
-                { key: 'showGallery' as const, label: 'Afficher la galerie de miniatures' },
-                { key: 'showDescription' as const, label: 'Afficher la section description' },
-                { key: 'showTrustBadges' as const, label: 'Afficher les badges de confiance' },
-              ].map((opt) => (
-                <label key={opt.key} className="flex cursor-pointer items-center gap-2">
+              {/* COD overrides */}
+              {type === 'physical' && (
+                <div className="grid gap-3 border-t border-border/60 pt-4 sm:grid-cols-2">
+                  <div className="space-y-1.5">
+                    <Label htmlFor="codFormTitle">Titre du formulaire de commande</Label>
+                    <Input
+                      id="codFormTitle"
+                      value={pageSettings.codFormTitle}
+                      onChange={(e) => setPageSettings((s) => ({ ...s, codFormTitle: e.target.value }))}
+                      placeholder="Ex: Commander — paiement à la livraison"
+                    />
+                    <p className="text-[11px] text-muted-foreground">Vide = config globale.</p>
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="reassuranceText">Ligne de réassurance</Label>
+                    <Input
+                      id="reassuranceText"
+                      value={pageSettings.reassuranceText}
+                      onChange={(e) => setPageSettings((s) => ({ ...s, reassuranceText: e.target.value }))}
+                      placeholder="Ex: Aucun prépaiement · livraison 48h"
+                    />
+                  </div>
+                </div>
+              )}
+
+              {/* Accent color (per-product) */}
+              <div className="border-t border-border/60 pt-4">
+                <Label className="text-xs">Couleur d&apos;accent (optionnel)</Label>
+                <p className="mb-2 text-[11px] text-muted-foreground">
+                  Utilisée pour le prix, les badges et le timer. Vide = couleur primaire du thème.
+                </p>
+                <div className="flex items-center gap-2">
                   <input
-                    type="checkbox"
-                    checked={pageSettings[opt.key]}
-                    onChange={(e) =>
-                      setPageSettings((s) => ({ ...s, [opt.key]: e.target.checked }))
-                    }
-                    className="h-4 w-4 rounded border-input"
+                    type="color"
+                    value={pageSettings.accentColor || '#7c3aed'}
+                    onChange={(e) => setPageSettings((s) => ({ ...s, accentColor: e.target.value }))}
+                    className="h-9 w-11 cursor-pointer rounded-md border border-border/60 bg-background p-0"
                   />
-                  <span className="text-sm">{opt.label}</span>
-                </label>
-              ))}
-            </div>
-
-            {type === 'physical' && (
-              <div className="grid gap-4 border-t border-border/60 pt-4 sm:grid-cols-2">
-                <div className="space-y-2">
-                  <Label htmlFor="codFormTitle">Titre du formulaire de commande</Label>
                   <Input
-                    id="codFormTitle"
-                    value={pageSettings.codFormTitle}
-                    onChange={(e) =>
-                      setPageSettings((s) => ({ ...s, codFormTitle: e.target.value }))
-                    }
-                    placeholder="Ex: Commander — paiement à la livraison"
+                    value={pageSettings.accentColor || ''}
+                    onChange={(e) => setPageSettings((s) => ({ ...s, accentColor: e.target.value || undefined }))}
+                    placeholder="#7c3aed (vide = thème)"
+                    className="h-9 max-w-[200px] font-mono text-xs"
                   />
-                  <p className="text-[11px] text-muted-foreground">Vide = titre par défaut de la boutique.</p>
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="reassuranceText">Ligne de réassurance</Label>
-                  <Input
-                    id="reassuranceText"
-                    value={pageSettings.reassuranceText}
-                    onChange={(e) =>
-                      setPageSettings((s) => ({ ...s, reassuranceText: e.target.value }))
-                    }
-                    placeholder="Ex: Aucun prépaiement · livraison 48h"
-                  />
-                  <p className="text-[11px] text-muted-foreground">Affichée sous le formulaire de commande.</p>
+                  {pageSettings.accentColor && (
+                    <button
+                      type="button"
+                      onClick={() => setPageSettings((s) => ({ ...s, accentColor: undefined }))}
+                      className="text-[11px] text-muted-foreground hover:text-foreground"
+                    >
+                      × Reset
+                    </button>
+                  )}
                 </div>
               </div>
-            )}
-          </CardContent>
-        </Card>
 
-        <Button type="submit" disabled={saving}>
-          {saving ? 'Saving...' : 'Save changes'}
-        </Button>
-      </form>
-    </div>
+              {/* Timer override */}
+              <div className="border-t border-border/60 pt-4">
+                <Label className="text-xs">Compte à rebours (optionnel)</Label>
+                <p className="mb-3 text-[11px] text-muted-foreground">
+                  Affiche un timer urgent au-dessus du formulaire COD. Choisis un modèle puis affine les détails si besoin — ou pars sur du personnalisé.
+                </p>
+
+                {/* Preset templates — one click to seed endsAt + headline + color */}
+                <TimerPresetPicker
+                  value={pageSettings.timer}
+                  onApply={(next) => setPageSettings((s) => ({
+                    ...s,
+                    timer: { ...(s.timer || {}), ...next },
+                  }))}
+                />
+
+                {/* Per-field fine-tune (always editable, even after a preset) */}
+                {pageSettings.timer?.endsAt && (
+                  <div className="mt-4 grid gap-2 sm:grid-cols-[1fr_1fr_auto]">
+                    <div className="space-y-1">
+                      <Label className="text-[10px] uppercase tracking-wider text-muted-foreground">Fin du timer</Label>
+                      <Input
+                        type="datetime-local"
+                        value={new Date(pageSettings.timer.endsAt).toISOString().slice(0, 16)}
+                        onChange={(e) => setPageSettings((s) => ({
+                          ...s,
+                          timer: { ...(s.timer || {}), endsAt: e.target.value ? new Date(e.target.value).toISOString() : undefined },
+                        }))}
+                        className="h-9"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-[10px] uppercase tracking-wider text-muted-foreground">Texte</Label>
+                      <Input
+                        value={pageSettings.timer?.headline || ''}
+                        onChange={(e) => setPageSettings((s) => ({ ...s, timer: { ...(s.timer || {}), headline: e.target.value } }))}
+                        placeholder="Offre flash — finit dans"
+                        className="h-9 text-sm"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-[10px] uppercase tracking-wider text-muted-foreground">Couleur</Label>
+                      <input
+                        type="color"
+                        value={pageSettings.timer?.accentColor || '#ef4444'}
+                        onChange={(e) => setPageSettings((s) => ({ ...s, timer: { ...(s.timer || {}), accentColor: e.target.value } }))}
+                        className="h-9 w-12 cursor-pointer rounded-md border border-border/60 bg-background p-0"
+                      />
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Custom badges */}
+              <div className="border-t border-border/60 pt-4">
+                <div className="mb-2 flex items-center justify-between">
+                  <div>
+                    <Label className="text-xs">Badges personnalisés (optionnel)</Label>
+                    <p className="text-[11px] text-muted-foreground">
+                      Vide = badges globaux de la boutique. Définis ici pour overrider sur ce produit seulement.
+                    </p>
+                  </div>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    onClick={() => setPageSettings((s) => ({
+                      ...s,
+                      badges: [...(s.badges || []), { icon: 'truck', label: 'Nouveau badge' }],
+                    }))}
+                    className="gap-1.5"
+                  >
+                    <Plus className="h-3.5 w-3.5" /> Ajouter
+                  </Button>
+                </div>
+                {pageSettings.badges && pageSettings.badges.length > 0 && (
+                  <ul className="space-y-2">
+                    {pageSettings.badges.map((b, i) => {
+                      const Icon = BADGE_ICONS[b.icon] || Truck;
+                      return (
+                        <li key={i} className="grid grid-cols-[auto_1fr_1fr_auto] items-center gap-2 rounded-lg border border-border/60 bg-muted/20 p-2">
+                          <details className="relative">
+                            <summary
+                              className="grid h-9 w-9 cursor-pointer place-items-center rounded-md bg-primary/10 text-primary"
+                              title="Changer l'icône"
+                            >
+                              <Icon className="h-4 w-4" />
+                            </summary>
+                            <div className="absolute left-0 top-10 z-20 grid w-44 grid-cols-5 gap-1 rounded-lg border border-border bg-card p-2 shadow-lg">
+                              {BADGE_ICON_LIST.map((ic) => {
+                                const IC = BADGE_ICONS[ic];
+                                const active = ic === b.icon;
+                                return (
+                                  <button
+                                    key={ic}
+                                    type="button"
+                                    onClick={() => setPageSettings((s) => {
+                                      const next = (s.badges || []).slice();
+                                      next[i] = { ...next[i], icon: ic };
+                                      return { ...s, badges: next };
+                                    })}
+                                    className={cn(
+                                      'grid h-8 w-8 place-items-center rounded-md transition-colors',
+                                      active ? 'bg-primary text-white' : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+                                    )}
+                                  >
+                                    <IC className="h-4 w-4" />
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          </details>
+                          <Input
+                            value={b.label}
+                            onChange={(e) => setPageSettings((s) => {
+                              const next = (s.badges || []).slice();
+                              next[i] = { ...next[i], label: e.target.value };
+                              return { ...s, badges: next };
+                            })}
+                            placeholder="Livraison rapide"
+                            className="h-9 text-sm"
+                          />
+                          <Input
+                            value={b.sublabel || ''}
+                            onChange={(e) => setPageSettings((s) => {
+                              const next = (s.badges || []).slice();
+                              next[i] = { ...next[i], sublabel: e.target.value };
+                              return { ...s, badges: next };
+                            })}
+                            placeholder="2 à 5 jours (optionnel)"
+                            className="h-9 text-[11px]"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => setPageSettings((s) => ({
+                              ...s,
+                              badges: (s.badges || []).filter((_, idx) => idx !== i),
+                            }))}
+                            className="grid h-9 w-9 place-items-center rounded-md text-destructive hover:bg-destructive/10"
+                            aria-label="Supprimer"
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </button>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* ── 6. Tags ──────────────────────────────────────── */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Tag className="h-4 w-4 text-primary" />
+                Tags
+              </CardTitle>
+              <CardDescription>
+                Étiquettes consommées par les collections automatiques (« promo », « ete », « homme »…). Entrée ou virgule pour valider.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <TagsInput value={tags} onChange={setTags} placeholder="ex: promo, nouveaute, homme…" />
+            </CardContent>
+          </Card>
+
+          {/* ── 7. Marge & profit ──────────────────────────── */}
+          <ProfitCalculator value={profit} onChange={setProfit} currency={currency} />
+
+          {/* ── 8. SEO ─────────────────────────────────────── */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <SearchIcon className="h-4 w-4 text-primary" />
+                Référencement (SEO)
+              </CardTitle>
+              <CardDescription>
+                Ce qui apparaît dans Google et sur les aperçus de partage (Facebook, WhatsApp). Vide = on utilise le nom + description.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="space-y-1.5">
+                <Label htmlFor="seoTitle">Titre SEO ({seoTitle.length}/60)</Label>
+                <Input
+                  id="seoTitle"
+                  value={seoTitle}
+                  onChange={(e) => setSeoTitle(e.target.value)}
+                  placeholder={name || 'Titre pour Google'}
+                  maxLength={70}
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="seoDescription">Description SEO ({seoDescription.length}/160)</Label>
+                <textarea
+                  id="seoDescription"
+                  value={seoDescription}
+                  onChange={(e) => setSeoDescription(e.target.value)}
+                  rows={3}
+                  maxLength={200}
+                  placeholder="Résumé qui apparaîtra dans les résultats de recherche."
+                  className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                />
+              </div>
+              {/* Live Google preview */}
+              <div className="rounded-xl border border-border/60 bg-muted/30 p-3">
+                <div className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                  Aperçu Google
+                </div>
+                <div className="space-y-0.5">
+                  <div className="truncate text-[11px] text-emerald-700">
+                    {storeSlug ? `${storeAbsoluteUrl(storeSlug).replace(/^https?:\/\//, '')}/product/${slug}` : `boutique.com/product/${slug}`}
+                  </div>
+                  <div className="truncate text-sm font-semibold text-[#1a0dab]">
+                    {seoTitle || name || 'Titre du produit'}
+                  </div>
+                  <div className="line-clamp-2 text-[12px] text-slate-600">
+                    {seoDescription || description || 'Description du produit…'}
+                  </div>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* ── Right — sticky live preview ───────────────────── */}
+        <aside className="lg:sticky lg:top-4 lg:self-start">
+          <ProductLivePreview
+            name={name}
+            description={description}
+            price={parseFloat(price) || 0}
+            compareAtPrice={parseFloat(compareAtPrice) || undefined}
+            currency={currency}
+            images={images}
+            showGallery={pageSettings.showGallery}
+            showDescription={pageSettings.showDescription}
+            showTrustBadges={pageSettings.showTrustBadges}
+            showRatingStrip={pageSettings.showRatingStrip}
+            badges={pageSettings.badges}
+            timerEndsAt={pageSettings.timer?.endsAt}
+            timerHeadline={pageSettings.timer?.headline}
+            timerAccentColor={pageSettings.timer?.accentColor}
+            accentColor={pageSettings.accentColor}
+            codSubmitLabel={storeCodSubmit}
+            stock={parseInt(stock, 10) || 0}
+            trackInventory={type === 'physical'}
+          />
+        </aside>
+      </div>
+    </form>
   );
 }

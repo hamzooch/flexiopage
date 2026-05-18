@@ -15,7 +15,8 @@ import { ThemePreviewGrid } from '@/components/dashboard/theme-preview-card';
 import { ThemePaletteEditor } from '@/components/dashboard/theme-palette-editor';
 import { MediaPicker } from '@/components/dashboard/MediaPicker';
 import { StoreSubPageShell, type SaveStatus } from '@/components/dashboard/store-sub-page';
-import type { StoreType } from '@/components/dashboard/store-editor';
+import { StoreHomepageLivePreview } from '@/components/dashboard/store-homepage-live-preview';
+import type { StorefrontSettings, StoreType, WhatsappSettings } from '@/components/dashboard/store-editor';
 
 export default function StoreAppearancePage() {
   const params = useParams();
@@ -92,6 +93,9 @@ export default function StoreAppearancePage() {
     return <p className="text-muted-foreground">Loading...</p>;
   }
 
+  const storefrontMock: StorefrontSettings = (store.settings?.storefront || {}) as StorefrontSettings;
+  const whatsappMock: WhatsappSettings | undefined = store.settings?.whatsapp;
+
   return (
     <StoreSubPageShell
       storeId={storeId}
@@ -102,6 +106,8 @@ export default function StoreAppearancePage() {
       errorMessage={errorMessage}
       onSave={handleSave}
     >
+      <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_340px]">
+        <div className="space-y-6">
       <Card>
         <CardHeader>
           <CardTitle>Logo &amp; favicon</CardTitle>
@@ -170,6 +176,22 @@ export default function StoreAppearancePage() {
           </CardContent>
         </Card>
       )}
+        </div>
+
+        {/* ── STICKY RIGHT — real-time mini-storefront mock ────── */}
+        <aside className="lg:sticky lg:top-4 lg:self-start">
+          <StoreHomepageLivePreview
+            storeName={store.name}
+            logo={logo}
+            favicon={favicon}
+            theme={themeTokens || undefined}
+            storefront={storefrontMock}
+            whatsapp={whatsappMock}
+            currency={store.settings?.currency}
+            direction={store.settings?.direction}
+          />
+        </aside>
+      </div>
     </StoreSubPageShell>
   );
 }

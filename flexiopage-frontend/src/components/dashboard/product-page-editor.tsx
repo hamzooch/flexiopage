@@ -35,6 +35,7 @@ import {
   type TrustBadge,
 } from '@/lib/product-page-order';
 import { FieldToggle } from '@/components/dashboard/store-editor';
+import { TimerPresetPicker } from '@/components/dashboard/timer-presets';
 
 const BADGE_ICONS: Record<BadgeIcon, typeof Truck> = {
   truck: Truck,
@@ -352,67 +353,65 @@ export function ProductPageEditor({ cfg, onChange }: Props) {
           onChange={(v) => onChange({ ...cfg, showTimer: v })}
         />
         {cfg.showTimer && (
-          <div className="mt-3 grid gap-3 sm:grid-cols-2">
-            <div className="space-y-1">
-              <Label htmlFor="timer-end" className="text-xs">Fin du compteur</Label>
-              <Input
-                id="timer-end"
-                type="datetime-local"
-                value={cfg.timer?.endsAt ? new Date(cfg.timer.endsAt).toISOString().slice(0, 16) : ''}
-                onChange={(e) =>
-                  onChange({
-                    ...cfg,
-                    timer: { ...(cfg.timer || {}), endsAt: e.target.value ? new Date(e.target.value).toISOString() : undefined },
-                  })
-                }
-                className="h-9"
-              />
-              <p className="text-[10px] text-muted-foreground">
-                Quand le compteur atteint zéro, le bloc disparaît automatiquement.
-              </p>
-            </div>
-            <div className="space-y-1">
-              <Label htmlFor="timer-headline" className="text-xs">Texte du timer</Label>
-              <Input
-                id="timer-headline"
-                value={cfg.timer?.headline || ''}
-                onChange={(e) =>
-                  onChange({
-                    ...cfg,
-                    timer: { ...(cfg.timer || {}), headline: e.target.value },
-                  })
-                }
-                placeholder="Offre limitée — finit dans…"
-                className="h-9 text-sm"
-              />
-            </div>
-            <div className="space-y-1 sm:col-span-2">
-              <Label className="text-xs">Couleur d'accent</Label>
-              <div className="flex items-center gap-2">
-                <input
-                  type="color"
-                  value={cfg.timer?.accentColor || '#ef4444'}
-                  onChange={(e) =>
-                    onChange({
-                      ...cfg,
-                      timer: { ...(cfg.timer || {}), accentColor: e.target.value },
-                    })
-                  }
-                  className="h-9 w-11 cursor-pointer rounded-md border border-border/60 bg-background p-0"
-                />
-                <Input
-                  value={cfg.timer?.accentColor || ''}
-                  onChange={(e) =>
-                    onChange({
-                      ...cfg,
-                      timer: { ...(cfg.timer || {}), accentColor: e.target.value || undefined },
-                    })
-                  }
-                  placeholder="#ef4444 (rouge urgence par défaut)"
-                  className="h-9 flex-1 font-mono text-xs"
-                />
+          <div className="mt-4 space-y-4">
+            {/* Preset templates — one-click setups for the most common urgency scenarios */}
+            <TimerPresetPicker
+              value={cfg.timer}
+              onApply={(next) => onChange({ ...cfg, timer: { ...(cfg.timer || {}), ...next } })}
+            />
+
+            {/* Fine-tune — visible once a model is applied OR for fully custom configs */}
+            {cfg.timer?.endsAt && (
+              <div className="grid gap-3 border-t border-border/60 pt-4 sm:grid-cols-[1fr_1fr_auto]">
+                <div className="space-y-1">
+                  <Label htmlFor="timer-end" className="text-[10px] uppercase tracking-wider text-muted-foreground">Fin du compteur</Label>
+                  <Input
+                    id="timer-end"
+                    type="datetime-local"
+                    value={cfg.timer?.endsAt ? new Date(cfg.timer.endsAt).toISOString().slice(0, 16) : ''}
+                    onChange={(e) =>
+                      onChange({
+                        ...cfg,
+                        timer: { ...(cfg.timer || {}), endsAt: e.target.value ? new Date(e.target.value).toISOString() : undefined },
+                      })
+                    }
+                    className="h-9"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label htmlFor="timer-headline" className="text-[10px] uppercase tracking-wider text-muted-foreground">Texte</Label>
+                  <Input
+                    id="timer-headline"
+                    value={cfg.timer?.headline || ''}
+                    onChange={(e) =>
+                      onChange({
+                        ...cfg,
+                        timer: { ...(cfg.timer || {}), headline: e.target.value },
+                      })
+                    }
+                    placeholder="Offre limitée — finit dans"
+                    className="h-9 text-sm"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-[10px] uppercase tracking-wider text-muted-foreground">Couleur</Label>
+                  <input
+                    type="color"
+                    value={cfg.timer?.accentColor || '#ef4444'}
+                    onChange={(e) =>
+                      onChange({
+                        ...cfg,
+                        timer: { ...(cfg.timer || {}), accentColor: e.target.value },
+                      })
+                    }
+                    className="h-9 w-12 cursor-pointer rounded-md border border-border/60 bg-background p-0"
+                  />
+                </div>
               </div>
-            </div>
+            )}
+            <p className="text-[10px] text-muted-foreground">
+              Quand le compteur atteint zéro, le bloc disparaît automatiquement de la page produit.
+            </p>
           </div>
         )}
       </section>

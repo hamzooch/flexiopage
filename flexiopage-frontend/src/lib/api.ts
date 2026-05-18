@@ -762,6 +762,74 @@ export const storesApi = {
     // Setting it ourselves strips the boundary and multer rejects the body.
     return api.post<{ media: unknown }>(`/stores/${storeId}/media`, form);
   },
+  // Collections
+  listCollections: (storeId: string) =>
+    api.get<{ collections: import('@/types/collection').Collection[] }>(`/stores/${storeId}/collections`),
+  createCollection: (storeId: string, data: Partial<import('@/types/collection').Collection>) =>
+    api.post<{ collection: import('@/types/collection').Collection }>(`/stores/${storeId}/collections`, data),
+  getCollection: (storeId: string, collectionId: string) =>
+    api.get<{ collection: import('@/types/collection').Collection; products: import('@/types/collection').ProductLite[] }>(
+      `/stores/${storeId}/collections/${collectionId}`
+    ),
+  updateCollection: (storeId: string, collectionId: string, data: Partial<import('@/types/collection').Collection>) =>
+    api.patch<{ collection: import('@/types/collection').Collection }>(
+      `/stores/${storeId}/collections/${collectionId}`,
+      data
+    ),
+  deleteCollection: (storeId: string, collectionId: string) =>
+    api.delete(`/stores/${storeId}/collections/${collectionId}`),
+  // Reviews
+  listReviews: (storeId: string, params?: { productId?: string }) =>
+    api.get<{ reviews: Array<{ _id: string; productId: string; name: string; rating: number; content: string; title?: string; verified: boolean; isPublished: boolean; createdAt: string }> }>(`/stores/${storeId}/reviews`, { params }),
+  updateReview: (storeId: string, reviewId: string, data: { isPublished: boolean }) =>
+    api.patch(`/stores/${storeId}/reviews/${reviewId}`, data),
+  deleteReview: (storeId: string, reviewId: string) =>
+    api.delete(`/stores/${storeId}/reviews/${reviewId}`),
+
+  // Abandoned carts
+  listAbandonedCarts: (storeId: string, params?: { includeRecovered?: boolean }) =>
+    api.get<{
+      carts: Array<{
+        _id: string;
+        productSlug?: string;
+        productName?: string;
+        productPrice?: number;
+        name?: string;
+        phone?: string;
+        email?: string;
+        city?: string;
+        country?: string;
+        recovered: boolean;
+        createdAt: string;
+        updatedAt: string;
+      }>;
+    }>(`/stores/${storeId}/abandoned-carts`, { params }),
+  deleteAbandonedCart: (storeId: string, cartId: string) =>
+    api.delete(`/stores/${storeId}/abandoned-carts/${cartId}`),
+
+  // Subscribers (newsletter)
+  listSubscribers: (storeId: string, params?: { search?: string; includeUnsubscribed?: boolean }) =>
+    api.get<{
+      subscribers: import('@/types/newsletter').Subscriber[];
+      counts: import('@/types/newsletter').SubscriberCounts;
+    }>(`/stores/${storeId}/subscribers`, { params }),
+  deleteSubscriber: (storeId: string, subscriberId: string) =>
+    api.delete(`/stores/${storeId}/subscribers/${subscriberId}`),
+  /** Returns the full CSV URL — call it with `window.location.href = …` to download. */
+  subscribersCsvUrl: (storeId: string) =>
+    `${API_URL}/api/stores/${storeId}/subscribers/export.csv`,
+
+  // Coupons
+  listCoupons: (storeId: string) =>
+    api.get<{ coupons: import('@/types/coupon').Coupon[] }>(`/stores/${storeId}/coupons`),
+  createCoupon: (storeId: string, data: Partial<import('@/types/coupon').Coupon>) =>
+    api.post<{ coupon: import('@/types/coupon').Coupon }>(`/stores/${storeId}/coupons`, data),
+  getCoupon: (storeId: string, couponId: string) =>
+    api.get<{ coupon: import('@/types/coupon').Coupon }>(`/stores/${storeId}/coupons/${couponId}`),
+  updateCoupon: (storeId: string, couponId: string, data: Partial<import('@/types/coupon').Coupon>) =>
+    api.patch<{ coupon: import('@/types/coupon').Coupon }>(`/stores/${storeId}/coupons/${couponId}`, data),
+  deleteCoupon: (storeId: string, couponId: string) =>
+    api.delete(`/stores/${storeId}/coupons/${couponId}`),
 };
 
 // Public storefront API (no auth)
@@ -773,6 +841,11 @@ export const publicApi = {
     api.get<{ product: unknown }>(`/public/stores/${storeSlug}/products/${productSlug}`),
   getStorePage: (storeSlug: string, pageSlug: string) =>
     api.get<{ store: unknown; page: unknown }>(`/public/stores/${storeSlug}/pages/${pageSlug}`),
+  validateCoupon: (storeSlug: string, body: { code: string; subtotal: number; productIds?: string[] }) =>
+    api.post<import('@/types/coupon').CouponValidationResponse>(
+      `/public/stores/${storeSlug}/coupons/validate`,
+      body
+    ),
 };
 
 // ─────────────────────────────────────────────────────────────────────

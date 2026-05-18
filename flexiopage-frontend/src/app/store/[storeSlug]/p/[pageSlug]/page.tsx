@@ -4,6 +4,7 @@ import { LandingRenderer } from '@/components/landing/LandingRenderer';
 import type { PageSection } from '@/components/landing/SectionEditor';
 import { StoreNavbar, type NavbarConfig } from '@/components/storefront/StoreNavbar';
 import { StoreFooter, type FooterConfig } from '@/components/storefront/StoreFooter';
+import { MarketingPixels, type MarketingConfig } from '@/components/storefront/MarketingPixels';
 import { STORE_THEME_TEMPLATES } from '@/data/store-themes';
 import { renderMarkdown } from '@/lib/markdown';
 import { StoreTracker } from '@/components/storefront/StoreTracker';
@@ -30,6 +31,7 @@ interface StoreDoc {
       footer?: FooterConfig;
     };
   };
+  integrations?: { marketing?: MarketingConfig };
   layout?: {
     footer?: {
       social?: { whatsapp?: string };
@@ -152,6 +154,7 @@ export default async function PublicLandingPage({ params }: Props) {
         className="min-h-screen flex flex-col"
         style={{ backgroundColor: themeTokens.background, color: themeTokens.foreground }}
       >
+        <MarketingPixels config={data.store.integrations?.marketing} />
         <StoreTracker storeId={data.store._id} type="page_view" />
         <StoreNavbar
           storeName={data.store.name}
@@ -171,6 +174,7 @@ export default async function PublicLandingPage({ params }: Props) {
           <StoreFooter
             storeName={data.store.name}
             storeSlug={storeSlug}
+            storeLogo={data.store.logo}
             footerNote={data.store.settings?.storefront?.footerNote}
             config={data.store.settings?.storefront?.footer}
             theme={themeTokens}
@@ -184,6 +188,7 @@ export default async function PublicLandingPage({ params }: Props) {
 
   return (
     <>
+      <MarketingPixels config={data.store.integrations?.marketing} />
       <StoreTracker storeId={data.store._id} type="page_view" />
       <LandingRenderer
       sections={data.page.sections || []}

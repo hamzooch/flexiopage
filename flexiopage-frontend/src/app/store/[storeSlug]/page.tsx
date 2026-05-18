@@ -21,6 +21,7 @@ import { StoreNavbar, type NavbarConfig } from '@/components/storefront/StoreNav
 import { StoreFooter, type FooterConfig } from '@/components/storefront/StoreFooter';
 import { StorefrontTestimonials, type TestimonialsConfig } from '@/components/storefront/Testimonials';
 import { AnnouncementBar, type AnnouncementBarConfig } from '@/components/storefront/AnnouncementBar';
+import { HeroMedia } from '@/components/storefront/hero-media';
 import type { WhatsappConfig } from '@/components/storefront/whatsapp-button';
 
 interface Props {
@@ -34,6 +35,7 @@ interface StorefrontConfig {
   heroTitle?: string;
   heroSubtitle?: string;
   heroImage?: string;
+  heroVideo?: string;
   showProductsGrid?: boolean;
   productsGridTitle?: string;
   showFeatures?: boolean;
@@ -226,6 +228,7 @@ export default async function PublicStorePage({ params }: Props) {
           <StoreFooter
             storeName={store.name}
             storeSlug={store.slug}
+            storeLogo={store.logo}
             footerNote={sf.footerNote}
             config={sf.footer}
             theme={theme}
@@ -337,10 +340,9 @@ function Hero({ store, theme, isDigital = false }: { store: StoreDoc; theme: The
   const layout = theme.layout?.hero || 'centered';
   const title = store.settings?.storefront?.heroTitle || store.name;
   const subtitle = store.settings?.storefront?.heroSubtitle || store.description;
-  // Storefront images are stored as relative paths (e.g. /uploads/...) which
-  // are served by the BACKEND. Without mediaUrl(), the browser would request
-  // them from the frontend origin and 404. Absolutize before rendering.
-  const heroImage = mediaUrl(store.settings?.storefront?.heroImage);
+  const heroImageRaw = store.settings?.storefront?.heroImage;
+  const heroVideoRaw = store.settings?.storefront?.heroVideo;
+  const hasMedia = !!(heroImageRaw || heroVideoRaw);
   const eyebrow = isDigital ? 'Téléchargement instantané' : 'Nouvelle collection';
   const radius = RADIUS_PX[theme.borderRadius];
 
@@ -348,25 +350,14 @@ function Hero({ store, theme, isDigital = false }: { store: StoreDoc; theme: The
     theme.fontDisplaySize === 'xlarge' ? 'text-4xl sm:text-6xl lg:text-7xl' :
     theme.fontDisplaySize === 'large'  ? 'text-3xl sm:text-5xl lg:text-6xl' : 'text-3xl sm:text-4xl lg:text-5xl';
 
-  // When the seller uploads a hero background image we render a dedicated
-  // image-cover layout (image + dark scrim + white text) instead of one of
-  // the 5 layout variants — the picked image is a strong creative choice
+  // When the seller uploads hero media (image OR video) we render a dedicated
+  // media-cover layout (background + dark scrim + white text) instead of one of
+  // the 5 layout variants — the picked media is a strong creative choice
   // that should drive the hero, not compete with a placeholder visual.
-  if (heroImage) {
+  if (hasMedia) {
     return (
-      <section className="relative overflow-hidden" style={{ backgroundColor: theme.surfaceMuted }}>
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img
-          src={heroImage}
-          alt=""
-          className="absolute inset-0 h-full w-full object-cover"
-          aria-hidden
-        />
-        <div
-          className="absolute inset-0"
-          style={{ background: 'linear-gradient(180deg, rgba(0,0,0,0.35) 0%, rgba(0,0,0,0.65) 100%)' }}
-          aria-hidden
-        />
+      <section className="relative overflow-hidden" style={{ backgroundColor: theme.surfaceMuted, minHeight: 420 }}>
+        <HeroMedia videoUrl={heroVideoRaw} imageUrl={heroImageRaw} overlay="dark" alt="" />
         <div className="relative mx-auto max-w-6xl px-4 py-20 sm:px-6 sm:py-28 lg:py-36">
           <div className="mx-auto max-w-3xl text-center">
             <div

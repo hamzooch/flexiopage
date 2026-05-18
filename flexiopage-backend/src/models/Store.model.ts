@@ -63,6 +63,24 @@ export interface IStore extends Document {
       buttonAnimation?: 'pulse' | 'shimmer' | 'bounce' | 'none';
     };
     /**
+     * Welcome popup that collects an email lead on first visit. When a
+     * coupon code is configured, the buyer receives it on success (we
+     * just echo it back — no email send yet, the seller is expected to
+     * pair it with their own ESP or use the visible code on the spot).
+     */
+    newsletter?: {
+      enabled?: boolean;
+      headline?: string;          // "Profite de 10% sur ta première commande"
+      subheadline?: string;       // small print under the headline
+      ctaLabel?: string;          // submit button text
+      image?: string;             // optional left-column visual
+      delaySeconds?: number;      // wait N seconds before showing (0 = immediate)
+      exitIntent?: boolean;       // also trigger on mouse-leave-top (desktop only)
+      rewardCouponCode?: string;  // existing coupon to hand out on success
+      dismissalDays?: number;     // suppress popup for N days after dismissal
+      successMessage?: string;    // overrides default "Merci, ton code est"
+    };
+    /**
      * Floating WhatsApp button shown on every storefront page. Lets the
      * buyer open a wa.me chat with the seller in one tap. Replaces the
      * previous in-store chatbot — same goal, simpler UX.
@@ -108,6 +126,12 @@ export interface IStore extends Document {
       heroTitle?: string;            // overrides store.name when set
       heroSubtitle?: string;         // overrides store.description when set
       heroImage?: string;            // background image URL
+      /**
+       * Optional video URL — wins over `heroImage` when set. Accepts a
+       * direct mp4/webm/mov path or a YouTube/Vimeo URL (we detect and
+       * embed iframe-style). Autoplay muted loop, no controls.
+       */
+      heroVideo?: string;
       showProductsGrid?: boolean;    // default true
       productsGridTitle?: string;    // default "Nos produits"
       showFeatures?: boolean;        // default true (3 reassurance pills)
@@ -353,6 +377,18 @@ const StoreSchema = new Schema<IStore>(
         buttonAnimated: { type: Boolean, default: false },
         buttonAnimation: { type: String, enum: ['pulse', 'shimmer', 'bounce', 'none'], default: 'pulse' },
       },
+      newsletter: {
+        enabled: { type: Boolean, default: false },
+        headline: { type: String, trim: true },
+        subheadline: { type: String, trim: true },
+        ctaLabel: { type: String, trim: true },
+        image: { type: String, trim: true },
+        delaySeconds: { type: Number, default: 5, min: 0 },
+        exitIntent: { type: Boolean, default: true },
+        rewardCouponCode: { type: String, trim: true, uppercase: true },
+        dismissalDays: { type: Number, default: 7, min: 0 },
+        successMessage: { type: String, trim: true },
+      },
       whatsapp: {
         enabled: { type: Boolean, default: false },
         phoneNumber: { type: String, trim: true },
@@ -385,6 +421,7 @@ const StoreSchema = new Schema<IStore>(
         heroTitle: { type: String },
         heroSubtitle: { type: String },
         heroImage: { type: String },
+        heroVideo: { type: String, trim: true },
         showProductsGrid: { type: Boolean, default: true },
         productsGridTitle: { type: String },
         showFeatures: { type: Boolean, default: true },

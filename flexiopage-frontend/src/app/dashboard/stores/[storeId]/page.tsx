@@ -27,12 +27,18 @@ import {
   Tablet,
   Smartphone,
   RotateCw,
+  TrendingUp,
+  BadgePercent,
+  Mail,
+  Sparkles,
+  ShoppingCart,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { storesApi } from '@/lib/api';
 import { cn, storeAbsoluteUrl } from '@/lib/utils';
 import type { StoreType } from '@/components/dashboard/store-editor';
+import { OnboardingChecklist } from '@/components/dashboard/onboarding-checklist';
 import { ThemePreviewGrid } from '@/components/dashboard/theme-preview-card';
 import {
   STORE_THEME_TEMPLATES,
@@ -47,7 +53,7 @@ interface HubCard {
   title: string;
   description: string;
   /** Color theme of the card chip. */
-  tone: 'indigo' | 'violet' | 'amber' | 'emerald' | 'rose' | 'sky';
+  tone: 'indigo' | 'violet' | 'amber' | 'emerald' | 'rose' | 'sky' | 'fuchsia';
   /** Hide on digital stores. */
   physicalOnly?: boolean;
 }
@@ -97,6 +103,49 @@ const HUB_CARDS: HubCard[] = [
     tone: 'rose',
     physicalOnly: true,
   },
+  {
+    href: 'marketing',
+    icon: TrendingUp,
+    title: 'Marketing & Pixels',
+    description: 'Meta, TikTok, Snap, GA4 — events PageView/ViewContent/Purchase automatiques.',
+    tone: 'fuchsia',
+  },
+  {
+    href: 'collections',
+    icon: Layers,
+    title: 'Collections',
+    description: 'Regroupe tes produits par thème — bestsellers, soldes, mode homme… page publique dédiée.',
+    tone: 'sky',
+  },
+  {
+    href: 'coupons',
+    icon: BadgePercent,
+    title: 'Codes promo',
+    description: 'Crée des codes (« PROMO10 ») saisis dans le formulaire COD — % ou montant fixe, expiration, scope.',
+    tone: 'amber',
+  },
+  {
+    href: 'newsletter',
+    icon: Mail,
+    title: 'Newsletter & pop-up',
+    description: 'Pop-up de bienvenue qui capture les emails contre un code promo. Liste exportable.',
+    tone: 'emerald',
+  },
+  {
+    href: 'abandoned-carts',
+    icon: ShoppingCart,
+    title: 'Paniers abandonnés',
+    description: 'Visiteurs qui ont commencé le formulaire COD sans valider — rappelle-les directement via WhatsApp.',
+    tone: 'amber',
+    physicalOnly: true,
+  },
+  {
+    href: 'apps',
+    icon: Sparkles,
+    title: 'Apps & Intégrations',
+    description: 'Vue d\'ensemble de tout ce qui est branché — statut connecté/à configurer pour chaque module.',
+    tone: 'violet',
+  },
 ];
 
 const TONE_CLASSES: Record<HubCard['tone'], { chip: string; iconBg: string; glow: string }> = {
@@ -106,6 +155,7 @@ const TONE_CLASSES: Record<HubCard['tone'], { chip: string; iconBg: string; glow
   emerald: { chip: 'bg-emerald-500/10 text-emerald-700', iconBg: 'from-emerald-500 to-teal-600',     glow: 'shadow-emerald-500/30' },
   rose:    { chip: 'bg-rose-500/10 text-rose-700',       iconBg: 'from-rose-500 to-pink-600',        glow: 'shadow-rose-500/30' },
   sky:     { chip: 'bg-sky-500/10 text-sky-700',         iconBg: 'from-sky-500 to-blue-600',         glow: 'shadow-sky-500/30' },
+  fuchsia: { chip: 'bg-fuchsia-500/10 text-fuchsia-700', iconBg: 'from-fuchsia-500 to-pink-600',     glow: 'shadow-fuchsia-500/30' },
 };
 
 export default function StoreHubPage() {
@@ -216,6 +266,9 @@ export default function StoreHubPage() {
           </Link>
         </div>
       </div>
+
+      {/* Onboarding checklist — auto-detects 5 setup steps, hides itself when 100% done + dismissed */}
+      <OnboardingChecklist store={store} />
 
       {/* Publish state */}
       <div

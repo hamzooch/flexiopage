@@ -5,6 +5,11 @@ import * as pageController from '../controllers/page.controller';
 import * as orderController from '../controllers/order.controller';
 import * as mediaController from '../controllers/media.controller';
 import * as customerController from '../controllers/customer.controller';
+import * as collectionController from '../controllers/collection.controller';
+import * as couponController from '../controllers/coupon.controller';
+import * as subscriberController from '../controllers/subscriber.controller';
+import * as reviewController from '../controllers/review.controller';
+import * as abandonedCartController from '../controllers/abandoned-cart.controller';
 import { authMiddleware } from '../middleware/auth.middleware';
 import { requireStoreAccess } from '../middleware/storeAccess';
 import { sanitizeMiddleware } from '../middleware/validate';
@@ -69,5 +74,35 @@ router.post('/:storeId/media', mediaController.uploadSingle, mediaController.upl
 router.get('/:storeId/media', mediaController.listMedia);
 
 router.get('/:storeId/customers', customerController.listCustomers);
+
+// Collections (groups of products with their own storefront page).
+router.get('/:storeId/collections', collectionController.listCollections);
+router.post('/:storeId/collections', collectionController.createCollection);
+router.get('/:storeId/collections/:collectionId', collectionController.getCollection);
+router.patch('/:storeId/collections/:collectionId', collectionController.updateCollection);
+router.delete('/:storeId/collections/:collectionId', collectionController.deleteCollection);
+
+// Coupons (promotional codes typed in the COD form).
+router.get('/:storeId/coupons', couponController.listCoupons);
+router.post('/:storeId/coupons', couponController.createCoupon);
+router.get('/:storeId/coupons/:couponId', couponController.getCoupon);
+router.patch('/:storeId/coupons/:couponId', couponController.updateCoupon);
+router.delete('/:storeId/coupons/:couponId', couponController.deleteCoupon);
+
+// Newsletter subscribers (welcome popup + manual list management).
+// CSV export is placed before the /:subscriberId DELETE so the literal
+// "export.csv" path doesn't get caught by the param matcher.
+router.get('/:storeId/subscribers', subscriberController.listSubscribers);
+router.get('/:storeId/subscribers/export.csv', subscriberController.exportSubscribersCsv);
+router.delete('/:storeId/subscribers/:subscriberId', subscriberController.deleteSubscriber);
+
+// Reviews (product reviews moderated by the seller).
+router.get('/:storeId/reviews', reviewController.listReviews);
+router.patch('/:storeId/reviews/:reviewId', reviewController.updateReview);
+router.delete('/:storeId/reviews/:reviewId', reviewController.deleteReview);
+
+// Abandoned carts (leads captured from the COD form mid-fill).
+router.get('/:storeId/abandoned-carts', abandonedCartController.listAbandonedCarts);
+router.delete('/:storeId/abandoned-carts/:cartId', abandonedCartController.deleteAbandonedCart);
 
 export default router;

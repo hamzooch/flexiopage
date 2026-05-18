@@ -16,6 +16,8 @@
 import type { Metadata } from 'next';
 import { mediaUrl } from '@/lib/utils';
 import { WhatsappButton, type WhatsappConfig } from '@/components/storefront/whatsapp-button';
+import { NewsletterPopup, type NewsletterConfig } from '@/components/storefront/newsletter-popup';
+import { LocaleBootstrap } from '@/components/storefront/locale-bootstrap';
 
 interface Props {
   children: React.ReactNode;
@@ -32,9 +34,10 @@ const BLANK_FAVICON =
   'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=';
 
 interface StoreLite {
+  name?: string;
   favicon?: string;
   logo?: string;
-  settings?: { whatsapp?: WhatsappConfig };
+  settings?: { whatsapp?: WhatsappConfig; newsletter?: NewsletterConfig; language?: string };
 }
 
 async function fetchStore(storeSlug: string): Promise<StoreLite | null> {
@@ -74,8 +77,14 @@ export default async function StoreLayout({ children, params }: Props) {
   const store = await fetchStore(storeSlug);
   return (
     <>
+      <LocaleBootstrap storeSlug={storeSlug} defaultLocale={store?.settings?.language} />
       {children}
       <WhatsappButton config={store?.settings?.whatsapp} />
+      <NewsletterPopup
+        storeSlug={storeSlug}
+        storeName={store?.name}
+        config={store?.settings?.newsletter}
+      />
     </>
   );
 }

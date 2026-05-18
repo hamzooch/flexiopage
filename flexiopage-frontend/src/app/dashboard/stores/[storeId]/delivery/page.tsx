@@ -5,9 +5,11 @@ import { useParams, useRouter } from 'next/navigation';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { CheckCircle2, Circle, Truck, Eye, AlertTriangle } from 'lucide-react';
 import { storesApi, extractApiError } from '@/lib/api';
 import { StoreSubPageShell, type SaveStatus } from '@/components/dashboard/store-sub-page';
 import type { DeliveryIntegration, StoreType } from '@/components/dashboard/store-editor';
+import { cn } from '@/lib/utils';
 
 export default function StoreDeliveryPage() {
   const params = useParams();
@@ -95,6 +97,8 @@ export default function StoreDeliveryPage() {
       errorMessage={errorMessage}
       onSave={handleSave}
     >
+      <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_320px]">
+        <div className="space-y-6">
       <Card>
         <CardHeader>
           <div className="flex flex-wrap items-start justify-between gap-3">
@@ -263,6 +267,197 @@ export default function StoreDeliveryPage() {
           </div>
         </CardContent>
       </Card>
+        </div>
+
+        {/* ── STICKY RIGHT — real-time integration readiness checklist ── */}
+        <aside className="lg:sticky lg:top-4 lg:self-start">
+          <DeliveryReadinessPreview cfg={delivery} />
+        </aside>
+      </div>
     </StoreSubPageShell>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// Live config checklist — non-iframe preview that shows whether each
+// piece needed for auto-dispatch is in place. Updates as the seller
+// types so they see the integration "fill up" green in real time.
+// ─────────────────────────────────────────────────────────────────────
+
+function DeliveryReadinessPreview({ cfg }: { cfg: DeliveryIntegration }) {
+  const pickup = cfg.pickupAddress || {};
+  const hasKey      = !!cfg.apiKey?.trim();
+  const hasContact  = !!(pickup.contactName?.trim() && pickup.contactPhone?.trim());
+  const hasAddress  = !!(pickup.line1?.trim() && pickup.city?.trim() && pickup.country?.trim());
+  const hasSecret   = !!cfg.webhookSecret?.trim();
+  const enabled     = !!cfg.enabled;
+
+  const checks = [
+    { key: 'enabled',  label: 'Intégration activée',         done: enabled,    required: true,
+      hint: enabled ? 'Active.' : 'Coche « Activé » en haut de la carte MogaDelivery.' },
+    { key: 'key',      label: 'Clé API MogaDelivery',         done: hasKey,     required: true,
+      hint: hasKey ? 'Configurée.' : 'Récupère-la dans admin-mogadelivery.com → API.' },
+    { key: 'contact',  label: 'Contact de l\'expédition',     done: hasContact, required: true,
+      hint: hasContact ? 'Nom + téléphone OK.' : 'Renseigne le nom + téléphone du contact.' },
+    { key: 'address',  label: 'Adresse de retrait',           done: hasAddress, required: true,
+      hint: hasAddress ? 'Adresse complète.' : 'Manque adresse, ville ou pays.' },
+    { key: 'secret',   label: 'Secret webhook (recommandé)',  done: hasSecret,  required: false,
+      hint: hasSecret ? 'Webhooks signés.' : 'Ajoute-le pour vérifier la signature HMAC des webhooks.' },
+  ];
+
+  const totalReq = checks.filter((c) => c.required).length;
+  const doneReq  = checks.filter((c) => c.required && c.done).length;
+  const ready    = doneReq === totalReq;
+  const pct      = Math.round((doneReq / totalReq) * 100);
+  const auto     = cfg.autoDispatch !== false;
+
+  return (
+    <div className="overflow-hidden rounded-2xl border border-border/60 bg-card shadow-sm">
+      {/* Header */}
+      <div className="flex items-center justify-between gap-2 border-b border-border/40 bg-gradient-to-r from-muted/30 to-muted/10 px-3 py-2">
+        <div className="inline-flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+          <Eye className="h-3 w-3" />
+          Aperçu intégration
+        </div>
+        <span
+          className={cn(
+            'inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[9px] font-bold',
+            ready ? 'bg-emerald-500/15 text-emerald-700' : 'bg-amber-500/15 text-amber-700'
+          )}
+        >
+          <span className={cn('h-1.5 w-1.5 rounded-full', ready ? 'bg-emerald-500' : 'bg-amber-500')} />
+          {ready ? 'Prêt' : `${pct}%`}
+        </span>
+      </div>
+
+      <div className="space-y-3 p-4">
+        {/* Status banner */}
+        <div
+          className={cn(
+            'flex items-center gap-2 rounded-xl border p-3',
+            ready
+              ? 'border-emerald-500/30 bg-emerald-500/5'
+              : 'border-amber-500/30 bg-amber-500/5'
+          )}
+        >
+          <span
+            className={cn(
+              'grid h-9 w-9 shrink-0 place-items-center rounded-full text-white shadow-sm',
+              ready ? 'bg-emerald-500' : 'bg-amber-500'
+            )}
+          >
+            <Truck className="h-4 w-4" />
+          </span>
+          <div className="min-w-0">
+            <div className={cn('text-xs font-bold', ready ? 'text-emerald-800' : 'text-amber-800')}>
+              {ready ? 'Dispatch automatique opérationnel' : 'Configuration incomplète'}
+            </div>
+            <div className={cn('text-[10px]', ready ? 'text-emerald-700' : 'text-amber-700')}>
+              {ready
+                ? auto
+                  ? 'Chaque commande payée part vers MogaDelivery sans action.'
+                  : 'Tu devras dispatcher manuellement depuis la liste des commandes.'
+                : `Il reste ${totalReq - doneReq} étape${totalReq - doneReq > 1 ? 's' : ''} obligatoire${totalReq - doneReq > 1 ? 's' : ''}.`}
+            </div>
+          </div>
+        </div>
+
+        {/* Progress bar */}
+        <div>
+          <div className="mb-1 flex items-center justify-between text-[10px] font-medium text-muted-foreground">
+            <span>Progression</span>
+            <span>{doneReq}/{totalReq} obligatoires</span>
+          </div>
+          <div className="h-1.5 overflow-hidden rounded-full bg-muted">
+            <div
+              className={cn(
+                'h-full transition-all duration-300',
+                ready ? 'bg-emerald-500' : 'bg-amber-500'
+              )}
+              style={{ width: `${pct}%` }}
+            />
+          </div>
+        </div>
+
+        {/* Checklist */}
+        <ul className="space-y-1.5">
+          {checks.map((c) => {
+            const Icon = c.done ? CheckCircle2 : Circle;
+            return (
+              <li
+                key={c.key}
+                className={cn(
+                  'flex items-start gap-2 rounded-lg border p-2 text-[11px] transition-colors',
+                  c.done
+                    ? 'border-emerald-500/30 bg-emerald-500/5'
+                    : c.required
+                      ? 'border-amber-500/30 bg-amber-500/5'
+                      : 'border-border/60 bg-muted/20'
+                )}
+              >
+                <Icon
+                  className={cn(
+                    'mt-0.5 h-3.5 w-3.5 shrink-0',
+                    c.done ? 'text-emerald-600' : c.required ? 'text-amber-600' : 'text-muted-foreground/60'
+                  )}
+                />
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-1.5">
+                    <span className={cn('font-semibold', c.done ? 'text-foreground' : 'text-foreground/80')}>
+                      {c.label}
+                    </span>
+                    {!c.required && (
+                      <span className="rounded-full bg-muted px-1.5 py-0.5 text-[8px] font-medium text-muted-foreground">
+                        optionnel
+                      </span>
+                    )}
+                  </div>
+                  <p className="mt-0.5 text-[10px] text-muted-foreground">{c.hint}</p>
+                </div>
+              </li>
+            );
+          })}
+        </ul>
+
+        {/* Flow indicator */}
+        <div className="rounded-xl border border-border/60 bg-muted/30 p-3">
+          <div className="mb-2 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+            Flux d&apos;une commande
+          </div>
+          <div className="space-y-1.5">
+            {[
+              { step: '1', label: 'Client passe commande (COD)', ok: true },
+              { step: '2', label: auto ? 'Envoi auto à MogaDelivery' : 'Envoi manuel à MogaDelivery', ok: ready },
+              { step: '3', label: 'Coursier collecte le colis', ok: ready && hasAddress },
+              { step: '4', label: 'Webhook → statut à jour', ok: ready && (hasSecret || true) },
+            ].map((s) => (
+              <div key={s.step} className="flex items-center gap-2">
+                <span
+                  className={cn(
+                    'grid h-5 w-5 shrink-0 place-items-center rounded-full text-[9px] font-bold text-white',
+                    s.ok ? 'bg-emerald-500' : 'bg-muted-foreground/40'
+                  )}
+                >
+                  {s.step}
+                </span>
+                <span className={cn('text-[10px]', s.ok ? 'text-foreground' : 'text-muted-foreground')}>
+                  {s.label}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {!ready && (
+          <div className="flex items-start gap-1.5 rounded-lg border border-amber-500/30 bg-amber-50 p-2">
+            <AlertTriangle className="mt-0.5 h-3 w-3 shrink-0 text-amber-600" />
+            <p className="text-[10px] leading-snug text-amber-800">
+              Tant que la config n&apos;est pas verte, MogaDelivery refusera les dispatch (clé API ou
+              adresse manquante = erreur 422).
+            </p>
+          </div>
+        )}
+      </div>
+    </div>
   );
 }

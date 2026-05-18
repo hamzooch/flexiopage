@@ -32,6 +32,7 @@ import {
 } from 'lucide-react';
 import { storesApi } from '@/lib/api';
 import { cn } from '@/lib/utils';
+import { renderMarkdown } from '@/lib/markdown';
 
 interface PageDoc {
   _id: string;
@@ -255,13 +256,42 @@ function PageRow({
                   Supporté : # / ## titres · **gras** · *italique* · [lien](url) · - listes
                 </span>
               </Label>
-              <textarea
-                id={`body-${page._id}`}
-                value={body}
-                onChange={(e) => setBody(e.target.value)}
-                rows={14}
-                className="mt-1.5 w-full rounded-xl border border-input bg-background p-3 font-mono text-sm leading-relaxed focus:border-primary/40 focus:outline-none focus:ring-4 focus:ring-primary/10"
-              />
+              {/* Side-by-side editor + live preview — same renderMarkdown the
+                  storefront uses, so the seller sees the actual output. */}
+              <div className="mt-1.5 grid gap-3 lg:grid-cols-2">
+                <textarea
+                  id={`body-${page._id}`}
+                  value={body}
+                  onChange={(e) => setBody(e.target.value)}
+                  rows={14}
+                  className="w-full rounded-xl border border-input bg-background p-3 font-mono text-sm leading-relaxed focus:border-primary/40 focus:outline-none focus:ring-4 focus:ring-primary/10"
+                />
+                <div className="rounded-xl border border-border/60 bg-card shadow-sm">
+                  <div className="flex items-center justify-between gap-2 border-b border-border/40 bg-gradient-to-r from-muted/30 to-muted/10 px-3 py-2">
+                    <div className="inline-flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+                      <Eye className="h-3 w-3" />
+                      Aperçu en direct
+                    </div>
+                    <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/15 px-1.5 py-0.5 text-[9px] font-bold text-emerald-700">
+                      <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+                      Live
+                    </span>
+                  </div>
+                  <div className="max-h-[420px] overflow-y-auto p-4">
+                    <h2 className="mb-3 text-base font-bold tracking-tight">{name || 'Titre de la page'}</h2>
+                    {body.trim() ? (
+                      <article
+                        className="prose-storefront text-sm leading-relaxed"
+                        dangerouslySetInnerHTML={{ __html: renderMarkdown(body) }}
+                      />
+                    ) : (
+                      <p className="text-sm italic text-muted-foreground">
+                        Commence à écrire pour voir l&apos;aperçu apparaître ici.
+                      </p>
+                    )}
+                  </div>
+                </div>
+              </div>
             </div>
 
             <div className="flex flex-wrap items-center justify-between gap-3">

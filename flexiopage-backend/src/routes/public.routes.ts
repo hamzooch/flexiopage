@@ -7,6 +7,11 @@ import * as storeService from '../services/store.service';
 import * as productService from '../services/product.service';
 import * as pageService from '../services/page.service';
 import * as orderService from '../services/order.service';
+import * as collectionService from '../services/collection.service';
+import * as couponService from '../services/coupon.service';
+import * as subscriberService from '../services/subscriber.service';
+import * as reviewService from '../services/review.service';
+import * as abandonedCartService from '../services/abandoned-cart.service';
 import { Product } from '../models/Product.model';
 import { Order } from '../models/Order.model';
 import { Store } from '../models/Store.model';
@@ -158,7 +163,9 @@ router.get('/stores/:storeSlug/products', async (req: Request, res: Response): P
   res.json({ products });
 });
 
-/** Public single product by store slug + product slug */
+/** Public single product by store slug + product slug.
+ *  Also resolves the configured cross-sell products in one shot so the
+ *  storefront can render the "Tu aimeras aussi" block without a 2nd round-trip. */
 router.get('/stores/:storeSlug/products/:productSlug', async (req: Request, res: Response): Promise<void> => {
   const store = await storeService.getStoreBySlug(req.params.storeSlug);
   if (!store) {
@@ -170,7 +177,286 @@ router.get('/stores/:storeSlug/products/:productSlug', async (req: Request, res:
     res.status(404).json({ error: 'Product not found' });
     return;
   }
-  res.json({ product });
+
+  // ── Cross-sells — return a trimmed shape (just enough to render small cards).
+  // Filter out unpublished + missing targets so the seller can wire dead links
+  // without breaking the storefront. Order respects the seller-defined `order`
+  // field (lower first), then falls back to insertion order.
+  let crossSells: Array<{
+    _id: string;
+    name: string;
+    slug: string;
+    price: number;
+    compareAtPrice?: number;
+    image?: string;
+    label?: string;
+    discountPct?: number;
+  }> = [];
+  const offers = (product.crossSells || []).filter((o) => o?.productId);
+  if (offers.length > 0) {
+    const ids = offers.map((o) => o.productId);
+    const docs = await Product.find({
+      _id: { $in: ids },
+      storeId: store._id,
+      isPublished: true,
+    })
+      .select('_id name slug price compareAtPrice images')
+      .lean<Array<{ _id: unknown; name: string; slug: string; price: number; compareAtPrice?: number; images?: string[] }>>();
+    const byId = new Map(docs.map((d) => [String(d._id), d]));
+    crossSells = offers
+      .map((o) => {
+        const d = byId.get(String(o.productId));
+        if (!d) return null;
+        return {
+          _id: String(d._id),
+          name: d.name,
+          slug: d.slug,
+          price: d.price,
+          compareAtPrice: d.compareAtPrice,
+          image: d.images?.[0],
+          label: o.label,
+          discountPct: o.discountPct,
+          order: o.order ?? 0,
+        };
+      })
+      .filter((x): x is NonNullable<typeof x> => x !== null)
+      .sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
+      .map(({ order: _o, ...rest }) => { void _o; return rest; });
+  }
+
+  res.json({ product, crossSells });
+});
+
+/**
+ * POST /api/public/stores/:storeSlug/abandoned-cart — capture a
+ * partially-filled COD form. Called on blur / page-hide from the COD
+ * form so the seller can chase warm leads manually.
+ *
+ * Body: { sessionId, productSlug?, name?, phone?, email?, city?, country? }
+ * Always returns 204 — never blocks the buyer.
+ */
+router.post('/stores/:storeSlug/abandoned-cart', async (req: Request, res: Response): Promise<void> => {
+  const body = req.body as {
+    sessionId?: string;
+    productSlug?: string;
+    productName?: string;
+    productPrice?: number;
+    name?: string;
+    phone?: string;
+    email?: string;
+    city?: string;
+    country?: string;
+  };
+  if (!body.sessionId?.trim()) {
+    res.status(204).end();
+    return;
+  }
+  // Only capture once the buyer has filled enough to be worth chasing:
+  // at minimum a phone or an email.
+  if (!body.phone?.trim() && !body.email?.trim()) {
+    res.status(204).end();
+    return;
+  }
+  const store = await storeService.getStoreBySlug(req.params.storeSlug);
+  if (!store) {
+    res.status(204).end();
+    return;
+  }
+  try {
+    await abandonedCartService.upsertAbandonedCart({
+      storeId: store._id.toString(),
+      sessionId: body.sessionId,
+      productSlug: body.productSlug,
+      productName: body.productName,
+      productPrice: body.productPrice,
+      name: body.name,
+      phone: body.phone,
+      email: body.email,
+      city: body.city,
+      country: body.country,
+    });
+  } catch {
+    // Fire-and-forget — never block.
+  }
+  res.status(204).end();
+});
+
+/**
+ * GET /api/public/stores/:storeSlug/products/:productSlug/reviews —
+ * published reviews + aggregated rating summary for a product.
+ */
+router.get('/stores/:storeSlug/products/:productSlug/reviews', async (req: Request, res: Response): Promise<void> => {
+  const store = await storeService.getStoreBySlug(req.params.storeSlug);
+  if (!store) {
+    res.status(404).json({ error: 'Store not found' });
+    return;
+  }
+  const product = await productService.getProductBySlug(store._id.toString(), req.params.productSlug);
+  if (!product) {
+    res.status(404).json({ error: 'Product not found' });
+    return;
+  }
+  const [reviews, summary] = await Promise.all([
+    reviewService.listReviews(store._id.toString(), {
+      productId: product._id.toString(),
+      publishedOnly: true,
+    }),
+    reviewService.getProductRatingSummary(store._id.toString(), product._id.toString()),
+  ]);
+  res.json({ reviews, summary });
+});
+
+/**
+ * POST /api/public/stores/:storeSlug/products/:productSlug/reviews —
+ * submit a review. Auto-flips `verified` if the email matches an existing
+ * order on the store. No auth required (anonymous customers).
+ */
+router.post('/stores/:storeSlug/products/:productSlug/reviews', async (req: Request, res: Response): Promise<void> => {
+  const store = await storeService.getStoreBySlug(req.params.storeSlug);
+  if (!store) {
+    res.status(404).json({ error: 'Store not found' });
+    return;
+  }
+  const product = await productService.getProductBySlug(store._id.toString(), req.params.productSlug);
+  if (!product) {
+    res.status(404).json({ error: 'Product not found' });
+    return;
+  }
+  const body = req.body as { name?: string; email?: string; rating?: number; title?: string; content?: string };
+  if (!body.name?.trim() || !body.content?.trim()) {
+    res.status(400).json({ error: 'Name and content are required' });
+    return;
+  }
+  const rating = Math.max(1, Math.min(5, Number(body.rating) || 0));
+  if (!rating) {
+    res.status(400).json({ error: 'Rating must be 1-5' });
+    return;
+  }
+  const review = await reviewService.createReview({
+    storeId: store._id.toString(),
+    productId: product._id.toString(),
+    name: body.name,
+    email: body.email,
+    rating,
+    title: body.title,
+    content: body.content,
+  });
+  res.status(201).json({ review });
+});
+
+/**
+ * POST /api/public/stores/:storeSlug/subscribe — newsletter signup from
+ * the welcome popup. Idempotent: re-subscribing the same email just
+ * returns the existing row (no duplicate, no extra reward).
+ *
+ * Body: { email: string, name?: string, metadata?: object }
+ */
+router.post('/stores/:storeSlug/subscribe', async (req: Request, res: Response): Promise<void> => {
+  const store = await storeService.getStoreBySlug(req.params.storeSlug);
+  if (!store) {
+    res.status(404).json({ error: 'Store not found' });
+    return;
+  }
+  const body = req.body as { email?: string; name?: string; metadata?: Record<string, unknown> };
+  if (!body.email) {
+    res.status(400).json({ error: 'Email is required' });
+    return;
+  }
+  // Echo back the configured reward (if any) so the popup can show it
+  // immediately. We don't send an email — sellers wire that to their ESP.
+  const rewardCouponCode = store.settings?.newsletter?.rewardCouponCode?.trim() || undefined;
+  try {
+    const result = await subscriberService.subscribe({
+      storeId: store._id.toString(),
+      email: body.email,
+      name: body.name,
+      source: 'newsletter_popup',
+      rewardCouponCode,
+      metadata: body.metadata,
+    });
+    res.status(result.created ? 201 : 200).json({
+      ok: true,
+      alreadySubscribed: !result.created,
+      rewardCouponCode,
+      successMessage: store.settings?.newsletter?.successMessage,
+    });
+  } catch (err: unknown) {
+    const msg = (err as Error).message || 'Subscribe failed';
+    res.status(400).json({ error: msg });
+  }
+});
+
+/**
+ * POST /api/public/stores/:storeSlug/coupons/validate — live coupon check
+ * called by the COD form while the buyer is typing. Returns the discount
+ * amount if valid, otherwise an error message. Doesn't consume the coupon —
+ * consumption happens server-side at checkout creation.
+ *
+ * Body: { code: string, subtotal: number, productIds?: string[] }
+ */
+router.post('/stores/:storeSlug/coupons/validate', async (req: Request, res: Response): Promise<void> => {
+  const store = await storeService.getStoreBySlug(req.params.storeSlug);
+  if (!store) {
+    res.status(404).json({ error: 'Store not found' });
+    return;
+  }
+  const body = req.body as { code?: string; subtotal?: number; productIds?: string[] };
+  const code = String(body.code || '').trim();
+  const subtotal = Number(body.subtotal);
+  if (!code) {
+    res.status(400).json({ error: 'Code is required' });
+    return;
+  }
+  if (!Number.isFinite(subtotal) || subtotal < 0) {
+    res.status(400).json({ error: 'Valid subtotal is required' });
+    return;
+  }
+  const result = await couponService.validateCoupon({
+    storeId: store._id.toString(),
+    code,
+    subtotal,
+    productIds: Array.isArray(body.productIds) ? body.productIds : undefined,
+  });
+  if (!result.ok) {
+    res.status(200).json({ ok: false, reason: result.reason, message: result.message });
+    return;
+  }
+  // Only echo back what the client needs to display the applied discount.
+  res.json({
+    ok: true,
+    code: result.coupon.code,
+    type: result.coupon.type,
+    value: result.coupon.value,
+    discountAmount: result.discountAmount,
+    description: result.coupon.description,
+  });
+});
+
+/** Public collections list for a store (published only). */
+router.get('/stores/:storeSlug/collections', async (req: Request, res: Response): Promise<void> => {
+  const store = await storeService.getStoreBySlug(req.params.storeSlug);
+  if (!store) {
+    res.status(404).json({ error: 'Store not found' });
+    return;
+  }
+  const collections = await collectionService.listCollections(store._id.toString(), { publishedOnly: true });
+  res.json({ collections });
+});
+
+/** Public collection page — returns the collection + its resolved products. */
+router.get('/stores/:storeSlug/collections/:collectionSlug', async (req: Request, res: Response): Promise<void> => {
+  const store = await storeService.getStoreBySlug(req.params.storeSlug);
+  if (!store) {
+    res.status(404).json({ error: 'Store not found' });
+    return;
+  }
+  const collection = await collectionService.getCollectionBySlug(store._id.toString(), req.params.collectionSlug);
+  if (!collection) {
+    res.status(404).json({ error: 'Collection not found' });
+    return;
+  }
+  const products = await collectionService.resolveCollectionProducts(collection, { publishedOnly: true });
+  res.json({ store: publicSafeStore(store), collection, products });
 });
 
 /** Public landing page by store slug + page slug */
@@ -397,6 +683,8 @@ router.post('/checkout/cod', async (req: Request, res: Response): Promise<void> 
     notes?: string;
     /** Anonymous funnel session id — correlates the purchase to add_to_cart. */
     sessionId?: string;
+    /** Optional promo code the buyer typed into the COD form. */
+    couponCode?: string;
   };
 
   // ── Validate input ────────────────────────────────────────────────
@@ -455,27 +743,52 @@ router.post('/checkout/cod', async (req: Request, res: Response): Promise<void> 
       res.status(400).json({ error: `Product is not physical: ${it.productSlug}` });
       return;
     }
+    // ── Variant lookup ────────────────────────────────────────────
+    // Client sends `variantId` matching either the variant's `_id` (when
+    // we eventually expose it) or its `name`. We match on both so the
+    // legacy/simpler "send the name" client path also works.
+    let variant: typeof product.variants[number] | undefined;
+    if (it.variantId && Array.isArray(product.variants) && product.variants.length > 0) {
+      variant = product.variants.find(
+        (v) => String((v as { _id?: unknown })._id || '') === it.variantId
+          || v.name === it.variantId
+      );
+      if (!variant) {
+        res.status(404).json({
+          error: `Variant not found on product ${product.name}: ${it.variantId}`,
+          code: 'variant_not_found',
+        });
+        return;
+      }
+    }
+
+    // Effective stock + price — variant wins when present.
+    const effectiveStock = variant ? (variant.stock ?? 0) : product.stock;
+    const effectiveBasePrice = (variant?.price !== undefined ? variant.price : product.price) as number;
+
     // Stock check (only when trackInventory and no backorder)
-    if (product.trackInventory && !product.allowBackorder && product.stock < qty) {
+    if (product.trackInventory && !product.allowBackorder && effectiveStock < qty) {
       res.status(409).json({
-        error: `Out of stock: ${product.name} (only ${product.stock} left)`,
+        error: `Out of stock: ${product.name}${variant ? ' / ' + variant.name : ''} (only ${effectiveStock} left)`,
         productSlug: it.productSlug,
-        available: product.stock,
+        variantId: variant ? String((variant as { _id?: unknown })._id || variant.name) : undefined,
+        available: effectiveStock,
         code: 'out_of_stock',
       });
       return;
     }
     // Apply the quantity-tier bundle: when qty matches a tier, the effective
     // unit price becomes tier.totalPrice / qty. Computed server-side — the
-    // client's price is never trusted.
-    const pricing = resolveBundlePricing(product.price, product.bundle, qty);
+    // client's price is never trusted. Variant price replaces product.price
+    // before bundle resolution.
+    const pricing = resolveBundlePricing(effectiveBasePrice, product.bundle, qty);
     resolved.push({
       productId: product._id.toString(),
-      variantId: it.variantId,
-      name: product.name,
+      variantId: variant ? String((variant as { _id?: unknown })._id || variant.name) : it.variantId,
+      name: variant ? `${product.name} — ${variant.name}` : product.name,
       quantity: qty,
       price: pricing.unitPrice,
-      sku: product.sku,
+      sku: variant?.sku || product.sku,
       productDoc: {
         _id: product._id,
         trackInventory: product.trackInventory,
@@ -490,6 +803,28 @@ router.post('/checkout/cod', async (req: Request, res: Response): Promise<void> 
   // Always trusted from the store doc — the client never sets this. orderService
   // adds it on top of `subtotal` to produce the final `total`.
   const shippingCost = Math.max(0, Number(store.settings?.codForm?.shippingFee) || 0);
+
+  // ── Coupon (optional) — server-side re-validation, never trust the client.
+  // If a code is passed but fails any gate we return 422 instead of silently
+  // dropping it so the buyer knows their code didn't apply.
+  let discount = 0;
+  let appliedCouponId: string | undefined;
+  let appliedCouponCode: string | undefined;
+  if (body.couponCode?.trim()) {
+    const validation = await couponService.validateCoupon({
+      storeId: store._id.toString(),
+      code: body.couponCode,
+      subtotal,
+      productIds: resolved.map((r) => r.productId),
+    });
+    if (!validation.ok) {
+      res.status(422).json({ error: validation.message, code: 'coupon_invalid', reason: validation.reason });
+      return;
+    }
+    discount = validation.discountAmount;
+    appliedCouponId = String(validation.coupon._id);
+    appliedCouponCode = validation.coupon.code;
+  }
 
   // ── Create order ─────────────────────────────────────────────────
   let order;
@@ -518,7 +853,8 @@ router.post('/checkout/cod', async (req: Request, res: Response): Promise<void> 
       subtotal,
       shippingCost,
       tax: 0,
-      discount: 0,
+      discount,
+      couponCode: appliedCouponCode,
       currency: store.settings?.currency || 'USD',
       paymentMethod: 'cod',
       notes: body.notes?.trim(),
@@ -526,6 +862,17 @@ router.post('/checkout/cod', async (req: Request, res: Response): Promise<void> 
   } catch (err) {
     res.status(500).json({ error: 'Order creation failed: ' + (err as Error).message });
     return;
+  }
+
+  // ── Consume coupon atomically (after order is persisted). If the bump
+  // fails because the cap was reached between validation and consumption,
+  // we just log — the order is already valid, the next buyer will get the
+  // "max uses reached" error. Cheap trade-off for not blocking checkout.
+  if (appliedCouponId) {
+    const consumed = await couponService.consumeCoupon(appliedCouponId);
+    if (!consumed) {
+      console.warn('[checkout/cod] coupon consumption raced and lost', { appliedCouponCode });
+    }
   }
 
   // ── Decrement stock (best-effort, after order is persisted) ──────
@@ -536,6 +883,13 @@ router.post('/checkout/cod', async (req: Request, res: Response): Promise<void> 
         Product.updateOne({ _id: it.productDoc._id }, { $inc: { stock: -it.quantity } })
       )
   );
+
+  // ── Mark any matching abandoned cart row as recovered. Non-fatal,
+  // never blocks the checkout response. ──────────────────────────
+  void abandonedCartService.markRecovered(store._id.toString(), {
+    email: body.email,
+    phone: body.customerPhone,
+  });
 
   // ── Funnel tracking: record the purchase server-side (reliable) ──
   if (body.sessionId) {

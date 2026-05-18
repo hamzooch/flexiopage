@@ -14,6 +14,7 @@ import Link from 'next/link';
 import { Menu, X } from 'lucide-react';
 import type { ThemeTokens, NavStyle } from '@/data/store-themes';
 import { mediaUrl } from '@/lib/utils';
+import { LanguageSwitcher } from '@/components/storefront/language-switcher';
 
 export interface NavMenuLink {
   label: string;
@@ -22,13 +23,26 @@ export interface NavMenuLink {
 
 /** How the brand is shown in the navbar. */
 export type BrandDisplay = 'logo+name' | 'logo' | 'name';
+export type LogoSize = 'sm' | 'md' | 'lg' | 'xl';
 
 export interface NavbarConfig {
   showSearch?: boolean;
   menuLinks?: NavMenuLink[];
   /** logo+name (default) · logo only · name only. */
   brandDisplay?: BrandDisplay;
+  /** Hauteur du logo. Par défaut: 'md'. */
+  logoSize?: LogoSize;
 }
+
+/** Tailles utilisées par la navbar : valeurs PX gardées explicites pour rester
+ *  cohérentes avec la palette du picker côté dashboard. La hauteur de la barre
+ *  s'ajuste sous l'effet du logo via padding (cf. <header>). */
+const LOGO_SIZE_PX: Record<LogoSize, { mobile: number; desktop: number }> = {
+  sm: { mobile: 22, desktop: 24 },
+  md: { mobile: 28, desktop: 32 },
+  lg: { mobile: 36, desktop: 44 },
+  xl: { mobile: 48, desktop: 56 },
+};
 
 interface Props {
   storeName: string;
@@ -36,6 +50,8 @@ interface Props {
   storeLogo?: string;
   theme: ThemeTokens;
   config?: NavbarConfig;
+  /** Storefront default locale (used to seed the language switcher). */
+  defaultLocale?: string;
   /** Optional rendered to the right of the menu (e.g. cart button later). */
   trailing?: React.ReactNode;
 }
@@ -69,7 +85,7 @@ function resolveHref(url: string, storeSlug: string): string {
   return `/${storeSlug}/${url.replace(/^\/+/, '')}`;
 }
 
-export function StoreNavbar({ storeName, storeSlug, storeLogo, theme, config, trailing }: Props) {
+export function StoreNavbar({ storeName, storeSlug, storeLogo, theme, config, defaultLocale, trailing }: Props) {
   const configured = (config?.menuLinks || []).filter((l) => l.label?.trim() && l.url?.trim());
   // Every theme gets a default menu when the seller hasn't set one.
   const links = configured.length > 0 ? configured : defaultNavLinks(storeSlug);
@@ -86,12 +102,24 @@ export function StoreNavbar({ storeName, storeSlug, storeLogo, theme, config, tr
   const wantLogo = brandDisplay !== 'name';
   const wantName = brandDisplay === 'name' || brandDisplay === 'logo+name' || !hasLogo;
 
+  // Logo size: drives both the <img> dimensions AND the bar height so a big
+  // logo doesn't get clipped by a small navbar.
+  const logoSize: LogoSize = config?.logoSize || 'md';
+  const { mobile: logoMobile, desktop: logoDesktop } = LOGO_SIZE_PX[logoSize];
+  // Scale the brand text only when the logo grows past md — keeps small/medium
+  // navbars from looking visually inconsistent.
+  const isBigLogo = logoSize === 'lg' || logoSize === 'xl';
+
   const brand = (
     <Link
       href={`/${storeSlug}`}
       className={
         'inline-flex min-w-0 items-center gap-2 font-bold tracking-tight ' +
-        (isBold ? 'text-lg uppercase sm:text-2xl' : 'text-base sm:text-xl')
+        (isBold
+          ? 'text-lg uppercase sm:text-2xl'
+          : isBigLogo
+            ? 'text-lg sm:text-2xl'
+            : 'text-base sm:text-xl')
       }
       style={{ fontFamily: theme.fontHeading, color: theme.foreground }}
     >
@@ -100,16 +128,27 @@ export function StoreNavbar({ storeName, storeSlug, storeLogo, theme, config, tr
         <img
           src={mediaUrl(storeLogo)}
           alt={storeName}
-          className="h-7 w-7 shrink-0 rounded-md object-cover sm:h-8 sm:w-8"
+          className="shrink-0 rounded-md object-contain"
+          style={{
+            // Inline width/height for the desktop size; the mobile breakpoint
+            // is applied via the data attribute + CSS below so we don't pull in
+            // an external lib for a one-shot media query.
+            width: logoDesktop,
+            height: logoDesktop,
+          }}
+          data-mobile-size={logoMobile}
         />
       )}
       {wantLogo && !hasLogo && brandDisplay === 'logo+name' && (
         <span
           aria-hidden
-          className="grid h-7 w-7 shrink-0 place-items-center rounded-md text-sm font-bold sm:h-8 sm:w-8"
+          className="grid shrink-0 place-items-center rounded-md font-bold"
           style={{
             background: `linear-gradient(135deg, ${theme.gradientFrom}, ${theme.gradientTo})`,
             color: theme.primaryFg,
+            width: logoDesktop,
+            height: logoDesktop,
+            fontSize: Math.max(12, Math.round(logoDesktop * 0.45)),
           }}
         >
           {storeName.slice(0, 1).toUpperCase()}
@@ -197,15 +236,23 @@ export function StoreNavbar({ storeName, storeSlug, storeLogo, theme, config, tr
         </div>
       ) : (
         // ── STANDARD & BOLD — logo left, links right ──
+        // Bar height scales with logo so a big logo never gets visually clipped.
         <div
           className={
             'mx-auto flex max-w-6xl items-center justify-between gap-3 px-3 sm:px-6 ' +
-            (isBold ? 'h-16 sm:h-20' : 'h-14 sm:h-16')
+            (logoSize === 'xl'
+              ? 'min-h-20 sm:min-h-24'
+              : logoSize === 'lg'
+                ? 'min-h-16 sm:min-h-[72px]'
+                : isBold
+                  ? 'h-16 sm:h-20'
+                  : 'h-14 sm:h-16')
           }
         >
           {brand}
           {desktopLinks}
           <div className="flex items-center gap-2">
+            <LanguageSwitcher storeSlug={storeSlug} defaultLocale={defaultLocale} />
             {trailing}
             {merchantLink}
             {mobileToggle}

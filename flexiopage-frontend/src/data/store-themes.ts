@@ -502,11 +502,99 @@ const lumen: StoreThemeTemplate = {
   }),
 };
 
+// ─────────────────────────────────────────────────────────────────────
+// 8. NOVA — Premium retail · D2C
+// Inspired by Allbirds / Aesop / Shopify "Sense Pro". Bone-white canvas,
+// charcoal ink, deep forest-emerald primary, champagne accent. Inter
+// Display headlines, medium radius, calm centered hero, classic plump
+// cards in a roomy 3-col grid. The "polished modern D2C" baseline that
+// works for anything you'd put on a clean product photograph.
+// ─────────────────────────────────────────────────────────────────────
+const nova: StoreThemeTemplate = {
+  id: 'nova',
+  name: 'Nova',
+  tagline: 'Premium D2C · épuré · contemporain',
+  description:
+    'Toile blanc-os, encre charbon, vert forêt profond, accent champagne. Inter Display géant, hero centré, cartes pleines, grille 3 colonnes. Convient à tout produit premium photographié sur fond clair (cosmétique, mode, déco, lifestyle).',
+  niche: 'general',
+  nicheLabel: 'Premium retail',
+  forStoreTypes: ['physical'],
+  theme: makeTheme({
+    templateId: 'nova',
+    primary: '#1a4d3a',          // deep forest emerald — Aesop-ish
+    primaryFg: '#fafaf7',
+    accent: '#c9a76a',           // champagne gold
+    background: '#fafaf7',       // bone / warm off-white
+    surface: '#ffffff',
+    surfaceMuted: '#f0eee6',
+    foreground: '#1b1b1a',       // near-black ink
+    muted: '#6e6c66',
+    border: '#e3e0d7',
+    gradientFrom: '#1a4d3a',
+    gradientTo: '#c9a76a',
+    fontHeading: '"Inter Display", "Inter", "Helvetica Neue", system-ui, sans-serif',
+    fontBody: '"Inter", system-ui, -apple-system, sans-serif',
+    fontDisplaySize: 'xlarge',
+    borderRadius: 'medium',
+    spacing: 'relaxed',
+    style: 'minimal',
+    layout: { hero: 'centered', productCard: 'classic', gridColumns: 3, nav: 'standard' },
+    pattern: 'none',
+    shadow: 'soft',
+    dark: false,
+  }),
+};
+
+// ─────────────────────────────────────────────────────────────────────
+// 9. PRISM — Modern marketplace · gen-Z dark
+// Inspired by Linear / Vercel / YouCan Pro dark themes. Slate-near-black
+// canvas, magenta→indigo gradient, cyan accent, geometric sans, large
+// radius for that "pillowy modern app" feel. Split hero, overlay product
+// cards over moody photography, bold uppercase nav. Versatile — works
+// for both physical (streetwear, tech, lifestyle) and digital products.
+// ─────────────────────────────────────────────────────────────────────
+const prism: StoreThemeTemplate = {
+  id: 'prism',
+  name: 'Prism',
+  tagline: 'Marketplace moderne · gen-Z · sombre',
+  description:
+    'Canvas charbon, dégradé magenta-indigo, accent cyan, sans-serif géométrique, formes très arrondies. Hero scindé, cartes overlay sur photos sombres, nav uppercase. Pour streetwear, tech, lifestyle, produits digitaux modernes.',
+  niche: 'general',
+  nicheLabel: 'Marketplace moderne',
+  forStoreTypes: ['physical', 'digital'],
+  theme: makeTheme({
+    templateId: 'prism',
+    primary: '#e879f9',          // vivid magenta (Linear-ish)
+    primaryFg: '#0a0a0f',
+    accent: '#22d3ee',           // electric cyan
+    background: '#0a0a0f',       // near-black with a hint of blue
+    surface: '#15151f',
+    surfaceMuted: '#0e0e16',
+    foreground: '#ededf2',
+    muted: '#9ca0b3',
+    border: '#252535',
+    gradientFrom: '#e879f9',
+    gradientTo: '#6366f1',       // indigo end of the prism
+    fontHeading: '"Geist", "Inter Display", "Inter", system-ui, sans-serif',
+    fontBody: '"Geist", "Inter", system-ui, sans-serif',
+    fontDisplaySize: 'xlarge',
+    borderRadius: 'large',
+    spacing: 'normal',
+    style: 'glass',
+    layout: { hero: 'split', productCard: 'overlay', gridColumns: 3, nav: 'bold' },
+    pattern: 'mesh',
+    shadow: 'glow',
+    dark: true,
+  }),
+};
+
 export const STORE_THEME_TEMPLATES: StoreThemeTemplate[] = [
   // Physical stores
-  volt, atelier, bloom,
+  nova, volt, atelier, bloom,
   // Digital stores
   pulse, sage, studio, lumen,
+  // Universal / multi-type
+  prism,
 ];
 
 /**
@@ -580,6 +668,9 @@ export function googleFontsHref(t: ThemeTokens): string | null {
   if (/DM Serif Display/i.test(all)) families.push('DM+Serif+Display:wght@400');
   if (/Outfit/i.test(all)) families.push('Outfit:wght@400;500;600;700;800');
   if (/Inter/i.test(all)) families.push('Inter:wght@400;500;600;700;800;900');
+  // Geist (Vercel's geometric sans) — used by the Prism theme. Falls back
+  // to Inter in the CSS font stack if Google Fonts hasn't shipped it yet.
+  if (/Geist\b/i.test(all)) families.push('Geist:wght@400;500;600;700;800');
   if (families.length === 0) return null;
   return `https://fonts.googleapis.com/css2?${families.map((f) => `family=${f}`).join('&')}&display=swap`;
 }

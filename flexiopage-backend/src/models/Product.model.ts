@@ -107,6 +107,8 @@ export interface IProduct extends Document {
   weight?: number;
   weightUnit?: string;
   isPublished: boolean;
+  /** Free-form tags used by auto-collections + merchandising filters. */
+  tags?: string[];
   seoTitle?: string;
   seoDescription?: string;
   /** Per-product storefront page customization (set by the seller). */
@@ -124,6 +126,9 @@ export interface IProduct extends Document {
 /**
  * Seller-editable options for the public product page. Every toggle defaults
  * to "shown" — the storefront treats `undefined` / `true` the same.
+ *
+ * Per-product overrides for badges / timer / testimonials win over the
+ * store-wide configuration when set. Unset (undefined) = inherit from store.
  */
 export interface IProductPageSettings {
   /** Thumbnail image strip under the main photo. */
@@ -136,6 +141,22 @@ export interface IProductPageSettings {
   codFormTitle?: string;
   /** Overrides the reassurance line under the COD form for this product. */
   reassuranceText?: string;
+  /** Per-product timer override (e.g. flash sale on one product only). */
+  timer?: {
+    endsAt?: string;     // ISO date
+    headline?: string;
+    accentColor?: string;
+  };
+  /** Per-product custom trust badges (overrides store-wide list when set). */
+  badges?: Array<{
+    icon: 'truck' | 'shield' | 'refresh' | 'lock' | 'headset' | 'gift' | 'clock' | 'star' | 'leaf' | 'banknote';
+    label: string;
+    sublabel?: string;
+  }>;
+  /** Show 5-star rating strip under the title (visual social proof). */
+  showRatingStrip?: boolean;
+  /** Per-product accent color used by badges/timer/strip (hex). */
+  accentColor?: string;
 }
 
 /**
@@ -271,6 +292,7 @@ const ProductSchema = new Schema<IProduct>(
     weight: { type: Number },
     weightUnit: { type: String, default: 'kg' },
     isPublished: { type: Boolean, default: false },
+    tags: [{ type: String, trim: true, lowercase: true }],
     seoTitle: { type: String },
     seoDescription: { type: String },
     pageSettings: {
@@ -279,6 +301,25 @@ const ProductSchema = new Schema<IProduct>(
       showTrustBadges: { type: Boolean },
       codFormTitle: { type: String, trim: true },
       reassuranceText: { type: String, trim: true },
+      timer: {
+        endsAt: { type: String, trim: true },
+        headline: { type: String, trim: true },
+        accentColor: { type: String, trim: true },
+      },
+      badges: [
+        {
+          _id: false,
+          icon: {
+            type: String,
+            enum: ['truck', 'shield', 'refresh', 'lock', 'headset', 'gift', 'clock', 'star', 'leaf', 'banknote'],
+            required: true,
+          },
+          label: { type: String, required: true, trim: true },
+          sublabel: { type: String, trim: true },
+        },
+      ],
+      showRatingStrip: { type: Boolean },
+      accentColor: { type: String, trim: true },
     },
     bundle: {
       enabled: { type: Boolean, default: false },
@@ -323,4 +364,6 @@ const ProductSchema = new Schema<IProduct>(
 
 ProductSchema.index({ storeId: 1 });
 ProductSchema.index({ storeId: 1, slug: 1 }, { unique: true });
+// Tag-based lookups for auto-collections + tag filters.
+ProductSchema.index({ storeId: 1, tags: 1 });
 export const Product = mongoose.model<IProduct>('Product', ProductSchema);

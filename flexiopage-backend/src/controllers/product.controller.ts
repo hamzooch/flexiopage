@@ -41,6 +41,9 @@ export async function createProduct(req: AuthRequest, res: Response): Promise<vo
     weight: body.weight,
     weightUnit: body.weightUnit,
     isPublished: body.isPublished ?? false,
+    tags: Array.isArray(body.tags)
+      ? body.tags.map((t: unknown) => String(t).trim().toLowerCase()).filter(Boolean)
+      : undefined,
     seoTitle: body.seoTitle,
     seoDescription: body.seoDescription,
   });
@@ -93,6 +96,9 @@ export async function updateProduct(req: AuthRequest, res: Response): Promise<vo
     weight: body.weight,
     weightUnit: body.weightUnit,
     isPublished: body.isPublished,
+    tags: Array.isArray(body.tags)
+      ? body.tags.map((t: unknown) => String(t).trim().toLowerCase()).filter(Boolean)
+      : undefined,
     seoTitle: body.seoTitle,
     seoDescription: body.seoDescription,
     pageSettings: body.pageSettings,

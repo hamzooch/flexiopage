@@ -34,6 +34,24 @@ export interface DeliveryIntegration {
   };
 }
 
+/**
+ * Marketing pixels & analytics injected into the public storefront. Server-only
+ * fields (API tokens, test codes) are mirrored here for the dashboard editor
+ * but stripped before reaching the public endpoint.
+ */
+export interface MarketingIntegration {
+  facebookPixelId?: string;
+  facebookConversionsApiToken?: string;
+  facebookTestEventCode?: string;
+  googleAnalyticsId?: string;
+  tiktokPixelId?: string;
+  snapchatPixelId?: string;
+  googleAdsConversionId?: string;
+  googleAdsConversionLabel?: string;
+  /** Arbitrary HTML/JS injected into <head>. Power-users only. */
+  customHeadCode?: string;
+}
+
 /** Floating WhatsApp button shown on every storefront page. */
 export interface WhatsappSettings {
   enabled?: boolean;
@@ -91,12 +109,16 @@ export interface NavMenuLink {
 }
 
 export type BrandDisplay = 'logo+name' | 'logo' | 'name';
+/** Affichage de la taille du logo dans la navbar/footer. */
+export type LogoSize = 'sm' | 'md' | 'lg' | 'xl';
 
 export interface NavbarSettings {
   showSearch?: boolean;
   menuLinks?: NavMenuLink[];
   /** How the brand shows in the navbar: logo + name, logo only, or name only. */
   brandDisplay?: BrandDisplay;
+  /** Hauteur visuelle du logo dans la navbar. Par défaut: 'md'. */
+  logoSize?: LogoSize;
 }
 
 export interface AnnouncementBarSettings {
@@ -146,6 +168,10 @@ export interface FooterSettings {
   /** Legacy flat list — kept for backwards compat, columns take precedence. */
   links?: Array<{ label: string; url: string }>;
   columns?: FooterColumn[];
+  /** Comment afficher la marque dans le bloc "À propos" du footer. */
+  brandDisplay?: BrandDisplay;
+  /** Hauteur du logo dans le footer quand brandDisplay inclut le logo. */
+  logoSize?: LogoSize;
 }
 
 export interface StorefrontSettings {
@@ -155,6 +181,8 @@ export interface StorefrontSettings {
   heroTitle?: string;
   heroSubtitle?: string;
   heroImage?: string;
+  /** Optional video URL — wins over heroImage when set (mp4/webm or YouTube/Vimeo). */
+  heroVideo?: string;
   showProductsGrid?: boolean;
   productsGridTitle?: string;
   showFeatures?: boolean;
@@ -197,7 +225,10 @@ export interface StoreType {
     storefront?: StorefrontSettings;
     whatsapp?: WhatsappSettings;
   };
-  integrations?: { delivery?: DeliveryIntegration };
+  integrations?: {
+    delivery?: DeliveryIntegration;
+    marketing?: MarketingIntegration;
+  };
 }
 
 // ─────────────────────────────────────────────────────────────────────
@@ -666,11 +697,21 @@ export function NavbarEditor({
   }
 
   const brandDisplay: BrandDisplay = cfg.brandDisplay || 'logo+name';
+  const logoSize: LogoSize = cfg.logoSize || 'md';
   const BRAND_OPTIONS: { value: BrandDisplay; label: string; hint: string }[] = [
     { value: 'logo+name', label: 'Logo + nom', hint: 'Logo et nom de la boutique' },
     { value: 'logo', label: 'Logo seul', hint: 'Affiche uniquement le logo' },
     { value: 'name', label: 'Nom seul', hint: 'Affiche uniquement le nom' },
   ];
+  // Sizes shown in the picker — labels in px match what StoreNavbar applies.
+  const LOGO_SIZE_OPTIONS: { value: LogoSize; label: string; px: number; bullet: string }[] = [
+    { value: 'sm', label: 'Petit',     px: 24, bullet: '24px' },
+    { value: 'md', label: 'Moyen',     px: 32, bullet: '32px' },
+    { value: 'lg', label: 'Grand',     px: 44, bullet: '44px' },
+    { value: 'xl', label: 'Très grand', px: 56, bullet: '56px' },
+  ];
+  // Hide the size picker when only the name is shown — nothing to size.
+  const showSizePicker = brandDisplay !== 'name';
 
   return (
     <div className="space-y-3 rounded-xl border border-border/60 bg-muted/30 p-4">
@@ -702,6 +743,42 @@ export function NavbarEditor({
           })}
         </div>
       </div>
+
+      {/* Logo size — only relevant when the logo is shown */}
+      {showSizePicker && (
+        <div className="border-t border-border/50 pt-3">
+          <h4 className="text-sm font-semibold">Taille du logo</h4>
+          <p className="text-[11px] text-muted-foreground">
+            Hauteur du logo dans la navbar. Plus le logo est grand, plus la barre est haute.
+          </p>
+          <div className="mt-2 grid grid-cols-4 gap-2">
+            {LOGO_SIZE_OPTIONS.map((opt) => {
+              const active = logoSize === opt.value;
+              return (
+                <button
+                  key={opt.value}
+                  type="button"
+                  onClick={() => update({ logoSize: opt.value })}
+                  title={`${opt.label} (${opt.bullet})`}
+                  className={
+                    'flex flex-col items-center gap-1.5 rounded-lg border p-2 text-center text-[11px] font-medium transition-colors ' +
+                    (active
+                      ? 'border-primary bg-primary/10 text-primary'
+                      : 'border-border/60 bg-card text-muted-foreground hover:border-primary/40')
+                  }
+                >
+                  <span
+                    aria-hidden
+                    className="rounded-md bg-gradient-to-br from-primary to-fuchsia-600"
+                    style={{ width: opt.px / 2, height: opt.px / 2 }}
+                  />
+                  <span>{opt.label}</span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       <div className="flex items-start justify-between gap-3 border-t border-border/50 pt-3">
         <div>
@@ -907,6 +984,20 @@ export function FooterEditor({
 }) {
   const cfg: FooterSettings = { social: {}, contact: {}, links: [], columns: [], ...(footer || {}) };
   const columns = cfg.columns || [];
+  const footerBrandDisplay: BrandDisplay = cfg.brandDisplay || 'name';
+  const footerLogoSize: LogoSize = cfg.logoSize || 'md';
+  const FOOTER_BRAND_OPTIONS: { value: BrandDisplay; label: string; hint: string }[] = [
+    { value: 'name',      label: 'Nom seul',  hint: 'Le nom de la boutique en gras (par défaut)' },
+    { value: 'logo',      label: 'Logo seul', hint: 'Uniquement le logo de la boutique' },
+    { value: 'logo+name', label: 'Logo + nom', hint: 'Logo à gauche, nom à droite' },
+  ];
+  const FOOTER_SIZE_OPTIONS: { value: LogoSize; label: string; px: number }[] = [
+    { value: 'sm', label: 'Petit',     px: 28 },
+    { value: 'md', label: 'Moyen',     px: 40 },
+    { value: 'lg', label: 'Grand',     px: 56 },
+    { value: 'xl', label: 'Très grand', px: 80 },
+  ];
+  const showFooterLogoSize = footerBrandDisplay !== 'name';
 
   function setSocial(key: string, value: string) {
     onChange({ ...cfg, social: { ...(cfg.social || {}), [key]: value } });
@@ -950,7 +1041,68 @@ export function FooterEditor({
 
   return (
     <div className="space-y-4 rounded-lg border border-border/60 bg-card p-4">
+      {/* Marque du footer — nom, logo ou les deux */}
       <div>
+        <h4 className="text-sm font-semibold">Marque dans le footer</h4>
+        <p className="text-[11px] text-muted-foreground">
+          Affiché dans le bloc « À propos » en haut du footer.
+          {' '}<span className="italic">Téléverse un logo dans Apparence pour pouvoir le choisir.</span>
+        </p>
+        <div className="mt-2 grid grid-cols-3 gap-2">
+          {FOOTER_BRAND_OPTIONS.map((opt) => {
+            const active = footerBrandDisplay === opt.value;
+            return (
+              <button
+                key={opt.value}
+                type="button"
+                onClick={() => onChange({ ...cfg, brandDisplay: opt.value })}
+                title={opt.hint}
+                className={
+                  'rounded-lg border p-2 text-center text-xs font-medium transition-colors ' +
+                  (active
+                    ? 'border-primary bg-primary/10 text-primary'
+                    : 'border-border/60 bg-card text-muted-foreground hover:border-primary/40')
+                }
+              >
+                {opt.label}
+              </button>
+            );
+          })}
+        </div>
+        {showFooterLogoSize && (
+          <div className="mt-3">
+            <h5 className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Taille du logo</h5>
+            <div className="mt-1.5 grid grid-cols-4 gap-2">
+              {FOOTER_SIZE_OPTIONS.map((opt) => {
+                const active = footerLogoSize === opt.value;
+                return (
+                  <button
+                    key={opt.value}
+                    type="button"
+                    onClick={() => onChange({ ...cfg, logoSize: opt.value })}
+                    title={`${opt.label} (${opt.px}px)`}
+                    className={
+                      'flex flex-col items-center gap-1.5 rounded-lg border p-2 text-[11px] font-medium transition-colors ' +
+                      (active
+                        ? 'border-primary bg-primary/10 text-primary'
+                        : 'border-border/60 bg-card text-muted-foreground hover:border-primary/40')
+                    }
+                  >
+                    <span
+                      aria-hidden
+                      className="rounded-md bg-gradient-to-br from-primary to-fuchsia-600"
+                      style={{ width: Math.min(opt.px / 2, 24), height: Math.min(opt.px / 2, 24) }}
+                    />
+                    <span>{opt.label}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
+      </div>
+
+      <div className="border-t border-border/50 pt-4">
         <h4 className="flex items-center gap-1.5 text-sm font-semibold">
           <Share2 className="h-3.5 w-3.5" /> Réseaux sociaux
         </h4>

@@ -28,7 +28,9 @@ import {
   resolveSectionOrder,
 } from '@/components/dashboard/store-editor';
 import { ProductPageEditor } from '@/components/dashboard/product-page-editor';
+import { StoreHomepageLivePreview } from '@/components/dashboard/store-homepage-live-preview';
 import type { ProductPageSettings } from '@/lib/product-page-order';
+import type { ThemeTokens } from '@/data/store-themes';
 import {
   Megaphone,
   Navigation,
@@ -291,7 +293,7 @@ export default function StoreSectionsPage() {
       {scope === 'product' ? (
         <ProductPageEditor cfg={productPage} onChange={setProductPage} />
       ) : (
-      <div className="grid gap-6 lg:grid-cols-[240px_minmax(0,1fr)]">
+      <div className="grid gap-6 lg:grid-cols-[220px_minmax(0,1fr)_320px]">
         {/* ── STICKY LEFT NAV — quick-jump to any section ────────── */}
         <aside className="lg:sticky lg:top-6 lg:self-start">
           <div className="rounded-2xl border border-border/60 bg-card p-3 shadow-sm">
@@ -544,15 +546,28 @@ export default function StoreSectionsPage() {
                     />
                     <p className="text-[11px] text-muted-foreground">Vide = description de la boutique.</p>
                   </div>
-                  <div className="sm:col-span-2">
+                  <div className="sm:col-span-2 max-w-md">
                     <MediaPicker
                       storeId={storeId}
                       value={storefront.heroImage}
                       onChange={(url) => setStorefront({ ...storefront, heroImage: url || '' })}
                       label="Image de fond du hero (optionnel)"
                       shape="wide"
-                      helper="Téléverse une image ou choisis-la dans ta galerie (1920×1080 recommandé)."
+                      helper="1920×1080 recommandé."
                     />
+                  </div>
+                  <div className="sm:col-span-2 space-y-1.5">
+                    <Label htmlFor="hero-video">Vidéo de fond (optionnel — gagne sur l&apos;image)</Label>
+                    <Input
+                      id="hero-video"
+                      placeholder="Ex: https://youtu.be/abc123 · https://vimeo.com/123456 · /uploads/promo.mp4"
+                      value={storefront.heroVideo || ''}
+                      onChange={(e) => setStorefront({ ...storefront, heroVideo: e.target.value })}
+                    />
+                    <p className="text-[11px] text-muted-foreground">
+                      YouTube, Vimeo, ou fichier <code className="rounded bg-muted px-1">.mp4</code>/<code className="rounded bg-muted px-1">.webm</code>.
+                      Lecture autoplay muet en boucle.
+                    </p>
                   </div>
                 </div>
               )}
@@ -691,6 +706,20 @@ export default function StoreSectionsPage() {
             </CardContent>
           </Card>
         </div>
+
+        {/* ── STICKY RIGHT — real-time mini-storefront mock ────── */}
+        <aside className="lg:sticky lg:top-6 lg:self-start">
+          <StoreHomepageLivePreview
+            storeName={store.name}
+            logo={store.logo}
+            favicon={store.favicon}
+            theme={store.theme as Partial<ThemeTokens> | undefined}
+            storefront={storefront}
+            whatsapp={whatsapp}
+            currency={store.settings?.currency}
+            direction={store.settings?.direction}
+          />
+        </aside>
       </div>
       )}
     </StoreSubPageShell>

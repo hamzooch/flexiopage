@@ -14,11 +14,15 @@ import {
   MessageCircle,
 } from 'lucide-react';
 import type { ThemeTokens } from '@/data/store-themes';
+import { mediaUrl } from '@/lib/utils';
 
 export interface FooterColumn {
   title: string;
   links: Array<{ label: string; url: string }>;
 }
+
+export type FooterBrandDisplay = 'logo+name' | 'logo' | 'name';
+export type FooterLogoSize = 'sm' | 'md' | 'lg' | 'xl';
 
 export interface FooterConfig {
   social?: {
@@ -37,11 +41,23 @@ export interface FooterConfig {
   links?: Array<{ label: string; url: string }>;
   /** Grouped link columns — when present, replaces the flat `links` list. */
   columns?: FooterColumn[];
+  /** Marque dans le bloc "À propos" : nom (par défaut), logo seul, ou logo+nom. */
+  brandDisplay?: FooterBrandDisplay;
+  /** Hauteur du logo quand affiché. */
+  logoSize?: FooterLogoSize;
 }
+
+const FOOTER_LOGO_PX: Record<FooterLogoSize, number> = {
+  sm: 28,
+  md: 40,
+  lg: 56,
+  xl: 80,
+};
 
 interface Props {
   storeName: string;
   storeSlug: string;
+  storeLogo?: string;
   footerNote?: string;
   config?: FooterConfig;
   theme: ThemeTokens;
@@ -88,7 +104,7 @@ function storeLink(storeSlug: string, url: string): string {
   return `/${storeSlug}${trimmed.startsWith('/') ? trimmed : `/${trimmed}`}`;
 }
 
-export function StoreFooter({ storeName, storeSlug, footerNote, config, theme }: Props) {
+export function StoreFooter({ storeName, storeSlug, storeLogo, footerNote, config, theme }: Props) {
   const social = config?.social || {};
   const contact = config?.contact || {};
   // Grouped columns take precedence over the flat `links` array — they
@@ -101,6 +117,14 @@ export function StoreFooter({ storeName, storeSlug, footerNote, config, theme }:
   const hasContact = !!(contact.email || contact.phone || contact.address);
   const hasSocial = SOCIAL_DEFS.some((s) => social[s.key as keyof typeof social]);
   const hasExtras = columns.length > 0 || legacyLinks.length > 0 || hasContact || hasSocial;
+
+  // Brand display in the footer about-block. Defaults to 'name' so existing
+  // stores keep their current footer (no visual change without opt-in).
+  const brandDisplay: FooterBrandDisplay = config?.brandDisplay || 'name';
+  const hasLogo = !!storeLogo;
+  const wantLogo = brandDisplay !== 'name' && hasLogo;
+  const wantName = brandDisplay === 'name' || brandDisplay === 'logo+name' || !hasLogo;
+  const logoPx = FOOTER_LOGO_PX[config?.logoSize || 'md'];
 
   return (
     <footer
@@ -125,10 +149,20 @@ export function StoreFooter({ storeName, storeSlug, footerNote, config, theme }:
             <div className="sm:col-span-2">
               <Link
                 href={`/${storeSlug}`}
-                className="text-lg font-bold tracking-tight"
+                className="inline-flex items-center gap-3 text-lg font-bold tracking-tight"
                 style={{ fontFamily: theme.fontHeading, color: theme.foreground }}
+                aria-label={storeName}
               >
-                {storeName}
+                {wantLogo && (
+                  /* eslint-disable-next-line @next/next/no-img-element */
+                  <img
+                    src={mediaUrl(storeLogo!)}
+                    alt={storeName}
+                    className="shrink-0 rounded-md object-contain"
+                    style={{ width: logoPx, height: logoPx }}
+                  />
+                )}
+                {wantName && <span>{storeName}</span>}
               </Link>
               {footerNote && (
                 <p className="mt-3 max-w-md text-sm leading-relaxed" style={{ color: theme.muted }}>
@@ -260,10 +294,19 @@ export function StoreFooter({ storeName, storeSlug, footerNote, config, theme }:
 
         <div className="mt-8 flex flex-col items-center justify-between gap-3 text-xs sm:flex-row">
           <span
-            className="font-bold tracking-tight"
+            className="inline-flex items-center gap-2 font-bold tracking-tight"
             style={{ color: theme.foreground, fontFamily: theme.fontHeading }}
           >
-            {storeName}
+            {wantLogo && (
+              /* eslint-disable-next-line @next/next/no-img-element */
+              <img
+                src={mediaUrl(storeLogo!)}
+                alt=""
+                className="rounded object-contain"
+                style={{ height: Math.min(28, Math.round(logoPx / 1.6)), width: 'auto' }}
+              />
+            )}
+            {wantName && <span>{storeName}</span>}
           </span>
           <p style={{ color: theme.muted }}>
             © {new Date().getFullYear()} {storeName}. Tous droits réservés.

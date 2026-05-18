@@ -16,12 +16,16 @@ import {
   googleFontsHref,
   type ThemeTokens,
 } from '@/data/store-themes';
-import { CodOrderForm, type CodFormConfig } from '@/components/storefront/cod-order-form';
+import { CodOrderForm, type CodFormConfig, type CodVariant } from '@/components/storefront/cod-order-form';
 import { MarketingPixels, type MarketingConfig } from '@/components/storefront/MarketingPixels';
 import { TrackEvent } from '@/components/storefront/TrackEvent';
 import { StoreTracker } from '@/components/storefront/StoreTracker';
 import { StoreNavbar, type NavbarConfig } from '@/components/storefront/StoreNavbar';
 import { StorefrontTestimonials } from '@/components/storefront/Testimonials';
+import { MobileStickyCta } from '@/components/storefront/mobile-sticky-cta';
+import { CrossSells, type CrossSellItem } from '@/components/storefront/cross-sells';
+import { WishlistButton } from '@/components/storefront/wishlist-button';
+import { ProductReviews } from '@/components/storefront/product-reviews';
 import type { ThemeTokens as ThemeTokensType } from '@/data/store-themes';
 
 interface Props {
@@ -64,6 +68,7 @@ interface ProductDoc {
     reassuranceText?: string;
   };
   bundle?: ProductBundle;
+  variants?: CodVariant[];
 }
 
 interface StoreDoc {
@@ -122,13 +127,18 @@ export default async function PublicProductPage({ params }: Props) {
   const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
   let product: ProductDoc | null = null;
   let store: StoreDoc | null = null;
+  let crossSells: CrossSellItem[] = [];
 
   try {
     const [pRes, sRes] = await Promise.all([
       fetch(`${apiUrl}/api/public/stores/${storeSlug}/products/${productSlug}`, { cache: 'no-store' }),
       fetch(`${apiUrl}/api/public/store-by-slug/${storeSlug}`, { cache: 'no-store' }),
     ]);
-    if (pRes.ok) product = (await pRes.json()).product;
+    if (pRes.ok) {
+      const body = await pRes.json();
+      product = body.product;
+      crossSells = Array.isArray(body.crossSells) ? body.crossSells : [];
+    }
     if (sRes.ok) store = (await sRes.json()).store;
   } catch {
     // fallback
@@ -238,6 +248,21 @@ export default async function PublicProductPage({ params }: Props) {
                     −{discountPct}%
                   </span>
                 )}
+                {/* Heart toggle — saves to localStorage, accessible from /wishlist */}
+                <div className="absolute right-4 bottom-4 z-10">
+                  <WishlistButton
+                    storeSlug={storeSlug}
+                    size="md"
+                    item={{
+                      id: product._id,
+                      slug: product.slug,
+                      name: product.name,
+                      image: product.images?.[0],
+                      price: product.price,
+                      currency,
+                    }}
+                  />
+                </div>
                 {isDigital && kindMeta && (
                   <span
                     className="absolute right-4 top-4 inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold backdrop-blur"
@@ -375,6 +400,7 @@ export default async function PublicProductPage({ params }: Props) {
                     defaultCountry={store?.settings?.country}
                     config={codConfig}
                     bundle={product.bundle}
+                    variants={product.variants}
                     theme={theme}
                     radius={radius}
                   />
@@ -524,7 +550,39 @@ export default async function PublicProductPage({ params }: Props) {
             return <>{order.map((id) => blocks[id])}</>;
           })()}
 
+          {/* Cross-sells — "Tu aimeras aussi". Hidden on digital products
+              since the buyer already left the funnel after the instant
+              purchase CTA — extra grid would feel like noise. */}
+          {!isDigital && crossSells.length > 0 && (
+            <CrossSells
+              items={crossSells}
+              storeSlug={storeSlug}
+              currency={currency}
+              theme={theme}
+            />
+          )}
+
+          {/* Product reviews — fetched client-side so seller moderation
+              changes show up without a full SSR rebuild. */}
+          <ProductReviews storeSlug={storeSlug} productSlug={product.slug} theme={theme} />
+
         </main>
+
+        {/* Mobile sticky CTA — surfaces once the COD form scrolls off-screen.
+            Skipped on digital products (no inline form, the Buy button is
+            already always near the top of the viewport). */}
+        {!isDigital && (
+          <MobileStickyCta
+            productName={product.name}
+            productImage={product.images?.[0]}
+            price={product.price}
+            currency={currency}
+            targetId="cod-order-form"
+            accentColor={store?.settings?.codForm?.buttonColor || theme.primary}
+            accentForeground={store?.settings?.codForm?.buttonTextColor || theme.primaryFg}
+            ctaLabel={store?.settings?.codForm?.submitLabel || 'Commander'}
+          />
+        )}
       </div>
     </>
   );

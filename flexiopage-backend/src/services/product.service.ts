@@ -33,6 +33,7 @@ export interface CreateProductInput {
   weight?: number;
   weightUnit?: string;
   isPublished?: boolean;
+  tags?: string[];
   seoTitle?: string;
   seoDescription?: string;
   pageSettings?: IProductPageSettings;

@@ -12,8 +12,12 @@ import {
   SETTINGS_CURRENCIES,
   SETTINGS_LANGUAGES,
   directionOf,
+  type StorefrontSettings,
   type StoreType,
+  type WhatsappSettings,
 } from '@/components/dashboard/store-editor';
+import { StoreHomepageLivePreview } from '@/components/dashboard/store-homepage-live-preview';
+import type { ThemeTokens } from '@/data/store-themes';
 
 export default function StoreInfoPage() {
   const params = useParams();
@@ -88,6 +92,16 @@ export default function StoreInfoPage() {
     return <p className="text-muted-foreground">Loading...</p>;
   }
 
+  // Mirror the in-memory edits into a transient storefront so the live preview
+  // shows the latest name / description / currency / direction without saving.
+  const baseStorefront: StorefrontSettings = (store.settings?.storefront || {}) as StorefrontSettings;
+  const liveStorefront: StorefrontSettings = {
+    ...baseStorefront,
+    heroSubtitle: baseStorefront.heroSubtitle || description || baseStorefront.heroSubtitle,
+  };
+  const liveDirection = directionOf(language);
+  const whatsappMock: WhatsappSettings | undefined = store.settings?.whatsapp;
+
   return (
     <StoreSubPageShell
       storeId={storeId}
@@ -98,6 +112,8 @@ export default function StoreInfoPage() {
       errorMessage={errorMessage}
       onSave={handleSave}
     >
+      <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_340px]">
+        <div className="space-y-6">
       <Card>
         <CardHeader>
           <CardTitle>Identité de la boutique</CardTitle>
@@ -219,6 +235,22 @@ export default function StoreInfoPage() {
           </div>
         </CardContent>
       </Card>
+        </div>
+
+        {/* ── STICKY RIGHT — real-time mini-storefront mock ────── */}
+        <aside className="lg:sticky lg:top-4 lg:self-start">
+          <StoreHomepageLivePreview
+            storeName={name || store.name}
+            logo={store.logo}
+            favicon={store.favicon}
+            theme={store.theme as Partial<ThemeTokens> | undefined}
+            storefront={liveStorefront}
+            whatsapp={whatsappMock}
+            currency={currency || 'USD'}
+            direction={liveDirection}
+          />
+        </aside>
+      </div>
     </StoreSubPageShell>
   );
 }
