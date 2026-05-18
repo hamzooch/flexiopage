@@ -108,6 +108,12 @@ export async function changePassword(req: AuthRequest, res: Response): Promise<v
     res.status(404).json({ error: 'User not found' });
     return;
   }
+  // Google-only accounts have no local password — they need to set one
+  // via a different flow before they can use the change-password screen.
+  if (!user.password) {
+    res.status(400).json({ error: 'This account uses Google sign-in. No password to change.' });
+    return;
+  }
   const ok = await bcrypt.compare(currentPassword, user.password);
   if (!ok) {
     res.status(403).json({ error: 'Current password is incorrect' });

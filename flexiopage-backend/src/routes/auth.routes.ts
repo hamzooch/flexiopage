@@ -8,6 +8,9 @@ const router = Router();
 
 router.post('/register', authRateLimiter, sanitizeMiddleware, authController.register);
 router.post('/login', authRateLimiter, sanitizeMiddleware, authController.login);
+// Google OAuth — rate-limited like /login since it's an unauthenticated
+// entry point exposed to the public internet.
+router.post('/google', authRateLimiter, authController.googleSignIn);
 router.post('/logout', authController.logout);
 router.get('/me', authMiddleware, (req, res) => {
   res.json({ user: (req as import('../middleware/auth.middleware').AuthRequest).user });

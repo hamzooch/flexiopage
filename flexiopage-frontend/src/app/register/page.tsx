@@ -8,6 +8,8 @@ import { Button } from '@/components/ui/button';
 import { authApi } from '@/lib/api';
 import { useAuthStore } from '@/stores/auth-store';
 import { BrandLogo } from '@/components/brand-logo';
+import { GoogleOAuthWrapper } from '@/components/auth/google-oauth-wrapper';
+import { GoogleSignInButton } from '@/components/auth/google-sign-in-button';
 
 export default function RegisterPage() {
   const router = useRouter();
@@ -62,7 +64,24 @@ export default function RegisterPage() {
               </p>
             </div>
 
-            <form onSubmit={handleSubmit} className="mt-8 space-y-5">
+            <GoogleOAuthWrapper>
+              <div className="mt-8">
+                <GoogleSignInButton
+                  text="signup_with"
+                  onSuccess={() => {
+                    router.push('/select-store');
+                    router.refresh();
+                  }}
+                />
+              </div>
+              <div className="my-5 flex items-center gap-3 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                <span className="h-px flex-1 bg-border" />
+                ou avec ton email
+                <span className="h-px flex-1 bg-border" />
+              </div>
+            </GoogleOAuthWrapper>
+
+            <form onSubmit={handleSubmit} className="space-y-5">
               {error && (
                 <div
                   role="alert"

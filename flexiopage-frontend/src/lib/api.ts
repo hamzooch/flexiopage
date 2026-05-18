@@ -74,6 +74,9 @@ export const authApi = {
     api.post<{ user: unknown; token: string }>('/auth/register', data),
   login: (data: { email: string; password: string }) =>
     api.post<{ user: unknown; token: string }>('/auth/login', data),
+  /** Google OAuth — `credential` is the ID token returned by GoogleLogin. */
+  google: (data: { credential: string }) =>
+    api.post<{ user: unknown; token: string }>('/auth/google', data),
   logout: () => api.post('/auth/logout'),
   me: () => api.get<{ user: unknown }>('/auth/me'),
 };

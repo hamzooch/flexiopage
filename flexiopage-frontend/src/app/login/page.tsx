@@ -8,6 +8,8 @@ import { Button } from '@/components/ui/button';
 import { authApi, extractApiError } from '@/lib/api';
 import { useAuthStore } from '@/stores/auth-store';
 import { BrandLogo } from '@/components/brand-logo';
+import { GoogleOAuthWrapper } from '@/components/auth/google-oauth-wrapper';
+import { GoogleSignInButton } from '@/components/auth/google-sign-in-button';
 
 // Only honor relative paths from ?next=… — never an absolute URL, which
 // would let an attacker craft https://login?next=//evil.com to redirect
@@ -104,7 +106,26 @@ function LoginInner() {
               </p>
             </div>
 
-            <form onSubmit={handleSubmit} className="mt-8 space-y-5">
+            {/* Google sign-in — wraps both options so the seller has one obvious
+                way in. The native button stays on top because it's frictionless. */}
+            <GoogleOAuthWrapper>
+              <div className="mt-8">
+                <GoogleSignInButton
+                  text="signin_with"
+                  onSuccess={() => {
+                    router.push(next || '/select-store');
+                    router.refresh();
+                  }}
+                />
+              </div>
+              <div className="my-5 flex items-center gap-3 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                <span className="h-px flex-1 bg-border" />
+                ou avec ton email
+                <span className="h-px flex-1 bg-border" />
+              </div>
+            </GoogleOAuthWrapper>
+
+            <form onSubmit={handleSubmit} className="space-y-5">
               {error && (
                 <div
                   role="alert"

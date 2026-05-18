@@ -8,6 +8,7 @@ import mongoose, { Document, Schema } from 'mongoose';
  */
 export type ActivityType =
   | 'user.signup'
+  | 'user.link.google'
   | 'order.created'
   | 'order.paid'
   | 'order.status_changed'

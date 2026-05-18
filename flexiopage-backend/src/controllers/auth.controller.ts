@@ -44,3 +44,38 @@ export async function logout(_req: Request, res: Response): Promise<void> {
   res.clearCookie('token');
   res.json({ message: 'Logged out' });
 }
+
+/**
+ * POST /api/auth/google — sign in (or sign up) using a Google ID token.
+ * Body: { credential: "<JWT issued by Google Identity Services>" }
+ *
+ * Mirrors the cookie + body behaviour of /login so the frontend can
+ * treat the response identically. A failed verification returns 401.
+ */
+export async function googleSignIn(req: Request, res: Response): Promise<void> {
+  const { credential } = req.body as { credential?: string };
+  if (!credential || typeof credential !== 'string') {
+    res.status(400).json({ error: 'Le champ "credential" est obligatoire.' });
+    return;
+  }
+  const ip = (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim() || req.ip;
+  try {
+    const result = await authService.signInWithGoogle({ credential, ip });
+    const maxAge = 7 * 24 * 60 * 60 * 1000;
+    const isProd = process.env.NODE_ENV === 'production';
+    res.cookie('token', result.token, {
+      httpOnly: true,
+      maxAge,
+      sameSite: isProd ? 'strict' : 'lax',
+      secure: isProd,
+      path: '/',
+    });
+    res.json(result);
+  } catch (err) {
+    const e = err as Error & { statusCode?: number; code?: string };
+    res.status(e.statusCode || 500).json({
+      error: e.message || 'Google sign-in failed',
+      code: e.code,
+    });
+  }
+}

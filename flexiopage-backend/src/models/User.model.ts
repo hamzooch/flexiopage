@@ -29,7 +29,20 @@ export type TeamRole = 'manager' | 'confirmation_agent';
 
 export interface IUser extends Document {
   email: string;
-  password: string;
+  /**
+   * Bcrypt hash. Optional because Google-only users never set a local
+   * password — they authenticate via the Google OAuth ID-token endpoint.
+   * When undefined, email+password login must reject with a clear "use
+   * Google sign-in" message.
+   */
+  password?: string;
+  /**
+   * Google account id (sub claim from the verified ID token). Sparse
+   * unique — set once per Google account, linked on first sign-in. An
+   * existing email+password user signing in with a Google account whose
+   * email matches gets linked rather than duplicated.
+   */
+  googleId?: string;
   name: string;
   role: UserRole;
   /**
@@ -73,7 +86,8 @@ export interface IUser extends Document {
 const UserSchema = new Schema<IUser>(
   {
     email: { type: String, required: true, unique: true, lowercase: true, trim: true },
-    password: { type: String, required: true, select: false },
+    password: { type: String, select: false },  // optional — Google-only users have no local password
+    googleId: { type: String, index: { unique: true, sparse: true } },
     name: { type: String, required: true, trim: true },
     role: { type: String, enum: ['owner', 'superadmin', 'admin', 'supervisor', 'user'], default: 'user' },
     parentUserId: { type: Schema.Types.ObjectId, ref: 'User', index: true },
