@@ -165,6 +165,8 @@ export interface StorefrontSettings {
   slider?: SliderSettings;
   /** Order of the 4 movable body sections on the public storefront. */
   sectionOrder?: Array<'hero' | 'slider' | 'products' | 'testimonials'>;
+  /** Per-store product-page customization (timer, badges, order, etc.). */
+  productPage?: import('@/lib/product-page-order').ProductPageSettings;
 }
 
 // Re-export the pure section-order helpers so existing imports from

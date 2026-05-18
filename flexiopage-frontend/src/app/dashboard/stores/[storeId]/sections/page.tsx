@@ -27,6 +27,8 @@ import {
   type MovableSectionId,
   resolveSectionOrder,
 } from '@/components/dashboard/store-editor';
+import { ProductPageEditor } from '@/components/dashboard/product-page-editor';
+import type { ProductPageSettings } from '@/lib/product-page-order';
 import {
   Megaphone,
   Navigation,
@@ -144,6 +146,8 @@ export default function StoreSectionsPage() {
   // Tracks which section card is currently in the user's viewport so the
   // sticky left nav can highlight the matching nav item.
   const [activeSection, setActiveSection] = useState<string>('announcement');
+  // Top-level scope: homepage sections vs product-page sections.
+  const [scope, setScope] = useState<'home' | 'product'>('home');
 
   useEffect(() => {
     if (!storeId) return;
@@ -242,16 +246,51 @@ export default function StoreSectionsPage() {
   const totalSections = SECTIONS.length + 1; // + Whatsapp
   const activeCount = storefrontActiveCount + (WHATSAPP_SECTION.isActive(whatsapp) ? 1 : 0);
 
+  // Helpers for the product-page sub-config — kept on storefront.productPage
+  // so save batches both at once.
+  const productPage: ProductPageSettings = storefront.productPage || {};
+  const setProductPage = (next: ProductPageSettings) =>
+    setStorefront({ ...storefront, productPage: next });
+
   return (
     <StoreSubPageShell
       storeId={storeId}
       storeName={store.name}
       title="Sections de la vitrine"
-      description="Active, désactive et personnalise chaque bloc affiché sur la page d'accueil de ta boutique."
+      description="Active, désactive et personnalise chaque bloc — page d'accueil ET page produit."
       status={status}
       errorMessage={errorMessage}
       onSave={handleSave}
     >
+      {/* Scope switcher — pick which page's sections you're editing. */}
+      <div className="mb-2 inline-flex items-center gap-1 rounded-xl border border-border/60 bg-card p-1 shadow-sm">
+        {([
+          { id: 'home',    label: "Page d'accueil",   help: 'Bandeau, hero, slider, produits, footer…' },
+          { id: 'product', label: 'Page produit',     help: 'Badges, timer, témoignages, description…' },
+        ] as const).map((opt) => {
+          const active = scope === opt.id;
+          return (
+            <button
+              key={opt.id}
+              type="button"
+              onClick={() => setScope(opt.id)}
+              title={opt.help}
+              className={cn(
+                'rounded-lg px-4 py-2 text-sm font-medium transition-all',
+                active
+                  ? 'bg-gradient-to-br from-primary to-fuchsia-600 text-white shadow-md'
+                  : 'text-muted-foreground hover:bg-muted/60 hover:text-foreground'
+              )}
+            >
+              {opt.label}
+            </button>
+          );
+        })}
+      </div>
+
+      {scope === 'product' ? (
+        <ProductPageEditor cfg={productPage} onChange={setProductPage} />
+      ) : (
       <div className="grid gap-6 lg:grid-cols-[240px_minmax(0,1fr)]">
         {/* ── STICKY LEFT NAV — quick-jump to any section ────────── */}
         <aside className="lg:sticky lg:top-6 lg:self-start">
@@ -653,6 +692,7 @@ export default function StoreSectionsPage() {
           </Card>
         </div>
       </div>
+      )}
     </StoreSubPageShell>
   );
 }

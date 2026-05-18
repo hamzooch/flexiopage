@@ -1,5 +1,13 @@
 import Link from 'next/link';
 import { formatCurrency, mediaUrl } from '@/lib/utils';
+import {
+  resolveProductPageOrder,
+  DEFAULT_BADGES,
+  type ProductPageSettings,
+  type ProductPageSectionId,
+} from '@/lib/product-page-order';
+import { ProductPageTimer } from '@/components/storefront/product-page-timer';
+import { ProductPageBadges } from '@/components/storefront/product-page-badges';
 import type { ProductBundle } from '@/lib/api';
 import {
   STORE_THEME_TEMPLATES,
@@ -13,6 +21,8 @@ import { MarketingPixels, type MarketingConfig } from '@/components/storefront/M
 import { TrackEvent } from '@/components/storefront/TrackEvent';
 import { StoreTracker } from '@/components/storefront/StoreTracker';
 import { StoreNavbar, type NavbarConfig } from '@/components/storefront/StoreNavbar';
+import { StorefrontTestimonials } from '@/components/storefront/Testimonials';
+import type { ThemeTokens as ThemeTokensType } from '@/data/store-themes';
 
 interface Props {
   params: Promise<{ storeSlug: string; productSlug: string }>;
@@ -69,7 +79,7 @@ interface StoreDoc {
     direction?: 'ltr' | 'rtl';
     country?: string;
     codForm?: CodFormConfig;
-    storefront?: { navbar?: NavbarConfig };
+    storefront?: { navbar?: NavbarConfig; productPage?: ProductPageSettings };
   };
   integrations?: { marketing?: MarketingConfig };
 }
@@ -449,59 +459,47 @@ export default async function PublicProductPage({ params }: Props) {
             </div>
           </div>
 
-          {/* Description — full section below the gallery + details grid */}
-          {showDescription && product.description && (
-            <section className="mt-16 max-w-3xl">
-              <div className="mb-5 flex items-center gap-3">
-                <span
-                  className="inline-block h-px flex-1"
-                  style={{ backgroundColor: theme.border }}
-                  aria-hidden
-                />
-                <h2
-                  className="text-2xl font-bold tracking-tight sm:text-3xl"
-                  style={{ fontFamily: theme.fontHeading, color: theme.foreground }}
-                >
-                  Description
-                </h2>
-                <span
-                  className="inline-block h-px flex-1"
-                  style={{ backgroundColor: theme.border }}
-                  aria-hidden
-                />
-              </div>
-              <div className="space-y-4 text-base leading-relaxed sm:text-lg" style={{ color: theme.foreground }}>
-                {product.description.split(/\n\s*\n/).map((para, i) => {
-                  const trimmed = para.trim();
-                  if (!trimmed) return null;
-                  // Render bullet list when every non-empty line starts with "- " or "• "
-                  const lines = trimmed.split('\n').map((l) => l.trim()).filter(Boolean);
-                  const allBullets = lines.length > 1 && lines.every((l) => /^[-•]\s+/.test(l));
-                  if (allBullets) {
-                    return (
-                      <ul key={i} className="space-y-2 pl-1">
-                        {lines.map((l, j) => (
-                          <li key={j} className="flex gap-2">
-                            <span
-                              className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full"
-                              style={{ backgroundColor: theme.primary }}
-                              aria-hidden
-                            />
-                            <span>{l.replace(/^[-•]\s+/, '')}</span>
-                          </li>
-                        ))}
-                      </ul>
-                    );
-                  }
-                  return (
-                    <p key={i} style={{ color: theme.foreground }}>
-                      {trimmed}
-                    </p>
-                  );
-                })}
-              </div>
-            </section>
-          )}
+          {/* ── Reorderable body sections (badges / timer / description / testimonials)
+                Driven by store.settings.storefront.productPage configured by the
+                seller in /dashboard/stores/[id]/sections (Page produit tab). ── */}
+          {(() => {
+            const pp = store?.settings?.storefront?.productPage || {};
+            const order = resolveProductPageOrder(pp.sectionOrder);
+            const showBadgesSection = pp.showBadges !== false;
+            const badges = (pp.badges && pp.badges.length > 0) ? pp.badges : DEFAULT_BADGES;
+            const showTimerSection = !!pp.showTimer && !!pp.timer?.endsAt;
+            const showProductDesc = (pp.showDescription !== false) && showDescription && !!product.description;
+            const showTestimonialsSection = !!pp.showTestimonials;
+
+            const blocks: Record<ProductPageSectionId, React.ReactNode> = {
+              badges: showBadgesSection ? (
+                <section key="badges" className="mt-10">
+                  <ProductPageBadges badges={badges} theme={theme} />
+                </section>
+              ) : null,
+              timer: showTimerSection ? (
+                <section key="timer" className="mt-10">
+                  <ProductPageTimer
+                    endsAt={pp.timer!.endsAt!}
+                    headline={pp.timer?.headline}
+                    accentColor={pp.timer?.accentColor || theme.primary}
+                  />
+                </section>
+              ) : null,
+              description: showProductDesc ? (
+                <ProductDescriptionSection key="description" description={product.description!} theme={theme} />
+              ) : null,
+              testimonials: showTestimonialsSection ? (
+                <section key="testimonials" className="mt-12">
+                  <StorefrontTestimonials
+                    config={(store?.settings as { storefront?: { testimonials?: unknown } } | undefined)?.storefront?.testimonials as never}
+                    theme={theme}
+                  />
+                </section>
+              ) : null,
+            };
+            return <>{order.map((id) => blocks[id])}</>;
+          })()}
 
         </main>
       </div>
@@ -515,4 +513,52 @@ function hexA(hex: string | undefined | null, a: number): string {
   if (!m) return hex;
   const n = parseInt(m[1], 16);
   return `rgba(${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255}, ${a})`;
+}
+
+/**
+ * Full description section — extracted from the inline render so it can be
+ * slotted into the productPage sectionOrder loop. Keeps the original
+ * bullet-vs-paragraph parsing behavior.
+ */
+function ProductDescriptionSection({
+  description,
+  theme,
+}: {
+  description: string;
+  theme: ThemeTokensType;
+}) {
+  return (
+    <section className="mt-16 max-w-3xl">
+      <div className="mb-5 flex items-center gap-3">
+        <span className="inline-block h-px flex-1" style={{ backgroundColor: theme.border }} aria-hidden />
+        <h2 className="text-2xl font-bold tracking-tight sm:text-3xl" style={{ fontFamily: theme.fontHeading, color: theme.foreground }}>
+          Description
+        </h2>
+        <span className="inline-block h-px flex-1" style={{ backgroundColor: theme.border }} aria-hidden />
+      </div>
+      <div className="space-y-4 text-base leading-relaxed sm:text-lg" style={{ color: theme.foreground }}>
+        {description.split(/\n\s*\n/).map((para, i) => {
+          const trimmed = para.trim();
+          if (!trimmed) return null;
+          const lines = trimmed.split('\n').map((l) => l.trim()).filter(Boolean);
+          const allBullets = lines.length > 1 && lines.every((l) => /^[-•]\s+/.test(l));
+          if (allBullets) {
+            return (
+              <ul key={i} className="space-y-2 pl-1">
+                {lines.map((l, j) => (
+                  <li key={j} className="flex gap-2">
+                    <span className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full" style={{ backgroundColor: theme.primary }} aria-hidden />
+                    <span>{l.replace(/^[-•]\s+/, '')}</span>
+                  </li>
+                ))}
+              </ul>
+            );
+          }
+          return (
+            <p key={i} style={{ color: theme.foreground }}>{trimmed}</p>
+          );
+        })}
+      </div>
+    </section>
+  );
 }

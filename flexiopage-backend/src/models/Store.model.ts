@@ -119,6 +119,41 @@ export interface IStore extends Document {
        */
       sectionOrder?: Array<'hero' | 'slider' | 'products' | 'testimonials'>;
       /**
+       * Per-store product-page configuration. Lets the seller compose a
+       * high-converting product detail page with movable sections, a
+       * countdown timer, trust badges and (optional) testimonials.
+       */
+      productPage?: {
+        /** Show the urgency countdown above the COD form. */
+        showTimer?: boolean;
+        timer?: {
+          /** ISO date string — when the countdown reaches zero. */
+          endsAt?: string;
+          /** Short headline shown next to the digits (eg "Offre limitée"). */
+          headline?: string;
+          /** Accent color (hex). Defaults to theme primary. */
+          accentColor?: string;
+        };
+        /** Show the trust-badges row (livraison / garantie / etc.). */
+        showBadges?: boolean;
+        /**
+         * Custom trust badges. Each item picks an icon from a curated list
+         * and adds a short label + optional sublabel. If empty, the
+         * storefront renders 3 sensible defaults.
+         */
+        badges?: Array<{
+          icon: 'truck' | 'shield' | 'refresh' | 'lock' | 'headset' | 'gift' | 'clock' | 'star' | 'leaf' | 'banknote';
+          label: string;
+          sublabel?: string;
+        }>;
+        /** Show the testimonials block on the product page. */
+        showTestimonials?: boolean;
+        /** Show the long description section (already supported per-product, this is a store-wide default). */
+        showDescription?: boolean;
+        /** Render order of the movable body sections of the product page. */
+        sectionOrder?: Array<'badges' | 'timer' | 'description' | 'testimonials'>;
+      };
+      /**
        * Customer testimonials / reviews section managed by the seller.
        * Each testimonial has the buyer's name, optional photo, rating 1-5
        * and a short quote.
@@ -346,6 +381,30 @@ const StoreSchema = new Schema<IStore>(
         productsGridTitle: { type: String },
         showFeatures: { type: Boolean, default: true },
         sectionOrder: [{ type: String, enum: ['hero', 'slider', 'products', 'testimonials'] }],
+        productPage: {
+          showTimer: { type: Boolean, default: false },
+          timer: {
+            endsAt: { type: String, trim: true },
+            headline: { type: String, trim: true },
+            accentColor: { type: String, trim: true },
+          },
+          showBadges: { type: Boolean, default: true },
+          badges: [
+            {
+              _id: false,
+              icon: {
+                type: String,
+                enum: ['truck', 'shield', 'refresh', 'lock', 'headset', 'gift', 'clock', 'star', 'leaf', 'banknote'],
+                required: true,
+              },
+              label: { type: String, required: true, trim: true },
+              sublabel: { type: String, trim: true },
+            },
+          ],
+          showTestimonials: { type: Boolean, default: false },
+          showDescription: { type: Boolean, default: true },
+          sectionOrder: [{ type: String, enum: ['badges', 'timer', 'description', 'testimonials'] }],
+        },
         testimonials: {
           enabled: { type: Boolean, default: false },
           title: { type: String },
