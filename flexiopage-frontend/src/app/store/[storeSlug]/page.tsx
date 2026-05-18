@@ -598,12 +598,15 @@ function ProductCard({
   storeSlug,
   currency,
   isDigital,
+  index = 0,
 }: {
   product: ProductDoc;
   theme: ThemeTokens;
   storeSlug: string;
   currency: string;
   isDigital: boolean;
+  /** Position in the grid — drives the stagger animation delay. */
+  index?: number;
 }) {
   const cardStyle = theme.layout?.productCard || 'classic';
   const radius = RADIUS_PX[theme.borderRadius];
@@ -613,6 +616,8 @@ function ProductCard({
     : 0;
   const href = `/${storeSlug}/product/${p.slug}`;
   const pillRadius = theme.borderRadius === 'none' ? '0' : '999px';
+  // Stagger delay capped so big grids stay snappy. Inline so SSR matches.
+  const revealDelay = `${Math.min(index, 11) * 60}ms`;
 
   const image = (
     <>
@@ -621,22 +626,46 @@ function ProductCard({
         <img
           src={mediaUrl(p.images[0]) || p.images[0]}
           alt={p.name}
-          className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
+          className="h-full w-full object-cover transition-transform duration-[700ms] ease-out group-hover:scale-110 group-hover:rotate-[0.6deg]"
         />
       ) : (
         <div className="grid h-full place-items-center text-xs" style={{ color: theme.muted }}>
           No image
         </div>
       )}
+      {/* Diagonal gloss sweep on hover — same trick used in luxury e-commerce */}
+      <span className="pc-shimmer pointer-events-none absolute inset-0" aria-hidden />
     </>
   );
 
   const discountBadge = hasDiscount && (
     <span
-      className="absolute left-3 top-3 px-2 py-1 text-[10px] font-bold uppercase tracking-wider"
+      className="pc-badge-pulse absolute left-3 top-3 px-2 py-1 text-[10px] font-bold uppercase tracking-wider"
       style={{ backgroundColor: theme.primary, color: theme.primaryFg, borderRadius: pillRadius }}
     >
       −{discountPct}%
+    </span>
+  );
+
+  // "Voir" pill that slides in from the bottom on hover — modern micro CTA.
+  const quickViewPill = (
+    <span
+      className="pc-quickview pointer-events-none absolute inset-x-0 bottom-0 z-10 flex justify-center pb-3 opacity-0 transition-all duration-300"
+      aria-hidden
+    >
+      <span
+        className="inline-flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-semibold backdrop-blur"
+        style={{
+          backgroundColor: hexA(theme.surface, 0.92),
+          color: theme.foreground,
+          border: `1px solid ${theme.border}`,
+          borderRadius: pillRadius,
+          boxShadow: '0 6px 18px rgba(0,0,0,0.18)',
+        }}
+      >
+        Voir le produit
+        <span aria-hidden>→</span>
+      </span>
     </span>
   );
   const kindBadge = isDigital && p.digitalKind && (
@@ -680,14 +709,14 @@ function ProductCard({
       <Link
         key={p._id}
         href={href}
-        className="group relative block aspect-[4/5] overflow-hidden"
-        style={{ borderRadius: radius, backgroundColor: theme.surfaceMuted }}
+        className="pc-reveal group relative block aspect-[4/5] overflow-hidden transition-transform duration-500 hover:-translate-y-1"
+        style={{ borderRadius: radius, backgroundColor: theme.surfaceMuted, animationDelay: revealDelay }}
       >
         {image}
         <div className="absolute inset-0" style={{ background: 'linear-gradient(to top, rgba(0,0,0,0.78) 8%, rgba(0,0,0,0) 55%)' }} aria-hidden />
         {discountBadge}
         {kindBadge}
-        <div className="absolute inset-x-0 bottom-0 p-4">
+        <div className="absolute inset-x-0 bottom-0 p-4 transition-transform duration-500 group-hover:-translate-y-1">
           <h3 className="text-sm font-bold uppercase tracking-tight text-white sm:text-base" style={{ fontFamily: theme.fontHeading }}>
             {p.name}
           </h3>
@@ -712,14 +741,23 @@ function ProductCard({
   // ── EDITORIAL — borderless, flat image, serif name below ──
   if (cardStyle === 'editorial') {
     return (
-      <Link key={p._id} href={href} className="group block">
+      <Link
+        key={p._id}
+        href={href}
+        className="pc-reveal group block"
+        style={{ animationDelay: revealDelay }}
+      >
         <div className="relative aspect-[3/4] overflow-hidden" style={{ backgroundColor: theme.surfaceMuted }}>
           {image}
           {discountBadge}
           {kindBadge}
+          {quickViewPill}
         </div>
-        <div className="pt-3">
-          <h3 className="text-base font-medium leading-snug" style={{ fontFamily: theme.fontHeading, color: theme.foreground }}>
+        <div className="pt-3 transition-colors">
+          <h3
+            className="text-base font-medium leading-snug transition-colors group-hover:opacity-80"
+            style={{ fontFamily: theme.fontHeading, color: theme.foreground }}
+          >
             {p.name}
           </h3>
           <div className="mt-1">{priceRow}</div>
@@ -734,13 +772,19 @@ function ProductCard({
       <Link
         key={p._id}
         href={href}
-        className="group block overflow-hidden transition-colors"
-        style={{ borderRadius: radius, border: `1px solid ${theme.border}`, backgroundColor: theme.surface }}
+        className="pc-reveal group block overflow-hidden transition-all duration-300 hover:-translate-y-1 hover:shadow-lg"
+        style={{
+          borderRadius: radius,
+          border: `1px solid ${theme.border}`,
+          backgroundColor: theme.surface,
+          animationDelay: revealDelay,
+        }}
       >
         <div className="relative aspect-square overflow-hidden" style={{ backgroundColor: theme.surfaceMuted }}>
           {image}
           {discountBadge}
           {kindBadge}
+          {quickViewPill}
         </div>
         <div className="px-3 py-2.5">
           <h3 className="truncate text-sm font-semibold tracking-tight" style={{ color: theme.foreground }}>
@@ -757,7 +801,7 @@ function ProductCard({
     <Link
       key={p._id}
       href={href}
-      className="group block overflow-hidden border transition-all hover:-translate-y-1"
+      className="pc-reveal group block overflow-hidden border transition-all duration-500 hover:-translate-y-1.5"
       style={{
         backgroundColor: theme.surface,
         borderColor: theme.border,
@@ -768,16 +812,24 @@ function ProductCard({
             : theme.shadow === 'soft'
               ? '0 4px 12px rgba(0,0,0,0.05)'
               : '0 1px 0 rgba(0,0,0,0.04)',
+        // Make the hover shadow heavier — set via CSS var so the override sticks
+        // across themes without needing per-shadow JS branches.
+        ['--pc-hover-shadow' as string]:
+          theme.shadow === 'glow'
+            ? `0 16px 38px ${hexA(theme.primary, 0.22)}`
+            : '0 16px 32px rgba(0,0,0,0.12)',
+        animationDelay: revealDelay,
       }}
     >
       <div className="relative aspect-square overflow-hidden" style={{ backgroundColor: theme.surfaceMuted }}>
         {image}
         {discountBadge}
         {kindBadge}
+        {quickViewPill}
       </div>
       <div className="p-3 sm:p-5">
         <h3
-          className="line-clamp-2 text-sm font-semibold leading-snug tracking-tight sm:text-base"
+          className="line-clamp-2 text-sm font-semibold leading-snug tracking-tight transition-colors group-hover:opacity-90 sm:text-base"
           style={{ fontFamily: theme.fontBody, color: theme.foreground }}
         >
           {p.name}
@@ -854,7 +906,7 @@ function ProductsGrid({
           </div>
         ) : (
           <div className={`grid gap-3 sm:gap-6 ${gridClass}`}>
-            {products.map((p) => (
+            {products.map((p, i) => (
               <ProductCard
                 key={p._id}
                 product={p}
@@ -862,10 +914,66 @@ function ProductsGrid({
                 storeSlug={storeSlug}
                 currency={currency}
                 isDigital={isDigital}
+                index={i}
               />
             ))}
           </div>
         )}
+        {/* Product-card animations — colocated so the section is self-contained.
+            `pc-reveal` runs once on mount; per-card delay comes from inline
+            style. Hover-only effects degrade gracefully without JS. */}
+        <style>{`
+          @keyframes pcReveal {
+            from { opacity: 0; transform: translateY(14px); }
+            to   { opacity: 1; transform: translateY(0); }
+          }
+          .pc-reveal {
+            opacity: 0;
+            animation: pcReveal 0.55s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+          }
+
+          @keyframes pcBadgePulse {
+            0%, 100% { transform: scale(1);    box-shadow: 0 0 0 0 rgba(0,0,0,0.12); }
+            50%      { transform: scale(1.06); box-shadow: 0 0 0 6px rgba(0,0,0,0); }
+          }
+          .pc-badge-pulse { animation: pcBadgePulse 2.2s ease-in-out infinite; }
+
+          /* Diagonal gloss that sweeps the image on hover — pure CSS, GPU only. */
+          .pc-shimmer {
+            background: linear-gradient(115deg,
+              transparent 0%,
+              transparent 40%,
+              rgba(255,255,255,0.20) 50%,
+              transparent 60%,
+              transparent 100%);
+            background-size: 200% 100%;
+            background-position: 200% 0;
+            opacity: 0;
+            transition: opacity 0.4s ease, background-position 0.9s ease;
+          }
+          .group:hover .pc-shimmer {
+            opacity: 1;
+            background-position: -100% 0;
+          }
+
+          /* Quick-view pill — slides up + fades in on hover */
+          .group:hover .pc-quickview {
+            opacity: 1;
+            transform: translateY(-4px);
+          }
+
+          /* Heavier shadow on hover for classic cards (override the inline shadow). */
+          .group:hover {
+            box-shadow: var(--pc-hover-shadow, inherit);
+          }
+
+          @media (prefers-reduced-motion: reduce) {
+            .pc-reveal,
+            .pc-badge-pulse,
+            .pc-shimmer,
+            .pc-quickview { animation: none !important; transition: none !important; opacity: 1 !important; transform: none !important; }
+          }
+        `}</style>
       </div>
     </section>
   );

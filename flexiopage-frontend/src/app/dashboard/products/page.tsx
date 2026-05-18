@@ -122,18 +122,21 @@ export default function DashboardProductsPage() {
         </Card>
       ) : (
         <div className="grid gap-3 grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
-          {products.map((p) => {
+          {products.map((p, i) => {
             const cover = mediaUrl(p.images?.[0]);
             const currency = activeStore?.settings?.currency || 'USD';
             const isDigital = p.type === 'digital';
             const hasDiscount = !!p.compareAtPrice && p.compareAtPrice > p.price;
             const lowStock = !isDigital && typeof p.stock === 'number' && p.stock > 0 && p.stock <= 5;
             const outOfStock = !isDigital && p.stock === 0;
+            // Stagger reveal — capped so big grids stay snappy.
+            const revealDelay = `${Math.min(i, 11) * 55}ms`;
             return (
               <Link
                 key={p._id}
                 href={`/dashboard/products/${p._id}?storeId=${selectedStoreId}`}
-                className="group flex flex-col overflow-hidden rounded-xl border border-border/60 bg-card transition-all duration-300 hover:-translate-y-0.5 hover:border-primary/30 hover:shadow-lg hover:shadow-primary/5"
+                className="dpc-card group relative flex flex-col overflow-hidden rounded-xl border border-border/60 bg-card transition-all duration-500 hover:-translate-y-1 hover:border-primary/40 hover:shadow-xl hover:shadow-primary/10"
+                style={{ animationDelay: revealDelay }}
               >
                 {/* Cover image */}
                 <div className="relative aspect-square overflow-hidden bg-muted/40">
@@ -142,17 +145,20 @@ export default function DashboardProductsPage() {
                     <img
                       src={cover}
                       alt={p.name}
-                      className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
+                      className="h-full w-full object-cover transition-transform duration-[700ms] ease-out group-hover:scale-110 group-hover:rotate-[0.6deg]"
                     />
                   ) : (
-                    <div className="grid h-full place-items-center text-muted-foreground">
+                    <div className="grid h-full place-items-center text-muted-foreground transition-transform duration-500 group-hover:scale-110">
                       {isDigital ? <Cloud className="h-7 w-7" /> : <ImageIcon className="h-7 w-7" />}
                     </div>
                   )}
 
-                  {/* Discount badge */}
+                  {/* Diagonal gloss sweep — luxury e-commerce micro-detail */}
+                  <span className="dpc-shimmer pointer-events-none absolute inset-0" aria-hidden />
+
+                  {/* Discount badge — gentle pulse */}
                   {hasDiscount && (
-                    <span className="absolute left-1.5 top-1.5 rounded-full bg-rose-500 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-white shadow-sm">
+                    <span className="dpc-badge-pulse absolute left-1.5 top-1.5 rounded-full bg-rose-500 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-white shadow-sm">
                       −{Math.round(((p.compareAtPrice! - p.price) / p.compareAtPrice!) * 100)}%
                     </span>
                   )}
@@ -160,7 +166,7 @@ export default function DashboardProductsPage() {
                   {/* Status pill */}
                   <span
                     className={cn(
-                      'absolute right-1.5 top-1.5 rounded-full px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider shadow-sm backdrop-blur',
+                      'absolute right-1.5 top-1.5 rounded-full px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider shadow-sm backdrop-blur transition-transform duration-300 group-hover:scale-105',
                       p.isPublished
                         ? 'bg-emerald-500/90 text-white'
                         : 'bg-amber-500/90 text-white'
@@ -187,11 +193,21 @@ export default function DashboardProductsPage() {
                       {p.stock}
                     </span>
                   )}
+
+                  {/* Quick-edit pill — slides up on hover */}
+                  <span
+                    className="dpc-quickedit pointer-events-none absolute inset-x-0 bottom-0 flex justify-center pb-2 opacity-0 transition-all duration-300"
+                    aria-hidden
+                  >
+                    <span className="inline-flex items-center gap-1 rounded-full bg-card/95 px-2 py-1 text-[10px] font-semibold text-foreground shadow-md backdrop-blur">
+                      Modifier <span aria-hidden>→</span>
+                    </span>
+                  </span>
                 </div>
 
                 {/* Body */}
                 <div className="flex flex-1 flex-col gap-1.5 p-2.5">
-                  <h3 className="line-clamp-2 text-[13px] font-semibold leading-snug tracking-tight">
+                  <h3 className="line-clamp-2 text-[13px] font-semibold leading-snug tracking-tight transition-colors group-hover:text-primary">
                     {p.name}
                   </h3>
 
@@ -211,6 +227,58 @@ export default function DashboardProductsPage() {
           })}
         </div>
       )}
+
+      {/* Card animations — keyframes colocated; pure CSS, no JS. */}
+      <style jsx global>{`
+        @keyframes dpcReveal {
+          from { opacity: 0; transform: translateY(12px); }
+          to   { opacity: 1; transform: translateY(0); }
+        }
+        .dpc-card {
+          opacity: 0;
+          animation: dpcReveal 0.5s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+        }
+
+        @keyframes dpcBadgePulse {
+          0%, 100% { transform: scale(1);    box-shadow: 0 0 0 0 rgba(244,63,94,0.45); }
+          50%      { transform: scale(1.06); box-shadow: 0 0 0 6px rgba(244,63,94,0); }
+        }
+        .dpc-badge-pulse { animation: dpcBadgePulse 2.2s ease-in-out infinite; }
+
+        .dpc-shimmer {
+          background: linear-gradient(115deg,
+            transparent 0%,
+            transparent 42%,
+            rgba(255,255,255,0.22) 50%,
+            transparent 58%,
+            transparent 100%);
+          background-size: 200% 100%;
+          background-position: 200% 0;
+          opacity: 0;
+          transition: opacity 0.35s ease, background-position 0.9s ease;
+        }
+        .group:hover .dpc-shimmer {
+          opacity: 1;
+          background-position: -100% 0;
+        }
+
+        .group:hover .dpc-quickedit {
+          opacity: 1;
+          transform: translateY(-4px);
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+          .dpc-card,
+          .dpc-badge-pulse,
+          .dpc-shimmer,
+          .dpc-quickedit {
+            animation: none !important;
+            transition: none !important;
+            opacity: 1 !important;
+            transform: none !important;
+          }
+        }
+      `}</style>
     </div>
   );
 }
