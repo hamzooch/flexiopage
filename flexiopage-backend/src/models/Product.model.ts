@@ -113,6 +113,10 @@ export interface IProduct extends Document {
   pageSettings?: IProductPageSettings;
   /** Quantity-tier bundle offer ("buy 2 for X"). */
   bundle?: IProductBundle;
+  /** Upsell suggestions — surfaced on the product page / in the COD form. */
+  upsells?: IRelatedOffer[];
+  /** Cross-sell suggestions — surfaced as "related products" on the product page. */
+  crossSells?: IRelatedOffer[];
   createdAt: Date;
   updatedAt: Date;
 }
@@ -149,11 +153,50 @@ export interface IProductBundleTier {
   label?: string;
 }
 
+/**
+ * Visual styling for the bundle block on the storefront. Seller-tweakable
+ * so the bundle can match the product page's vibe instead of always
+ * inheriting the active theme primary.
+ */
+export interface IProductBundleStyle {
+  /** Layout variant. */
+  layout?: 'list' | 'grid' | 'compact';
+  /** Accent color (hex) used for the selected-tier ring + badges. Defaults to theme primary. */
+  accentColor?: string;
+  /** Badge color (hex) for the tier label pill. Defaults to accentColor. */
+  badgeColor?: string;
+  /** Show the "save %" pill next to each tier. */
+  showSavings?: boolean;
+  /** Highlight the most popular tier (visually). When set, that quantity is auto-pre-selected. */
+  highlightQuantity?: number;
+}
+
 export interface IProductBundle {
   enabled: boolean;
   /** Block title shown on the storefront, e.g. "Offre spéciale". */
   title?: string;
   tiers: IProductBundleTier[];
+  /** Visual customization for the bundle block. */
+  style?: IProductBundleStyle;
+}
+
+/**
+ * Upsell — extra suggestion shown ON the product page (e.g. "Ajoute aussi…").
+ * Each entry references another product in the same store + an optional
+ * discount applied only when the upsell is accepted at checkout.
+ *
+ * Cross-sell uses the same shape but is rendered as "related products"
+ * on the product page (less aggressive, no price override at checkout).
+ */
+export interface IRelatedOffer {
+  /** Target product id (must belong to the same store). */
+  productId: mongoose.Types.ObjectId;
+  /** Optional override label — defaults to the target product's name. */
+  label?: string;
+  /** Optional discount % (1-99) applied to the target when the buyer takes it. */
+  discountPct?: number;
+  /** Optional sort weight (lower = shown first). */
+  order?: number;
 }
 
 const ProductVariantSchema = new Schema<IProductVariant>(
@@ -248,7 +291,32 @@ const ProductSchema = new Schema<IProduct>(
           label: { type: String, trim: true },
         },
       ],
+      style: {
+        layout: { type: String, enum: ['list', 'grid', 'compact'], default: 'list' },
+        accentColor: { type: String, trim: true },
+        badgeColor: { type: String, trim: true },
+        showSavings: { type: Boolean, default: true },
+        highlightQuantity: { type: Number },
+      },
     },
+    upsells: [
+      {
+        _id: false,
+        productId: { type: Schema.Types.ObjectId, ref: 'Product', required: true },
+        label: { type: String, trim: true },
+        discountPct: { type: Number, min: 1, max: 99 },
+        order: { type: Number, default: 0 },
+      },
+    ],
+    crossSells: [
+      {
+        _id: false,
+        productId: { type: Schema.Types.ObjectId, ref: 'Product', required: true },
+        label: { type: String, trim: true },
+        discountPct: { type: Number, min: 1, max: 99 },
+        order: { type: Number, default: 0 },
+      },
+    ],
   },
   { timestamps: true }
 );

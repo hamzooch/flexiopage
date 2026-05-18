@@ -274,10 +274,26 @@ export interface ProductBundleTier {
   totalPrice: number;
   label?: string;
 }
+export interface ProductBundleStyle {
+  layout?: 'list' | 'grid' | 'compact';
+  accentColor?: string;
+  badgeColor?: string;
+  showSavings?: boolean;
+  highlightQuantity?: number;
+}
 export interface ProductBundle {
   enabled: boolean;
   title?: string;
   tiers: ProductBundleTier[];
+  style?: ProductBundleStyle;
+}
+
+/** Upsell / cross-sell — reference to another product in the same store. */
+export interface RelatedOffer {
+  productId: string;
+  label?: string;
+  discountPct?: number;
+  order?: number;
 }
 
 // ─────────────────────────────────────────────────────────────────────
