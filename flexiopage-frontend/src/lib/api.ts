@@ -558,6 +558,21 @@ export const storesApi = {
     api.get<{ products: unknown[] }>(`/stores/${storeId}/products`, { params }),
   createProduct: (storeId: string, data: Record<string, unknown>) =>
     api.post<{ product: unknown }>(`/stores/${storeId}/products`, data),
+  /** Generate a punchy product description via AI (charged from text_only wallet). */
+  generateProductDescription: (storeId: string, data: {
+    name: string;
+    category?: string;
+    keywords?: string;
+    language?: string;
+    country?: string;
+    tone?: 'engaging' | 'professional' | 'luxury' | 'youthful' | 'minimal';
+    price?: number;
+    currency?: string;
+  }) =>
+    api.post<{
+      description: string;
+      charge: { amount: number; balanceAfter: number; currency: string };
+    }>(`/stores/${storeId}/products/generate-description`, data),
   getProduct: (storeId: string, productId: string) =>
     api.get<{ product: unknown }>(`/stores/${storeId}/products/${productId}`),
   updateProduct: (storeId: string, productId: string, data: Record<string, unknown>) =>
@@ -565,7 +580,12 @@ export const storesApi = {
   deleteProduct: (storeId: string, productId: string) =>
     api.delete(`/stores/${storeId}/products/${productId}`),
   // Pages
-  listPages: (storeId: string) => api.get<{ pages: unknown[] }>(`/stores/${storeId}/pages`),
+  /**
+   * List a store's pages. `kind=landing` hides the auto-seeded info pages
+   * (Conditions, FAQ, Contact…) which are edited via the footer instead.
+   */
+  listPages: (storeId: string, params?: { kind?: 'landing' | 'info' }) =>
+    api.get<{ pages: unknown[] }>(`/stores/${storeId}/pages`, { params }),
   getPageTemplates: (storeId: string) =>
     api.get<{ templates: Array<{ id: string; name: string; description: string; category: string; sectionCount: number }> }>(
       `/stores/${storeId}/pages/templates/list`
@@ -705,6 +725,14 @@ export const storesApi = {
     force?: boolean;
   }) =>
     api.patch<{ order: unknown; restockedItems: number }>(`/stores/${storeId}/orders/${orderId}/manual-status`, data),
+  /** COD call-confirmation status (confirmed / no_answer / callback / declined). */
+  setOrderConfirmation: (storeId: string, orderId: string, data: {
+    confirmationStatus: 'pending' | 'confirmed' | 'no_answer' | 'callback' | 'declined';
+    note?: string;
+    /** ISO datetime — only honoured when confirmationStatus === 'callback'. */
+    callbackAt?: string;
+  }) =>
+    api.patch<{ order: unknown; restockedItems: number }>(`/stores/${storeId}/orders/${orderId}/confirmation`, data),
   // Customers
   listCustomers: (storeId: string) =>
     api.get<{ customers: unknown[] }>(`/stores/${storeId}/customers`),

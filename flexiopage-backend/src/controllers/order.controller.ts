@@ -2,7 +2,7 @@ import { Response } from 'express';
 import { AuthRequest } from '../middleware/auth.middleware';
 import * as orderService from '../services/order.service';
 import { dispatchOrder } from '../services/delivery.service';
-import { Order } from '../models/Order.model';
+import { Order, CONFIRMATION_STATUSES, type ConfirmationStatus } from '../models/Order.model';
 import { Product } from '../models/Product.model';
 import { logActivity } from '../services/activity-log.service';
 
@@ -232,6 +232,116 @@ export async function manualStatusOverride(req: AuthRequest, res: Response): Pro
     storeId: store._id,
     userId: store.ownerId,
     metadata: { orderId: order._id.toString(), reason: reason || null, forced: !!force, restockedItems },
+  });
+
+  res.json({ order, restockedItems });
+}
+
+/**
+ * PATCH /api/stores/:storeId/orders/:orderId/confirmation
+ *
+ * Update the COD call-confirmation status. Used by the seller (or a
+ * tele-confirm agent) after they pick up the phone to call the buyer:
+ *
+ *   confirmed → buyer confirmed → ready to dispatch
+ *   no_answer → didn't pick up → try again later
+ *   callback  → buyer asked to be called at a specific time (callbackAt)
+ *   declined  → buyer cancelled → we ALSO cancel the order + restock
+ *   pending   → reset (rarely used)
+ *
+ * Body: { confirmationStatus, note?, callbackAt? }
+ *
+ * Side effects:
+ *   - "declined" auto-cancels the order (fulfillmentStatus='cancelled' +
+ *     restock + cancelReason="Refusé à la confirmation")
+ *   - every change appends to statusHistory for the audit trail
+ */
+export async function updateConfirmationStatus(req: AuthRequest, res: Response): Promise<void> {
+  const store = req.store!;
+  const userId = req.user?._id as { toString(): string } | undefined;
+  const { confirmationStatus, note, callbackAt } = req.body as {
+    confirmationStatus?: ConfirmationStatus;
+    note?: string;
+    callbackAt?: string;
+  };
+
+  if (!confirmationStatus || !CONFIRMATION_STATUSES.includes(confirmationStatus)) {
+    res.status(400).json({
+      error: 'Invalid confirmationStatus',
+      allowed: CONFIRMATION_STATUSES,
+    });
+    return;
+  }
+
+  const order = await Order.findOne({ _id: req.params.orderId, storeId: store._id });
+  if (!order) { res.status(404).json({ error: 'Order not found' }); return; }
+
+  const previous = order.confirmationStatus || 'pending';
+  order.confirmationStatus = confirmationStatus;
+  order.confirmedAt = new Date();
+  if (typeof note === 'string') order.confirmationNote = note.trim().slice(0, 500) || undefined;
+
+  // callbackAt only makes sense for the callback bucket. Allow ISO strings
+  // and JS Date — anything unparseable is silently dropped (UX over hard fail).
+  if (confirmationStatus === 'callback') {
+    if (callbackAt) {
+      const d = new Date(callbackAt);
+      if (!Number.isNaN(d.getTime())) order.callbackAt = d;
+    }
+  } else {
+    // Leaving the callback bucket clears the schedule so it can't haunt
+    // future filters / reminders.
+    order.callbackAt = undefined;
+  }
+
+  // "declined" === buyer refused the order during the call → cancel the order
+  // and restock (idempotent via inventoryRestored, same path as manual cancel).
+  let restockedItems = 0;
+  if (confirmationStatus === 'declined' && order.fulfillmentStatus !== 'cancelled') {
+    order.fulfillmentStatus = 'cancelled';
+    if (!order.inventoryRestored) {
+      const productIds = order.items.map((i) => i.productId).filter(Boolean);
+      const tracked = await Product.find({ _id: { $in: productIds }, trackInventory: true })
+        .select('_id')
+        .lean();
+      const trackedSet = new Set(tracked.map((p) => p._id.toString()));
+      await Promise.all(
+        order.items
+          .filter((i) => trackedSet.has(i.productId.toString()))
+          .map((i) =>
+            Product.updateOne({ _id: i.productId }, { $inc: { stock: i.quantity } }).then(() => {
+              restockedItems += 1;
+            })
+          )
+      );
+      order.inventoryRestored = true;
+      order.cancelReason = (note?.trim() || 'Refusé à la confirmation').slice(0, 500);
+    }
+  }
+
+  order.statusHistory = order.statusHistory || [];
+  order.statusHistory.push({
+    at: new Date(),
+    by: userId as unknown as undefined,
+    confirmationStatus,
+    fulfillmentStatus: confirmationStatus === 'declined' ? 'cancelled' : undefined,
+    note: note?.trim().slice(0, 500),
+  });
+
+  await order.save();
+
+  void logActivity({
+    type: 'order.confirmation_updated',
+    message: `Confirmation commande ${order.orderNumber} : ${previous} → ${confirmationStatus}`,
+    storeId: store._id,
+    userId: store.ownerId,
+    metadata: {
+      orderId: order._id.toString(),
+      from: previous,
+      to: confirmationStatus,
+      note: note || null,
+      restockedItems,
+    },
   });
 
   res.json({ order, restockedItems });

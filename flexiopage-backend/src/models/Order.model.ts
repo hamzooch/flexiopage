@@ -3,6 +3,20 @@ import mongoose, { Document, Schema } from 'mongoose';
 export type PaymentStatus = 'pending' | 'paid' | 'failed' | 'refunded' | 'manual';
 export type FulfillmentStatus = 'unfulfilled' | 'partial' | 'fulfilled' | 'cancelled';
 
+/**
+ * COD call-confirmation lifecycle. Standard MENA / Maghreb dropshipping
+ * workflow where the seller (or a tele-confirm agent) calls the buyer
+ * BEFORE dispatching to confirm the order is real.
+ *
+ *   pending   → not yet called (default)
+ *   confirmed → reached the buyer, they confirmed → safe to dispatch
+ *   no_answer → tried, didn't pick up
+ *   callback  → buyer asked to be called back later (callbackAt holds when)
+ *   declined  → buyer refused / wrong number → effectively cancelled
+ */
+export type ConfirmationStatus = 'pending' | 'confirmed' | 'no_answer' | 'callback' | 'declined';
+export const CONFIRMATION_STATUSES: ConfirmationStatus[] = ['pending', 'confirmed', 'no_answer', 'callback', 'declined'];
+
 /** Aggregator (one-to-many wrapper) or direct provider. */
 export type PaymentProvider =
   | 'cinetpay'        // aggregator: Wave, OM, MTN, Moov, Visa
@@ -110,8 +124,20 @@ export interface IOrder extends Document {
     by?: mongoose.Types.ObjectId;
     paymentStatus?: PaymentStatus;
     fulfillmentStatus?: FulfillmentStatus;
+    /** Confirmation-call outcome at the time of this entry. */
+    confirmationStatus?: ConfirmationStatus;
     note?: string;
   }>;
+
+  // ── COD call-confirmation workflow ─────────────────────────────────
+  /** Outcome of the buyer-confirmation call. Defaults to 'pending'. */
+  confirmationStatus?: ConfirmationStatus;
+  /** Free-text note for the agent (e.g. "rappeler après 17h", "voulait taille L"). */
+  confirmationNote?: string;
+  /** Scheduled callback timestamp when confirmationStatus is 'callback'. */
+  callbackAt?: Date;
+  /** When the last confirmation update happened. */
+  confirmedAt?: Date;
 
   createdAt: Date;
   updatedAt: Date;
@@ -193,9 +219,19 @@ const OrderSchema = new Schema<IOrder>(
         by: { type: Schema.Types.ObjectId, ref: 'User' },
         paymentStatus: { type: String },
         fulfillmentStatus: { type: String },
+        confirmationStatus: { type: String },
         note: { type: String, trim: true },
       },
     ],
+    confirmationStatus: {
+      type: String,
+      enum: CONFIRMATION_STATUSES,
+      default: 'pending',
+      index: true,
+    },
+    confirmationNote: { type: String, trim: true },
+    callbackAt: { type: Date },
+    confirmedAt: { type: Date },
   },
   { timestamps: true }
 );

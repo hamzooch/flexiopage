@@ -36,11 +36,19 @@ import {
   Hourglass,
   AlertTriangle,
   Loader2,
-  Hash,
   RotateCcw,
   Banknote,
   X,
+  Filter,
+  Store as StoreIcon,
+  TrendingUp,
+  PhoneCall,
+  PhoneOff,
+  PhoneIncoming,
+  PhoneMissed,
+  Check,
 } from 'lucide-react';
+import { PageHeader } from '@/components/dashboard/page-header';
 
 interface StoreType {
   _id: string;
@@ -98,12 +106,28 @@ interface OrderType {
     at: string;
     paymentStatus?: string;
     fulfillmentStatus?: string;
+    confirmationStatus?: string;
     note?: string;
   }>;
+  /** COD call-confirmation state (pending/confirmed/no_answer/callback/declined). */
+  confirmationStatus?: ConfirmationStatus;
+  confirmationNote?: string;
+  callbackAt?: string;
+  confirmedAt?: string;
 }
 
+type ConfirmationStatus = 'pending' | 'confirmed' | 'no_answer' | 'callback' | 'declined';
 type StatusFilter = 'all' | 'pending' | 'paid' | 'delivered' | 'cancelled';
+type ConfirmFilter = 'all' | ConfirmationStatus;
 type DayFilter = 'all' | 'today' | '7d' | '30d';
+
+const CONFIRMATION_BADGE: Record<ConfirmationStatus, { label: string; cls: string; icon: React.ComponentType<{ className?: string }>; dot: string }> = {
+  pending:   { label: 'À confirmer',     cls: 'bg-slate-500/10 text-slate-700 ring-slate-500/20',     icon: PhoneCall,     dot: 'bg-slate-400' },
+  confirmed: { label: 'Confirmé',        cls: 'bg-emerald-500/10 text-emerald-700 ring-emerald-500/20', icon: CheckCircle2,  dot: 'bg-emerald-500' },
+  no_answer: { label: 'Ne décroche pas', cls: 'bg-amber-500/10 text-amber-700 ring-amber-500/20',     icon: PhoneMissed,   dot: 'bg-amber-500' },
+  callback:  { label: 'À rappeler',      cls: 'bg-sky-500/10 text-sky-700 ring-sky-500/20',           icon: PhoneIncoming, dot: 'bg-sky-500' },
+  declined:  { label: 'Refusé',          cls: 'bg-rose-500/10 text-rose-700 ring-rose-500/20',        icon: PhoneOff,      dot: 'bg-rose-500' },
+};
 
 const DELIVERY_BADGE: Record<string, { label: string; cls: string; icon: React.ComponentType<{ className?: string }> }> = {
   pending:    { label: 'En attente',      cls: 'bg-amber-500/10 text-amber-700 ring-amber-500/20',   icon: Hourglass },
@@ -133,6 +157,7 @@ export default function DashboardOrdersPage() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
+  const [confirmFilter, setConfirmFilter] = useState<ConfirmFilter>('all');
   const [dayFilter, setDayFilter] = useState<DayFilter>('all');
   // Custom range (YYYY-MM-DD). When either is set, takes precedence over dayFilter.
   const [customFrom, setCustomFrom] = useState<string>('');
@@ -217,6 +242,9 @@ export default function DashboardOrdersPage() {
         return true;
       });
     }
+    if (confirmFilter !== 'all') {
+      list = list.filter((o) => (o.confirmationStatus || 'pending') === confirmFilter);
+    }
     const q = search.trim().toLowerCase();
     if (q) {
       list = list.filter((o) => {
@@ -230,158 +258,291 @@ export default function DashboardOrdersPage() {
       });
     }
     return list;
-  }, [orders, dayFilter, customFrom, customTo, statusFilter, search]);
+  }, [orders, dayFilter, customFrom, customTo, statusFilter, confirmFilter, search]);
+
+  // Quick KPIs on confirmation buckets — used by the new toolbar row + KPI card.
+  const confirmStats = useMemo(() => ({
+    pending:   orders.filter((o) => !o.confirmationStatus || o.confirmationStatus === 'pending').length,
+    confirmed: orders.filter((o) => o.confirmationStatus === 'confirmed').length,
+    no_answer: orders.filter((o) => o.confirmationStatus === 'no_answer').length,
+    callback:  orders.filter((o) => o.confirmationStatus === 'callback').length,
+    declined:  orders.filter((o) => o.confirmationStatus === 'declined').length,
+  }), [orders]);
+
+  const activeFiltersCount =
+    (statusFilter !== 'all' ? 1 : 0) +
+    (confirmFilter !== 'all' ? 1 : 0) +
+    (dayFilter !== 'all' || customFrom || customTo ? 1 : 0) +
+    (search.trim() ? 1 : 0);
+
+  function resetFilters() {
+    setStatusFilter('all');
+    setConfirmFilter('all');
+    setDayFilter('all');
+    setCustomFrom('');
+    setCustomTo('');
+    setSearch('');
+  }
+
+  const currentStore = stores.find((s) => s._id === selectedStoreId);
 
   return (
-    <div className="space-y-6 sm:space-y-8">
-      {/* Hero */}
-      <header className="relative overflow-hidden rounded-3xl border border-border/60 bg-card p-5 sm:p-8">
-        <div className="pointer-events-none absolute -right-12 -top-12 h-56 w-56 rounded-full gradient-brand opacity-10 blur-3xl" aria-hidden />
-        <div className="pointer-events-none absolute -bottom-10 -left-10 h-40 w-40 rounded-full bg-fuchsia-500/10 blur-3xl" aria-hidden />
-        <div className="relative">
-          <div className="inline-flex items-center gap-1.5 rounded-full border border-border/70 bg-background/60 px-3 py-1 text-xs font-medium text-muted-foreground backdrop-blur">
-            <ShoppingCart className="h-3 w-3" /> Commandes
-          </div>
-          <h1 className="mt-2 text-2xl font-bold tracking-tight sm:text-3xl">
-            Commandes
-          </h1>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Toutes les commandes reçues — détails client, articles, livraison.
-          </p>
-        </div>
-      </header>
-
-      {/* Store tabs */}
-      {stores.length > 1 && (
-        <div className="-mx-3 overflow-x-auto pb-1 sm:mx-0">
-          <div className="flex w-max gap-2 px-3 sm:flex-wrap sm:px-0">
-            {stores.map((s) => (
-              <button
-                key={s._id}
-                type="button"
-                onClick={() => setSelectedStoreId(s._id)}
-                className={cn(
-                  'shrink-0 rounded-xl border px-3 py-1.5 text-xs font-medium transition-all sm:px-4 sm:py-2 sm:text-sm',
-                  selectedStoreId === s._id
-                    ? 'border-primary bg-primary text-primary-foreground shadow-md shadow-primary/20'
-                    : 'border-border/70 hover:border-primary/40 hover:bg-muted'
-                )}
+    <div className="space-y-5">
+      {/* ── Page header — clean, sober, business-app feel ─────── */}
+      <PageHeader
+        icon={ShoppingCart}
+        title="Commandes"
+        description="Toutes les commandes reçues — détails client, articles, livraison."
+        actions={
+          stores.length > 1 ? (
+            <div className="inline-flex items-center gap-1.5 rounded-lg border border-border/70 bg-card px-2 py-1">
+              <StoreIcon className="h-3.5 w-3.5 text-muted-foreground" />
+              <select
+                value={selectedStoreId || ''}
+                onChange={(e) => setSelectedStoreId(e.target.value)}
+                className="bg-transparent text-xs font-medium outline-none"
               >
-                {s.name}
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
+                {stores.map((s) => (
+                  <option key={s._id} value={s._id}>{s.name}</option>
+                ))}
+              </select>
+            </div>
+          ) : currentStore ? (
+            <span className="inline-flex items-center gap-1.5 rounded-lg border border-border/70 bg-card px-2.5 py-1 text-xs">
+              <StoreIcon className="h-3.5 w-3.5 text-muted-foreground" />
+              {currentStore.name}
+            </span>
+          ) : undefined
+        }
+      />
 
-      {/* Stats row */}
-      <section className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
-        <StatCard label="Total" value={stats.total} icon={ShoppingCart} tint="indigo" />
-        <StatCard label="En attente" value={stats.pending} icon={Hourglass} tint="amber" />
-        <StatCard label="Payées" value={stats.paid} icon={CheckCircle2} tint="emerald" />
-        <StatCard
+      {/* ── KPI cards — modern, denser, with trend hint ────────── */}
+      <section className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+        <KpiCard
+          label="Total"
+          value={stats.total}
+          icon={ShoppingCart}
+          tint="indigo"
+          hint={loading ? '…' : `${filteredOrders.length} affichées`}
+        />
+        <KpiCard
+          label="En attente"
+          value={stats.pending}
+          icon={Hourglass}
+          tint="amber"
+          hint={stats.pending > 0 ? 'Action requise' : 'Tout traité'}
+        />
+        <KpiCard
+          label="Payées"
+          value={stats.paid}
+          icon={CheckCircle2}
+          tint="emerald"
+          hint={stats.total > 0 ? `${Math.round((stats.paid / stats.total) * 100)}% du total` : '—'}
+        />
+        <KpiCard
           label="Revenu"
-          value={formatCurrency(stats.revenue)}
-          sublabel="Livrées + payées"
+          value={formatCurrency(stats.revenue, stats.currency)}
           icon={Banknote}
           tint="fuchsia"
+          hint="Payées + livrées"
         />
       </section>
 
-      {/* Filters */}
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-        <div className="relative flex-1">
-          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Rechercher par n° commande, nom, téléphone, ville…"
-            className="h-11 rounded-xl pl-10"
-          />
+      {/* ── Filter toolbar — single elegant card ─────────────── */}
+      <div className="rounded-2xl border border-border/60 bg-card shadow-sm">
+        {/* Row 1 — search + active count + reset */}
+        <div className="flex flex-wrap items-center gap-3 border-b border-border/40 p-3">
+          <div className="relative min-w-[240px] flex-1">
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="N° commande, nom, téléphone, ville…"
+              className="h-10 rounded-lg border-border/60 pl-10"
+            />
+            {search && (
+              <button
+                type="button"
+                onClick={() => setSearch('')}
+                className="absolute right-2 top-1/2 grid h-6 w-6 -translate-y-1/2 place-items-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"
+                aria-label="Effacer la recherche"
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            )}
+          </div>
+          <div className="flex items-center gap-1.5 text-xs">
+            <Filter className="h-3.5 w-3.5 text-muted-foreground" />
+            <span className="text-muted-foreground">
+              {activeFiltersCount === 0
+                ? 'Aucun filtre'
+                : `${activeFiltersCount} filtre${activeFiltersCount > 1 ? 's' : ''}`}
+            </span>
+            {activeFiltersCount > 0 && (
+              <button
+                type="button"
+                onClick={resetFilters}
+                className="ml-1 rounded-md px-1.5 py-0.5 text-[11px] font-medium text-primary hover:bg-primary/10"
+              >
+                Réinitialiser
+              </button>
+            )}
+          </div>
         </div>
-        <div className="flex flex-col gap-2">
-          <div className="flex flex-wrap items-center gap-1.5">
-            {(['all', 'today', '7d', '30d'] as DayFilter[]).map((d) => (
-              <button
-                key={d}
-                type="button"
-                onClick={() => {
-                  setDayFilter(d);
-                  // Selecting a preset clears any custom range so the two
-                  // can't visually contradict each other.
-                  setCustomFrom('');
-                  setCustomTo('');
-                }}
-                className={cn(
-                  'rounded-lg border px-3 py-1.5 text-xs font-medium transition-all',
-                  dayFilter === d && !customFrom && !customTo
-                    ? 'border-primary bg-primary text-primary-foreground'
-                    : 'border-border/70 text-muted-foreground hover:border-primary/30 hover:text-foreground'
-                )}
-              >
-                {d === 'all' ? 'Toute période' : d === 'today' ? "Aujourd'hui" : d === '7d' ? '7 derniers jours' : '30 derniers jours'}
-              </button>
-            ))}
 
-            {/* Custom date range — when either is set, presets visually deselect */}
-            <div className="flex items-center gap-1.5 rounded-lg border border-border/70 bg-background px-2 py-1">
-              <span className="text-[11px] font-medium text-muted-foreground">Du</span>
-              <input
-                type="date"
-                value={customFrom}
-                max={customTo || undefined}
-                onChange={(e) => {
-                  setCustomFrom(e.target.value);
-                  if (e.target.value) setDayFilter('all');
-                }}
-                className="h-6 rounded bg-transparent text-xs outline-none focus:ring-1 focus:ring-primary/40"
-              />
-              <span className="text-[11px] font-medium text-muted-foreground">au</span>
-              <input
-                type="date"
-                value={customTo}
-                min={customFrom || undefined}
-                onChange={(e) => {
-                  setCustomTo(e.target.value);
-                  if (e.target.value) setDayFilter('all');
-                }}
-                className="h-6 rounded bg-transparent text-xs outline-none focus:ring-1 focus:ring-primary/40"
-              />
-              {(customFrom || customTo) && (
-                <button
-                  type="button"
-                  onClick={() => { setCustomFrom(''); setCustomTo(''); }}
-                  className="ml-1 rounded-md px-1.5 text-[11px] font-medium text-muted-foreground hover:bg-muted hover:text-foreground"
-                  title="Effacer la plage personnalisée"
-                >
-                  ×
-                </button>
-              )}
-            </div>
-          </div>
-          <div className="flex flex-wrap gap-1.5">
-            {(['all', 'pending', 'paid', 'delivered', 'cancelled'] as StatusFilter[]).map((s) => (
+        {/* Row 2 — period chips + custom range */}
+        <div className="flex flex-wrap items-center gap-2 border-b border-border/40 p-3">
+          <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+            Période
+          </span>
+          {(['all', 'today', '7d', '30d'] as DayFilter[]).map((d) => (
+            <Chip
+              key={d}
+              active={dayFilter === d && !customFrom && !customTo}
+              onClick={() => {
+                setDayFilter(d);
+                setCustomFrom('');
+                setCustomTo('');
+              }}
+            >
+              {d === 'all' ? 'Toutes' : d === 'today' ? "Aujourd'hui" : d === '7d' ? '7 jours' : '30 jours'}
+            </Chip>
+          ))}
+          <div className="ml-auto flex items-center gap-1.5 rounded-lg border border-border/60 bg-background px-2 py-1">
+            <Calendar className="h-3 w-3 text-muted-foreground" />
+            <span className="text-[10px] font-medium text-muted-foreground">Du</span>
+            <input
+              type="date"
+              value={customFrom}
+              max={customTo || undefined}
+              onChange={(e) => {
+                setCustomFrom(e.target.value);
+                if (e.target.value) setDayFilter('all');
+              }}
+              className="h-6 rounded bg-transparent text-xs outline-none"
+            />
+            <span className="text-[10px] font-medium text-muted-foreground">au</span>
+            <input
+              type="date"
+              value={customTo}
+              min={customFrom || undefined}
+              onChange={(e) => {
+                setCustomTo(e.target.value);
+                if (e.target.value) setDayFilter('all');
+              }}
+              className="h-6 rounded bg-transparent text-xs outline-none"
+            />
+            {(customFrom || customTo) && (
               <button
-                key={s}
                 type="button"
-                onClick={() => setStatusFilter(s)}
-                className={cn(
-                  'rounded-lg border px-3 py-1.5 text-xs font-medium transition-all',
-                  statusFilter === s
-                    ? 'border-primary bg-primary text-primary-foreground'
-                    : 'border-border/70 text-muted-foreground hover:border-primary/30 hover:text-foreground'
-                )}
+                onClick={() => { setCustomFrom(''); setCustomTo(''); }}
+                className="ml-0.5 rounded-md px-1 text-[10px] text-muted-foreground hover:bg-muted hover:text-foreground"
+                title="Effacer"
               >
-                {s === 'all' ? 'Tout statut' : s === 'pending' ? 'En attente' : s === 'paid' ? 'Payées' : s === 'delivered' ? 'Livrées' : 'Annulées'}
+                ×
               </button>
-            ))}
+            )}
           </div>
+        </div>
+
+        {/* Row 3 — status chips with counts */}
+        <div className="flex flex-wrap items-center gap-2 border-b border-border/40 p-3">
+          <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+            Statut
+          </span>
+          <Chip active={statusFilter === 'all'} onClick={() => setStatusFilter('all')}>
+            Tous <span className="ml-1 text-[10px] opacity-70">{stats.total}</span>
+          </Chip>
+          <Chip
+            active={statusFilter === 'pending'}
+            onClick={() => setStatusFilter('pending')}
+            dot="bg-amber-500"
+          >
+            En attente <span className="ml-1 text-[10px] opacity-70">{stats.pending}</span>
+          </Chip>
+          <Chip
+            active={statusFilter === 'paid'}
+            onClick={() => setStatusFilter('paid')}
+            dot="bg-emerald-500"
+          >
+            Payées <span className="ml-1 text-[10px] opacity-70">{stats.paid}</span>
+          </Chip>
+          <Chip
+            active={statusFilter === 'delivered'}
+            onClick={() => setStatusFilter('delivered')}
+            dot="bg-indigo-500"
+          >
+            Livrées <span className="ml-1 text-[10px] opacity-70">{stats.delivered}</span>
+          </Chip>
+          <Chip
+            active={statusFilter === 'cancelled'}
+            onClick={() => setStatusFilter('cancelled')}
+            dot="bg-rose-500"
+          >
+            Annulées
+          </Chip>
+        </div>
+
+        {/* Row 4 — confirmation chips (the call-confirmation workflow) */}
+        <div className="flex flex-wrap items-center gap-2 p-3">
+          <span className="inline-flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+            <PhoneCall className="h-3 w-3" />
+            Confirmation
+          </span>
+          <Chip active={confirmFilter === 'all'} onClick={() => setConfirmFilter('all')}>
+            Tous
+          </Chip>
+          <Chip
+            active={confirmFilter === 'pending'}
+            onClick={() => setConfirmFilter('pending')}
+            dot="bg-slate-400"
+          >
+            À confirmer <span className="ml-1 text-[10px] opacity-70">{confirmStats.pending}</span>
+          </Chip>
+          <Chip
+            active={confirmFilter === 'confirmed'}
+            onClick={() => setConfirmFilter('confirmed')}
+            dot="bg-emerald-500"
+          >
+            Confirmées <span className="ml-1 text-[10px] opacity-70">{confirmStats.confirmed}</span>
+          </Chip>
+          <Chip
+            active={confirmFilter === 'no_answer'}
+            onClick={() => setConfirmFilter('no_answer')}
+            dot="bg-amber-500"
+          >
+            Ne décroche pas <span className="ml-1 text-[10px] opacity-70">{confirmStats.no_answer}</span>
+          </Chip>
+          <Chip
+            active={confirmFilter === 'callback'}
+            onClick={() => setConfirmFilter('callback')}
+            dot="bg-sky-500"
+          >
+            À rappeler <span className="ml-1 text-[10px] opacity-70">{confirmStats.callback}</span>
+          </Chip>
+          <Chip
+            active={confirmFilter === 'declined'}
+            onClick={() => setConfirmFilter('declined')}
+            dot="bg-rose-500"
+          >
+            Refusées <span className="ml-1 text-[10px] opacity-70">{confirmStats.declined}</span>
+          </Chip>
         </div>
       </div>
 
-      {/* List */}
+      {/* ── List header — count + sorting hint ──────────────── */}
+      {selectedStoreId && !loading && filteredOrders.length > 0 && (
+        <div className="flex items-center justify-between px-1">
+          <span className="text-xs font-medium text-muted-foreground">
+            <strong className="text-foreground">{filteredOrders.length}</strong> commande{filteredOrders.length > 1 ? 's' : ''} affichée{filteredOrders.length > 1 ? 's' : ''}
+          </span>
+          <span className="text-[11px] text-muted-foreground">Plus récentes en premier</span>
+        </div>
+      )}
+
+      {/* ── List ─────────────────────────────────────────────── */}
       {!selectedStoreId ? (
-        <EmptyState title="Sélectionne une boutique" body="Choisis une boutique ci-dessus pour voir ses commandes." />
+        <EmptyState title="Sélectionne une boutique" body="Choisis une boutique en haut à droite pour voir ses commandes." />
       ) : loading ? (
         <div className="grid place-items-center py-24">
           <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
@@ -391,10 +552,10 @@ export default function DashboardOrdersPage() {
           title={orders.length === 0 ? 'Pas encore de commandes' : 'Aucun résultat'}
           body={orders.length === 0
             ? 'Les nouvelles commandes apparaîtront ici dès qu\'un client commande.'
-            : 'Aucune commande ne correspond aux filtres.'}
+            : 'Aucune commande ne correspond à tes filtres.'}
         />
       ) : (
-        <ul className="space-y-3">
+        <ul className="space-y-2.5">
           {filteredOrders.map((o) => (
             <OrderCard
               key={o._id}
@@ -411,40 +572,76 @@ export default function DashboardOrdersPage() {
   );
 }
 
-// ─── Stat Card ─────────────────────────────────────────────────────────
-function StatCard({
+// ─── Filter chip — used in the toolbar ─────────────────────────────────
+function Chip({
+  active,
+  onClick,
+  children,
+  dot,
+}: {
+  active: boolean;
+  onClick: () => void;
+  children: React.ReactNode;
+  /** Optional colored dot before the label (status indicator). */
+  dot?: string;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={cn(
+        'inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-xs font-medium transition-all',
+        active
+          ? 'border-primary bg-primary/10 text-primary shadow-sm'
+          : 'border-border/60 text-muted-foreground hover:border-primary/30 hover:bg-muted hover:text-foreground'
+      )}
+    >
+      {dot && <span className={cn('h-1.5 w-1.5 rounded-full', dot)} />}
+      {children}
+    </button>
+  );
+}
+
+// ─── KPI Card — clean business-app stat, no decorative blur ─────────────
+function KpiCard({
   label,
   value,
-  sublabel,
+  hint,
   icon: Icon,
   tint,
 }: {
   label: string;
   value: number | string;
-  sublabel?: string;
+  hint?: string;
   icon: React.ComponentType<{ className?: string }>;
   tint: 'indigo' | 'amber' | 'emerald' | 'fuchsia';
 }) {
-  const tintMap = {
-    indigo: 'from-indigo-500/15 to-violet-500/10 bg-indigo-500/15 text-indigo-700',
-    amber: 'from-amber-500/15 to-orange-500/10 bg-amber-500/15 text-amber-700',
-    emerald: 'from-emerald-500/15 to-teal-500/10 bg-emerald-500/15 text-emerald-700',
-    fuchsia: 'from-fuchsia-500/15 to-pink-500/10 bg-fuchsia-500/15 text-fuchsia-700',
+  const tintMap: Record<string, { bg: string; text: string; border: string; accent: string }> = {
+    indigo:  { bg: 'bg-indigo-500/10',  text: 'text-indigo-700',  border: 'border-indigo-500/20',  accent: 'from-indigo-500 to-violet-500' },
+    amber:   { bg: 'bg-amber-500/10',   text: 'text-amber-700',   border: 'border-amber-500/20',   accent: 'from-amber-500 to-orange-500' },
+    emerald: { bg: 'bg-emerald-500/10', text: 'text-emerald-700', border: 'border-emerald-500/20', accent: 'from-emerald-500 to-teal-500' },
+    fuchsia: { bg: 'bg-fuchsia-500/10', text: 'text-fuchsia-700', border: 'border-fuchsia-500/20', accent: 'from-fuchsia-500 to-pink-500' },
   };
-  const [grad, , iconBg, iconColor] = tintMap[tint].split(/\s+/);
+  const c = tintMap[tint];
   return (
-    <div className="relative overflow-hidden rounded-2xl border border-border/60 bg-card p-4 sm:p-5">
-      <div className={cn('pointer-events-none absolute -right-10 -top-10 h-28 w-28 rounded-full bg-gradient-to-br blur-3xl', grad)} aria-hidden />
-      <div className="relative flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <div className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">{label}</div>
-          <div className="mt-1.5 truncate text-xl font-bold tracking-tight sm:text-2xl">{value}</div>
-          {sublabel && <div className="mt-0.5 text-[10px] text-muted-foreground">{sublabel}</div>}
+    <div className="group relative overflow-hidden rounded-2xl border border-border/60 bg-card p-4 transition-all hover:border-primary/30 hover:shadow-md">
+      {/* Top accent bar — subtle brand mark */}
+      <div className={cn('absolute inset-x-0 top-0 h-0.5 bg-gradient-to-r opacity-70', c.accent)} aria-hidden />
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0 flex-1">
+          <div className="text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">{label}</div>
+          <div className="mt-1.5 truncate text-2xl font-bold tracking-tight">{value}</div>
         </div>
-        <div className={cn('grid h-9 w-9 shrink-0 place-items-center rounded-xl', iconBg, iconColor)}>
+        <div className={cn('grid h-9 w-9 shrink-0 place-items-center rounded-xl', c.bg, c.text)}>
           <Icon className="h-4 w-4" />
         </div>
       </div>
+      {hint && (
+        <div className="mt-2.5 flex items-center gap-1 text-[10px] text-muted-foreground">
+          <TrendingUp className="h-3 w-3" />
+          {hint}
+        </div>
+      )}
     </div>
   );
 }
@@ -469,49 +666,92 @@ function OrderCard({
   const DeliveryIcon = delivery?.icon;
   const totalQty = o.items.reduce((sum, it) => sum + (it.quantity || 0), 0);
 
+  // Customer initials for the avatar — uses the customer name when present,
+  // falls back to the phone or order number's last 2 chars.
+  const initials = (o.customerName || '')
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((s) => s[0])
+    .join('')
+    .toUpperCase() || o.orderNumber.slice(-2).toUpperCase();
+
+  // Deterministic gradient per order so the avatars feel personal but stable.
+  const avatarHues = [
+    'from-indigo-500 to-violet-600',
+    'from-emerald-500 to-teal-600',
+    'from-amber-500 to-orange-600',
+    'from-fuchsia-500 to-pink-600',
+    'from-sky-500 to-blue-600',
+    'from-rose-500 to-red-600',
+  ];
+  const avatarGrad = avatarHues[
+    Array.from(o._id).reduce((acc, c) => acc + c.charCodeAt(0), 0) % avatarHues.length
+  ];
+
   return (
-    <li className="overflow-hidden rounded-2xl border border-border/60 bg-card transition-all hover:border-primary/30 hover:shadow-lg">
+    <li
+      className={cn(
+        'overflow-hidden rounded-2xl border bg-card transition-all',
+        expanded
+          ? 'border-primary/40 shadow-md shadow-primary/5'
+          : 'border-border/60 hover:border-primary/30 hover:shadow-md'
+      )}
+    >
       {/* Header — always visible */}
       <button
         type="button"
         onClick={onToggle}
-        className="flex w-full items-start gap-3 p-4 text-left transition-colors hover:bg-muted/30 sm:gap-4 sm:p-5"
+        className="flex w-full items-center gap-3 p-3.5 text-left transition-colors hover:bg-muted/20 sm:gap-4 sm:p-4"
       >
-        {/* Order # tile */}
-        <div className="hidden h-12 w-12 shrink-0 place-items-center rounded-xl gradient-brand text-white shadow-md sm:grid">
-          <Hash className="h-5 w-5" />
+        {/* Customer avatar — initials in colored gradient */}
+        <div
+          className={cn(
+            'grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-gradient-to-br text-sm font-bold text-white shadow-md',
+            avatarGrad
+          )}
+          aria-hidden
+        >
+          {initials}
         </div>
 
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-start justify-between gap-2">
             <div className="min-w-0">
-              <div className="flex items-center gap-2">
-                <span className="font-mono text-sm font-semibold text-foreground">{o.orderNumber}</span>
-                <span className="text-[10px] text-muted-foreground">·</span>
-                <span className="text-xs text-muted-foreground inline-flex items-center gap-1">
+              {/* Customer name + order number */}
+              <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+                <span className="truncate text-sm font-semibold text-foreground">
+                  {o.customerName || 'Client anonyme'}
+                </span>
+                <span className="font-mono text-[11px] text-muted-foreground">{o.orderNumber}</span>
+              </div>
+              {/* Meta row — date / phone / city */}
+              <div className="mt-0.5 flex flex-wrap items-center gap-x-2.5 gap-y-0.5 text-[11px] text-muted-foreground">
+                <span className="inline-flex items-center gap-1">
                   <Calendar className="h-3 w-3" />
                   {formatDate(o.createdAt)}
                 </span>
-              </div>
-              <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
-                {o.customerName && (
-                  <span className="inline-flex items-center gap-1">
-                    <UserIcon className="h-3 w-3" />
-                    <span className="font-medium text-foreground/80">{o.customerName}</span>
-                  </span>
-                )}
                 {o.customerPhone && (
-                  <a href={`tel:${o.customerPhone}`} className="inline-flex items-center gap-1 hover:text-foreground" onClick={(e) => e.stopPropagation()}>
-                    <Phone className="h-3 w-3" />
-                    {o.customerPhone}
-                  </a>
+                  <>
+                    <span className="opacity-40">·</span>
+                    <a
+                      href={`tel:${o.customerPhone}`}
+                      className="inline-flex items-center gap-1 hover:text-foreground"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <Phone className="h-3 w-3" />
+                      {o.customerPhone}
+                    </a>
+                  </>
                 )}
                 {o.shippingAddress?.city && (
-                  <span className="inline-flex items-center gap-1">
-                    <MapPin className="h-3 w-3" />
-                    {o.shippingAddress.city}
-                    {o.shippingAddress.country && ` · ${o.shippingAddress.country}`}
-                  </span>
+                  <>
+                    <span className="opacity-40">·</span>
+                    <span className="inline-flex items-center gap-1">
+                      <MapPin className="h-3 w-3" />
+                      {o.shippingAddress.city}
+                    </span>
+                  </>
                 )}
               </div>
             </div>
@@ -526,36 +766,51 @@ function OrderCard({
             </div>
           </div>
 
-          {/* Badges row */}
-          <div className="mt-3 flex flex-wrap items-center gap-1.5">
-            <span className={cn('inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold ring-1', payment.cls)}>
-              <CreditCard className="h-3 w-3" />
+          {/* Badges row — confirmation + payment + method + delivery */}
+          <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
+            {(() => {
+              const c = CONFIRMATION_BADGE[o.confirmationStatus || 'pending'];
+              const CIcon = c.icon;
+              return (
+                <span className={cn('inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[10px] font-semibold ring-1', c.cls)}>
+                  <CIcon className="h-3 w-3" />
+                  {c.label}
+                </span>
+              );
+            })()}
+            <span className={cn('inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[10px] font-semibold ring-1', payment.cls)}>
+              <span className={cn('h-1.5 w-1.5 rounded-full', payment.cls.includes('emerald') ? 'bg-emerald-500' : payment.cls.includes('amber') ? 'bg-amber-500' : payment.cls.includes('rose') ? 'bg-rose-500' : 'bg-slate-500')} />
               {payment.label}
             </span>
             {o.paymentMethod && (
-              <span className="inline-flex items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-[11px] font-medium text-muted-foreground">
-                {o.paymentMethod === 'cod' ? 'Paiement à la livraison' : o.paymentMethod}
+              <span className="inline-flex items-center gap-1 rounded-md bg-muted/60 px-2 py-0.5 text-[10px] font-medium text-muted-foreground">
+                {o.paymentMethod === 'cod' ? 'COD' : o.paymentMethod.toUpperCase()}
               </span>
             )}
             {o.delivery?.error ? (
-              <span className="inline-flex items-center gap-1 rounded-full bg-red-500/10 px-2 py-0.5 text-[11px] font-semibold text-red-700 ring-1 ring-red-500/20" title={o.delivery.error}>
+              <span className="inline-flex items-center gap-1 rounded-md bg-red-500/10 px-2 py-0.5 text-[10px] font-semibold text-red-700 ring-1 ring-red-500/20" title={o.delivery.error}>
                 <AlertTriangle className="h-3 w-3" />
                 Échec dispatch
               </span>
             ) : delivery && DeliveryIcon ? (
-              <span className={cn('inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold ring-1', delivery.cls)}>
+              <span className={cn('inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[10px] font-semibold ring-1', delivery.cls)}>
                 <DeliveryIcon className="h-3 w-3" />
                 {delivery.label}
               </span>
-            ) : null}
+            ) : (
+              <span className="inline-flex items-center gap-1 rounded-md bg-muted/40 px-2 py-0.5 text-[10px] font-medium text-muted-foreground">
+                <Hourglass className="h-3 w-3" />
+                Non dispatchée
+              </span>
+            )}
           </div>
         </div>
 
         {/* Expand chevron */}
         <ChevronDown
           className={cn(
-            'mt-1 h-5 w-5 shrink-0 text-muted-foreground transition-transform',
-            expanded && 'rotate-180'
+            'h-5 w-5 shrink-0 text-muted-foreground transition-transform',
+            expanded && 'rotate-180 text-primary'
           )}
         />
       </button>
@@ -713,6 +968,10 @@ function OrderCard({
               <p className="text-foreground/80">{o.notes}</p>
             </div>
           )}
+
+          {/* COD call-confirmation — fast actions for the tele-confirm
+              workflow (confirmer / ne décroche pas / à rappeler / refusé) */}
+          <OrderConfirmationActions order={o} storeId={storeId} onChanged={onChanged} />
 
           {/* Manual status override — seller can fix a stuck order without
               touching the courier. The component disables irrelevant actions
@@ -925,6 +1184,231 @@ function OrderStatusActions({
             ))}
           </ul>
         </details>
+      )}
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// COD call-confirmation panel — quick actions for the tele-confirm flow
+// ─────────────────────────────────────────────────────────────────────
+// Standard MENA / Maghreb COD dropshipping workflow: the seller (or an
+// agent) calls the buyer BEFORE dispatching to confirm the order. The
+// outcome of that call drives whether the order moves forward or gets
+// cancelled. This panel exposes the 4 actions an agent reaches for in a
+// single tap, with optional note + scheduled callback time.
+
+function OrderConfirmationActions({
+  order,
+  storeId,
+  onChanged,
+}: {
+  order: OrderType;
+  storeId: string;
+  onChanged: () => void | Promise<void>;
+}) {
+  const current = (order.confirmationStatus || 'pending') as ConfirmationStatus;
+  const [busy, setBusy] = useState<ConfirmationStatus | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [showCallbackPicker, setShowCallbackPicker] = useState(false);
+  const [callbackAt, setCallbackAt] = useState<string>(() => {
+    // Default callback = today + 2h, rounded to next half-hour, in the
+    // local input format (yyyy-MM-ddThh:mm).
+    const d = new Date();
+    d.setMinutes(d.getMinutes() + 120);
+    d.setMinutes(Math.ceil(d.getMinutes() / 30) * 30, 0, 0);
+    return d.toISOString().slice(0, 16);
+  });
+  const [noteDraft, setNoteDraft] = useState<string>('');
+
+  async function apply(status: ConfirmationStatus, extra?: { note?: string; callbackAt?: string }) {
+    setBusy(status);
+    setError(null);
+    try {
+      await storesApi.setOrderConfirmation(storeId, order._id, {
+        confirmationStatus: status,
+        note: extra?.note,
+        callbackAt: extra?.callbackAt,
+      });
+      await onChanged();
+      setShowCallbackPicker(false);
+      setNoteDraft('');
+    } catch (err: unknown) {
+      const ax = err as { response?: { data?: { error?: string; message?: string } } };
+      setError(ax?.response?.data?.message || ax?.response?.data?.error || 'Action impossible.');
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function handleCallback() {
+    if (!callbackAt) return;
+    // The HTML datetime-local input gives a local-time string with no TZ;
+    // sending the local-aware Date.toISOString() makes the backend store
+    // the correct absolute instant.
+    const iso = new Date(callbackAt).toISOString();
+    await apply('callback', { callbackAt: iso, note: noteDraft || undefined });
+  }
+
+  async function handleDeclined() {
+    const reason = window.prompt(
+      'Raison du refus (optionnel — gardée dans l\'historique)',
+      'Refusé à la confirmation'
+    );
+    if (reason === null) return;
+    await apply('declined', { note: reason });
+  }
+
+  const currentBadge = CONFIRMATION_BADGE[current];
+  const CurrentIcon = currentBadge.icon;
+
+  return (
+    <div className="mt-5 rounded-xl border border-border/60 bg-gradient-to-br from-sky-500/5 via-card to-card p-3 sm:p-4">
+      <div className="mb-3 flex items-center justify-between gap-2">
+        <h3 className="inline-flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+          <PhoneCall className="h-3.5 w-3.5 text-sky-600" />
+          Confirmation client (appel)
+        </h3>
+        <span className={cn('inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[10px] font-semibold ring-1', currentBadge.cls)}>
+          <CurrentIcon className="h-3 w-3" />
+          {currentBadge.label}
+        </span>
+      </div>
+
+      {order.confirmationStatus === 'callback' && order.callbackAt && (
+        <div className="mb-3 inline-flex items-center gap-1.5 rounded-lg bg-sky-500/10 px-2.5 py-1.5 text-[11px] text-sky-800">
+          <Calendar className="h-3.5 w-3.5" />
+          Rappel programmé : <strong>{formatDate(order.callbackAt)}</strong>
+        </div>
+      )}
+      {order.confirmationNote && (
+        <p className="mb-3 rounded-lg bg-muted/40 px-2.5 py-1.5 text-[11px] italic text-muted-foreground">
+          « {order.confirmationNote} »
+        </p>
+      )}
+      {error && (
+        <p className="mb-3 rounded-lg bg-red-500/10 px-2.5 py-1.5 text-[11px] font-medium text-red-700">{error}</p>
+      )}
+
+      {!showCallbackPicker ? (
+        <div className="flex flex-wrap gap-2">
+          <Button
+            size="sm"
+            variant={current === 'confirmed' ? 'default' : 'outline'}
+            disabled={busy !== null}
+            onClick={() => apply('confirmed')}
+            className={cn(
+              'gap-1.5',
+              current === 'confirmed' && 'bg-emerald-600 text-white hover:bg-emerald-600/90',
+              current !== 'confirmed' && 'border-emerald-500/30 text-emerald-700 hover:bg-emerald-500/10'
+            )}
+          >
+            {busy === 'confirmed' ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
+            Confirmé
+          </Button>
+
+          <Button
+            size="sm"
+            variant={current === 'no_answer' ? 'default' : 'outline'}
+            disabled={busy !== null}
+            onClick={() => apply('no_answer')}
+            className={cn(
+              'gap-1.5',
+              current === 'no_answer' && 'bg-amber-600 text-white hover:bg-amber-600/90',
+              current !== 'no_answer' && 'border-amber-500/30 text-amber-700 hover:bg-amber-500/10'
+            )}
+          >
+            {busy === 'no_answer' ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <PhoneMissed className="h-3.5 w-3.5" />}
+            Ne décroche pas
+          </Button>
+
+          <Button
+            size="sm"
+            variant={current === 'callback' ? 'default' : 'outline'}
+            disabled={busy !== null}
+            onClick={() => setShowCallbackPicker(true)}
+            className={cn(
+              'gap-1.5',
+              current === 'callback' && 'bg-sky-600 text-white hover:bg-sky-600/90',
+              current !== 'callback' && 'border-sky-500/30 text-sky-700 hover:bg-sky-500/10'
+            )}
+          >
+            <PhoneIncoming className="h-3.5 w-3.5" />
+            À rappeler
+          </Button>
+
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={busy !== null}
+            onClick={handleDeclined}
+            className="gap-1.5 border-rose-500/30 text-rose-700 hover:bg-rose-500/10"
+          >
+            {busy === 'declined' ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <PhoneOff className="h-3.5 w-3.5" />}
+            Refusé
+          </Button>
+
+          {/* Quick-call link — same number as the contact button below, but
+              right here so the agent can dial and update in one motion. */}
+          {order.customerPhone && (
+            <a
+              href={`tel:${order.customerPhone}`}
+              className="ml-auto inline-flex items-center gap-1.5 rounded-md bg-primary/10 px-2.5 py-1.5 text-xs font-semibold text-primary hover:bg-primary/20"
+            >
+              <Phone className="h-3.5 w-3.5" />
+              Appeler {order.customerPhone}
+            </a>
+          )}
+        </div>
+      ) : (
+        // Callback picker — datetime + optional note + confirm/cancel
+        <div className="space-y-2.5 rounded-lg border border-sky-500/30 bg-sky-500/5 p-3">
+          <div className="grid gap-2 sm:grid-cols-[1fr_2fr]">
+            <div>
+              <label className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                Rappeler le
+              </label>
+              <input
+                type="datetime-local"
+                value={callbackAt}
+                onChange={(e) => setCallbackAt(e.target.value)}
+                className="mt-1 h-9 w-full rounded-md border border-border/60 bg-card px-2 text-xs"
+              />
+            </div>
+            <div>
+              <label className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                Note (optionnel)
+              </label>
+              <input
+                type="text"
+                value={noteDraft}
+                onChange={(e) => setNoteDraft(e.target.value)}
+                placeholder="Ex: appeler après 17h, préfère WhatsApp…"
+                className="mt-1 h-9 w-full rounded-md border border-border/60 bg-card px-2 text-xs"
+              />
+            </div>
+          </div>
+          <div className="flex justify-end gap-2">
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => setShowCallbackPicker(false)}
+              disabled={busy === 'callback'}
+              className="h-8 text-xs"
+            >
+              Annuler
+            </Button>
+            <Button
+              size="sm"
+              onClick={handleCallback}
+              disabled={!callbackAt || busy === 'callback'}
+              className="h-8 gap-1.5 bg-sky-600 text-xs text-white hover:bg-sky-600/90"
+            >
+              {busy === 'callback' ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <PhoneIncoming className="h-3.5 w-3.5" />}
+              Planifier le rappel
+            </Button>
+          </div>
+        </div>
       )}
     </div>
   );
