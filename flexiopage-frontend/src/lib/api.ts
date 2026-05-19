@@ -458,9 +458,12 @@ export type StaffRole = 'owner' | 'superadmin' | 'admin' | 'supervisor' | 'user'
 
 export const adminApi = {
   overview: () => api.get<{ overview: AdminOverview }>('/admin/overview'),
-  overviewRich: (range: 'today' | '7d' | '30d' | '90d' | '12m' = '30d') =>
+  // Range type widened to match the shared RangeKey (which now also includes
+  // 'custom'). The admin UI never offers the custom option, so at runtime
+  // only the preset values flow through here — this is a typing-only change.
+  overviewRich: (range: import('@/types/analytics').RangeKey = '30d') =>
     api.get<import('@/types/admin-analytics').AdminOverviewRich>('/admin/overview/rich', { params: { range } }),
-  storeDrilldown: (storeId: string, range: 'today' | '7d' | '30d' | '90d' | '12m' = '30d') =>
+  storeDrilldown: (storeId: string, range: import('@/types/analytics').RangeKey = '30d') =>
     api.get<import('@/types/admin-analytics').AdminStoreDrilldown>(`/admin/stores/${storeId}/analytics`, { params: { range } }),
   users: (search?: string) =>
     api.get<{ users: AdminUser[]; total: number }>('/admin/users', { params: { search } }),
