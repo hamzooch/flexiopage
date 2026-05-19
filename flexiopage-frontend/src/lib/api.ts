@@ -560,8 +560,16 @@ export const storesApi = {
     api.patch<{ store: unknown }>(`/stores/${storeId}`, data),
   getAnalytics: (storeId: string) =>
     api.get<StoreAnalyticsSummary>(`/stores/${storeId}/analytics`),
-  getAnalyticsRich: (storeId: string, range: 'today' | '7d' | '30d' | '90d' | '12m' = '30d') =>
-    api.get<import('@/types/analytics').StoreAnalyticsRich>(`/stores/${storeId}/analytics/rich`, { params: { range } }),
+  getAnalyticsRich: (
+    storeId: string,
+    range: 'today' | '7d' | '30d' | '90d' | '12m' | 'custom' = '30d',
+    customRange?: { from: string; to: string },
+  ) =>
+    api.get<import('@/types/analytics').StoreAnalyticsRich>(`/stores/${storeId}/analytics/rich`, {
+      params: range === 'custom' && customRange
+        ? { range, from: customRange.from, to: customRange.to }
+        : { range },
+    }),
   // Custom domain
   getDomainTarget: (storeId: string) =>
     api.get<{ host: string; ips: string[] }>(`/stores/${storeId}/domain-target`),
@@ -715,6 +723,11 @@ export const storesApi = {
   ),
   getTracking: (storeId: string, range: TrackingRange = '30d') =>
     api.get<TrackingStats>(`/stores/${storeId}/tracking`, { params: { range } }),
+  /** Shopify-style live visitor count — distinct anonymous sessions in the last N minutes (default 5). */
+  getLiveVisitors: (storeId: string, windowMin?: number) =>
+    api.get<{ count: number; windowMin: number }>(`/stores/${storeId}/visitors/live`, {
+      params: windowMin ? { window: windowMin } : undefined,
+    }),
   getSectionsFromTemplate: (storeId: string, templateId: string) =>
     api.post<{ sections: unknown[] }>(`/stores/${storeId}/pages/from-template`, { templateId }),
   createPage: (storeId: string, data: Record<string, unknown>) =>

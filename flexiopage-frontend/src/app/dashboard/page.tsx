@@ -38,6 +38,7 @@ import {
   Settings as SettingsIcon,
   RefreshCw,
   CheckCircle2,
+  CalendarRange,
 } from 'lucide-react';
 import { useAuthStore } from '@/stores/auth-store';
 import { useStoreStore } from '@/stores/store-store';
@@ -73,7 +74,34 @@ const RANGE_LABELS: Record<RangeKey, string> = {
   '30d': '30 jours',
   '90d': '90 jours',
   '12m': '12 mois',
+  custom: 'Personnalisé',
 };
+
+/** Preset chips shown on the overview — kept short on purpose. The seller
+ *  reaches for longer windows (90j / 12m) via the "Personnaliser" picker. */
+const QUICK_RANGES: ReadonlyArray<Exclude<RangeKey, 'custom' | '90d' | '12m'>> = ['today', '7d', '30d'];
+
+function todayISO(): string {
+  const d = new Date();
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+function daysAgoISO(n: number): string {
+  const d = new Date();
+  d.setDate(d.getDate() - n);
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+function formatDateFR(iso: string): string {
+  // iso = "YYYY-MM-DD" — parse without timezone shenanigans.
+  const [y, m, d] = iso.split('-').map((s) => Number(s));
+  if (!y || !m || !d) return iso;
+  return new Date(y, m - 1, d).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', year: 'numeric' });
+}
 
 export default function DashboardOverviewPage() {
   const user = useAuthStore((s) => s.user);
@@ -82,12 +110,19 @@ export default function DashboardOverviewPage() {
 
   const [stores, setStores] = useState<StoreType[]>([]);
   const [loadingStores, setLoadingStores] = useState(true);
-  const [range, setRange] = useState<RangeKey>('30d');
+  const [range, setRange] = useState<RangeKey>('today');
   const [analytics, setAnalytics] = useState<StoreAnalyticsRich | null>(null);
   const [loadingAnalytics, setLoadingAnalytics] = useState(false);
   const [abandoned, setAbandoned] = useState<number>(0);
   const [lowStock, setLowStock] = useState<ProductLite[]>([]);
   const [refreshKey, setRefreshKey] = useState(0);
+  const [liveVisitors, setLiveVisitors] = useState<number>(0);
+  // Custom range picker — only sent to the API when the user explicitly opens
+  // the popover and applies a date pair. Seeded with the last 14 days so the
+  // first open is never blank.
+  const [customFrom, setCustomFrom] = useState<string>(() => daysAgoISO(13));
+  const [customTo, setCustomTo] = useState<string>(() => todayISO());
+  const [customOpen, setCustomOpen] = useState(false);
 
   // ── Bootstrap stores ──────────────────────────────────────────────
   useEffect(() => {
@@ -121,7 +156,13 @@ export default function DashboardOverviewPage() {
     setLoadingAnalytics(true);
     try {
       const [analyticsRes, cartsRes, productsRes] = await Promise.all([
-        storesApi.getAnalyticsRich(activeStoreId, range).catch(() => null),
+        storesApi
+          .getAnalyticsRich(
+            activeStoreId,
+            range,
+            range === 'custom' ? { from: customFrom, to: customTo } : undefined,
+          )
+          .catch(() => null),
         storesApi.listAbandonedCarts(activeStoreId).catch(() => ({ data: { carts: [] } })),
         storesApi.listProducts(activeStoreId).catch(() => ({ data: { products: [] } })),
       ]);
@@ -144,9 +185,28 @@ export default function DashboardOverviewPage() {
     } finally {
       setLoadingAnalytics(false);
     }
-  }, [activeStoreId, range]);
+  }, [activeStoreId, range, customFrom, customTo]);
 
   useEffect(() => { void loadActiveStoreData(); }, [loadActiveStoreData, refreshKey]);
+
+  // ── Live visitors — Shopify-style. Poll every 30s while the tab is visible.
+  // The endpoint is cheap (one distinct() over a tiny indexed window) so this
+  // stays well under any rate concern. We reset to 0 when switching store so
+  // the badge from a previous store never bleeds into the next one.
+  useEffect(() => {
+    if (!activeStoreId) { setLiveVisitors(0); return; }
+    let cancelled = false;
+    const fetchLive = () => {
+      if (typeof document !== 'undefined' && document.hidden) return;
+      storesApi
+        .getLiveVisitors(activeStoreId)
+        .then((res) => { if (!cancelled) setLiveVisitors(res.data.count || 0); })
+        .catch(() => { /* silent — live count is non-critical */ });
+    };
+    fetchLive();
+    const id = window.setInterval(fetchLive, 30_000);
+    return () => { cancelled = true; window.clearInterval(id); };
+  }, [activeStoreId]);
 
   // ── Derive presentation values ───────────────────────────────────
   const k = analytics?.kpis;
@@ -205,14 +265,14 @@ export default function DashboardOverviewPage() {
       {/* ── Range selector + refresh ─────────────────────────── */}
       {activeStore && (
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="inline-flex items-center gap-0.5 rounded-xl border border-border/60 bg-card p-1 shadow-sm">
-            {(['today', '7d', '30d', '90d', '12m'] as const).map((r) => {
+          <div className="relative inline-flex items-center gap-0.5 rounded-xl border border-border/60 bg-card p-1 shadow-sm">
+            {QUICK_RANGES.map((r) => {
               const active = range === r;
               return (
                 <button
                   key={r}
                   type="button"
-                  onClick={() => setRange(r)}
+                  onClick={() => { setRange(r); setCustomOpen(false); }}
                   className={cn(
                     'rounded-lg px-3 py-1.5 text-xs font-semibold transition-all',
                     active
@@ -224,8 +284,83 @@ export default function DashboardOverviewPage() {
                 </button>
               );
             })}
+            <button
+              type="button"
+              onClick={() => setCustomOpen((v) => !v)}
+              className={cn(
+                'inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition-all',
+                range === 'custom'
+                  ? 'bg-gradient-to-br from-primary to-fuchsia-600 text-white shadow-sm'
+                  : 'text-muted-foreground hover:bg-muted/60 hover:text-foreground'
+              )}
+              aria-expanded={customOpen}
+              aria-haspopup="dialog"
+            >
+              <CalendarRange className="h-3.5 w-3.5" />
+              {range === 'custom' ? `${formatDateFR(customFrom)} → ${formatDateFR(customTo)}` : 'Personnaliser'}
+            </button>
+            {customOpen && (
+              <div
+                role="dialog"
+                aria-label="Choisir une période personnalisée"
+                className="absolute left-0 top-[calc(100%+6px)] z-30 w-[280px] rounded-xl border border-border/60 bg-card p-3 shadow-lg"
+              >
+                <div className="space-y-2">
+                  <label className="block text-[11px] font-semibold text-muted-foreground">
+                    Du
+                    <input
+                      type="date"
+                      value={customFrom}
+                      max={customTo || todayISO()}
+                      onChange={(e) => setCustomFrom(e.target.value)}
+                      className="mt-1 w-full rounded-md border border-border/60 bg-background px-2 py-1.5 text-sm text-foreground focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
+                    />
+                  </label>
+                  <label className="block text-[11px] font-semibold text-muted-foreground">
+                    Au
+                    <input
+                      type="date"
+                      value={customTo}
+                      min={customFrom || undefined}
+                      max={todayISO()}
+                      onChange={(e) => setCustomTo(e.target.value)}
+                      className="mt-1 w-full rounded-md border border-border/60 bg-background px-2 py-1.5 text-sm text-foreground focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
+                    />
+                  </label>
+                </div>
+                <div className="mt-3 flex items-center justify-end gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setCustomOpen(false)}
+                    className="rounded-md px-2.5 py-1 text-xs font-semibold text-muted-foreground hover:bg-muted/60"
+                  >
+                    Annuler
+                  </button>
+                  <button
+                    type="button"
+                    disabled={!customFrom || !customTo || customFrom > customTo}
+                    onClick={() => { setRange('custom'); setCustomOpen(false); }}
+                    className="rounded-md bg-gradient-to-br from-primary to-fuchsia-600 px-3 py-1 text-xs font-semibold text-white shadow-sm disabled:opacity-50"
+                  >
+                    Appliquer
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
           <div className="flex items-center gap-2">
+            {liveVisitors > 0 && (
+              <span
+                className="inline-flex items-center gap-1.5 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2.5 py-1 text-xs font-semibold text-emerald-700"
+                title={`${liveVisitors} visiteur${liveVisitors > 1 ? 's' : ''} actif${liveVisitors > 1 ? 's' : ''} sur la boutique (5 dernières minutes)`}
+              >
+                <span className="relative flex h-2 w-2">
+                  <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-500 opacity-60" />
+                  <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-500" />
+                </span>
+                {liveVisitors} en ligne
+              </span>
+            )}
             {loadingAnalytics && (
               <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
                 <Activity className="h-3 w-3 animate-pulse" />

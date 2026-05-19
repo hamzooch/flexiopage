@@ -3,7 +3,7 @@ import validator from 'validator';
 import { AuthRequest } from '../middleware/auth.middleware';
 import * as storeService from '../services/store.service';
 import { getStoreAnalytics, getStoreAnalyticsRich, type RangeKey } from '../services/analytics.service';
-import { getTrackingStats, type TrackingRange } from '../services/tracking.service';
+import { getTrackingStats, getLiveVisitors, type TrackingRange } from '../services/tracking.service';
 import { verifyAndSaveDomain, getDomainTarget, checkDomain, normalizeDomain, isValidDomain } from '../services/domain.service';
 import { testSheetsWebhook } from '../services/sheets.service';
 import { effectiveOwnerId, isTeamMember } from '../lib/owner';
@@ -169,13 +169,36 @@ export async function getStoreAnalyticsController(req: AuthRequest, res: Respons
   res.json(analytics);
 }
 
-/** GET /api/stores/:storeId/analytics/rich?range=7d|30d|90d|12m — full dashboard payload. */
+/** GET /api/stores/:storeId/analytics/rich?range=7d|30d|90d|12m|custom[&from=YYYY-MM-DD&to=YYYY-MM-DD] — full dashboard payload. */
 export async function getStoreAnalyticsRichController(req: AuthRequest, res: Response): Promise<void> {
   const store = req.store!;
-  const allowed: RangeKey[] = ['today', '7d', '30d', '90d', '12m'];
+  const allowed: RangeKey[] = ['today', '7d', '30d', '90d', '12m', 'custom'];
   const raw = String(req.query.range || '30d');
   const range = (allowed as string[]).includes(raw) ? (raw as RangeKey) : '30d';
-  const analytics = await getStoreAnalyticsRich(store._id.toString(), range);
+  let custom: { from: Date; to: Date } | undefined;
+  if (range === 'custom') {
+    const fromRaw = String(req.query.from || '');
+    const toRaw = String(req.query.to || '');
+    const from = new Date(fromRaw);
+    const to = new Date(toRaw);
+    if (!fromRaw || !toRaw || Number.isNaN(from.getTime()) || Number.isNaN(to.getTime())) {
+      res.status(400).json({ error: 'custom range requires valid from + to (YYYY-MM-DD)' });
+      return;
+    }
+    if (from.getTime() > to.getTime()) {
+      res.status(400).json({ error: '`from` must be on or before `to`' });
+      return;
+    }
+    // Cap the window at 366 days so a seller can't accidentally request a
+    // multi-year scan that hammers Mongo. 366 covers any 12-month picker.
+    const days = (to.getTime() - from.getTime()) / (24 * 60 * 60 * 1000);
+    if (days > 366) {
+      res.status(400).json({ error: 'custom range too wide (max 366 days)' });
+      return;
+    }
+    custom = { from, to };
+  }
+  const analytics = await getStoreAnalyticsRich(store._id.toString(), range, custom);
   res.json(analytics);
 }
 
@@ -186,6 +209,15 @@ export async function getStoreTrackingController(req: AuthRequest, res: Response
   const raw = String(req.query.range || '30d');
   const range = (allowed as string[]).includes(raw) ? (raw as TrackingRange) : '30d';
   const stats = await getTrackingStats(store._id.toString(), range);
+  res.json(stats);
+}
+
+/** GET /api/stores/:storeId/visitors/live — distinct anonymous sessions active in the last few minutes. */
+export async function getLiveVisitorsController(req: AuthRequest, res: Response): Promise<void> {
+  const store = req.store!;
+  const raw = Number(req.query.window);
+  const windowMin = Number.isFinite(raw) && raw >= 1 && raw <= 60 ? Math.round(raw) : 5;
+  const stats = await getLiveVisitors(store._id.toString(), windowMin);
   res.json(stats);
 }
 

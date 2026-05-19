@@ -43,7 +43,14 @@ export interface StoreAnalytics {
   productViewsThisMonth?: number;
 }
 
-export type RangeKey = 'today' | '7d' | '30d' | '90d' | '12m';
+export type RangeKey = 'today' | '7d' | '30d' | '90d' | '12m' | 'custom';
+
+export interface CustomRange {
+  /** Inclusive start date — interpreted as local midnight. */
+  from: Date;
+  /** Inclusive end date — interpreted as local end-of-day. */
+  to: Date;
+}
 
 interface RangeWindow {
   from: Date;
@@ -57,7 +64,7 @@ interface RangeWindow {
   buckets: number;
 }
 
-function resolveRange(range: RangeKey, now: Date = new Date()): RangeWindow {
+function resolveRange(range: RangeKey, now: Date = new Date(), custom?: CustomRange): RangeWindow {
   const to = new Date(now);
   to.setHours(23, 59, 59, 999);
   if (range === '12m') {
@@ -71,6 +78,28 @@ function resolveRange(range: RangeKey, now: Date = new Date()): RangeWindow {
     prevFrom.setDate(1);
     prevFrom.setHours(0, 0, 0, 0);
     return { from, to, prevFrom, prevTo, bucket: 'month', buckets: 12 };
+  }
+  if (range === 'custom' && custom) {
+    // Custom window picked by the seller. We snap to local-midnight / EOD so
+    // the seller's intent ("from the 5th to the 12th") includes both endpoints
+    // fully. The previous-window delta is computed as an equal-length window
+    // ending right before `from` — same convention as the preset ranges.
+    const cFrom = new Date(custom.from);
+    cFrom.setHours(0, 0, 0, 0);
+    const cTo = new Date(custom.to);
+    cTo.setHours(23, 59, 59, 999);
+    const days = Math.max(1, Math.round((cTo.getTime() - cFrom.getTime()) / (24 * 60 * 60 * 1000)));
+    const prevTo = new Date(cFrom.getTime() - 1);
+    const prevFrom = new Date(prevTo);
+    prevFrom.setDate(prevFrom.getDate() - (days - 1));
+    prevFrom.setHours(0, 0, 0, 0);
+    // Switch to monthly buckets for long windows so the sparkline stays
+    // readable; daily buckets work fine up to ~2 months.
+    const bucket: 'day' | 'month' = days > 62 ? 'month' : 'day';
+    const buckets = bucket === 'day'
+      ? days
+      : (cTo.getFullYear() - cFrom.getFullYear()) * 12 + (cTo.getMonth() - cFrom.getMonth()) + 1;
+    return { from: cFrom, to: cTo, prevFrom, prevTo, bucket, buckets };
   }
   // `today` is a 1-day window starting at local midnight; the previous
   // window is yesterday so the delta KPI is meaningful day-over-day.
@@ -233,10 +262,11 @@ export async function getStoreAnalytics(storeId: string): Promise<StoreAnalytics
 /** Full analytics payload powering the new dashboard. */
 export async function getStoreAnalyticsRich(
   storeId: string,
-  range: RangeKey = '30d'
+  range: RangeKey = '30d',
+  custom?: CustomRange
 ): Promise<StoreAnalyticsRich> {
   const storeObjectId = new mongoose.Types.ObjectId(storeId);
-  const w = resolveRange(range);
+  const w = resolveRange(range, new Date(), range === 'custom' ? custom : undefined);
 
   const baseMatch = { storeId: storeObjectId };
   const inWindow = { ...baseMatch, createdAt: { $gte: w.from, $lte: w.to } };

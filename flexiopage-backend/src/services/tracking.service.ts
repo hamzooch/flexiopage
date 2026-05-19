@@ -21,6 +21,26 @@ export interface RecordEventInput {
   currency?: string;
 }
 
+/**
+ * Live visitor count for the seller's overview — Shopify-style. We count
+ * distinct anonymous sessionIds that fired ANY storefront event in the last
+ * `windowMin` minutes (default 5). Five minutes matches Shopify's window and
+ * is short enough to feel "live" without dropping a visitor between page
+ * navigations.
+ */
+export async function getLiveVisitors(
+  storeId: string,
+  windowMin = 5,
+): Promise<{ count: number; windowMin: number }> {
+  const oid = new mongoose.Types.ObjectId(storeId);
+  const since = new Date(Date.now() - windowMin * 60 * 1000);
+  const sessions = await StoreEvent.distinct('sessionId', {
+    storeId: oid,
+    createdAt: { $gte: since },
+  });
+  return { count: (sessions as string[]).length, windowMin };
+}
+
 /** Fire-and-forget event ingest — never throws into the request path. */
 export async function recordEvent(input: RecordEventInput): Promise<void> {
   if (!input.storeId || !input.sessionId || !input.type) return;
