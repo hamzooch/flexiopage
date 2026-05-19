@@ -75,7 +75,7 @@ export function Header({ onOpenMobileNav }: Props = {}) {
           type="button"
           onClick={onOpenMobileNav}
           className="grid h-10 w-10 place-items-center rounded-xl text-muted-foreground transition-all hover:bg-muted hover:text-foreground md:hidden"
-          aria-label="Ouvrir le menu"
+          aria-label={t('header.openMenu')}
         >
           <Menu className="h-5 w-5" />
         </button>
@@ -96,13 +96,13 @@ export function Header({ onOpenMobileNav }: Props = {}) {
       {/* Search */}
       <div className="hidden flex-1 max-w-md md:block">
         <div className="group relative">
-          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground transition-colors group-focus-within:text-primary" />
+          <Search className="pointer-events-none absolute start-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground transition-colors group-focus-within:text-primary" />
           <input
             type="search"
             placeholder={t('header.searchPlaceholder')}
-            className="h-10 w-full rounded-xl border border-border/70 bg-muted/40 pl-10 pr-12 text-sm placeholder:text-muted-foreground/70 transition-all focus:border-primary/40 focus:bg-background focus:outline-none focus:ring-4 focus:ring-primary/10"
+            className="h-10 w-full rounded-xl border border-border/70 bg-muted/40 ps-10 pe-12 text-sm placeholder:text-muted-foreground/70 transition-all focus:border-primary/40 focus:bg-background focus:outline-none focus:ring-4 focus:ring-primary/10"
           />
-          <kbd className="pointer-events-none absolute right-2.5 top-1/2 hidden -translate-y-1/2 items-center gap-1 rounded-md border border-border/60 bg-background px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground sm:inline-flex">
+          <kbd className="pointer-events-none absolute end-2.5 top-1/2 hidden -translate-y-1/2 items-center gap-1 rounded-md border border-border/60 bg-background px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground sm:inline-flex">
             ⌘K
           </kbd>
         </div>
@@ -147,15 +147,18 @@ export function Header({ onOpenMobileNav }: Props = {}) {
             type="button"
             onClick={() => setMenuOpen((v) => !v)}
             onBlur={() => setTimeout(() => setMenuOpen(false), 150)}
-            className="ml-1 grid h-10 w-10 place-items-center rounded-full gradient-brand text-xs font-semibold text-white shadow-md shadow-primary/20 transition-transform hover:scale-105 focus:outline-none focus:ring-4 focus:ring-primary/20"
-            aria-label="Account menu"
+            className="ms-1 grid h-10 w-10 place-items-center rounded-full gradient-brand text-xs font-semibold text-white shadow-md shadow-primary/20 transition-transform hover:scale-105 focus:outline-none focus:ring-4 focus:ring-primary/20"
+            aria-label={t('header.accountMenu')}
             aria-expanded={menuOpen}
           >
             {initials}
           </button>
           <div
             className={cn(
-              'absolute right-0 top-12 w-60 origin-top-right rounded-2xl border border-border/70 bg-card p-2 shadow-xl shadow-foreground/5 transition-all',
+              // `end-0` keeps the menu anchored to the avatar in both LTR and
+              // RTL. The transform origin needs the rtl: variant since
+              // Tailwind has no logical `origin-top-end` keyword.
+              'absolute end-0 top-12 w-60 origin-top-right rtl:origin-top-left rounded-2xl border border-border/70 bg-card p-2 shadow-xl shadow-foreground/5 transition-all',
               menuOpen
                 ? 'pointer-events-auto translate-y-0 scale-100 opacity-100'
                 : 'pointer-events-none -translate-y-1 scale-95 opacity-0'
@@ -167,7 +170,7 @@ export function Header({ onOpenMobileNav }: Props = {}) {
                 {initials}
               </div>
               <div className="min-w-0">
-                <div className="truncate text-sm font-medium">{user?.name || 'User'}</div>
+                <div className="truncate text-sm font-medium">{user?.name || t('common.user')}</div>
                 <div className="truncate text-xs text-muted-foreground">{user?.email}</div>
               </div>
             </div>

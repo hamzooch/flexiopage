@@ -176,9 +176,15 @@ export function Sidebar({ mobileOpen = false, onMobileClose }: Props) {
 
       <aside
         className={cn(
-          'fixed inset-y-0 left-0 z-50 flex h-full w-72 flex-col overflow-hidden border-r border-sidebar-border bg-sidebar text-sidebar-foreground transition-transform duration-300',
+          // `start-0` + `border-e` are logical: in LTR they render as left:0 /
+          // border-right, in RTL they auto-flip to right:0 / border-left so the
+          // drawer hugs the correct edge in Arabic.
+          'fixed inset-y-0 start-0 z-50 flex h-full w-72 flex-col overflow-hidden border-e border-sidebar-border bg-sidebar text-sidebar-foreground transition-transform duration-300',
           'md:sticky md:top-0 md:z-30 md:h-screen md:w-64 md:translate-x-0',
-          mobileOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'
+          // `translate-x` always means physical X, so we pair the LTR variant
+          // (-translate-x-full hides off the left) with the RTL variant
+          // (translate-x-full hides off the right) for the closed state.
+          mobileOpen ? 'translate-x-0' : '-translate-x-full rtl:translate-x-full md:translate-x-0 md:rtl:translate-x-0'
         )}
       >
         {/* Logo + close (mobile) */}
@@ -186,7 +192,7 @@ export function Sidebar({ mobileOpen = false, onMobileClose }: Props) {
           <Link
             href="/dashboard"
             className="flex items-center"
-            aria-label="FlexioPage — tableau de bord"
+            aria-label={t('sidebar.brandAria')}
           >
             <BrandLogo variant="color" width={130} priority />
           </Link>
@@ -194,7 +200,7 @@ export function Sidebar({ mobileOpen = false, onMobileClose }: Props) {
             type="button"
             onClick={onMobileClose}
             className="grid h-8 w-8 place-items-center rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground md:hidden"
-            aria-label="Fermer le menu"
+            aria-label={t('sidebar.closeMenu')}
           >
             <X className="h-4 w-4" />
           </button>
@@ -225,7 +231,7 @@ export function Sidebar({ mobileOpen = false, onMobileClose }: Props) {
                         )}
                       >
                         {isActive && (
-                          <span className="absolute -left-3 top-1/2 h-5 w-1 -translate-y-1/2 rounded-r-full gradient-brand" />
+                          <span className="absolute -start-3 top-1/2 h-5 w-1 -translate-y-1/2 rounded-e-full gradient-brand" />
                         )}
                         <item.icon className="h-[17px] w-[17px] shrink-0" />
                         <span className="truncate">{t(item.labelKey)}</span>
@@ -247,8 +253,9 @@ export function Sidebar({ mobileOpen = false, onMobileClose }: Props) {
               className="group flex items-center gap-2.5 rounded-lg bg-gradient-to-r from-rose-600 to-orange-600 px-3 py-2.5 text-sm font-semibold text-white shadow-sm shadow-rose-500/30 transition-transform hover:scale-[1.01]"
             >
               <ShieldCheck className="h-4 w-4" strokeWidth={2.5} />
-              <span className="flex-1">Mode Admin Plateforme</span>
-              <ArrowRight className="h-3.5 w-3.5 opacity-80 transition-transform group-hover:translate-x-0.5" />
+              <span className="flex-1">{t('sidebar.adminMode')}</span>
+              {/* Arrow always points "forward" in reading direction → flip in RTL. */}
+              <ArrowRight className="h-3.5 w-3.5 opacity-80 transition-transform rtl:rotate-180 group-hover:translate-x-0.5 rtl:group-hover:-translate-x-0.5" />
             </Link>
           </div>
         )}
@@ -265,7 +272,7 @@ export function Sidebar({ mobileOpen = false, onMobileClose }: Props) {
             </div>
             <div className="min-w-0 flex-1 leading-tight">
               <div className="truncate text-sm font-medium text-foreground">
-                {user?.name || 'User'}
+                {user?.name || t('common.user')}
               </div>
               <div className="truncate text-[11px] text-muted-foreground">
                 {user?.email}

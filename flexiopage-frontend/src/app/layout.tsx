@@ -124,7 +124,23 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="fr">
+    <html lang="fr" suppressHydrationWarning>
+      <head>
+        {/*
+          Pre-hydration locale flip. The dashboard persists the seller's
+          language in localStorage under `flexiopage-lang` (Zustand persist).
+          Without this script, the first paint is always French/LTR, then
+          React mounts and flips to RTL → visible layout shift on Arabic.
+          Running it inline in <head> lets `lang`/`dir` reflect the saved
+          choice BEFORE the first paint, so the sidebar drawer, menus, and
+          inputs render on the correct side immediately.
+        */}
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `(function(){try{var r=localStorage.getItem('flexiopage-lang');if(r){var l=(JSON.parse(r).state||{}).lang;if(l){document.documentElement.lang=l;document.documentElement.dir=l==='ar'?'rtl':'ltr';}}}catch(e){}})();`,
+          }}
+        />
+      </head>
       <body className={inter.className} suppressHydrationWarning>
         {children}
         {/* Platform-wide chatbot — auto-hides on storefront routes where each

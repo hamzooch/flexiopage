@@ -34,12 +34,12 @@ export function isRtl(lang: Lang): boolean {
 
 const DICTIONARY = {
   // Header / breadcrumbs
-  'header.dashboard': { fr: 'Dashboard', en: 'Dashboard', ar: 'لوحة التحكم' },
+  'header.dashboard': { fr: 'Tableau de bord', en: 'Dashboard', ar: 'لوحة التحكم' },
   'header.overview': { fr: "Vue d'ensemble", en: 'Overview', ar: 'نظرة عامة' },
   'header.searchPlaceholder': {
     fr: 'Rechercher produits, commandes, clients…',
     en: 'Search products, orders, customers…',
-    ar: 'بحث عن منتجات أو طلبات أو عملاء…',
+    ar: 'ابحث عن منتجات، طلبات، عملاء…',
   },
   'header.chooseStore': { fr: 'Choisir une boutique', en: 'Choose a store', ar: 'اختر متجرًا' },
   'header.switchStore': { fr: 'Changer de boutique', en: 'Switch store', ar: 'تغيير المتجر' },
@@ -48,27 +48,32 @@ const DICTIONARY = {
   'header.settings': { fr: 'Paramètres', en: 'Settings', ar: 'الإعدادات' },
   'header.logout': { fr: 'Se déconnecter', en: 'Log out', ar: 'تسجيل الخروج' },
   'header.language': { fr: 'Langue', en: 'Language', ar: 'اللغة' },
+  'header.openMenu': { fr: 'Ouvrir le menu', en: 'Open menu', ar: 'فتح القائمة' },
+  'header.accountMenu': { fr: 'Menu du compte', en: 'Account menu', ar: 'قائمة الحساب' },
 
   // Sidebar — section titles
   'sidebar.workspace': { fr: 'Espace de travail', en: 'Workspace', ar: 'مساحة العمل' },
-  'sidebar.sales': { fr: 'Vente', en: 'Sales', ar: 'المبيعات' },
+  'sidebar.sales': { fr: 'Ventes', en: 'Sales', ar: 'المبيعات' },
   'sidebar.account': { fr: 'Compte', en: 'Account', ar: 'الحساب' },
 
   // Sidebar — workspace items
   'sidebar.overview': { fr: "Vue d'ensemble", en: 'Overview', ar: 'نظرة عامة' },
   'sidebar.myStores': { fr: 'Mes boutiques', en: 'My stores', ar: 'متاجري' },
-  'sidebar.analytics': { fr: 'Analytics', en: 'Analytics', ar: 'الإحصائيات' },
+  'sidebar.analytics': { fr: 'Analytics', en: 'Analytics', ar: 'التحليلات' },
 
   // Sidebar — sales items
   'sidebar.orders': { fr: 'Commandes', en: 'Orders', ar: 'الطلبات' },
   'sidebar.products': { fr: 'Produits', en: 'Products', ar: 'المنتجات' },
   'sidebar.offers': { fr: 'Offres', en: 'Offers', ar: 'العروض' },
   'sidebar.landingPages': { fr: 'Landing pages', en: 'Landing pages', ar: 'صفحات الهبوط' },
-  'sidebar.aiStudio': { fr: 'Studio IA', en: 'AI Studio', ar: 'استوديو الذكاء الاصطناعي' },
+  // "AI Studio" is widely understood; "استوديو الذكاء الاصطناعي" is the full
+  // formal form but too long for the sidebar — we keep the short bilingual
+  // form so it doesn't wrap on smaller screens.
+  'sidebar.aiStudio': { fr: 'Studio IA', en: 'AI Studio', ar: 'استوديو AI' },
   // Kept for backwards-compat with code that still reads these keys, both point
   // to the unified Studio IA page now.
-  'sidebar.aiLanding': { fr: 'Studio IA', en: 'AI Studio', ar: 'استوديو الذكاء الاصطناعي' },
-  'sidebar.aiPoster': { fr: 'Studio IA', en: 'AI Studio', ar: 'استوديو الذكاء الاصطناعي' },
+  'sidebar.aiLanding': { fr: 'Studio IA', en: 'AI Studio', ar: 'استوديو AI' },
+  'sidebar.aiPoster': { fr: 'Studio IA', en: 'AI Studio', ar: 'استوديو AI' },
   'sidebar.tracking': { fr: 'Suivi', en: 'Tracking', ar: 'التتبع' },
   'sidebar.customers': { fr: 'Clients', en: 'Customers', ar: 'العملاء' },
   'sidebar.profitCalculator': {
@@ -78,13 +83,29 @@ const DICTIONARY = {
   },
 
   // Sidebar — account items
-  'sidebar.wallet': { fr: 'Solde', en: 'Wallet', ar: 'الرصيد' },
+  'sidebar.wallet': { fr: 'Solde', en: 'Wallet', ar: 'المحفظة' },
   'sidebar.team': { fr: 'Équipe', en: 'Team', ar: 'الفريق' },
   'sidebar.support': { fr: 'Support', en: 'Support', ar: 'الدعم' },
   'sidebar.integrations': { fr: 'Intégrations', en: 'Integrations', ar: 'التكاملات' },
   'sidebar.apps': { fr: 'Applications', en: 'Apps', ar: 'التطبيقات' },
   'sidebar.profile': { fr: 'Profil', en: 'Profile', ar: 'الملف الشخصي' },
   'sidebar.settings': { fr: 'Paramètres', en: 'Settings', ar: 'الإعدادات' },
+
+  // Sidebar — chrome bits (logo aria, close button, admin shortcut)
+  'sidebar.brandAria': {
+    fr: 'FlexioPage — tableau de bord',
+    en: 'FlexioPage — dashboard',
+    ar: 'FlexioPage — لوحة التحكم',
+  },
+  'sidebar.closeMenu': { fr: 'Fermer le menu', en: 'Close menu', ar: 'إغلاق القائمة' },
+  'sidebar.adminMode': {
+    fr: 'Mode Admin Plateforme',
+    en: 'Platform Admin Mode',
+    ar: 'وضع إدارة المنصة',
+  },
+
+  // Cross-cutting fallbacks
+  'common.user': { fr: 'Utilisateur', en: 'User', ar: 'المستخدم' },
 } as const satisfies Record<string, Record<Lang, string>>;
 
 export type TKey = keyof typeof DICTIONARY;

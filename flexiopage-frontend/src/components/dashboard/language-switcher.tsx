@@ -52,7 +52,7 @@ export function LanguageSwitcher() {
       <div
         role="listbox"
         className={cn(
-          'absolute right-0 top-12 z-30 w-44 origin-top-right rounded-2xl border border-border/70 bg-card p-1.5 shadow-xl shadow-foreground/5 transition-all',
+          'absolute end-0 top-12 z-30 w-44 origin-top-right rtl:origin-top-left rounded-2xl border border-border/70 bg-card p-1.5 shadow-xl shadow-foreground/5 transition-all',
           open ? 'pointer-events-auto translate-y-0 scale-100 opacity-100' : 'pointer-events-none -translate-y-1 scale-95 opacity-0'
         )}
       >
