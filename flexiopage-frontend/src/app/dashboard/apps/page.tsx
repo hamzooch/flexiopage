@@ -34,6 +34,7 @@ import {
   AlertTriangle,
   ArrowLeft,
   Plug,
+  Bot,
 } from 'lucide-react';
 
 interface StoreDoc {
@@ -45,7 +46,7 @@ interface StoreDoc {
   };
 }
 
-type AppId = 'google-sheets' | 'mailchimp' | 'slack' | 'zapier' | 'discord';
+type AppId = 'google-sheets' | 'mailchimp' | 'slack' | 'zapier' | 'discord' | 'messenger-bot';
 
 interface AppDef {
   id: AppId;
@@ -58,6 +59,15 @@ interface AppDef {
 }
 
 const APPS: AppDef[] = [
+  {
+    id: 'messenger-bot',
+    name: 'Messenger Bot',
+    description: 'Chatbot IA qui répond en darija/français et crée les commandes COD depuis ta page Facebook.',
+    category: 'Automation',
+    icon: Bot,
+    accent: 'from-blue-500 to-indigo-600',
+    available: false,
+  },
   {
     id: 'google-sheets',
     name: 'Google Sheets',

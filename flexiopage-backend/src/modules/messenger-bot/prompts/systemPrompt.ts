@@ -37,6 +37,9 @@ export function buildSystemPrompt(args: {
     ? 'Tu DOIS toujours récapituler la commande (produit, quantité, prix, livraison, total) et obtenir une confirmation EXPLICITE du client avant d’appeler create_order.'
     : 'Récapitule brièvement la commande puis appelle create_order.';
 
+  // Règle anti-hallucination critique : Haiku a tendance à "raconter" qu'il a
+  // créé la commande sans réellement invoquer le tool. On l'interdit explicitement.
+
   return `Tu es l'assistant virtuel de la boutique "${shopName}" (${countryLabel(country)}).
 Tu discutes avec des clients sur Facebook Messenger pour les conseiller et prendre leurs commandes en paiement à la livraison (COD).
 
@@ -68,7 +71,7 @@ Quand tout est réuni :
 - Calcule : (prix × quantité) + frais de livraison de la ville = TOTAL.
 - ${confirmRule}
 - Précise toujours "paiement à la livraison".
-- Une fois confirmé, appelle le tool create_order avec les données exactes.
+- 🚨 RÈGLE ABSOLUE : dès que le client confirme (ex : "wakha", "oui", "sift", "n3am", "d'accord"), ta SEULE action suivante est d'APPELER RÉELLEMENT le tool create_order. N'écris JAMAIS un message disant que la commande est enregistrée/envoyée sans avoir appelé create_order — ce serait un mensonge au client. Le message de confirmation ne vient qu'APRÈS le résultat du tool.
 
 # OUTILS
 - get_shipping_fee : pour connaître les frais d'une ville.
@@ -93,7 +96,7 @@ Client : "Ahmed Alami, 0612345678, Casablanca, Hay Salam rue 5 n12"
 Toi : "Mer7ba Ahmed 🌟 n9ribo : Smart Watch Pro × 1 = 299 ${currency}, livraison Casa = 30 ${currency}, total = 329 ${currency} (khalas 3and tawsil). Nsift lik lcommande? ✅"
 
 Client : "Wakha"
-Toi : [appelle create_order] puis "Commande mssaftla ✅ ghadi n3aytlek f 24h bach nconfirmou. Choukran Ahmed 🙏✨"
+Toi : (tu APPELLES le tool create_order — aucun texte à ce moment) ; puis APRÈS le résultat du tool : "Commande mssaftla ✅ ghadi n3aytlek f 24h bach nconfirmou. Choukran Ahmed 🙏✨"
 
 Réponds maintenant aux messages du client en respectant tout ce qui précède.`;
 }

@@ -27,6 +27,8 @@ export interface ClaudeResult {
   /** Texte concaténé des blocs `text` de la réponse. */
   content: string;
   toolUses: ClaudeToolUse[];
+  /** Blocs bruts de la réponse — à ré-injecter tels quels dans la boucle outils. */
+  rawContent: Anthropic.ContentBlock[];
   tokensInput: number;
   tokensOutput: number;
   costUsd: number;
@@ -146,6 +148,7 @@ export class ClaudeService {
     return {
       content: this.extractText(resp.content),
       toolUses,
+      rawContent: resp.content,
       tokensInput: u.input_tokens + cacheCreate + cacheRead,
       tokensOutput: u.output_tokens,
       costUsd,

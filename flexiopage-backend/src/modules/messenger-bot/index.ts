@@ -8,10 +8,13 @@
  */
 import type { Express } from 'express';
 import { apiRouter, webhookRouter } from './routes/messengerBot.routes';
+import { registerMessageWorker } from './workers/messageWorker';
 import { logger } from '../../lib/logger';
 
 export function registerMessengerBot(app: Express): void {
   app.use('/api/messenger-bot', apiRouter);
   app.use('/webhook/messenger', webhookRouter);
+  // Branche le processor in-process (sera remplacé par un worker BullMQ/Redis).
+  registerMessageWorker();
   logger.info('[messenger-bot] module monté (/api/messenger-bot, /webhook/messenger)');
 }
