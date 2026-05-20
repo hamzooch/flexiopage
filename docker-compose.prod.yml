@@ -61,10 +61,28 @@ services:
       EMAIL_FROM: ${EMAIL_FROM:-}
       CINETPAY_API_KEY: ${CINETPAY_API_KEY:-}
       CINETPAY_SITE_ID: ${CINETPAY_SITE_ID:-}
+      CINETPAY_SECRET_KEY: ${CINETPAY_SECRET_KEY:-}
       CINETPAY_NOTIFY_URL: ${CINETPAY_NOTIFY_URL:-}
+      # Flutterwave
+      FLW_PUBLIC_KEY: ${FLW_PUBLIC_KEY:-}
+      FLW_SECRET_KEY: ${FLW_SECRET_KEY:-}
+      FLW_SECRET_HASH: ${FLW_SECRET_HASH:-}
+      # Public base URL of the API (used for webhook notify_url + data-deletion status URL)
       API_PUBLIC_URL: ${API_PUBLIC_URL}
       FLEXIOPAGE_WEBHOOK_SECRET: ${FLEXIOPAGE_WEBHOOK_SECRET:-}
       MOGADELIVERY_WEBHOOK_URL: ${MOGADELIVERY_WEBHOOK_URL:-}
+      # ── Messenger Bot ──
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      CLAUDE_MODEL_PRIMARY: ${CLAUDE_MODEL_PRIMARY:-claude-haiku-4-5-20251001}
+      CLAUDE_MODEL_FALLBACK: ${CLAUDE_MODEL_FALLBACK:-claude-sonnet-4-5}
+      FACEBOOK_APP_ID: ${FACEBOOK_APP_ID:-}
+      FACEBOOK_APP_SECRET: ${FACEBOOK_APP_SECRET:-}
+      MESSENGER_VERIFY_TOKEN: ${MESSENGER_VERIFY_TOKEN:-}
+      FACEBOOK_REDIRECT_URI: ${FACEBOOK_REDIRECT_URI:-}
+      FACEBOOK_GRAPH_VERSION: ${FACEBOOK_GRAPH_VERSION:-v19.0}
+      TOKEN_ENCRYPTION_KEY: ${TOKEN_ENCRYPTION_KEY:-}
+      # Optional — when set, the bot uses BullMQ instead of in-process processing
+      REDIS_URL: ${REDIS_URL:-}
     depends_on:
       - mongodb
     volumes:
