@@ -22,6 +22,8 @@ const TEST_PAGE_ID = 'TEST_PAGE_123';
 
 async function main(): Promise<void> {
   await connectDB();
+  // Aligne les index avec le schéma (facebook_page_id devenu sparse, +channel).
+  await BotConfig.syncIndexes();
   const store = await Store.findOne({ slug: STORE_SLUG });
   if (!store) throw new Error(`Boutique "${STORE_SLUG}" introuvable — lance d'abord "npm run seed:test-store".`);
 

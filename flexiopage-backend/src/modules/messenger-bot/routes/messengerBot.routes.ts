@@ -11,6 +11,8 @@ import * as conversation from '../controllers/conversation.controller';
 import * as facebookAuth from '../controllers/facebookAuth.controller';
 import * as stats from '../controllers/stats.controller';
 import { verifyWebhook, receiveWebhook } from '../controllers/webhook.controller';
+import { verifyWhatsAppWebhook, receiveWhatsAppWebhook } from '../controllers/whatsappWebhook.controller';
+import { connectWhatsApp, disconnectWhatsApp } from '../controllers/whatsappConnect.controller';
 
 // ── API vendeur (authentifiée) ───────────────────────────────────────
 export const apiRouter = Router();
@@ -21,12 +23,16 @@ apiRouter.get('/config', botConfig.getConfig);
 apiRouter.put('/config', botConfig.updateConfig);
 apiRouter.post('/config/test', botConfig.testBot);
 
-// OAuth Facebook
+// OAuth Facebook (Messenger)
 apiRouter.get('/facebook/auth-url', facebookAuth.getAuthUrl);
 apiRouter.post('/facebook/callback', facebookAuth.oauthCallback);
 apiRouter.post('/facebook/connect', facebookAuth.connectPage);
 apiRouter.post('/facebook/disconnect', facebookAuth.disconnect);
 apiRouter.get('/facebook/pages', facebookAuth.listPages);
+
+// WhatsApp (connexion par token manuel)
+apiRouter.post('/whatsapp/connect', connectWhatsApp);
+apiRouter.post('/whatsapp/disconnect', disconnectWhatsApp);
 
 // Conversations
 apiRouter.get('/conversations', conversation.listConversations);
@@ -39,7 +45,12 @@ apiRouter.get('/stats/overview', stats.overview);
 apiRouter.get('/stats/conversations', stats.conversationStats);
 apiRouter.get('/stats/usage', stats.usageStats);
 
-// ── Webhook Meta (public) ────────────────────────────────────────────
+// ── Webhook Messenger (public) ───────────────────────────────────────
 export const webhookRouter = Router();
 webhookRouter.get('/', verifyWebhook);
 webhookRouter.post('/', receiveWebhook);
+
+// ── Webhook WhatsApp (public) ────────────────────────────────────────
+export const whatsappWebhookRouter = Router();
+whatsappWebhookRouter.get('/', verifyWhatsAppWebhook);
+whatsappWebhookRouter.post('/', receiveWhatsAppWebhook);

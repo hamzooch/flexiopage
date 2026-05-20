@@ -7,7 +7,7 @@ import { logger } from '../../../lib/logger';
 import { Conversation } from '../models/Conversation.model';
 import { Message } from '../models/Message.model';
 import { BotConfig } from '../models/BotConfig.model';
-import { getOwnedStoreId } from '../utils/vendorAuth';
+import { getOwnedStoreId, getChannel } from '../utils/vendorAuth';
 import { sendManualSchema } from '../schemas/config.schema';
 import { messengerService } from '../services/messenger.service';
 import { encryptionService } from '../services/encryption.service';
@@ -18,7 +18,7 @@ export async function listConversations(req: AuthRequest, res: Response): Promis
 
   const limit = Math.min(Number(req.query.limit) || 20, 100);
   const skip = Math.max(Number(req.query.skip) || 0, 0);
-  const filter: Record<string, unknown> = { vendor_id: storeId };
+  const filter: Record<string, unknown> = { vendor_id: storeId, channel: getChannel(req) };
   if (req.query.status) filter.status = String(req.query.status);
 
   const [items, total] = await Promise.all([

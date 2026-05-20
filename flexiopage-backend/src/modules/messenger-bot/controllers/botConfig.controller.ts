@@ -7,7 +7,7 @@ import type { AuthRequest } from '../../../middleware/auth.middleware';
 import { logger } from '../../../lib/logger';
 import { BotConfig, type IBotConfig } from '../models/BotConfig.model';
 import { Store } from '../../../models/Store.model';
-import { getOwnedStoreId } from '../utils/vendorAuth';
+import { getOwnedStoreId, getChannel } from '../utils/vendorAuth';
 import { updateConfigSchema, testBotSchema } from '../schemas/config.schema';
 import { catalogService } from '../services/catalog.service';
 import { claudeService } from '../services/claude.service';
@@ -27,7 +27,7 @@ export async function getConfig(req: AuthRequest, res: Response): Promise<void> 
     res.status(403).json({ error: 'storeId requis et doit t’appartenir.' });
     return;
   }
-  const config = await BotConfig.findOne({ vendor_id: storeId });
+  const config = await BotConfig.findOne({ vendor_id: storeId, channel: getChannel(req) });
   res.json({ connected: !!config, config: config ? publicConfig(config) : null });
 }
 
@@ -43,7 +43,7 @@ export async function updateConfig(req: AuthRequest, res: Response): Promise<voi
     return;
   }
   const config = await BotConfig.findOneAndUpdate(
-    { vendor_id: storeId },
+    { vendor_id: storeId, channel: getChannel(req) },
     { $set: parsed.data },
     { new: true },
   );
@@ -66,7 +66,7 @@ export async function testBot(req: AuthRequest, res: Response): Promise<void> {
     res.status(400).json({ error: 'message requis' });
     return;
   }
-  const config = await BotConfig.findOne({ vendor_id: storeId });
+  const config = await BotConfig.findOne({ vendor_id: storeId, channel: getChannel(req) });
   if (!config) {
     res.status(404).json({ error: 'Aucune page connectée.' });
     return;

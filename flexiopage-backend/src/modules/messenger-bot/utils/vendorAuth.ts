@@ -8,6 +8,12 @@ import type { AuthRequest } from '../../../middleware/auth.middleware';
 import { Store } from '../../../models/Store.model';
 import { effectiveOwnerId } from '../../../lib/owner';
 
+/** Canal demandé (?channel=), 'messenger' par défaut. */
+export function getChannel(req: AuthRequest): 'messenger' | 'whatsapp' {
+  const c = String(req.query.channel || (req.body as { channel?: string })?.channel || '');
+  return c === 'whatsapp' ? 'whatsapp' : 'messenger';
+}
+
 /** Lit storeId (query ou body) et vérifie la propriété. Retourne null si interdit. */
 export async function getOwnedStoreId(req: AuthRequest): Promise<string | null> {
   if (!req.user) return null;

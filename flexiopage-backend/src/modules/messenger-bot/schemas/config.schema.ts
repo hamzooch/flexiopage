@@ -57,3 +57,12 @@ export const connectPageSchema = z.object({
 export const sendManualSchema = z.object({
   message: z.string().min(1).max(2000),
 });
+
+/** POST /whatsapp/connect — connexion par token manuel (WhatsApp Cloud API). */
+export const connectWhatsAppSchema = z.object({
+  storeId: z.string().min(1),
+  phoneNumberId: z.string().min(1),
+  accessToken: z.string().min(1),
+  wabaId: z.string().optional(),
+  displayNumber: z.string().optional(),
+});

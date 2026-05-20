@@ -13,6 +13,8 @@ export type BotStatus = 'active' | 'paused' | 'disconnected';
 export type CatalogSource = 'auto' | 'manual' | 'hybrid';
 export type AiPersonality = 'friendly' | 'professional' | 'energetic';
 export type BotPlan = 'free' | 'starter' | 'pro' | 'business';
+/** Canal de messagerie. Une boutique peut avoir un bot par canal. */
+export type BotChannel = 'messenger' | 'whatsapp';
 
 export interface IShippingFee {
   city: string;
@@ -30,7 +32,17 @@ export interface ICustomProduct {
 
 export interface IBotConfig extends Document {
   vendor_id: mongoose.Types.ObjectId;
-  facebook_page_id: string;
+  /** Canal : 'messenger' (défaut) ou 'whatsapp'. */
+  channel: BotChannel;
+  /** Messenger : id de la Page FB (absent pour WhatsApp). */
+  facebook_page_id?: string;
+  /** WhatsApp Cloud API : phone number id (absent pour Messenger). */
+  whatsapp_phone_number_id?: string;
+  /** WhatsApp Business Account id (optionnel). */
+  whatsapp_business_account_id?: string;
+  /** Numéro affiché de la ligne WhatsApp (optionnel, info). */
+  whatsapp_display_number?: string;
+  /** Token d'accès du canal, chiffré (Page token Messenger OU token WhatsApp). */
   page_access_token_encrypted: string;
   page_name?: string;
   page_picture_url?: string;
@@ -91,8 +103,12 @@ const BotConfigSchema = new Schema<IBotConfig>(
   {
     // "vendor" = boutique Flexiopage → ref Store.
     vendor_id: { type: Schema.Types.ObjectId, ref: 'Store', required: true, index: true },
-    // `unique: true` already builds the index — no separate `index: true`.
-    facebook_page_id: { type: String, required: true, unique: true },
+    channel: { type: String, enum: ['messenger', 'whatsapp'], default: 'messenger', index: true },
+    // sparse : seuls les configs Messenger portent un facebook_page_id.
+    facebook_page_id: { type: String, unique: true, sparse: true },
+    whatsapp_phone_number_id: { type: String, unique: true, sparse: true },
+    whatsapp_business_account_id: { type: String },
+    whatsapp_display_number: { type: String },
     page_access_token_encrypted: { type: String, required: true },
     page_name: { type: String },
     page_picture_url: { type: String },
@@ -135,5 +151,7 @@ const BotConfigSchema = new Schema<IBotConfig>(
 );
 
 BotConfigSchema.index({ vendor_id: 1, status: 1 });
+// Au plus un bot par (boutique, canal).
+BotConfigSchema.index({ vendor_id: 1, channel: 1 }, { unique: true });
 
 export const BotConfig = mongoose.model<IBotConfig>('BotConfig', BotConfigSchema);

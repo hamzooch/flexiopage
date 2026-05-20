@@ -21,6 +21,7 @@ import { claudeService, type ClaudeMessage } from '../services/claude.service';
 import { catalogService } from '../services/catalog.service';
 import { orderCreationService, type CreateOrderToolInput } from '../services/orderCreation.service';
 import { messengerService } from '../services/messenger.service';
+import { whatsappService } from '../services/whatsapp.service';
 import { encryptionService } from '../services/encryption.service';
 import { messageQueue, type IncomingMessageJob } from '../services/queue.service';
 import { buildSystemPrompt } from '../prompts/systemPrompt';
@@ -137,14 +138,23 @@ export async function processIncomingMessage(job: IncomingMessageJob): Promise<P
     { upsert: true },
   );
 
-  // Envoi Messenger (sauf dry-run / token de test).
+  // Envoi de la réponse via le bon canal (sauf dry-run / token de test).
   if (replyText && !isDryRun()) {
     try {
       const token = encryptionService.decrypt(config.page_access_token_encrypted);
-      await messengerService.sendTypingIndicator({ pageAccessToken: token, recipientPsid: job.customerPsid });
-      await messengerService.sendMessage({ pageAccessToken: token, recipientPsid: job.customerPsid, message: replyText });
+      if (config.channel === 'whatsapp') {
+        await whatsappService.sendText({
+          phoneNumberId: config.whatsapp_phone_number_id || '',
+          accessToken: token,
+          to: conversation.customer_psid,
+          message: replyText,
+        });
+      } else {
+        await messengerService.sendTypingIndicator({ pageAccessToken: token, recipientPsid: conversation.customer_psid });
+        await messengerService.sendMessage({ pageAccessToken: token, recipientPsid: conversation.customer_psid, message: replyText });
+      }
     } catch (err) {
-      logger.error({ err: (err as Error).message }, '[messenger-bot] envoi réponse échec');
+      logger.error({ err: (err as Error).message, channel: config.channel }, '[messenger-bot] envoi réponse échec');
     }
   }
 

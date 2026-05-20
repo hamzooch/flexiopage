@@ -7,7 +7,7 @@
  * (Le worker BullMQ sera enregistré séparément à la prochaine session.)
  */
 import type { Express } from 'express';
-import { apiRouter, webhookRouter } from './routes/messengerBot.routes';
+import { apiRouter, webhookRouter, whatsappWebhookRouter } from './routes/messengerBot.routes';
 import { dataDeletionRouter } from './routes/dataDeletion.routes';
 import { registerMessageWorker } from './workers/messageWorker';
 import { initMessengerQueue } from './queue/messageQueue';
@@ -18,6 +18,7 @@ export function registerMessengerBot(app: Express): void {
   app.use('/api/messenger-bot', dataDeletionRouter);
   app.use('/api/messenger-bot', apiRouter);
   app.use('/webhook/messenger', webhookRouter);
+  app.use('/webhook/whatsapp', whatsappWebhookRouter);
 
   // Toujours enregistrer le processor in-process (repli si pas de Redis).
   registerMessageWorker();

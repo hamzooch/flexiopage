@@ -47,7 +47,7 @@ interface StoreDoc {
   };
 }
 
-type AppId = 'google-sheets' | 'mailchimp' | 'slack' | 'zapier' | 'discord' | 'messenger-bot';
+type AppId = 'google-sheets' | 'mailchimp' | 'slack' | 'zapier' | 'discord' | 'messenger-bot' | 'whatsapp-bot';
 
 interface AppDef {
   id: AppId;
@@ -67,6 +67,15 @@ const APPS: AppDef[] = [
     category: 'Automation',
     icon: Bot,
     accent: 'from-blue-500 to-indigo-600',
+    available: true,
+  },
+  {
+    id: 'whatsapp-bot',
+    name: 'WhatsApp Bot',
+    description: 'Même assistant IA, sur WhatsApp : répond aux clients et crée les commandes COD automatiquement.',
+    category: 'Automation',
+    icon: MessageSquare,
+    accent: 'from-green-500 to-emerald-600',
     available: true,
   },
   {
@@ -213,7 +222,9 @@ export default function AppsPage() {
             onOpen={() =>
               app.id === 'messenger-bot'
                 ? router.push(`/dashboard/apps/messenger-bot?storeId=${activeStore._id}`)
-                : setOpenApp(app.id)
+                : app.id === 'whatsapp-bot'
+                  ? router.push(`/dashboard/apps/whatsapp-bot?storeId=${activeStore._id}`)
+                  : setOpenApp(app.id)
             }
           />
         ))}

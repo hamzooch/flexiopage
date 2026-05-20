@@ -128,10 +128,11 @@ export async function connectPage(req: AuthRequest, res: Response): Promise<void
   }
 
   const config = await BotConfig.findOneAndUpdate(
-    { vendor_id: storeId },
+    { vendor_id: storeId, channel: 'messenger' },
     {
       $set: {
         vendor_id: storeId,
+        channel: 'messenger',
         facebook_page_id: pageId,
         page_access_token_encrypted: encryptionService.encrypt(pageAccessToken),
         page_name: pageName,
@@ -147,7 +148,7 @@ export async function connectPage(req: AuthRequest, res: Response): Promise<void
 export async function disconnect(req: AuthRequest, res: Response): Promise<void> {
   const storeId = await getOwnedStoreId(req);
   if (!storeId) { res.status(403).json({ error: 'storeId requis et doit t’appartenir.' }); return; }
-  const config = await BotConfig.findOne({ vendor_id: storeId });
+  const config = await BotConfig.findOne({ vendor_id: storeId, channel: 'messenger' });
   if (!config) { res.status(404).json({ error: 'Aucune page connectée.' }); return; }
 
   // Désabonnement best-effort.

@@ -7,7 +7,7 @@ import type { AuthRequest } from '../../../middleware/auth.middleware';
 import { Conversation } from '../models/Conversation.model';
 import { BotConfig } from '../models/BotConfig.model';
 import { BotUsage } from '../models/BotUsage.model';
-import { getOwnedStoreId } from '../utils/vendorAuth';
+import { getOwnedStoreId, getChannel } from '../utils/vendorAuth';
 
 function currentPeriod(): string {
   const d = new Date();
@@ -18,14 +18,15 @@ export async function overview(req: AuthRequest, res: Response): Promise<void> {
   const storeId = await getOwnedStoreId(req);
   if (!storeId) { res.status(403).json({ error: 'storeId requis et doit t’appartenir.' }); return; }
   const oid = new mongoose.Types.ObjectId(storeId);
+  const channel = getChannel(req);
 
   const [config, byStatus, ordersCreated] = await Promise.all([
-    BotConfig.findOne({ vendor_id: storeId }).lean(),
+    BotConfig.findOne({ vendor_id: storeId, channel }).lean(),
     Conversation.aggregate<{ _id: string; count: number }>([
-      { $match: { vendor_id: oid } },
+      { $match: { vendor_id: oid, channel } },
       { $group: { _id: '$status', count: { $sum: 1 } } },
     ]),
-    Conversation.countDocuments({ vendor_id: oid, order_id: { $ne: null } }),
+    Conversation.countDocuments({ vendor_id: oid, channel, order_id: { $ne: null } }),
   ]);
 
   const statusCounts: Record<string, number> = {};

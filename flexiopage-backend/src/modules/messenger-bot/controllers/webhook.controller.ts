@@ -86,6 +86,7 @@ export async function receiveWebhook(req: Request, res: Response): Promise<void>
         // Conversation active existante, sinon création.
         let conv = await Conversation.findOne({
           vendor_id: config.vendor_id,
+          channel: 'messenger',
           customer_psid: psid,
           status: { $in: ['active', 'human_takeover'] },
         });
@@ -94,6 +95,7 @@ export async function receiveWebhook(req: Request, res: Response): Promise<void>
           conv = await Conversation.create({
             vendor_id: config.vendor_id,
             bot_config_id: config._id,
+            channel: 'messenger',
             customer_psid: psid,
             status: 'active',
           });

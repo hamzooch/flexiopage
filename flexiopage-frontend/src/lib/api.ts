@@ -1026,3 +1026,31 @@ export const messengerBotApi = {
       conversationsUsedThisMonth: number | null; totalOrdersCreated: number; totalTokensConsumed: number;
     }>(mb(storeId, '/stats/overview')),
 };
+
+// ─── WhatsApp Bot (réutilise les mêmes endpoints avec channel=whatsapp) ──
+const wb = (storeId: string, path = '') =>
+  `/messenger-bot${path}?storeId=${encodeURIComponent(storeId)}&channel=whatsapp`;
+
+export const whatsappBotApi = {
+  getConfig: (storeId: string) =>
+    api.get<{ connected: boolean; config: MessengerBotConfig | null }>(wb(storeId, '/config')),
+  updateConfig: (storeId: string, data: Partial<MessengerBotConfig>) =>
+    api.put<{ config: MessengerBotConfig }>(wb(storeId, '/config'), data),
+  testBot: (storeId: string, message: string) =>
+    api.post<{ reply: string; toolsUsed: string[]; tokens: { input: number; output: number }; costUsd: number; model: string }>(
+      wb(storeId, '/config/test'), { message }),
+  connect: (storeId: string, data: { phoneNumberId: string; accessToken: string; wabaId?: string; displayNumber?: string }) =>
+    api.post<{ connected: boolean; phoneNumberId: string; displayNumber?: string }>(
+      `/messenger-bot/whatsapp/connect?storeId=${encodeURIComponent(storeId)}`, { storeId, ...data }),
+  disconnect: (storeId: string) =>
+    api.post<{ disconnected: boolean }>(`/messenger-bot/whatsapp/disconnect?storeId=${encodeURIComponent(storeId)}`, { storeId }),
+  listConversations: (storeId: string, params?: { status?: string; limit?: number; skip?: number }) =>
+    api.get<{ conversations: MessengerConversation[]; total: number }>(wb(storeId, '/conversations'), { params }),
+  getConversation: (storeId: string, id: string) =>
+    api.get<{ conversation: MessengerConversation; messages: MessengerMessage[] }>(wb(storeId, `/conversations/${id}`)),
+  statsOverview: (storeId: string) =>
+    api.get<{
+      totalConversations: number; byStatus: Record<string, number>; ordersCreated: number;
+      conversionRate: number; conversationsUsedThisMonth: number | null; conversationsLimit: number | null;
+    }>(wb(storeId, '/stats/overview')),
+};

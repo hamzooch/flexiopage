@@ -10,6 +10,9 @@ export type ConversationIntent = 'order' | 'question' | 'complaint' | 'other';
 export interface IConversation extends Document {
   vendor_id: mongoose.Types.ObjectId;
   bot_config_id: mongoose.Types.ObjectId;
+  /** Canal : 'messenger' | 'whatsapp'. */
+  channel: 'messenger' | 'whatsapp';
+  /** Id client scopé au canal : PSID (Messenger) ou wa_id/numéro (WhatsApp). */
   customer_psid: string;
   customer_name?: string;
   customer_profile_pic?: string;
@@ -36,6 +39,7 @@ const ConversationSchema = new Schema<IConversation>(
   {
     vendor_id: { type: Schema.Types.ObjectId, ref: 'Store', index: true },
     bot_config_id: { type: Schema.Types.ObjectId, ref: 'BotConfig' },
+    channel: { type: String, enum: ['messenger', 'whatsapp'], default: 'messenger', index: true },
     customer_psid: { type: String, index: true },
     customer_name: { type: String },
     customer_profile_pic: { type: String },
