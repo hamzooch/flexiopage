@@ -24,6 +24,7 @@ apiRouter.post('/config/test', botConfig.testBot);
 // OAuth Facebook
 apiRouter.get('/facebook/auth-url', facebookAuth.getAuthUrl);
 apiRouter.post('/facebook/callback', facebookAuth.oauthCallback);
+apiRouter.post('/facebook/connect', facebookAuth.connectPage);
 apiRouter.post('/facebook/disconnect', facebookAuth.disconnect);
 apiRouter.get('/facebook/pages', facebookAuth.listPages);
 

@@ -9,12 +9,18 @@
 import type { Express } from 'express';
 import { apiRouter, webhookRouter } from './routes/messengerBot.routes';
 import { registerMessageWorker } from './workers/messageWorker';
+import { initMessengerQueue } from './queue/messageQueue';
 import { logger } from '../../lib/logger';
 
 export function registerMessengerBot(app: Express): void {
   app.use('/api/messenger-bot', apiRouter);
   app.use('/webhook/messenger', webhookRouter);
-  // Branche le processor in-process (sera remplacé par un worker BullMQ/Redis).
+
+  // Toujours enregistrer le processor in-process (repli si pas de Redis).
   registerMessageWorker();
-  logger.info('[messenger-bot] module monté (/api/messenger-bot, /webhook/messenger)');
+  // Si REDIS_URL est défini, BullMQ prend le relais (durable, hors-process).
+  const bull = initMessengerQueue();
+  logger.info(
+    `[messenger-bot] module monté (/api/messenger-bot, /webhook/messenger) — traitement: ${bull ? 'BullMQ/Redis' : 'in-process'}`,
+  );
 }

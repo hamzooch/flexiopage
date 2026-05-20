@@ -1,19 +1,94 @@
 /**
- * Configuration du bot (vendeur authentifié). Squelette — la logique métier
- * sera complétée à l'étape suivante (résolution du store, validation Zod).
+ * Configuration du bot (vendeur authentifié). Scopé par ?storeId= (propriété
+ * vérifiée). Le token de page chiffré n'est jamais renvoyé au client.
  */
 import type { Response } from 'express';
 import type { AuthRequest } from '../../../middleware/auth.middleware';
+import { logger } from '../../../lib/logger';
+import { BotConfig, type IBotConfig } from '../models/BotConfig.model';
+import { Store } from '../../../models/Store.model';
+import { getOwnedStoreId } from '../utils/vendorAuth';
+import { updateConfigSchema, testBotSchema } from '../schemas/config.schema';
+import { catalogService } from '../services/catalog.service';
+import { claudeService } from '../services/claude.service';
+import { buildSystemPrompt } from '../prompts/systemPrompt';
+import { claudeTools } from '../tools/claudeTools';
 
-const todo = (res: Response, what: string) =>
-  res.status(501).json({ error: 'not_implemented', todo: what });
+/** Retire le token chiffré avant exposition au front. */
+function publicConfig(c: IBotConfig) {
+  const obj = c.toObject ? c.toObject() : c;
+  delete (obj as Record<string, unknown>).page_access_token_encrypted;
+  return obj;
+}
 
-export function getConfig(_req: AuthRequest, res: Response): void {
-  todo(res, 'GET config du vendeur connecté');
+export async function getConfig(req: AuthRequest, res: Response): Promise<void> {
+  const storeId = await getOwnedStoreId(req);
+  if (!storeId) {
+    res.status(403).json({ error: 'storeId requis et doit t’appartenir.' });
+    return;
+  }
+  const config = await BotConfig.findOne({ vendor_id: storeId });
+  res.json({ connected: !!config, config: config ? publicConfig(config) : null });
 }
-export function updateConfig(_req: AuthRequest, res: Response): void {
-  todo(res, 'PUT update config (validation Zod)');
+
+export async function updateConfig(req: AuthRequest, res: Response): Promise<void> {
+  const storeId = await getOwnedStoreId(req);
+  if (!storeId) {
+    res.status(403).json({ error: 'storeId requis et doit t’appartenir.' });
+    return;
+  }
+  const parsed = updateConfigSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: 'Validation échouée', details: parsed.error.flatten() });
+    return;
+  }
+  const config = await BotConfig.findOneAndUpdate(
+    { vendor_id: storeId },
+    { $set: parsed.data },
+    { new: true },
+  );
+  if (!config) {
+    res.status(404).json({ error: 'Aucune page connectée pour cette boutique.' });
+    return;
+  }
+  res.json({ config: publicConfig(config) });
 }
-export function testBot(_req: AuthRequest, res: Response): void {
-  todo(res, 'POST test du bot (réponse Claude de démo)');
+
+/** POST /config/test — fait répondre Claude à un message de démo (sans Messenger). */
+export async function testBot(req: AuthRequest, res: Response): Promise<void> {
+  const storeId = await getOwnedStoreId(req);
+  if (!storeId) {
+    res.status(403).json({ error: 'storeId requis et doit t’appartenir.' });
+    return;
+  }
+  const parsed = testBotSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: 'message requis' });
+    return;
+  }
+  const config = await BotConfig.findOne({ vendor_id: storeId });
+  if (!config) {
+    res.status(404).json({ error: 'Aucune page connectée.' });
+    return;
+  }
+  try {
+    const vendor = await Store.findById(storeId).select('name').lean();
+    const catalog = await catalogService.getCatalog(config);
+    const systemPrompt = buildSystemPrompt({ botConfig: config, vendor: vendor || {}, catalog });
+    const result = await claudeService.generateResponse({
+      conversationHistory: [{ role: 'user', content: parsed.data.message }],
+      systemPrompt,
+      tools: claudeTools,
+    });
+    res.json({
+      reply: result.content,
+      toolsUsed: result.toolUses.map((t) => t.name),
+      tokens: { input: result.tokensInput, output: result.tokensOutput },
+      costUsd: result.costUsd,
+      model: result.model,
+    });
+  } catch (err) {
+    logger.error({ err: (err as Error).message }, '[messenger-bot] testBot échec');
+    res.status(502).json({ error: 'Échec de l’appel au modèle. Vérifie ANTHROPIC_API_KEY.' });
+  }
 }

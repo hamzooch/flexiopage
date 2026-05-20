@@ -12,6 +12,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { storesApi } from '@/lib/api';
 import { useStoreStore } from '@/stores/store-store';
 import { Button } from '@/components/ui/button';
@@ -66,7 +67,7 @@ const APPS: AppDef[] = [
     category: 'Automation',
     icon: Bot,
     accent: 'from-blue-500 to-indigo-600',
-    available: false,
+    available: true,
   },
   {
     id: 'google-sheets',
@@ -116,6 +117,7 @@ const APPS: AppDef[] = [
 ];
 
 export default function AppsPage() {
+  const router = useRouter();
   const { currentStoreId, setCurrentStore } = useStoreStore();
   const [stores, setStores] = useState<StoreDoc[]>([]);
   const [loading, setLoading] = useState(true);
@@ -208,7 +210,11 @@ export default function AppsPage() {
             key={app.id}
             app={app}
             connected={connected(app.id)}
-            onOpen={() => setOpenApp(app.id)}
+            onOpen={() =>
+              app.id === 'messenger-bot'
+                ? router.push(`/dashboard/apps/messenger-bot?storeId=${activeStore._id}`)
+                : setOpenApp(app.id)
+            }
           />
         ))}
       </section>

@@ -952,3 +952,77 @@ export const calculatorApi = {
     api.post<{ snapshot: CalculatorSnapshot }>('/calculator/save', data),
   remove: (id: string) => api.delete<{ ok: true }>(`/calculator/${id}`),
 };
+
+// ─── Messenger Bot ─────────────────────────────────────────────────────
+export interface MessengerBotConfig {
+  _id: string;
+  vendor_id: string;
+  facebook_page_id: string;
+  page_name?: string;
+  page_picture_url?: string;
+  status: 'active' | 'paused' | 'disconnected';
+  language: 'ar' | 'fr' | 'darija_ma' | 'darija_dz' | 'darija_tn';
+  country: 'MA' | 'DZ' | 'TN';
+  welcome_message?: string;
+  away_message?: string;
+  order_confirmation_message?: string;
+  shipping_fees: Array<{ city: string; fee: number }>;
+  default_shipping_fee: number;
+  catalog_source: 'auto' | 'manual' | 'hybrid';
+  ai_personality: 'friendly' | 'professional' | 'energetic';
+  auto_create_order: boolean;
+  ask_confirmation_before_order: boolean;
+  notify_on_new_order: boolean;
+  notification_email?: string;
+  notification_whatsapp?: string;
+  plan: 'free' | 'starter' | 'pro' | 'business';
+  conversations_limit: number;
+  conversations_used_this_month: number;
+  total_orders_created: number;
+  total_tokens_consumed: number;
+}
+export interface FbPageOption { id: string; name: string; access_token: string; picture_url?: string }
+export interface MessengerConversation {
+  _id: string; customer_psid: string; customer_name?: string; customer_phone?: string;
+  customer_city?: string; status: string; intent: string; order_id?: string;
+  message_count: number; last_message_at?: string; created_at: string;
+}
+export interface MessengerMessage {
+  _id: string; sender: 'customer' | 'bot' | 'human'; content: string; timestamp: string;
+  tokens_input?: number; tokens_output?: number; cost_usd?: number;
+}
+
+const mb = (storeId: string, path = '') => `/messenger-bot${path}?storeId=${encodeURIComponent(storeId)}`;
+
+export const messengerBotApi = {
+  getConfig: (storeId: string) =>
+    api.get<{ connected: boolean; config: MessengerBotConfig | null }>(mb(storeId, '/config')),
+  updateConfig: (storeId: string, data: Partial<MessengerBotConfig>) =>
+    api.put<{ config: MessengerBotConfig }>(mb(storeId, '/config'), data),
+  testBot: (storeId: string, message: string) =>
+    api.post<{ reply: string; toolsUsed: string[]; tokens: { input: number; output: number }; costUsd: number; model: string }>(
+      mb(storeId, '/config/test'), { message }),
+  // OAuth
+  getAuthUrl: (storeId: string) => api.get<{ url: string; redirectUri: string }>(mb(storeId, '/facebook/auth-url')),
+  oauthCallback: (storeId: string, code: string) =>
+    api.post<{ pages: FbPageOption[] }>(mb(storeId, '/facebook/callback'), { code }),
+  connectPage: (storeId: string, page: { pageId: string; pageAccessToken: string; pageName?: string; pagePictureUrl?: string }) =>
+    api.post<{ connected: boolean; pageId: string; pageName?: string }>(mb(storeId, '/facebook/connect'), { storeId, ...page }),
+  disconnect: (storeId: string) => api.post<{ disconnected: boolean }>(mb(storeId, '/facebook/disconnect'), { storeId }),
+  // Conversations
+  listConversations: (storeId: string, params?: { status?: string; limit?: number; skip?: number }) =>
+    api.get<{ conversations: MessengerConversation[]; total: number }>(mb(storeId, '/conversations'), { params }),
+  getConversation: (storeId: string, id: string) =>
+    api.get<{ conversation: MessengerConversation; messages: MessengerMessage[] }>(mb(storeId, `/conversations/${id}`)),
+  takeover: (storeId: string, id: string) =>
+    api.post<{ conversation: MessengerConversation }>(mb(storeId, `/conversations/${id}/takeover`), { storeId }),
+  sendManual: (storeId: string, id: string, message: string) =>
+    api.post<{ message: MessengerMessage }>(mb(storeId, `/conversations/${id}/send`), { storeId, message }),
+  // Stats
+  statsOverview: (storeId: string) =>
+    api.get<{
+      totalConversations: number; byStatus: Record<string, number>; ordersCreated: number;
+      conversionRate: number; plan: string | null; conversationsLimit: number | null;
+      conversationsUsedThisMonth: number | null; totalOrdersCreated: number; totalTokensConsumed: number;
+    }>(mb(storeId, '/stats/overview')),
+};

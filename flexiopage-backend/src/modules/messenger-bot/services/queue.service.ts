@@ -21,25 +21,42 @@ export interface IncomingMessageJob {
 }
 
 type Processor = (job: IncomingMessageJob) => Promise<void>;
+/** Adaptateur d'ajout BullMQ injecté par queue/bull.ts quand Redis est dispo. */
+type BullAdder = (job: IncomingMessageJob) => Promise<void>;
 
 class MessageQueue {
   private processor: Processor | null = null;
+  private bullAdder: BullAdder | null = null;
 
-  /** Le worker enregistre son processeur ici (remplacé par BullMQ ensuite). */
+  /** Le worker in-process enregistre son processeur ici (repli sans Redis). */
   registerProcessor(fn: Processor): void {
     this.processor = fn;
   }
 
+  /** queue/bull.ts injecte l'ajout BullMQ ici quand Redis est configuré. */
+  useBullQueue(adder: BullAdder): void {
+    this.bullAdder = adder;
+  }
+
   /** Met un message entrant en file. Best-effort, ne bloque jamais le webhook. */
   async enqueue(job: IncomingMessageJob): Promise<void> {
+    // 1) BullMQ si dispo (durable, hors-process).
+    if (this.bullAdder) {
+      try {
+        await this.bullAdder(job);
+        return;
+      } catch (err) {
+        logger.error({ err: (err as Error).message }, '[messenger-bot] enqueue BullMQ échec — repli in-process');
+      }
+    }
+    // 2) Repli in-process.
     if (!this.processor) {
       logger.info(
         { conversationId: job.conversationId, pageId: job.pageId },
-        '[messenger-bot] message en file (aucun worker enregistré — TODO BullMQ)',
+        '[messenger-bot] message reçu mais aucun worker disponible',
       );
       return;
     }
-    // Exécution détachée : on ne bloque pas la réponse 200 à Meta.
     void this.processor(job).catch((err) =>
       logger.error({ err: (err as Error).message, conversationId: job.conversationId }, '[messenger-bot] traitement message échec'),
     );
