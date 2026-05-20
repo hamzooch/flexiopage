@@ -175,6 +175,19 @@ export default function StoreHubPage() {
   // having to resize their actual browser.
   const [previewDevice, setPreviewDevice] = useState<'mobile' | 'tablet' | 'desktop'>('desktop');
 
+  // On phones, a scaled-down desktop/tablet preview is unreadable, so we only
+  // ever show the mobile rendering there and hide the device switcher. The
+  // switcher (and tablet/desktop widths) come back at the `sm` breakpoint.
+  const [isSmallScreen, setIsSmallScreen] = useState(false);
+  useEffect(() => {
+    const mq = window.matchMedia('(max-width: 639px)');
+    const sync = () => setIsSmallScreen(mq.matches);
+    sync();
+    mq.addEventListener('change', sync);
+    return () => mq.removeEventListener('change', sync);
+  }, []);
+  const effectiveDevice = isSmallScreen ? 'mobile' : previewDevice;
+
   useEffect(() => {
     if (!storeId) return;
     storesApi
@@ -384,34 +397,42 @@ export default function StoreHubPage() {
                   Logo, thème et sections — comme tes clients les voient.
                 </CardDescription>
               </div>
-              {/* Viewport switcher — pick the device width to preview */}
+              {/* Viewport switcher — pick the device width to preview.
+                  Hidden on phones (the mobile rendering is forced there). */}
               <div className="inline-flex items-center gap-0.5 rounded-lg border border-border/60 bg-muted/40 p-0.5">
-                {([
-                  { id: 'mobile',  icon: Smartphone, label: 'Mobile',   width: 375 },
-                  { id: 'tablet',  icon: Tablet,     label: 'Tablette', width: 768 },
-                  { id: 'desktop', icon: Monitor,    label: 'Desktop',  width: 1280 },
-                ] as const).map((d) => {
-                  const Icon = d.icon;
-                  const active = previewDevice === d.id;
-                  return (
-                    <button
-                      key={d.id}
-                      type="button"
-                      onClick={() => setPreviewDevice(d.id)}
-                      title={`${d.label} · ${d.width}px`}
-                      aria-label={d.label}
-                      aria-pressed={active}
-                      className={cn(
-                        'grid h-7 w-7 place-items-center rounded-md transition-all',
-                        active
-                          ? 'bg-card text-primary shadow-sm'
-                          : 'text-muted-foreground hover:text-foreground'
-                      )}
-                    >
-                      <Icon className="h-3.5 w-3.5" />
-                    </button>
-                  );
-                })}
+                <div className="hidden items-center gap-0.5 sm:flex">
+                  {([
+                    { id: 'mobile',  icon: Smartphone, label: 'Mobile',   width: 375 },
+                    { id: 'tablet',  icon: Tablet,     label: 'Tablette', width: 768 },
+                    { id: 'desktop', icon: Monitor,    label: 'Desktop',  width: 1280 },
+                  ] as const).map((d) => {
+                    const Icon = d.icon;
+                    const active = previewDevice === d.id;
+                    return (
+                      <button
+                        key={d.id}
+                        type="button"
+                        onClick={() => setPreviewDevice(d.id)}
+                        title={`${d.label} · ${d.width}px`}
+                        aria-label={d.label}
+                        aria-pressed={active}
+                        className={cn(
+                          'grid h-7 w-7 place-items-center rounded-md transition-all',
+                          active
+                            ? 'bg-card text-primary shadow-sm'
+                            : 'text-muted-foreground hover:text-foreground'
+                        )}
+                      >
+                        <Icon className="h-3.5 w-3.5" />
+                      </button>
+                    );
+                  })}
+                </div>
+                {/* Static mobile indicator on phones (switcher is hidden). */}
+                <span className="inline-flex items-center gap-1 px-1.5 text-[11px] font-medium text-muted-foreground sm:hidden">
+                  <Smartphone className="h-3.5 w-3.5" />
+                  Mobile
+                </span>
                 <button
                   type="button"
                   onClick={() => setPreviewBust((n) => n + 1)}
@@ -426,7 +447,7 @@ export default function StoreHubPage() {
           </CardHeader>
           <CardContent>
             <ViewportPreview
-              device={previewDevice}
+              device={effectiveDevice}
               src={`/${store.slug}`}
               previewBust={previewBust}
             />

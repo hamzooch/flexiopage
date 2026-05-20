@@ -1115,30 +1115,35 @@ export function ThemePreviewModal({ template, onClose, onUse }: ModalProps) {
         <div
           className="relative flex h-full max-h-[95vh] w-full max-w-6xl flex-col overflow-hidden rounded-2xl bg-card shadow-2xl"
           onClick={(e) => e.stopPropagation()}
+          // The preview is a mock storefront in French — force LTR so the
+          // toolbar and content render consistently even when the seller's
+          // dashboard is in Arabic/RTL.
+          dir="ltr"
         >
           {/* Modal toolbar */}
-          <div className="flex shrink-0 items-center justify-between gap-3 border-b border-border/60 bg-card/80 px-4 py-3 backdrop-blur sm:px-5">
-            <div className="flex items-center gap-3 min-w-0">
-              <span className="grid h-9 w-9 place-items-center rounded-lg gradient-brand text-white shadow-md shadow-primary/25">
+          <div className="flex shrink-0 items-center justify-between gap-2 border-b border-border/60 bg-card/80 px-3 py-2.5 backdrop-blur sm:gap-3 sm:px-5 sm:py-3">
+            <div className="flex min-w-0 items-center gap-2 sm:gap-3">
+              <span className="hidden h-9 w-9 shrink-0 place-items-center rounded-lg gradient-brand text-white shadow-md shadow-primary/25 sm:grid">
                 <Eye className="h-4 w-4" />
               </span>
               <div className="min-w-0">
                 <h2 className="truncate text-sm font-semibold tracking-tight">
-                  Aperçu — Thème {template.name}
+                  Aperçu — {template.name}
                 </h2>
                 <p className="truncate text-xs text-muted-foreground">{template.nicheLabel} · {template.tagline}</p>
               </div>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
               <Button
                 type="button"
                 onClick={() => { onUse(template); onClose(); }}
-                className="h-9 gap-1.5 rounded-lg gradient-brand text-white shadow-md shadow-primary/25"
+                className="h-9 gap-1.5 rounded-lg gradient-brand px-2.5 text-white shadow-md shadow-primary/25 sm:px-4"
               >
                 <Check className="h-3.5 w-3.5" strokeWidth={3} />
-                Utiliser ce thème
+                <span className="hidden sm:inline">Utiliser ce thème</span>
+                <span className="sm:hidden">Utiliser</span>
               </Button>
-              <Button type="button" variant="ghost" size="icon" onClick={onClose} aria-label="Fermer" className="h-9 w-9">
+              <Button type="button" variant="ghost" size="icon" onClick={onClose} aria-label="Fermer" className="h-9 w-9 shrink-0">
                 <X className="h-4 w-4" />
               </Button>
             </div>

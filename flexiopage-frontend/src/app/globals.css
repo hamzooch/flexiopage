@@ -5,6 +5,20 @@
 /* Smooth anchor scroll for CTAs like "Commander" → #cod-order-form */
 html {
   scroll-behavior: smooth;
+  /*
+   * Kill horizontal scroll site-wide. The dashboard's mobile drawer is a
+   * `fixed` sidebar pushed off-canvas with translate — in RTL (Arabic) it
+   * lands past the right edge and, on mobile browsers, extends the document's
+   * scrollable width, shifting the whole page sideways. `clip` clamps the
+   * viewport WITHOUT creating a scroll container, so `position: sticky`
+   * (sidebar rail, page headers) keeps working — unlike `overflow: hidden`.
+   * Intentional horizontal scrollers (tables, chip rows) use their own
+   * `overflow-x-auto` containers and are unaffected.
+   */
+  overflow-x: clip;
+}
+body {
+  overflow-x: clip;
 }
 
 @layer base {
