@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { formatCurrency, mediaUrl } from '@/lib/utils';
+import { formatCurrency } from '@/lib/utils';
 import { renderMarkdown } from '@/lib/markdown';
 import {
   resolveProductPageOrder,
@@ -26,6 +26,7 @@ import { StorefrontTestimonials } from '@/components/storefront/Testimonials';
 import { MobileStickyCta } from '@/components/storefront/mobile-sticky-cta';
 import { CrossSells, type CrossSellItem } from '@/components/storefront/cross-sells';
 import { WishlistButton } from '@/components/storefront/wishlist-button';
+import { ProductGallery } from '@/components/storefront/product-gallery';
 import { AddToCartButton } from '@/components/storefront/add-to-cart-button';
 import { ProductReviews } from '@/components/storefront/product-reviews';
 import type { ThemeTokens as ThemeTokensType } from '@/data/store-themes';
@@ -250,81 +251,27 @@ export default async function PublicProductPage({ params }: Props) {
             one screen scroll, generous on desktop where the layout has room. */}
         <main className="mx-auto max-w-6xl px-3 py-4 sm:px-6 sm:py-14">
           <div className="grid gap-4 sm:gap-10 lg:grid-cols-[1fr_1fr]">
-            {/* LEFT — gallery */}
-            <div className="space-y-3">
-              <div
-                className="relative aspect-square overflow-hidden border"
-                style={{ backgroundColor: theme.surfaceMuted, borderColor: theme.border, borderRadius: radius }}
-              >
-                {product.images?.[0] ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img
-                    src={mediaUrl(product.images[0]) || product.images[0]}
-                    alt={product.name}
-                    className="h-full w-full object-cover"
-                  />
-                ) : (
-                  <div className="grid h-full place-items-center" style={{ color: theme.muted }}>
-                    Pas d&apos;image
-                  </div>
-                )}
-                {hasDiscount && (
-                  <span
-                    className="absolute left-4 top-4 px-2.5 py-1 text-[11px] font-bold uppercase tracking-wider"
-                    style={{
-                      backgroundColor: '#10b981',
-                      color: '#fff',
-                      borderRadius: theme.borderRadius === 'none' ? '0' : '999px',
-                    }}
-                  >
-                    −{discountPct}%
-                  </span>
-                )}
-                {/* Heart toggle — saves to localStorage, accessible from /wishlist */}
-                <div className="absolute right-4 bottom-4 z-10">
-                  <WishlistButton
-                    storeSlug={storeSlug}
-                    size="md"
-                    item={{
-                      id: product._id,
-                      slug: product.slug,
-                      name: product.name,
-                      image: product.images?.[0],
-                      price: product.price,
-                      currency,
-                    }}
-                  />
-                </div>
-                {isDigital && kindMeta && (
-                  <span
-                    className="absolute right-4 top-4 inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold backdrop-blur"
-                    style={{
-                      backgroundColor: hexA(theme.surface, 0.9),
-                      color: theme.foreground,
-                      border: `1px solid ${theme.border}`,
-                      borderRadius: theme.borderRadius === 'none' ? '0' : '999px',
-                    }}
-                  >
-                    <span>{kindMeta.icon}</span>
-                    {kindMeta.label}
-                  </span>
-                )}
-              </div>
-              {showGallery && (product.images || []).slice(1, 5).length > 0 && (
-                <div className="grid grid-cols-4 gap-2">
-                  {(product.images || []).slice(1, 5).map((img, i) => (
-                    <div
-                      key={i}
-                      className="aspect-square overflow-hidden border"
-                      style={{ borderColor: theme.border, borderRadius: radius }}
-                    >
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img src={mediaUrl(img) || img} alt="" className="h-full w-full object-cover" />
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
+            {/* LEFT — gallery (client island: thumbnails swap the main image) */}
+            <ProductGallery
+              images={product.images || []}
+              productName={product.name}
+              theme={theme}
+              radius={radius}
+              hasDiscount={hasDiscount}
+              discountPct={discountPct}
+              showGallery={showGallery}
+              isDigital={isDigital}
+              kindMeta={kindMeta ? { icon: kindMeta.icon, label: kindMeta.label } : null}
+              storeSlug={storeSlug}
+              wishlistItem={{
+                id: product._id,
+                slug: product.slug,
+                name: product.name,
+                image: product.images?.[0],
+                price: product.price,
+                currency,
+              }}
+            />
 
             {/* RIGHT — sticky details */}
             <div className="lg:sticky lg:top-24 lg:self-start space-y-4 sm:space-y-6">
