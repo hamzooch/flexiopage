@@ -163,7 +163,7 @@ export function ChatBot({
     <>
       {/* ── PANEL ──────────────────────────────────────────────────── */}
       {open && (
-        <div className="fixed bottom-4 right-4 z-[60] flex h-[560px] max-h-[calc(100vh-2rem)] w-[calc(100vw-2rem)] max-w-sm flex-col overflow-hidden rounded-2xl border border-border/60 bg-card shadow-2xl shadow-black/20 animate-fade-in-up sm:bottom-6 sm:right-6">
+        <div className="fixed bottom-20 right-4 z-[60] flex h-[560px] max-h-[calc(100vh-6rem)] w-[calc(100vw-2rem)] max-w-sm flex-col overflow-hidden rounded-2xl border border-border/60 bg-card shadow-2xl shadow-black/20 animate-fade-in-up sm:bottom-6 sm:right-6 sm:max-h-[calc(100vh-2rem)]">
           {/* Header */}
           <div className="relative flex items-center gap-3 bg-gradient-to-br from-amber-500 via-orange-500 to-orange-600 px-4 py-3.5 text-white">
             <div className="absolute inset-0 bg-[radial-gradient(circle_at_20%_0%,rgba(255,255,255,0.3),transparent_60%)]" aria-hidden />
@@ -242,7 +242,7 @@ export function ChatBot({
       <button
         onClick={() => setOpen((v) => !v)}
         aria-label={open ? 'Fermer le chat' : 'Ouvrir le chat'}
-        className="group fixed bottom-4 right-4 z-[59] inline-flex h-14 items-center gap-2.5 rounded-full bg-gradient-to-r from-amber-500 to-orange-600 pl-4 pr-5 text-sm font-semibold text-white shadow-2xl shadow-orange-500/40 ring-1 ring-white/20 transition-all hover:scale-[1.04] hover:from-amber-600 hover:to-orange-700 sm:bottom-6 sm:right-6"
+        className="group fixed bottom-20 right-4 z-[59] inline-flex h-14 items-center gap-2.5 rounded-full bg-gradient-to-r from-amber-500 to-orange-600 pl-4 pr-5 text-sm font-semibold text-white shadow-2xl shadow-orange-500/40 ring-1 ring-white/20 transition-all hover:scale-[1.04] hover:from-amber-600 hover:to-orange-700 sm:bottom-6 sm:right-6"
       >
         <span className="relative grid h-9 w-9 place-items-center rounded-full bg-white/15 ring-1 ring-white/30">
           {open ? <ArrowDown className="h-4 w-4" /> : <MessageCircle className="h-4.5 w-4.5" />}
