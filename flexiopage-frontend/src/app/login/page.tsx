@@ -191,7 +191,11 @@ function LoginInner() {
               </p>
 
               <p className="text-center text-xs text-muted-foreground">
-                En continuant, tu acceptes notre{' '}
+                En continuant, tu acceptes nos{' '}
+                <Link href="/terms-of-service" className="underline underline-offset-4 hover:text-foreground">
+                  conditions d’utilisation
+                </Link>{' '}
+                et notre{' '}
                 <Link href="/privacy-policy" className="underline underline-offset-4 hover:text-foreground">
                   politique de confidentialité
                 </Link>
