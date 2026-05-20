@@ -189,6 +189,14 @@ function LoginInner() {
                   Crée-en un
                 </Link>
               </p>
+
+              <p className="text-center text-xs text-muted-foreground">
+                En continuant, tu acceptes notre{' '}
+                <Link href="/privacy-policy" className="underline underline-offset-4 hover:text-foreground">
+                  politique de confidentialité
+                </Link>
+                .
+              </p>
             </form>
           </div>
         </div>
