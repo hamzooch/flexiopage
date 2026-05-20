@@ -8,7 +8,8 @@ import express from 'express';
 import { getProviderById } from '../services/mobile-money.service';
 import { finalizePaidOrder } from '../services/order-finalize.service';
 import { applyDeliveryWebhook } from '../services/delivery.service';
-import { Order } from '../models/Order.model';
+import { Order, type PaymentProvider } from '../models/Order.model';
+import { logPayment } from '../models/PaymentLog.model';
 
 const router = Router();
 
@@ -16,34 +17,80 @@ const router = Router();
 router.use(express.urlencoded({ extended: true, limit: '1mb' }));
 router.use(express.json({ limit: '1mb' }));
 
-/** POST /api/webhooks/cinetpay */
-router.post('/cinetpay', async (req: Request, res: Response): Promise<void> => {
-  const provider = getProviderById('cinetpay');
+/**
+ * Shared handler for gateway payment webhooks. Flow:
+ *   1. provider.parseWebhook verifies the signature (when configured) AND
+ *      re-checks the transaction server-side.
+ *   2. Every delivery is logged to PaymentLog (audit + replay visibility).
+ *   3. A forged payload (signatureValid === false) is rejected before any DB
+ *      mutation.
+ *   4. finalizePaidOrder is idempotent → a replayed "paid" webhook never
+ *      double-credits the order.
+ */
+async function handlePaymentWebhook(
+  providerId: PaymentProvider,
+  req: Request,
+  res: Response,
+): Promise<void> {
+  const provider = getProviderById(providerId);
   if (!provider) {
-    res.status(500).json({ error: 'CinetPay provider not registered' });
+    res.status(500).json({ error: `${providerId} provider not registered` });
     return;
   }
   try {
-    const result = await provider.parseWebhook(req.body || {}, req.headers as Record<string, string | undefined>);
-    console.log('[webhook cinetpay]', { status: result.status, orderId: result.orderId });
+    const result = await provider.parseWebhook(
+      req.body || {},
+      req.headers as Record<string, string | undefined>,
+    );
+    console.log(`[webhook ${providerId}]`, {
+      status: result.status,
+      orderId: result.orderId,
+      sig: result.signatureValid,
+    });
+
+    await logPayment({
+      orderId: result.orderId,
+      gateway: providerId,
+      reference: result.reference,
+      event: 'webhook',
+      status: result.status,
+      signatureValid: result.signatureValid,
+      rawPayload: result.raw,
+      note: result.signatureValid === false ? 'signature_invalid_rejected' : undefined,
+    });
+
+    // Reject forged payloads before touching the order.
+    if (result.signatureValid === false) {
+      res.status(401).json({ error: 'Invalid signature' });
+      return;
+    }
+
     if (result.status === 'paid' && result.orderId) {
       await finalizePaidOrder(result.orderId, {
         paymentReference: result.reference,
-        paymentProvider: 'cinetpay',
+        paymentProvider: providerId,
         webhookData: result.raw,
       });
     } else if (result.status === 'failed' && result.orderId) {
-      await Order.findByIdAndUpdate(result.orderId, {
-        $set: { paymentStatus: 'failed', paymentWebhookData: result.raw },
-      });
+      // Never downgrade an already-paid order.
+      await Order.updateOne(
+        { _id: result.orderId, paymentStatus: { $ne: 'paid' } },
+        { $set: { paymentStatus: 'failed', paymentWebhookData: result.raw } },
+      );
     }
-    // CinetPay expects HTTP 200 to mark the webhook delivered.
+    // Gateways expect HTTP 200 to mark the webhook delivered.
     res.status(200).send('OK');
   } catch (err) {
-    console.error('[webhook cinetpay] error:', (err as Error).message);
+    console.error(`[webhook ${providerId}] error:`, (err as Error).message);
     res.status(500).json({ error: 'Webhook processing failed' });
   }
-});
+}
+
+/** POST /api/webhooks/cinetpay */
+router.post('/cinetpay', (req, res) => handlePaymentWebhook('cinetpay', req, res));
+
+/** POST /api/webhooks/flutterwave */
+router.post('/flutterwave', (req, res) => handlePaymentWebhook('flutterwave', req, res));
 
 /**
  * POST /api/webhooks/mock — used by the dev mock flow (?simulate=1 page).

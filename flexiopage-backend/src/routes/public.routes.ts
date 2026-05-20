@@ -579,14 +579,10 @@ router.post('/checkout/init', async (req: Request, res: Response): Promise<void>
     res.status(404).json({ error: 'Store not found' });
     return;
   }
-  // Online payment is reserved for digital stores. Physical stores use COD only.
-  if (store.storeType === 'physical') {
-    res.status(400).json({
-      error: 'Physical stores use cash on delivery. Use POST /api/public/checkout/cod.',
-      code: 'physical_store_cod_only',
-    });
-    return;
-  }
+  // Online payment is available to BOTH digital and physical stores.
+  // (Digital = online only; physical = online OR COD via /checkout/cod.)
+  // Prefer POST /api/payment/initiate for the country/method-routed flow;
+  // this endpoint stays for the simple single-product digital path.
   const product = await productService.getProductBySlug(store._id.toString(), body.productSlug);
   if (!product || !product.isPublished) {
     res.status(404).json({ error: 'Product not found' });

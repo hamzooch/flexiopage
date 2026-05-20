@@ -19,6 +19,8 @@ import type { ProductBundle } from '@/lib/api';
 import { getSessionId, trackStoreEvent } from '@/lib/storefront-track';
 import { fireMarketingEvent } from '@/components/storefront/TrackEvent';
 import type { CouponValidationResponse } from '@/types/coupon';
+import { getAvailableMethods, type StoreType } from '@/lib/payment-methods';
+import { PaymentMethodSelector, methodKey } from '@/components/storefront/payment-method-selector';
 
 const API_BASE = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5001').replace(/\/$/, '');
 
@@ -67,6 +69,8 @@ interface Props {
   allowBackorder: boolean;
   currency: string;
   defaultCountry?: string;
+  /** 'physical' offers online + COD; 'digital' offers online only. Defaults to physical. */
+  storeType?: StoreType;
   config?: CodFormConfig;
   /** Quantity-tier bundle — when enabled, replaces the quantity stepper with a tier picker. */
   bundle?: ProductBundle;
@@ -116,6 +120,7 @@ export function CodOrderForm({
   allowBackorder,
   currency,
   defaultCountry,
+  storeType = 'physical',
   config,
   bundle,
   variants,
@@ -150,6 +155,27 @@ export function CodOrderForm({
   const [postalCode, setPostalCode] = useState('');
   const [notes, setNotes] = useState('');
   const [quantity, setQuantity] = useState(1);
+
+  // ── Payment method — driven by country + store type ───────────────
+  const availableMethods = useMemo(
+    () => getAvailableMethods(country, storeType),
+    [country, storeType]
+  );
+  const [selectedMethodKey, setSelectedMethodKey] = useState('');
+  // Keep a valid selection whenever the available list changes (e.g. the buyer
+  // switches country). Prefer COD when present (this is the COD form), else the
+  // first online method.
+  useEffect(() => {
+    const keys = availableMethods.map(methodKey);
+    if (selectedMethodKey && keys.includes(selectedMethodKey)) return;
+    const cod = availableMethods.find((m) => m.id === 'cod');
+    setSelectedMethodKey(cod ? methodKey(cod) : keys[0] || '');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [availableMethods]);
+  const selectedMethod = useMemo(
+    () => availableMethods.find((m) => methodKey(m) === selectedMethodKey) || availableMethods[0],
+    [availableMethods, selectedMethodKey]
+  );
 
   // ── Variant selection ─────────────────────────────────────────────
   // Active variant — defaults to the first one (or null if no variants).
@@ -398,6 +424,53 @@ export function CodOrderForm({
       setError('Ville obligatoire.');
       return;
     }
+
+    // ── Online payment branch ───────────────────────────────────────
+    // When the buyer picked an online method (Mobile Money / Card), create the
+    // order + a hosted-checkout session and redirect to the gateway. The server
+    // recomputes the amount and re-validates the method for this country.
+    if (selectedMethod && selectedMethod.gateway !== 'cod') {
+      setSubmitting(true);
+      try {
+        const res = await fetch(`${API_BASE}/api/payment/initiate`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            storeSlug,
+            productSlug,
+            quantity,
+            email: email.trim() || `pay-${phone.replace(/\D/g, '')}@flexiopage.local`,
+            customerName: name.trim(),
+            phone: phone.trim(),
+            country,
+            gateway: selectedMethod.gateway,
+            method: selectedMethod.id,
+            shippingAddress: {
+              line1: line1.trim(),
+              line2: showAddressLine2 ? (line2.trim() || undefined) : undefined,
+              city: showCity ? (city.trim() || undefined) : undefined,
+              state: showState ? (stateValue.trim() || undefined) : undefined,
+              postalCode: showPostal ? (postalCode.trim() || undefined) : undefined,
+              country,
+            },
+          }),
+        });
+        const data = await res.json();
+        if (!res.ok || !data.paymentUrl) {
+          setError(data.error || 'Impossible de démarrer le paiement.');
+          setSubmitting(false);
+          return;
+        }
+        // Hand off to the gateway's hosted checkout.
+        window.location.href = data.paymentUrl;
+      } catch {
+        setError('Impossible de joindre le serveur. Réessaie.');
+        setSubmitting(false);
+      }
+      return;
+    }
+
+    // ── Cash-on-delivery branch (default) ───────────────────────────
     setSubmitting(true);
     try {
       const res = await fetch(`${API_BASE}/api/public/checkout/cod`, {
@@ -463,7 +536,9 @@ export function CodOrderForm({
           {headline}
         </h2>
         <p className="mt-0.5 text-xs sm:mt-1 sm:text-sm" style={{ color: theme.muted }}>
-          Tu paies <strong>{formatCurrency(total, currency)}</strong> en espèces au livreur.
+          {selectedMethod?.gateway === 'cod'
+            ? <>Tu paies <strong>{formatCurrency(total, currency)}</strong> en espèces au livreur.</>
+            : <>Tu paies <strong>{formatCurrency(total, currency)}</strong> en ligne, en toute sécurité.</>}
         </p>
       </div>
 
@@ -775,6 +850,16 @@ export function CodOrderForm({
           </div>
         )}
       </div>
+
+      {/* Payment method picker — shown only when more than one method is
+          available for this country/store (online + COD, or several online). */}
+      <PaymentMethodSelector
+        methods={availableMethods}
+        value={selectedMethodKey}
+        onChange={(key) => setSelectedMethodKey(key)}
+        theme={theme}
+        radius={radius}
+      />
 
       {/* Total — adds a discount line when a coupon is applied, on top of
           the existing shipping line when shipping is non-zero. */}

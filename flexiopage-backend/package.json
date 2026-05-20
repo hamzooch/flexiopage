@@ -12,6 +12,7 @@
     "seed:admin": "tsx scripts/seed-admin.ts",
     "seed:owner": "tsx scripts/seed-owner.ts",
     "dispatch:test-order": "tsx scripts/dispatch-test-order.ts",
+    "test:payment-flow": "tsx scripts/test-payment-flow.ts",
     "migrate:wallets-usd": "tsx scripts/migrate-wallets-to-usd.ts"
   },
   "dependencies": {

@@ -384,6 +384,7 @@ export default async function PublicProductPage({ params }: Props) {
                       allowBackorder={!!product.allowBackorder}
                       currency={currency}
                       defaultCountry={store?.settings?.country}
+                      storeType={isDigital ? 'digital' : 'physical'}
                       config={codConfig}
                       bundle={product.bundle}
                       variants={product.variants}

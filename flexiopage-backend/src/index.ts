@@ -19,6 +19,7 @@ import storeRoutes from './routes/store.routes';
 import publicRoutes from './routes/public.routes';
 import jobsRoutes from './routes/jobs.routes';
 import webhooksRoutes from './routes/webhooks.routes';
+import paymentRoutes from './routes/payment.routes';
 import walletRoutes from './routes/wallet.routes';
 import adminRoutes from './routes/admin.routes';
 import complaintRoutes from './routes/complaint.routes';
@@ -109,7 +110,9 @@ app.use('/api/admin', adminRoutes);
 app.use('/api/stores', storeRoutes);
 // Async generation jobs (polling)
 app.use('/api/jobs', jobsRoutes);
-// Payment provider webhooks (CinetPay, mock dev)
+// Online payment API (initiate + verify) — CinetPay / Flutterwave
+app.use('/api/payment', paymentRoutes);
+// Payment provider webhooks (CinetPay, Flutterwave, mock dev)
 app.use('/api/webhooks', webhooksRoutes);
 // Public storefront API (no auth)
 app.use('/api/public', publicRoutes);
