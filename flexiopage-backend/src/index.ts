@@ -20,6 +20,7 @@ import publicRoutes from './routes/public.routes';
 import jobsRoutes from './routes/jobs.routes';
 import webhooksRoutes from './routes/webhooks.routes';
 import paymentRoutes from './routes/payment.routes';
+import { registerMessengerBot } from './modules/messenger-bot';
 import walletRoutes from './routes/wallet.routes';
 import adminRoutes from './routes/admin.routes';
 import complaintRoutes from './routes/complaint.routes';
@@ -89,7 +90,12 @@ app.use(cors({
     cb(new Error(`CORS: origin ${origin} not allowed`));
   },
 }));
-app.use(express.json({ limit: '10mb' }));
+// Capture the raw body so webhook handlers can verify provider signatures
+// (e.g. Meta's X-Hub-Signature-256, which signs the exact bytes received).
+app.use(express.json({
+  limit: '10mb',
+  verify: (req, _res, buf) => { (req as express.Request & { rawBody?: Buffer }).rawBody = buf; },
+}));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 app.use(cookieParser());
 app.use(mongoSanitize());
@@ -116,6 +122,8 @@ app.use('/api/payment', paymentRoutes);
 app.use('/api/webhooks', webhooksRoutes);
 // Public storefront API (no auth)
 app.use('/api/public', publicRoutes);
+// Messenger Bot module (API vendeur /api/messenger-bot + webhook /webhook/messenger)
+registerMessengerBot(app);
 
 // Health check
 app.get('/health', (_req, res) => res.json({ status: 'ok', timestamp: new Date().toISOString() }));
