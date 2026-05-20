@@ -8,11 +8,14 @@
  */
 import type { Express } from 'express';
 import { apiRouter, webhookRouter } from './routes/messengerBot.routes';
+import { dataDeletionRouter } from './routes/dataDeletion.routes';
 import { registerMessageWorker } from './workers/messageWorker';
 import { initMessengerQueue } from './queue/messageQueue';
 import { logger } from '../../lib/logger';
 
 export function registerMessengerBot(app: Express): void {
+  // Data Deletion (Meta) — PUBLIC, doit passer avant le routeur JWT.
+  app.use('/api/messenger-bot', dataDeletionRouter);
   app.use('/api/messenger-bot', apiRouter);
   app.use('/webhook/messenger', webhookRouter);
 
