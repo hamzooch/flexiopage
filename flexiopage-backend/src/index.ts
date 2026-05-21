@@ -32,6 +32,10 @@ import { rateLimiter } from './middleware/rateLimiter';
 const app = express();
 const PORT = process.env.PORT || 5000;
 
+// Behind a single reverse proxy (Nginx). Lets express-rate-limit read the
+// real client IP from X-Forwarded-For instead of sharing one counter.
+app.set('trust proxy', 1);
+
 // Structured request logging — must come before route handlers so every
 // request gets a logger attached at req.log.
 app.use(httpLogger);
@@ -98,7 +102,13 @@ app.use(express.json({
 }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 app.use(cookieParser());
-app.use(mongoSanitize());
+// Skip mongo-sanitize on webhook routes: it strips req.query keys containing
+// dots, which would delete Meta's hub.mode / hub.verify_token / hub.challenge
+// params and break webhook verification. Protection stays on everywhere else.
+app.use((req, res, next) => {
+  if (req.path.startsWith('/webhook/')) return next();
+  return mongoSanitize()(req, res, next);
+});
 
 // Rate limiting
 app.use(rateLimiter);
