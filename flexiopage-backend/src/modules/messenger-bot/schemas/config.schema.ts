@@ -2,6 +2,7 @@
  * Schémas Zod pour valider les payloads des routes du bot.
  */
 import { z } from 'zod';
+import { isKnownCountry } from '../../../data/countries';
 
 export const shippingFeeSchema = z.object({
   city: z.string().min(1).max(80),
@@ -20,8 +21,12 @@ export const customProductSchema = z.object({
 /** PUT /config — tous les champs optionnels (mise à jour partielle). */
 export const updateConfigSchema = z.object({
   status: z.enum(['active', 'paused', 'disconnected']).optional(),
-  language: z.enum(['ar', 'fr', 'darija_ma', 'darija_dz', 'darija_tn']).optional(),
-  country: z.enum(['MA', 'DZ', 'TN']).optional(),
+  language: z.enum(['ar', 'fr', 'en', 'darija_ma', 'darija_dz', 'darija_tn']).optional(),
+  country: z
+    .string()
+    .transform((v) => v.trim().toUpperCase())
+    .refine(isKnownCountry, { message: 'Pays non reconnu (code ISO-2 attendu).' })
+    .optional(),
   welcome_message: z.string().max(2000).optional(),
   away_message: z.string().max(2000).optional(),
   order_confirmation_message: z.string().max(2000).optional(),

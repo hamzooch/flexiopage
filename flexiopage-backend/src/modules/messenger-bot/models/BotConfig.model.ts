@@ -6,9 +6,15 @@
  * page Facebook est stocké CHIFFRÉ (AES) dans `page_access_token_encrypted`.
  */
 import mongoose, { Document, Schema } from 'mongoose';
+import { isKnownCountry } from '../../../data/countries';
 
-export type BotLanguage = 'ar' | 'fr' | 'darija_ma' | 'darija_dz' | 'darija_tn';
-export type BotCountry = 'MA' | 'DZ' | 'TN';
+export type BotLanguage = 'ar' | 'fr' | 'en' | 'darija_ma' | 'darija_dz' | 'darija_tn';
+/**
+ * Code pays ISO 3166-1 alpha-2. Le bot WhatsApp/Messenger sert des vendeurs dans
+ * TOUS les marchés ; on valide donc contre la liste maître `src/data/countries.ts`
+ * plutôt qu'un enum Maghreb codé en dur. `MA` reste le défaut historique.
+ */
+export type BotCountry = string;
 export type BotStatus = 'active' | 'paused' | 'disconnected';
 export type CatalogSource = 'auto' | 'manual' | 'hybrid';
 export type AiPersonality = 'friendly' | 'professional' | 'energetic';
@@ -114,8 +120,13 @@ const BotConfigSchema = new Schema<IBotConfig>(
     page_picture_url: { type: String },
 
     status: { type: String, enum: ['active', 'paused', 'disconnected'], default: 'active' },
-    language: { type: String, enum: ['ar', 'fr', 'darija_ma', 'darija_dz', 'darija_tn'], default: 'darija_ma' },
-    country: { type: String, enum: ['MA', 'DZ', 'TN'], default: 'MA' },
+    language: { type: String, enum: ['ar', 'fr', 'en', 'darija_ma', 'darija_dz', 'darija_tn'], default: 'darija_ma' },
+    country: {
+      type: String,
+      default: 'MA',
+      uppercase: true,
+      validate: { validator: (v: string) => isKnownCountry(v), message: 'Pays non reconnu (code ISO-2 attendu).' },
+    },
 
     welcome_message: { type: String },
     away_message: { type: String },

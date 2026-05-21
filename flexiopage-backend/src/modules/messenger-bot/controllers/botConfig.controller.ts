@@ -12,6 +12,7 @@ import { updateConfigSchema, testBotSchema } from '../schemas/config.schema';
 import { catalogService } from '../services/catalog.service';
 import { claudeService } from '../services/claude.service';
 import { buildSystemPrompt } from '../prompts/systemPrompt';
+import { detectDialect } from '../utils/languageDetector';
 import { claudeTools } from '../tools/claudeTools';
 
 /** Retire le token chiffré avant exposition au front. */
@@ -74,7 +75,8 @@ export async function testBot(req: AuthRequest, res: Response): Promise<void> {
   try {
     const vendor = await Store.findById(storeId).select('name').lean();
     const catalog = await catalogService.getCatalog(config);
-    const systemPrompt = buildSystemPrompt({ botConfig: config, vendor: vendor || {}, catalog });
+    const detectedLanguage = detectDialect(parsed.data.message) ?? undefined;
+    const systemPrompt = buildSystemPrompt({ botConfig: config, vendor: vendor || {}, catalog, detectedLanguage });
     const result = await claudeService.generateResponse({
       conversationHistory: [{ role: 'user', content: parsed.data.message }],
       systemPrompt,

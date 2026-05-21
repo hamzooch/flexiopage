@@ -10,6 +10,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { Loader2, Check, Send, MessageSquare, RefreshCw, Power, AlertTriangle, Sparkles, Plug } from 'lucide-react';
 import { whatsappBotApi, extractApiError, type MessengerBotConfig, type MessengerConversation, type MessengerMessage } from '@/lib/api';
+import { COUNTRIES, COUNTRY_GROUPS } from '@/data/countries';
 import { useStoreStore } from '@/stores/store-store';
 import { PageHeader } from '@/components/dashboard/page-header';
 import { Button } from '@/components/ui/button';
@@ -186,13 +187,24 @@ function ConfigForm({ storeId, config, onSaved }: { storeId: string; config: Mes
           <select className="h-9 w-full rounded-md border border-border/60 bg-background px-2 text-sm"
             value={form.language} onChange={(e) => setForm({ ...form, language: e.target.value as MessengerBotConfig['language'] })}>
             <option value="darija_ma">Darija 🇲🇦</option><option value="darija_dz">Darija 🇩🇿</option>
-            <option value="darija_tn">Derja 🇹🇳</option><option value="ar">Arabe</option><option value="fr">Français</option>
+            <option value="darija_tn">Derja 🇹🇳</option><option value="ar">Arabe</option>
+            <option value="fr">Français</option><option value="en">English</option>
           </select>
         </Field>
-        <Field label="Pays">
+        <Field label="Pays / marché">
           <select className="h-9 w-full rounded-md border border-border/60 bg-background px-2 text-sm"
-            value={form.country} onChange={(e) => setForm({ ...form, country: e.target.value as MessengerBotConfig['country'] })}>
-            <option value="MA">Maroc</option><option value="DZ">Algérie</option><option value="TN">Tunisie</option>
+            value={form.country} onChange={(e) => setForm({ ...form, country: e.target.value })}>
+            {COUNTRY_GROUPS.map((g) => {
+              const items = COUNTRIES.filter((c) => c.group === g.id);
+              if (!items.length) return null;
+              return (
+                <optgroup key={g.id} label={g.label}>
+                  {items.map((c) => (
+                    <option key={c.code} value={c.code}>{c.label} ({c.currency})</option>
+                  ))}
+                </optgroup>
+              );
+            })}
           </select>
         </Field>
         <Field label="Personnalité">

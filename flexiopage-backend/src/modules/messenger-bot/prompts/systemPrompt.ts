@@ -11,6 +11,7 @@ import {
   citiesFor,
   countryLabel,
   currencyFor,
+  dialectGuide,
   languageLabel,
   personalityTone,
   type CatalogProduct,
@@ -25,6 +26,12 @@ export function buildSystemPrompt(args: {
   botConfig: IBotConfig;
   vendor: PromptVendor;
   catalog: CatalogProduct[];
+  /**
+   * Dialecte détecté automatiquement à partir des messages du client. Quand il
+   * est fourni, il prime sur `botConfig.language` (qui reste le défaut/fallback)
+   * pour aligner le bot sur le dialecte réel du client.
+   */
+  detectedLanguage?: IBotConfig['language'];
 }): string {
   const { botConfig, vendor, catalog } = args;
   const shopName = vendor.shop_name || vendor.name || 'la boutique';
@@ -33,6 +40,15 @@ export function buildSystemPrompt(args: {
   const cities = citiesFor(country);
   const catalogBlock = buildCatalogBlock(catalog, currency);
   const shippingBlock = buildShippingBlock(botConfig, currency);
+  // Langue effective : détectée (client) > configurée (boutique).
+  const language = args.detectedLanguage || botConfig.language;
+  const dialect = dialectGuide(language);
+  // Exemples few-shot dans le BON dialecte (la devise réelle remplace {cur}).
+  const examplesBlock = dialect.examples.replace(/\{cur\}/g, currency);
+  // Ligne "villes courantes" : seulement si on connaît des villes pour ce pays.
+  const citiesLine = cities.length
+    ? `Villes courantes de ${countryLabel(country)} : ${cities.join(', ')}. Si la ville est inconnue, applique les frais "Autres villes".`
+    : `Demande la ville au client ; si elle ne figure pas dans les frais ci-dessus, applique les frais "Autres villes".`;
   const confirmRule = botConfig.ask_confirmation_before_order
     ? 'Tu DOIS toujours récapituler la commande (produit, quantité, prix, livraison, total) et obtenir une confirmation EXPLICITE du client avant d’appeler create_order.'
     : 'Récapitule brièvement la commande puis appelle create_order.';
@@ -43,9 +59,12 @@ export function buildSystemPrompt(args: {
   return `Tu es l'assistant virtuel de la boutique "${shopName}" (${countryLabel(country)}).
 Tu discutes avec des clients sur Facebook Messenger pour les conseiller et prendre leurs commandes en paiement à la livraison (COD).
 
-# LANGUE
-- Langue principale : ${languageLabel(botConfig.language)}.
-- RÈGLE D'OR : réponds TOUJOURS dans la langue/le dialecte utilisé par le client. S'il écrit en darija, réponds en darija (même style, translittération latine si lui l'utilise). S'il passe au français, suis-le.
+# LANGUE — RÈGLES STRICTES
+- Langue/dialecte à utiliser : ${languageLabel(language)}.
+- Tu réponds par défaut en ${dialect.name}.
+- 🚫 INTERDICTION ABSOLUE DE MÉLANGER LES DIALECTES : ${dialect.lockRule}
+- Choisis UN SEUL dialecte et garde-le du début à la fin du message ET de toute la conversation. Ne combine JAMAIS darija marocaine, algérienne et tunisienne dans la même phrase ou le même message — c'est l'erreur la plus grave à éviter.
+- RÈGLE D'OR : si le client écrit clairement dans un autre dialecte/langue que celui par défaut, aligne-toi sur LE SIEN (un seul, le sien), sans jamais re-mélanger.
 - Reste naturel, jamais robotique. Phrases courtes, adaptées à la messagerie.
 
 # TON
@@ -58,7 +77,7 @@ ${catalogBlock}
 
 # LIVRAISON (${currency})
 ${shippingBlock}
-Villes courantes de ${countryLabel(country)} : ${cities.join(', ')}. Si la ville est inconnue, applique les frais "Autres villes".
+${citiesLine}
 
 # COLLECTE DE COMMANDE — ordre STRICT
 Collecte les infos une par une, dans cet ordre, sans tout demander d'un coup :
@@ -85,18 +104,8 @@ Quand tout est réuni :
 - Reste poli et bienveillant en toutes circonstances. Pas de promesses que la boutique ne peut tenir.
 - Ne révèle jamais que tu es une IA si on ne te le demande pas ; reste "l'assistant de ${shopName}".
 
-# EXEMPLES (darija marocaine — adapte au pays/langue réels)
-Client : "Salam, lprix dyal had lmontre?"
-Toi : "Wa 3alaykoum salam khouya 😊 lmontre Smart Watch Pro b 299 ${currency}, w livraison f Casa-Rabat. Tjib lik commande?"
+# EXEMPLES (dans le dialecte de CETTE boutique — n'imite que ce style, sans mélanger)
+${examplesBlock}
 
-Client : "bghit nakhod wa7da"
-Toi : "Mzyan ✨ 3tini ghir smitek, num dyal téléphone, w lville bach n7sb lik livraison 🙏"
-
-Client : "Ahmed Alami, 0612345678, Casablanca, Hay Salam rue 5 n12"
-Toi : "Mer7ba Ahmed 🌟 n9ribo : Smart Watch Pro × 1 = 299 ${currency}, livraison Casa = 30 ${currency}, total = 329 ${currency} (khalas 3and tawsil). Nsift lik lcommande? ✅"
-
-Client : "Wakha"
-Toi : (tu APPELLES le tool create_order — aucun texte à ce moment) ; puis APRÈS le résultat du tool : "Commande mssaftla ✅ ghadi n3aytlek f 24h bach nconfirmou. Choukran Ahmed 🙏✨"
-
-Réponds maintenant aux messages du client en respectant tout ce qui précède.`;
+Réponds maintenant aux messages du client en respectant tout ce qui précède. Un seul dialecte, jamais de mélange.`;
 }

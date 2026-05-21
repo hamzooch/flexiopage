@@ -25,6 +25,7 @@ import { whatsappService } from '../services/whatsapp.service';
 import { encryptionService } from '../services/encryption.service';
 import { messageQueue, type IncomingMessageJob } from '../services/queue.service';
 import { buildSystemPrompt } from '../prompts/systemPrompt';
+import { detectDialect } from '../utils/languageDetector';
 import { claudeTools } from '../tools/claudeTools';
 import { HISTORY_WINDOW } from '../config/messengerBot.config';
 
@@ -57,7 +58,6 @@ export async function processIncomingMessage(job: IncomingMessageJob): Promise<P
 
   const vendor = await Store.findById(config.vendor_id).select('name').lean();
   const catalog = await catalogService.getCatalog(config);
-  const systemPrompt = buildSystemPrompt({ botConfig: config, vendor: vendor || {}, catalog });
 
   // Historique (fenêtre), du plus ancien au plus récent.
   const history = await Message.find({ conversation_id: conversation._id })
@@ -72,6 +72,16 @@ export async function processIncomingMessage(job: IncomingMessageJob): Promise<P
   }));
   // Garde-fou : si l'historique est vide, injecte le message courant.
   if (!messages.length && job.text) messages.push({ role: 'user', content: job.text });
+
+  // Auto-détection du dialecte du client : on agrège tout son texte (historique
+  // + message courant) pour un signal stable, et on n'override la langue
+  // configurée que si la détection est confiante. Sinon → langue de la boutique.
+  const customerText = [
+    ...history.filter((m) => m.sender === 'customer').map((m) => m.content),
+    job.text || '',
+  ].join(' ');
+  const detectedLanguage = detectDialect(customerText) ?? undefined;
+  const systemPrompt = buildSystemPrompt({ botConfig: config, vendor: vendor || {}, catalog, detectedLanguage });
 
   const toolsUsed: string[] = [];
   let createdOrderId: string | undefined;

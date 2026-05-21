@@ -961,8 +961,9 @@ export interface MessengerBotConfig {
   page_name?: string;
   page_picture_url?: string;
   status: 'active' | 'paused' | 'disconnected';
-  language: 'ar' | 'fr' | 'darija_ma' | 'darija_dz' | 'darija_tn';
-  country: 'MA' | 'DZ' | 'TN';
+  language: 'ar' | 'fr' | 'en' | 'darija_ma' | 'darija_dz' | 'darija_tn';
+  /** Code pays ISO-2 (tous marchés, cf. src/data/countries.ts). */
+  country: string;
   welcome_message?: string;
   away_message?: string;
   order_confirmation_message?: string;
