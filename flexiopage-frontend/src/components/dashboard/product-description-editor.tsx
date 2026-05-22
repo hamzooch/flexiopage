@@ -12,7 +12,7 @@
  * shows up correctly on the public page.
  */
 
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Bold, List, Image as ImageIcon, Link as LinkIcon, Link2, Smile, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -38,7 +38,19 @@ interface Props {
 
 export function ProductDescriptionEditor({ storeId, value, onChange, placeholder, rows = 8 }: Props) {
   const ref = useRef<HTMLTextAreaElement | null>(null);
+
+  /** Ajuste la hauteur du textarea à son contenu (le vendeur voit tout sans scroll). */
+  function autosize() {
+    const ta = ref.current;
+    if (!ta) return;
+    ta.style.height = 'auto';
+    ta.style.height = `${ta.scrollHeight}px`;
+  }
+  // Recalcule quand la valeur change de l'extérieur (chargement, génération IA, insertions).
+  useEffect(autosize, [value]);
+
   const [imageModalOpen, setImageModalOpen] = useState(false);
+  const [mediaMode, setMediaMode] = useState<'image' | 'gif'>('image');
   const [emojiOpen, setEmojiOpen] = useState(false);
   const [linkUrl, setLinkUrl] = useState('');
   const [urlError, setUrlError] = useState('');
@@ -99,6 +111,12 @@ export function ProductDescriptionEditor({ storeId, value, onChange, placeholder
     insertImage(url);
   }
 
+  function openMedia(mode: 'image' | 'gif') {
+    setMediaMode(mode);
+    setEmojiOpen(false);
+    setImageModalOpen(true);
+  }
+
   function closeImageModal() {
     setImageModalOpen(false);
     setLinkUrl('');
@@ -119,23 +137,18 @@ export function ProductDescriptionEditor({ storeId, value, onChange, placeholder
         <ToolbarBtn onClick={() => insert('\n- ')} title="Liste à puces">
           <List className="h-3.5 w-3.5" />
         </ToolbarBtn>
-        <ToolbarBtn onClick={insertLink} title="Lien">
+        <ToolbarBtn onClick={insertLink} title="Insérer un lien">
           <LinkIcon className="h-3.5 w-3.5" />
+        </ToolbarBtn>
+        <ToolbarBtn onClick={() => openMedia('image')} title="Insérer une image">
+          <ImageIcon className="h-3.5 w-3.5" />
+        </ToolbarBtn>
+        <ToolbarBtn onClick={() => openMedia('gif')} title="Insérer un GIF">
+          <span className="text-[9px] font-bold leading-none tracking-tight">GIF</span>
         </ToolbarBtn>
         <ToolbarBtn onClick={() => setEmojiOpen((v) => !v)} title="Emoji / icône" active={emojiOpen}>
           <Smile className="h-3.5 w-3.5" />
         </ToolbarBtn>
-        <div className="ml-auto" />
-        <Button
-          type="button"
-          size="sm"
-          variant="outline"
-          onClick={() => setImageModalOpen(true)}
-          className="h-8 gap-1.5 px-2.5 text-xs"
-        >
-          <ImageIcon className="h-3.5 w-3.5" />
-          Insérer une image / GIF
-        </Button>
 
         {emojiOpen && (
           <>
@@ -161,7 +174,7 @@ export function ProductDescriptionEditor({ storeId, value, onChange, placeholder
       <textarea
         ref={ref}
         value={value}
-        onChange={(e) => onChange(e.target.value)}
+        onChange={(e) => { onChange(e.target.value); autosize(); }}
         placeholder={placeholder}
         rows={rows}
         onKeyDown={(e) => {
@@ -171,7 +184,7 @@ export function ProductDescriptionEditor({ storeId, value, onChange, placeholder
             insert('**TEXT**', { wrap: true });
           }
         }}
-        className="min-h-[10rem] w-full resize-y rounded-md border border-input bg-background px-3 py-2 text-sm leading-relaxed focus:border-primary/40 focus:outline-none focus:ring-4 focus:ring-primary/10 lg:min-h-[22rem]"
+        className="min-h-[14rem] w-full resize-y overflow-hidden rounded-md border border-input bg-background px-3 py-2 text-sm leading-relaxed focus:border-primary/40 focus:outline-none focus:ring-4 focus:ring-primary/10 lg:min-h-[26rem]"
       />
 
       <p className="text-[11px] text-muted-foreground">
@@ -188,7 +201,7 @@ export function ProductDescriptionEditor({ storeId, value, onChange, placeholder
             onClick={(e) => e.stopPropagation()}
           >
             <div className="mb-3 flex items-center justify-between">
-              <h3 className="text-sm font-semibold">Insérer une image ou un GIF</h3>
+              <h3 className="text-sm font-semibold">{mediaMode === 'gif' ? 'Insérer un GIF' : 'Insérer une image'}</h3>
               <button
                 type="button"
                 onClick={closeImageModal}
@@ -200,13 +213,15 @@ export function ProductDescriptionEditor({ storeId, value, onChange, placeholder
             </div>
 
             {/* Option 1 : coller un lien (Giphy, CDN, etc.) */}
-            <label className="mb-1.5 block text-[11px] font-medium text-muted-foreground">Coller un lien (image / GIF)</label>
+            <label className="mb-1.5 block text-[11px] font-medium text-muted-foreground">
+              {mediaMode === 'gif' ? 'Coller un lien GIF' : "Coller un lien d'image"}
+            </label>
             <div className="flex gap-2">
               <Input
                 value={linkUrl}
                 onChange={(e) => { setLinkUrl(e.target.value); setUrlError(''); }}
                 onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); insertImageUrl(); } }}
-                placeholder="https://media.giphy.com/…/image.gif"
+                placeholder={mediaMode === 'gif' ? 'https://media.giphy.com/…/giphy.gif' : 'https://…/photo.jpg'}
                 className="h-9"
               />
               <Button type="button" size="sm" onClick={insertImageUrl} disabled={!linkUrl.trim()} className="h-9 shrink-0 gap-1.5">
@@ -214,6 +229,9 @@ export function ProductDescriptionEditor({ storeId, value, onChange, placeholder
               </Button>
             </div>
             {urlError && <p className="mt-1 text-[11px] text-rose-600">{urlError}</p>}
+            {mediaMode === 'gif' && (
+              <p className="mt-1 text-[11px] text-muted-foreground">Astuce : sur Giphy, clic droit sur le GIF → « Copier l&apos;adresse de l&apos;image » (lien finissant par .gif).</p>
+            )}
 
             <div className="my-4 flex items-center gap-3 text-[11px] text-muted-foreground">
               <span className="h-px flex-1 bg-border" /> ou téléverser <span className="h-px flex-1 bg-border" />
@@ -226,7 +244,7 @@ export function ProductDescriptionEditor({ storeId, value, onChange, placeholder
               onChange={(url) => url && insertImage(url)}
               label=""
               shape="square"
-              helper="Formats supportés : PNG, JPG, WebP, GIF animé."
+              helper={mediaMode === 'gif' ? 'Téléverse un GIF animé (.gif).' : 'Formats supportés : PNG, JPG, WebP, GIF animé.'}
             />
           </div>
         </div>
