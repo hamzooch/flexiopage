@@ -35,10 +35,11 @@ export default function PrivacyPolicyPage() {
             <li><strong>Commandes & clients</strong> : nom, téléphone, adresse de livraison, e-mail, détails de commande.</li>
             <li><strong>Données d'usage</strong> : statistiques de visite anonymisées de tes vitrines (pour ton tableau de bord).</li>
             <li>
-              <strong>Données Facebook / Messenger</strong> (si tu connectes le module Messenger Bot) :
-              identifiant de ta Page, jeton d'accès à la Page (stocké <em>chiffré</em>), et les messages
-              échangés entre tes clients et le bot (contenu, identifiant anonyme du client « PSID »,
-              nom et photo de profil publics fournis par Meta).
+              <strong>Données Facebook / Messenger / WhatsApp</strong> (si tu connectes le module Messenger
+              Bot ou WhatsApp Bot) : identifiant de ta Page ou de ta ligne WhatsApp (phone number id),
+              jeton d'accès (stocké <em>chiffré</em>), et les messages échangés entre tes clients et le bot
+              (contenu, identifiant du client « PSID » Messenger ou numéro WhatsApp, nom et photo de profil
+              publics fournis par Meta).
             </li>
           </ul>
         </Section>
@@ -47,8 +48,8 @@ export default function PrivacyPolicyPage() {
           <ul className="list-disc space-y-1 pl-5">
             <li>Fournir le service : héberger ta boutique, traiter les commandes, afficher tes statistiques.</li>
             <li>
-              Faire fonctionner le <strong>Messenger Bot</strong> : répondre automatiquement à tes clients,
-              collecter les informations de commande et créer la commande dans ton tableau de bord.
+              Faire fonctionner le <strong>Messenger Bot / WhatsApp Bot</strong> : répondre automatiquement
+              à tes clients, collecter les informations de commande et créer la commande dans ton tableau de bord.
             </li>
             <li>Sécurité, prévention de la fraude et support.</li>
           </ul>
@@ -58,7 +59,7 @@ export default function PrivacyPolicyPage() {
         <Section title="4. Prestataires & intégrations">
           <p>Pour fournir certaines fonctionnalités, nous partageons le strict nécessaire avec :</p>
           <ul className="list-disc space-y-1 pl-5">
-            <li><strong>Meta (Facebook/Messenger)</strong> — réception et envoi des messages de ta Page.</li>
+            <li><strong>Meta (Facebook/Messenger & WhatsApp Business)</strong> — réception et envoi des messages de ta Page ou de ta ligne WhatsApp.</li>
             <li><strong>Anthropic (Claude)</strong> — génération des réponses du chatbot. Les messages sont traités pour produire une réponse ; ils ne servent pas à entraîner les modèles.</li>
             <li><strong>Prestataires de paiement</strong> (CinetPay, Flutterwave) — traitement des paiements en ligne.</li>
             <li><strong>Transporteurs / logistique</strong> (ex. MogaDelivery) — livraison des commandes.</li>
@@ -85,12 +86,13 @@ export default function PrivacyPolicyPage() {
           <p>
             Tu peux accéder à tes données, les corriger, les exporter ou en demander la suppression.
             Pour exercer ces droits — ou pour qu'un client demande la suppression de ses données collectées
-            via Messenger — écris-nous à{' '}
+            via Messenger ou WhatsApp — écris-nous à{' '}
             <a href={`mailto:${CONTACT_EMAIL}`} className="font-medium underline underline-offset-4">{CONTACT_EMAIL}</a>.
           </p>
           <p>
-            <strong>Suppression des données Messenger</strong> : à ta demande ou à celle d'un client, nous
-            supprimons les conversations et messages associés à un identifiant Page/PSID donné.
+            <strong>Suppression des données Messenger / WhatsApp</strong> : à ta demande ou à celle d'un
+            client, nous supprimons les conversations et messages associés à un identifiant Page/PSID ou à
+            un numéro WhatsApp donné.
           </p>
         </Section>
 

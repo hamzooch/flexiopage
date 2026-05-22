@@ -34,6 +34,13 @@ const RESERVED_TOP_LEVEL = new Set([
   'store',     // keep legacy /store/* URLs working so old links / GSC index entries still resolve
   'select-store', // post-login store picker — without this it gets rewritten to /store/select-store
   'd',         // private download tokens
+  // Legal / policy pages at the app apex — without these, the path-based
+  // storefront fallback rewrites flexiopage.com/terms-of-service →
+  // /store/terms-of-service → 404 (no such store). Meta requires these URLs
+  // to resolve for app review, so they MUST pass through.
+  'terms-of-service',
+  'privacy-policy',
+  'data-deletion',
   // Next.js + framework
   '_next',
   'api',

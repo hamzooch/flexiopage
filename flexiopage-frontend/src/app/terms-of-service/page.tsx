@@ -32,7 +32,7 @@ export default function TermsOfServicePage() {
             FlexioPage est une plateforme permettant de créer des boutiques et des pages de vente,
             de gérer un catalogue, d’accepter le paiement à la livraison (COD) ou en ligne, de
             dispatcher les commandes vers des transporteurs et, en option, d’automatiser la relation
-            client via un chatbot connecté à une page Facebook Messenger.
+            client via un chatbot connecté à une page Facebook Messenger ou à un numéro WhatsApp.
           </p>
         </Section>
 
@@ -72,12 +72,13 @@ export default function TermsOfServicePage() {
           </ul>
         </Section>
 
-        <Section title="7. Messenger Bot & IA">
+        <Section title="7. Messenger / WhatsApp Bot & IA">
           <p>
-            Le module Messenger Bot utilise l’IA (Claude d’Anthropic) pour répondre à tes clients. Les
-            réponses sont générées automatiquement : tu restes responsable de la supervision, des prix et
-            des informations communiquées. Tu dois respecter les Politiques des plateformes Meta lorsque tu
-            connectes une page Facebook.
+            Les modules Messenger Bot et WhatsApp Bot utilisent l’IA (Claude d’Anthropic) pour répondre à
+            tes clients. Les réponses sont générées automatiquement : tu restes responsable de la
+            supervision, des prix et des informations communiquées. Tu dois respecter les Politiques des
+            plateformes Meta (Facebook, Messenger et WhatsApp Business) lorsque tu connectes une page ou un
+            numéro.
           </p>
         </Section>
 
