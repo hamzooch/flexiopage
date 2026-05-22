@@ -1021,8 +1021,15 @@ function ProviderCard({
       <Button
         size="sm"
         variant={selected ? 'outline' : 'default'}
-        onClick={onSelect}
-        className={cn('mt-3 w-full gap-1.5', !selected && 'gradient-brand text-white')}
+        onClick={selected ? undefined : onSelect}
+        disabled={selected}
+        aria-disabled={selected}
+        className={cn(
+          'mt-3 w-full gap-1.5',
+          selected
+            ? 'cursor-default border-emerald-500/40 text-emerald-700 opacity-100 disabled:opacity-100'
+            : 'gradient-brand text-white',
+        )}
       >
         {selected ? (
           <>
