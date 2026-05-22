@@ -24,6 +24,7 @@ import { Label } from '@/components/ui/label';
 import { storesApi } from '@/lib/api';
 import { cn } from '@/lib/utils';
 import { AiDescriptionButton } from '@/components/dashboard/ai-description-button';
+import { ProductDescriptionEditor } from '@/components/dashboard/product-description-editor';
 import {
   Download,
   Video,
@@ -520,11 +521,10 @@ export default function NewDigitalProductPage() {
                   />
                 )}
               </div>
-              <textarea
-                id="description"
+              <ProductDescriptionEditor
+                storeId={storeId}
                 value={description}
-                onChange={(e) => setDescription(e.target.value)}
-                className="flex min-h-[100px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                onChange={setDescription}
                 placeholder="Explique ce que le client va obtenir. Vise 3-5 phrases. Sois concret : ce qu'il apprend, ce qu'il télécharge, ce qu'il pourra faire."
               />
               <p className="text-[11px] text-muted-foreground">

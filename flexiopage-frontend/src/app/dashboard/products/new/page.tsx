@@ -11,6 +11,7 @@ import { storesApi } from '@/lib/api';
 import { Plus, Trash2, ImagePlus, Loader2, Star, ArrowUp, ArrowDown, Sparkles, Upload, X, Download, Video, Key, Crown, Wrench, FileText } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { AiDescriptionButton } from '@/components/dashboard/ai-description-button';
+import { ProductDescriptionEditor } from '@/components/dashboard/product-description-editor';
 
 type DigitalKind = 'download' | 'course' | 'license' | 'membership' | 'service';
 
@@ -407,15 +408,13 @@ export default function NewProductPage() {
                   />
                 )}
               </div>
-              <textarea
-                id="description"
+              <ProductDescriptionEditor
+                storeId={storeId}
                 value={description}
-                onChange={(e) => setDescription(e.target.value)}
-                className="flex min-h-[100px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                onChange={setDescription}
                 placeholder="Ex: Caftan en soie brodée à la main, finitions dorées. Coupe ample, idéal pour les occasions."
               />
               <p className="text-[11px] text-muted-foreground">
-                Saute des lignes pour les paragraphes · lignes commençant par « - » deviennent des puces.
                 Tu peux laisser l&apos;IA écrire pour toi puis ajuster, ou tout taper à la main.
               </p>
             </div>
