@@ -13,10 +13,11 @@
  */
 
 import { useEffect, useRef, useState } from 'react';
-import { Bold, List, Image as ImageIcon, Link as LinkIcon, Link2, Smile, X } from 'lucide-react';
+import { Bold, List, Image as ImageIcon, Link as LinkIcon, Link2, Loader2, Smile, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { MediaPicker } from '@/components/dashboard/MediaPicker';
+import { storesApi } from '@/lib/api';
 import { cn } from '@/lib/utils';
 
 /** Emojis/icônes courants pour enrichir une description produit. */
@@ -54,6 +55,8 @@ export function ProductDescriptionEditor({ storeId, value, onChange, placeholder
   const [emojiOpen, setEmojiOpen] = useState(false);
   const [linkUrl, setLinkUrl] = useState('');
   const [urlError, setUrlError] = useState('');
+  const [uploading, setUploading] = useState(false);
+  const [uploadError, setUploadError] = useState('');
 
   /** Inject text at the current caret, preserving the selection if any. */
   function insert(snippet: string, opts?: { wrap?: boolean }) {
@@ -98,6 +101,41 @@ export function ProductDescriptionEditor({ storeId, value, onChange, placeholder
     // so the image sits on its own block, not glued to the previous text.
     insert(`\n\n![](${url})\n\n`);
     closeImageModal();
+  }
+
+  /** Téléverse des fichiers image/GIF puis les insère au curseur (collage / drop). */
+  async function uploadAndInsert(files: File[]) {
+    const images = files.filter((f) => f.type.startsWith('image/'));
+    if (!images.length) return;
+    setUploading(true);
+    setUploadError('');
+    try {
+      for (const file of images) {
+        const res = await storesApi.uploadMedia(storeId, file);
+        const url = (res.data as { media?: { url?: string } }).media?.url;
+        if (url) insertImage(url);
+      }
+    } catch {
+      setUploadError("Échec du téléversement de l'image collée.");
+    } finally {
+      setUploading(false);
+    }
+  }
+
+  /** Colle une image/GIF depuis le presse-papier (screenshot, image copiée). */
+  function handlePaste(e: React.ClipboardEvent<HTMLTextAreaElement>) {
+    const files = Array.from(e.clipboardData?.files || []).filter((f) => f.type.startsWith('image/'));
+    if (!files.length) return; // pas d'image → on laisse le collage texte normal.
+    e.preventDefault();
+    void uploadAndInsert(files);
+  }
+
+  /** Glisser-déposer une image/GIF dans la zone de texte. */
+  function handleDrop(e: React.DragEvent<HTMLTextAreaElement>) {
+    const files = Array.from(e.dataTransfer?.files || []).filter((f) => f.type.startsWith('image/'));
+    if (!files.length) return;
+    e.preventDefault();
+    void uploadAndInsert(files);
   }
 
   /** Insère une image / GIF à partir d'un lien collé (Giphy, CDN, etc.). */
@@ -175,6 +213,9 @@ export function ProductDescriptionEditor({ storeId, value, onChange, placeholder
         ref={ref}
         value={value}
         onChange={(e) => { onChange(e.target.value); autosize(); }}
+        onPaste={handlePaste}
+        onDrop={handleDrop}
+        onDragOver={(e) => e.preventDefault()}
         placeholder={placeholder}
         rows={rows}
         onKeyDown={(e) => {
@@ -187,8 +228,15 @@ export function ProductDescriptionEditor({ storeId, value, onChange, placeholder
         className="min-h-[14rem] w-full resize-y overflow-hidden rounded-md border border-input bg-background px-3 py-2 text-sm leading-relaxed focus:border-primary/40 focus:outline-none focus:ring-4 focus:ring-primary/10 lg:min-h-[26rem]"
       />
 
+      {uploading && (
+        <p className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
+          <Loader2 className="h-3 w-3 animate-spin" /> Téléversement de l&apos;image collée…
+        </p>
+      )}
+      {uploadError && <p className="text-[11px] text-rose-600">{uploadError}</p>}
+
       <p className="text-[11px] text-muted-foreground">
-        Mise en forme acceptée : <code className="rounded bg-muted px-1">**gras**</code> · <code className="rounded bg-muted px-1">- listes</code> · <code className="rounded bg-muted px-1">[lien](url)</code> · <code className="rounded bg-muted px-1">![](url-image.gif)</code> pour images / GIFs · emojis 😊 via le bouton 🙂.
+        Mise en forme acceptée : <code className="rounded bg-muted px-1">**gras**</code> · <code className="rounded bg-muted px-1">- listes</code> · <code className="rounded bg-muted px-1">[lien](url)</code> · <code className="rounded bg-muted px-1">![](url-image.gif)</code> pour images / GIFs · emojis 😊 via le bouton 🙂. Tu peux aussi <strong>coller</strong> (Ctrl/Cmd+V) ou glisser-déposer une image / un GIF directement.
       </p>
 
       {imageModalOpen && (
