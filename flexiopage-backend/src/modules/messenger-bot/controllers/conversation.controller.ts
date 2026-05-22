@@ -10,6 +10,7 @@ import { BotConfig } from '../models/BotConfig.model';
 import { getOwnedStoreId, getChannel } from '../utils/vendorAuth';
 import { sendManualSchema } from '../schemas/config.schema';
 import { messengerService } from '../services/messenger.service';
+import { whatsappService } from '../services/whatsapp.service';
 import { encryptionService } from '../services/encryption.service';
 
 export async function listConversations(req: AuthRequest, res: Response): Promise<void> {
@@ -65,10 +66,20 @@ export async function sendManual(req: AuthRequest, res: Response): Promise<void>
 
   try {
     const token = encryptionService.decrypt(config.page_access_token_encrypted);
-    await messengerService.sendMessage({ pageAccessToken: token, recipientPsid: conv.customer_psid, message: parsed.data.message });
+    // Route selon le canal de la config (même logique que le worker).
+    if (config.channel === 'whatsapp') {
+      await whatsappService.sendText({
+        phoneNumberId: config.whatsapp_phone_number_id || '',
+        accessToken: token,
+        to: conv.customer_psid,
+        message: parsed.data.message,
+      });
+    } else {
+      await messengerService.sendMessage({ pageAccessToken: token, recipientPsid: conv.customer_psid, message: parsed.data.message });
+    }
   } catch (err) {
-    logger.error({ err: (err as Error).message }, '[messenger-bot] envoi manuel échec');
-    res.status(502).json({ error: 'Échec de l’envoi via Messenger.' });
+    logger.error({ err: (err as Error).message, channel: config.channel }, '[messenger-bot] envoi manuel échec');
+    res.status(502).json({ error: 'Échec de l’envoi du message.' });
     return;
   }
 

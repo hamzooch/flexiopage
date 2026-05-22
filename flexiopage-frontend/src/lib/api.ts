@@ -960,6 +960,8 @@ export interface MessengerBotConfig {
   facebook_page_id: string;
   page_name?: string;
   page_picture_url?: string;
+  /** WhatsApp : numéro affiché de la ligne reliée (info). */
+  whatsapp_display_number?: string;
   status: 'active' | 'paused' | 'disconnected';
   language: 'ar' | 'fr' | 'en' | 'darija_ma' | 'darija_dz' | 'darija_tn';
   /** Code pays ISO-2 (tous marchés, cf. src/data/countries.ts). */
@@ -1049,6 +1051,10 @@ export const whatsappBotApi = {
     api.get<{ conversations: MessengerConversation[]; total: number }>(wb(storeId, '/conversations'), { params }),
   getConversation: (storeId: string, id: string) =>
     api.get<{ conversation: MessengerConversation; messages: MessengerMessage[] }>(wb(storeId, `/conversations/${id}`)),
+  takeover: (storeId: string, id: string) =>
+    api.post<{ conversation: MessengerConversation }>(wb(storeId, `/conversations/${id}/takeover`), { storeId }),
+  sendManual: (storeId: string, id: string, message: string) =>
+    api.post<{ message: MessengerMessage }>(wb(storeId, `/conversations/${id}/send`), { storeId, message }),
   statsOverview: (storeId: string) =>
     api.get<{
       totalConversations: number; byStatus: Record<string, number>; ordersCreated: number;

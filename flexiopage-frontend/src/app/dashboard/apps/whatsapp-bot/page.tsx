@@ -7,6 +7,7 @@
  */
 
 import { useCallback, useEffect, useState } from 'react';
+import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { Loader2, Check, Send, MessageSquare, RefreshCw, Power, AlertTriangle, Sparkles, Plug } from 'lucide-react';
 import { whatsappBotApi, extractApiError, type MessengerBotConfig, type MessengerConversation, type MessengerMessage } from '@/lib/api';
@@ -29,6 +30,7 @@ export default function WhatsAppBotPage() {
   const [error, setError] = useState('');
   const [config, setConfig] = useState<MessengerBotConfig | null>(null);
   const [overview, setOverview] = useState<Overview | null>(null);
+  const [showUpdate, setShowUpdate] = useState(false);
 
   const load = useCallback(async () => {
     if (!storeId) { setLoading(false); return; }
@@ -77,15 +79,40 @@ export default function WhatsAppBotPage() {
 
       {!config && <ConnectForm storeId={storeId} onConnected={load} />}
 
-      {config && (
+      {config && showUpdate && (
+        <ConnectForm
+          storeId={storeId}
+          mode="update"
+          currentNumber={config.whatsapp_display_number}
+          onCancel={() => setShowUpdate(false)}
+          onConnected={async () => { setShowUpdate(false); await load(); }}
+        />
+      )}
+
+      {config && !showUpdate && (
         <>
           {overview && <StatsRow overview={overview} />}
           <div className="grid gap-6 lg:grid-cols-2">
             <ConfigForm storeId={storeId} config={config} onSaved={load} />
             <TestBox storeId={storeId} />
           </div>
+          <div className="flex flex-col gap-3 rounded-2xl border border-border/60 bg-gradient-to-br from-green-500/5 to-emerald-600/5 p-4 sm:flex-row sm:items-center sm:justify-between">
+            <div className="min-w-0">
+              <div className="text-sm font-semibold">Messagerie</div>
+              <p className="text-xs text-muted-foreground">Vue plein écran type WhatsApp Web : consulter et répondre aux clients.</p>
+            </div>
+            <Link href={`/dashboard/apps/whatsapp-bot/chat?storeId=${encodeURIComponent(storeId)}`} className="shrink-0">
+              <Button size="sm" className="w-full gap-1.5 gradient-brand text-white sm:w-auto">
+                <MessageSquare className="h-3.5 w-3.5" /> Ouvrir la messagerie
+              </Button>
+            </Link>
+          </div>
           <Inbox storeId={storeId} />
-          <div>
+          <div className="flex flex-wrap gap-2">
+            <Button variant="outline" size="sm" className="gap-1.5"
+              onClick={() => setShowUpdate(true)}>
+              <RefreshCw className="h-3.5 w-3.5" /> Mettre à jour le numéro
+            </Button>
             <Button variant="outline" size="sm" className="gap-1.5 text-rose-600"
               onClick={async () => { if (confirm('Déconnecter WhatsApp ?')) { await whatsappBotApi.disconnect(storeId); await load(); } }}>
               <Power className="h-3.5 w-3.5" /> Déconnecter WhatsApp
@@ -97,7 +124,16 @@ export default function WhatsAppBotPage() {
   );
 }
 
-function ConnectForm({ storeId, onConnected }: { storeId: string; onConnected: () => void }) {
+function ConnectForm({ storeId, onConnected, mode = 'connect', currentNumber, onCancel }: {
+  storeId: string;
+  onConnected: () => void;
+  /** 'connect' = première connexion ; 'update' = changement de numéro (ré-saisie). */
+  mode?: 'connect' | 'update';
+  /** Numéro actuellement relié, affiché pour contexte en mode update. */
+  currentNumber?: string;
+  onCancel?: () => void;
+}) {
+  const isUpdate = mode === 'update';
   const [phoneNumberId, setPhoneNumberId] = useState('');
   const [accessToken, setAccessToken] = useState('');
   const [wabaId, setWabaId] = useState('');
@@ -119,22 +155,39 @@ function ConnectForm({ storeId, onConnected }: { storeId: string; onConnected: (
       <div className="mx-auto mb-4 grid h-14 w-14 place-items-center rounded-2xl bg-gradient-to-br from-green-500 to-emerald-600 text-white">
         <MessageSquare className="h-7 w-7" />
       </div>
-      <h2 className="text-center text-base font-semibold">Connecter WhatsApp (Cloud API)</h2>
+      <h2 className="text-center text-base font-semibold">
+        {isUpdate ? 'Mettre à jour le numéro WhatsApp' : 'Connecter WhatsApp (Cloud API)'}
+      </h2>
       <p className="mx-auto mt-1 max-w-md text-center text-sm text-muted-foreground">
-        Depuis Meta → WhatsApp → Configuration de l'API, copie le <strong>Phone number ID</strong> et un
-        <strong> token d'accès</strong>, puis colle-les ici.
+        {isUpdate ? (
+          <>Colle le <strong>nouveau Phone number ID</strong> (Meta → WhatsApp → Configuration de l'API) et un
+          <strong> token d'accès</strong> valide. Ta config (langue, frais, catalogue) est conservée.</>
+        ) : (
+          <>Depuis Meta → WhatsApp → Configuration de l'API, copie le <strong>Phone number ID</strong> et un
+          <strong> token d'accès</strong>, puis colle-les ici.</>
+        )}
       </p>
+      {isUpdate && currentNumber && (
+        <p className="mx-auto mt-2 max-w-md text-center text-xs text-muted-foreground">
+          Numéro actuel : <strong>{currentNumber}</strong>
+        </p>
+      )}
       <div className="mx-auto mt-5 max-w-md space-y-3">
-        <div className="space-y-1"><Label className="text-xs">Phone number ID</Label>
+        <div className="space-y-1"><Label className="text-xs">{isUpdate ? 'Nouveau Phone number ID' : 'Phone number ID'}</Label>
           <Input value={phoneNumberId} onChange={(e) => setPhoneNumberId(e.target.value)} placeholder="123456789012345" className="h-10" /></div>
         <div className="space-y-1"><Label className="text-xs">Token d'accès</Label>
           <Input value={accessToken} onChange={(e) => setAccessToken(e.target.value)} placeholder="EAAG..." type="password" className="h-10" /></div>
         <div className="space-y-1"><Label className="text-xs">WhatsApp Business Account ID (optionnel)</Label>
           <Input value={wabaId} onChange={(e) => setWabaId(e.target.value)} placeholder="optionnel" className="h-10" /></div>
         {err && <p className="text-xs text-rose-600">{err}</p>}
-        <Button onClick={connect} disabled={busy || !phoneNumberId.trim() || !accessToken.trim()} className="w-full gap-2 gradient-brand text-white">
-          {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plug className="h-4 w-4" />} Connecter
-        </Button>
+        <div className="flex gap-2">
+          {isUpdate && onCancel && (
+            <Button variant="outline" onClick={onCancel} disabled={busy} className="gap-2">Annuler</Button>
+          )}
+          <Button onClick={connect} disabled={busy || !phoneNumberId.trim() || !accessToken.trim()} className="w-full gap-2 gradient-brand text-white">
+            {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plug className="h-4 w-4" />} {isUpdate ? 'Mettre à jour' : 'Connecter'}
+          </Button>
+        </div>
         <p className="text-center text-[11px] text-muted-foreground">
           Webhook à configurer côté Meta : <code>…/webhook/whatsapp</code> (verify token = MESSENGER_VERIFY_TOKEN).
         </p>
