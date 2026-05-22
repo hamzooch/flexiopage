@@ -7,6 +7,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import {
   Bot, Loader2, Plug, Check, Send, MessageSquare, RefreshCw, Power, AlertTriangle, Sparkles,
@@ -169,6 +170,17 @@ export default function MessengerBotPage() {
           <div className="grid gap-6 lg:grid-cols-2">
             <ConfigForm storeId={storeId} config={config} onSaved={load} />
             <TestBox storeId={storeId} />
+          </div>
+          <div className="flex flex-col gap-3 rounded-2xl border border-border/60 bg-gradient-to-br from-blue-500/5 to-indigo-600/5 p-4 sm:flex-row sm:items-center sm:justify-between">
+            <div className="min-w-0">
+              <div className="text-sm font-semibold">Messagerie</div>
+              <p className="text-xs text-muted-foreground">Vue plein écran : consulter les discussions et répondre aux clients.</p>
+            </div>
+            <Link href={`/dashboard/apps/messenger-bot/chat?storeId=${encodeURIComponent(storeId)}`} className="shrink-0">
+              <Button size="sm" className="w-full gap-1.5 gradient-brand text-white sm:w-auto">
+                <MessageSquare className="h-3.5 w-3.5" /> Ouvrir la messagerie
+              </Button>
+            </Link>
           </div>
           <Inbox storeId={storeId} />
           <div>
