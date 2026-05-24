@@ -18,6 +18,21 @@ export interface IncomingMessageJob {
   customerPsid: string;
   text: string;
   messengerMessageId?: string;
+  // ── Média entrant (WhatsApp) — absent pour le texte pur. Le binaire n'est
+  //    PAS transporté dans le job : seul l'id média l'est, résolu côté worker
+  //    (job léger + URL signée Meta fraîche au moment du traitement). ──
+  mediaType?: 'image' | 'audio' | 'document' | 'sticker' | 'video';
+  mediaId?: string;
+  caption?: string;
+}
+
+/**
+ * Identifiant idempotent d'un job = l'id du message Meta (globalement unique,
+ * `wamid.…` côté WhatsApp, `mid.…` côté Messenger). Passé comme `jobId` à
+ * BullMQ, il empêche une redelivery Meta d'être enfilée deux fois.
+ */
+export function incomingJobId(job: Pick<IncomingMessageJob, 'messengerMessageId'>): string | undefined {
+  return job.messengerMessageId || undefined;
 }
 
 type Processor = (job: IncomingMessageJob) => Promise<void>;

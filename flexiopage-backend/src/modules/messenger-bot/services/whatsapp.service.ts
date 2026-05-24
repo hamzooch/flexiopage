@@ -3,9 +3,10 @@
  * Le token d'accès est passé EN CLAIR par l'appelant (déchiffré) — jamais loggé.
  * Docs : https://developers.facebook.com/docs/whatsapp/cloud-api
  */
-import axios, { type AxiosError } from 'axios';
+import axios from 'axios';
 import { logger } from '../../../lib/logger';
-import { GRAPH_API_BASE } from '../config/messengerBot.config';
+import { GRAPH_API_BASE, WHATSAPP_MEDIA_MAX_BYTES } from '../config/messengerBot.config';
+import { metaErrorFromAxios } from './metaErrors';
 
 export class WhatsAppService {
   /** Envoie un message texte à un numéro (wa_id, format international sans +). */
@@ -29,12 +30,48 @@ export class WhatsAppService {
       );
       return res.data;
     } catch (err) {
-      const ax = err as AxiosError<{ error?: { message?: string } }>;
+      const apiErr = metaErrorFromAxios(err, 'WhatsApp send failed');
       logger.error(
-        { metaError: ax.response?.data?.error || ax.message, status: ax.response?.status },
+        { metaError: apiErr.message, status: apiErr.status, code: apiErr.metaCode },
         '[whatsapp-bot] Cloud API send échec',
       );
-      throw new Error(ax.response?.data?.error?.message || 'WhatsApp send failed');
+      throw apiErr;
+    }
+  }
+
+  /**
+   * Récupère un média entrant : GET /{media_id} → URL signée, puis download
+   * binaire (Bearer requis sur les deux appels). Retourne null si échec ou
+   * média trop gros (maxContentLength) — l'appelant retombe alors sur un
+   * message de repli localisé.
+   */
+  async fetchMedia(args: { mediaId: string; accessToken: string }): Promise<
+    { base64: string; mimeType: string; sizeBytes: number } | null
+  > {
+    try {
+      const meta = await axios.get(`${GRAPH_API_BASE}/${args.mediaId}`, {
+        headers: { Authorization: `Bearer ${args.accessToken}` },
+        timeout: 8_000,
+      });
+      const url = (meta.data as { url?: string }).url;
+      const mimeType = (meta.data as { mime_type?: string }).mime_type || '';
+      if (!url) return null;
+
+      const bin = await axios.get<ArrayBuffer>(url, {
+        headers: { Authorization: `Bearer ${args.accessToken}` },
+        responseType: 'arraybuffer',
+        timeout: 12_000,
+        maxContentLength: WHATSAPP_MEDIA_MAX_BYTES,
+        maxBodyLength: WHATSAPP_MEDIA_MAX_BYTES,
+      });
+      const buf = Buffer.from(bin.data);
+      return { base64: buf.toString('base64'), mimeType, sizeBytes: buf.byteLength };
+    } catch (err) {
+      logger.warn(
+        { err: (err as Error).message, mediaId: args.mediaId },
+        '[whatsapp-bot] fetchMedia échec',
+      );
+      return null;
     }
   }
 

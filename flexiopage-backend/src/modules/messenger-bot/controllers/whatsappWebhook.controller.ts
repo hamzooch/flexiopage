@@ -11,11 +11,13 @@
  */
 import type { Request, Response } from 'express';
 import { logger } from '../../../lib/logger';
-import { validateMetaSignature } from '../utils/signatureValidator';
+import { validateMetaSignature, timingSafeEqualStr } from '../utils/signatureValidator';
 import { BotConfig } from '../models/BotConfig.model';
 import { Conversation } from '../models/Conversation.model';
 import { Message } from '../models/Message.model';
 import { messageQueue } from '../services/queue.service';
+import { parseWaMessage, type WaMessage } from '../utils/waMessageParser';
+import type { IncomingMediaType } from '../utils/mediaFallback';
 
 type RawRequest = Request & { rawBody?: Buffer };
 
@@ -24,14 +26,13 @@ export function verifyWhatsAppWebhook(req: Request, res: Response): void {
   const token = req.query['hub.verify_token'];
   const challenge = req.query['hub.challenge'];
   const expected = process.env.WHATSAPP_VERIFY_TOKEN || process.env.MESSENGER_VERIFY_TOKEN;
-  if (mode === 'subscribe' && token === expected) {
+  if (mode === 'subscribe' && typeof token === 'string' && timingSafeEqualStr(token, expected)) {
     res.status(200).send(String(challenge ?? ''));
     return;
   }
   res.sendStatus(403);
 }
 
-interface WaMessage { from?: string; id?: string; type?: string; text?: { body?: string } }
 interface WaValue {
   metadata?: { phone_number_id?: string; display_phone_number?: string };
   contacts?: Array<{ profile?: { name?: string }; wa_id?: string }>;
@@ -42,11 +43,12 @@ interface WaEntry { id?: string; changes?: WaChange[] }
 
 export async function receiveWhatsAppWebhook(req: Request, res: Response): Promise<void> {
   const raw = (req as RawRequest).rawBody;
-  const ok = validateMetaSignature(
-    raw ?? JSON.stringify(req.body ?? {}),
-    req.header('x-hub-signature-256'),
-    process.env.FACEBOOK_APP_SECRET,
-  );
+  if (!raw) {
+    logger.error('[whatsapp-bot] rawBody absent — signature non vérifiable, rejet');
+    res.sendStatus(401);
+    return;
+  }
+  const ok = validateMetaSignature(raw, req.header('x-hub-signature-256'), process.env.FACEBOOK_APP_SECRET);
   if (!ok) {
     logger.warn('[whatsapp-bot] webhook signature invalide — rejet');
     res.sendStatus(401);
@@ -69,7 +71,14 @@ export async function receiveWhatsAppWebhook(req: Request, res: Response): Promi
         const phoneNumberId = value.metadata?.phone_number_id;
         if (!phoneNumberId) continue;
 
-        const config = await BotConfig.findOne({ whatsapp_phone_number_id: phoneNumberId, channel: 'whatsapp' });
+        // Au lieu d'un findOne silencieux : détecte un éventuel doublon de
+        // numéro (l'index unique l'empêche normalement) et trace une erreur.
+        const matches = await BotConfig.find({ whatsapp_phone_number_id: phoneNumberId, channel: 'whatsapp' }).limit(2);
+        if (matches.length > 1) {
+          logger.error({ phoneNumberId }, '[whatsapp-bot] AMBIGU: plusieurs BotConfig pour ce numéro — message ignoré');
+          continue;
+        }
+        const config = matches[0];
         if (!config || config.status !== 'active') continue;
         if (config.conversations_used_this_month >= config.conversations_limit) {
           logger.info({ phoneNumberId }, '[whatsapp-bot] quota atteint — message ignoré');
@@ -79,8 +88,34 @@ export async function receiveWhatsAppWebhook(req: Request, res: Response): Promi
         const contactName = value.contacts?.[0]?.profile?.name;
         for (const m of value.messages || []) {
           const waId = m.from;
-          const text = m.text?.body;
-          if (!waId || !text) continue; // (médias non gérés pour l'instant)
+          if (!waId) continue;
+          const parsed = parseWaMessage(m);
+          if (parsed.kind === 'unsupported') continue; // réaction, location, system…
+
+          // Idempotence : ignore une redelivery Meta déjà persistée.
+          if (m.id && (await Message.exists({ messenger_message_id: m.id }))) continue;
+
+          // Texte affichable + métadonnées média. Le binaire n'est pas
+          // téléchargé ici : seul l'id média est transmis au worker.
+          let content: string;
+          const attachments: { type: string; url: string }[] = [];
+          let mediaType: IncomingMediaType | undefined;
+          let mediaId: string | undefined;
+          let caption: string | undefined;
+          if (parsed.kind === 'text') {
+            content = parsed.text;
+          } else if (parsed.kind === 'image') {
+            mediaType = 'image';
+            mediaId = parsed.mediaId;
+            caption = parsed.caption;
+            content = caption || '[image]';
+            attachments.push({ type: 'image', url: parsed.mediaId });
+          } else {
+            mediaType = parsed.kind;
+            mediaId = parsed.mediaId;
+            content = `[${parsed.kind}]`;
+            if (parsed.mediaId) attachments.push({ type: parsed.kind, url: parsed.mediaId });
+          }
 
           let conv = await Conversation.findOne({
             vendor_id: config.vendor_id,
@@ -100,13 +135,21 @@ export async function receiveWhatsAppWebhook(req: Request, res: Response): Promi
             });
           }
 
-          await Message.create({
-            conversation_id: conv._id,
-            vendor_id: config.vendor_id,
-            sender: 'customer',
-            content: text,
-            messenger_message_id: m.id,
-          });
+          try {
+            await Message.create({
+              conversation_id: conv._id,
+              vendor_id: config.vendor_id,
+              sender: 'customer',
+              content,
+              attachments,
+              messenger_message_id: m.id,
+            });
+          } catch (e) {
+            // Course entre deux redeliveries simultanées : l'index unique
+            // rejette le doublon → on ignore proprement.
+            if ((e as { code?: number }).code === 11000) continue;
+            throw e;
+          }
           conv.message_count += 1;
           conv.last_message_at = new Date();
           if (contactName && !conv.customer_name) conv.customer_name = contactName;
@@ -123,8 +166,11 @@ export async function receiveWhatsAppWebhook(req: Request, res: Response): Promi
             vendorId: String(config.vendor_id),
             pageId: phoneNumberId,
             customerPsid: waId,
-            text,
+            text: content,
             messengerMessageId: m.id,
+            mediaType,
+            mediaId,
+            caption,
           });
         }
       }

@@ -4,9 +4,10 @@
  * Toutes les méthodes reçoivent le `pageAccessToken` EN CLAIR (déchiffré par
  * l'appelant via encryptionService). On ne logge jamais le token.
  */
-import axios, { type AxiosError } from 'axios';
+import axios from 'axios';
 import { logger } from '../../../lib/logger';
 import { GRAPH_API_BASE } from '../config/messengerBot.config';
+import { metaErrorFromAxios } from './metaErrors';
 
 export interface QuickReplyOption {
   title: string;
@@ -34,13 +35,13 @@ export class MessengerService {
       });
       return res.data;
     } catch (err) {
-      const ax = err as AxiosError<{ error?: { message?: string; code?: number } }>;
       // Ne jamais logger le token — uniquement l'erreur Meta.
+      const apiErr = metaErrorFromAxios(err, 'Messenger send failed');
       logger.error(
-        { metaError: ax.response?.data?.error || ax.message, status: ax.response?.status },
+        { metaError: apiErr.message, status: apiErr.status, code: apiErr.metaCode },
         '[messenger-bot] Graph API send échec',
       );
-      throw new Error(ax.response?.data?.error?.message || 'Messenger send failed');
+      throw apiErr;
     }
   }
 

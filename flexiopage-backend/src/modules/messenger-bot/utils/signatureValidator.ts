@@ -32,3 +32,16 @@ export function validateMetaSignature(
     return false;
   }
 }
+
+/**
+ * Comparaison de chaînes à temps constant (anti timing attack). Renvoie false
+ * si l'une est absente ou si les longueurs diffèrent (la longueur n'est pas un
+ * secret pour un verify token).
+ */
+export function timingSafeEqualStr(a: string | undefined, b: string | undefined): boolean {
+  if (typeof a !== 'string' || typeof b !== 'string') return false;
+  const ab = Buffer.from(a);
+  const bb = Buffer.from(b);
+  if (ab.length !== bb.length) return false;
+  return crypto.timingSafeEqual(ab, bb);
+}

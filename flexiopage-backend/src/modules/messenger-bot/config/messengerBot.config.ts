@@ -39,4 +39,9 @@ export const GRAPH_API_BASE = `https://graph.facebook.com/${GRAPH_API_VERSION}`;
 /** TTL du cache catalogue (Redis), en secondes. */
 export const CATALOG_CACHE_TTL = 5 * 60;
 
+/** Taille max d'un média WhatsApp téléchargé pour la vision (octets). */
+export const WHATSAPP_MEDIA_MAX_BYTES = 5 * 1024 * 1024; // 5 Mo
+/** Types image acceptés par la vision Claude. */
+export const VISION_SUPPORTED_MIME = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/gif']);
+
 export const SUPPORTED_COUNTRIES = ['MA', 'DZ', 'TN'] as const;

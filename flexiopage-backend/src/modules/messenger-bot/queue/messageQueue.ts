@@ -6,7 +6,7 @@
 import { Queue, Worker, type Job } from 'bullmq';
 import { logger } from '../../../lib/logger';
 import { getRedisConnection } from './connection';
-import { messageQueue, type IncomingMessageJob } from '../services/queue.service';
+import { messageQueue, incomingJobId, type IncomingMessageJob } from '../services/queue.service';
 import { processIncomingMessage } from '../workers/messageWorker';
 
 const QUEUE_NAME = 'messenger-incoming';
@@ -19,14 +19,22 @@ let worker: Worker | null = null;
  * false si on reste en in-process.
  */
 export function initMessengerQueue(): boolean {
+  // Feature flag : force le traitement in-process même si Redis est dispo.
+  if ((process.env.MESSENGER_QUEUE_DRIVER || '').toLowerCase() === 'inprocess') {
+    logger.info('[messenger-bot] file forcée en in-process (MESSENGER_QUEUE_DRIVER=inprocess)');
+    return false;
+  }
+
   const connection = getRedisConnection();
   if (!connection) return false;
 
   queue = new Queue(QUEUE_NAME, { connection });
 
-  // L'enqueue du webhook passera désormais par BullMQ.
+  // L'enqueue du webhook passera désormais par BullMQ. Le `jobId` = id du
+  // message Meta rend l'ajout idempotent (redelivery Meta non re-enfilée).
   messageQueue.useBullQueue(async (job: IncomingMessageJob) => {
     await queue!.add('incoming', job, {
+      jobId: incomingJobId(job),
       removeOnComplete: 1000,
       removeOnFail: 5000,
       attempts: 3,

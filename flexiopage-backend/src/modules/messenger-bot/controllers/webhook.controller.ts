@@ -11,7 +11,7 @@
  */
 import type { Request, Response } from 'express';
 import { logger } from '../../../lib/logger';
-import { validateMetaSignature } from '../utils/signatureValidator';
+import { validateMetaSignature, timingSafeEqualStr } from '../utils/signatureValidator';
 import { BotConfig } from '../models/BotConfig.model';
 import { Conversation } from '../models/Conversation.model';
 import { Message } from '../models/Message.model';
@@ -24,7 +24,7 @@ export function verifyWebhook(req: Request, res: Response): void {
   const mode = req.query['hub.mode'];
   const token = req.query['hub.verify_token'];
   const challenge = req.query['hub.challenge'];
-  if (mode === 'subscribe' && token === process.env.MESSENGER_VERIFY_TOKEN) {
+  if (mode === 'subscribe' && typeof token === 'string' && timingSafeEqualStr(token, process.env.MESSENGER_VERIFY_TOKEN)) {
     res.status(200).send(String(challenge ?? ''));
     return;
   }
@@ -44,11 +44,12 @@ interface MetaEntry {
 export async function receiveWebhook(req: Request, res: Response): Promise<void> {
   // 1. Signature.
   const raw = (req as RawRequest).rawBody;
-  const ok = validateMetaSignature(
-    raw ?? JSON.stringify(req.body ?? {}),
-    req.header('x-hub-signature-256'),
-    process.env.FACEBOOK_APP_SECRET,
-  );
+  if (!raw) {
+    logger.error('[messenger-bot] rawBody absent — signature non vérifiable, rejet');
+    res.sendStatus(401);
+    return;
+  }
+  const ok = validateMetaSignature(raw, req.header('x-hub-signature-256'), process.env.FACEBOOK_APP_SECRET);
   if (!ok) {
     logger.warn('[messenger-bot] webhook signature invalide — rejet');
     res.sendStatus(401);
@@ -83,6 +84,10 @@ export async function receiveWebhook(req: Request, res: Response): Promise<void>
         const text = m.message?.text;
         if (!psid || (!text && !m.message?.attachments?.length)) continue;
 
+        // Idempotence : ignore une redelivery Meta déjà persistée.
+        const mid = m.message?.mid;
+        if (mid && (await Message.exists({ messenger_message_id: mid }))) continue;
+
         // Conversation active existante, sinon création.
         let conv = await Conversation.findOne({
           vendor_id: config.vendor_id,
@@ -102,14 +107,20 @@ export async function receiveWebhook(req: Request, res: Response): Promise<void>
         }
 
         // Persiste le message client.
-        await Message.create({
-          conversation_id: conv._id,
-          vendor_id: config.vendor_id,
-          sender: 'customer',
-          content: text || '[pièce jointe]',
-          attachments: (m.message?.attachments || []).map((a) => ({ type: a.type || 'file', url: a.payload?.url || '' })),
-          messenger_message_id: m.message?.mid,
-        });
+        try {
+          await Message.create({
+            conversation_id: conv._id,
+            vendor_id: config.vendor_id,
+            sender: 'customer',
+            content: text || '[pièce jointe]',
+            attachments: (m.message?.attachments || []).map((a) => ({ type: a.type || 'file', url: a.payload?.url || '' })),
+            messenger_message_id: mid,
+          });
+        } catch (e) {
+          // Course entre redeliveries simultanées : index unique → on ignore.
+          if ((e as { code?: number }).code === 11000) continue;
+          throw e;
+        }
         conv.message_count += 1;
         conv.last_message_at = new Date();
         await conv.save();

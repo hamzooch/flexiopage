@@ -52,7 +52,7 @@ const MessageSchema = new Schema<IMessage>(
     cost_usd: { type: Number },
     tool_calls: { type: [Schema.Types.Mixed], default: undefined },
 
-    messenger_message_id: { type: String, index: true },
+    messenger_message_id: { type: String },
     delivered: { type: Boolean },
     read: { type: Boolean },
 
@@ -64,5 +64,11 @@ const MessageSchema = new Schema<IMessage>(
 );
 
 MessageSchema.index({ conversation_id: 1, timestamp: 1 });
+// Idempotence : un même message provider (Meta) n'est inséré qu'une fois.
+// Index partiel — les messages bot/humain n'ont pas de messenger_message_id.
+MessageSchema.index(
+  { messenger_message_id: 1 },
+  { unique: true, partialFilterExpression: { messenger_message_id: { $type: 'string' } } },
+);
 
 export const Message = mongoose.model<IMessage>('Message', MessageSchema);

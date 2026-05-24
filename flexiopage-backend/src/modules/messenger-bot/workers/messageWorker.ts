@@ -27,7 +27,12 @@ import { messageQueue, type IncomingMessageJob } from '../services/queue.service
 import { buildSystemPrompt } from '../prompts/systemPrompt';
 import { detectDialect } from '../utils/languageDetector';
 import { claudeTools } from '../tools/claudeTools';
-import { HISTORY_WINDOW } from '../config/messengerBot.config';
+import { HISTORY_WINDOW, VISION_SUPPORTED_MIME } from '../config/messengerBot.config';
+import { mediaFallbackMessage, imagePromptHint } from '../utils/mediaFallback';
+import type { IBotConfig, BotLanguage } from '../models/BotConfig.model';
+import { MetaApiError } from '../services/metaErrors';
+import { sendEmail } from '../../../services/email.service';
+import { User } from '../../../models/User.model';
 
 const MAX_TOOL_ITERATIONS = 4;
 
@@ -91,6 +96,29 @@ export async function processIncomingMessage(job: IncomingMessageJob): Promise<P
   let lastModel = '';
   let replyText = '';
 
+  // ── Médias entrants (WhatsApp) ───────────────────────────────────────
+  // Image → vision Claude (avec repli auto) ; audio/document/sticker/vidéo →
+  // message de repli localisé sans appel Claude. Le texte pur ne passe pas ici.
+  const lang: BotLanguage = detectedLanguage ?? config.language;
+  let skipClaude = false;
+
+  if (job.mediaType && job.mediaType !== 'image') {
+    replyText = mediaFallbackMessage(lang, job.mediaType);
+    skipClaude = true;
+  } else if (job.mediaType === 'image') {
+    const block = await loadWhatsAppImageBlock(config, job.mediaId);
+    const last = messages[messages.length - 1];
+    if (block && last && last.role === 'user') {
+      // Remplace le placeholder texte du dernier tour client par l'image +
+      // sa légende (ou un indice neutre dans la langue détectée).
+      last.content = [block, { type: 'text', text: job.caption?.trim() || imagePromptHint(lang) }];
+    } else if (!block) {
+      replyText = mediaFallbackMessage(lang, 'image'); // download/vision impossible
+      skipClaude = true;
+    }
+  }
+
+  if (!skipClaude)
   for (let iter = 0; iter < MAX_TOOL_ITERATIONS; iter++) {
     const result = await claudeService.generateResponse({
       conversationHistory: messages,
@@ -164,7 +192,11 @@ export async function processIncomingMessage(job: IncomingMessageJob): Promise<P
         await messengerService.sendMessage({ pageAccessToken: token, recipientPsid: conversation.customer_psid, message: replyText });
       }
     } catch (err) {
-      logger.error({ err: (err as Error).message, channel: config.channel }, '[messenger-bot] envoi réponse échec');
+      if (err instanceof MetaApiError && err.isAuthError) {
+        await handleInvalidToken(config, err);
+      } else {
+        logger.error({ err: (err as Error).message, channel: config.channel }, '[messenger-bot] envoi réponse échec');
+      }
     }
   }
 
@@ -216,6 +248,75 @@ async function executeTool(
     default:
       return { content: JSON.stringify({ error: `Tool inconnu: ${name}` }) };
   }
+}
+
+/**
+ * Charge une image WhatsApp entrante comme bloc vision base64, ou `null` si
+ * indisponible (média absent, canal non-WhatsApp, MIME non supporté, download
+ * trop gros ou en échec) → l'appelant retombe sur un repli localisé.
+ */
+async function loadWhatsAppImageBlock(
+  config: IBotConfig,
+  mediaId?: string,
+): Promise<Anthropic.ImageBlockParam | null> {
+  if (!mediaId || config.channel !== 'whatsapp') return null;
+  try {
+    const token = encryptionService.decrypt(config.page_access_token_encrypted);
+    const media = await whatsappService.fetchMedia({ mediaId, accessToken: token });
+    if (!media || !VISION_SUPPORTED_MIME.has(media.mimeType)) return null;
+    return {
+      type: 'image',
+      source: {
+        type: 'base64',
+        media_type: media.mimeType as Anthropic.Base64ImageSource['media_type'],
+        data: media.base64,
+      },
+    };
+  } catch (err) {
+    logger.warn({ err: (err as Error).message }, '[whatsapp-bot] image vision indisponible — repli');
+    return null;
+  }
+}
+
+/**
+ * Token expiré/invalide (HTTP 401 / code Meta 190 / OAuthException) : désactive
+ * le bot pour stopper les tentatives répétées (y compris les redeliveries) et
+ * notifie le vendeur par email avec le lien de reconnexion.
+ */
+async function handleInvalidToken(config: IBotConfig, err: MetaApiError): Promise<void> {
+  logger.error(
+    { channel: config.channel, metaCode: err.metaCode, status: err.status, vendorId: String(config.vendor_id) },
+    '[messenger-bot] token invalide/expiré — bot désactivé, notification vendeur',
+  );
+  await BotConfig.updateOne({ _id: config._id }, { $set: { status: 'disconnected' } });
+  try {
+    const to = await resolveVendorEmail(config);
+    if (to) await sendTokenInvalidEmail(to, config);
+  } catch (e) {
+    logger.warn({ err: (e as Error).message }, '[messenger-bot] notification token invalide échec');
+  }
+}
+
+/** Email du vendeur : `notification_email` de la config, sinon owner de la boutique. */
+async function resolveVendorEmail(config: IBotConfig): Promise<string | null> {
+  if (config.notification_email) return config.notification_email;
+  const store = await Store.findById(config.vendor_id).select('ownerId').lean();
+  if (!store?.ownerId) return null;
+  const user = await User.findById(store.ownerId).select('email').lean();
+  return user?.email || null;
+}
+
+async function sendTokenInvalidEmail(to: string, config: IBotConfig): Promise<void> {
+  const channel = config.channel === 'whatsapp' ? 'WhatsApp' : 'Messenger';
+  const base = (process.env.FRONTEND_URL || 'http://localhost:3000').replace(/\/$/, '');
+  const path = config.channel === 'whatsapp' ? 'whatsapp-bot' : 'messenger-bot';
+  const link = `${base}/dashboard/apps/${path}`;
+  await sendEmail({
+    to,
+    subject: `⚠️ Ton bot ${channel} est déconnecté — reconnecte-le`,
+    html: `<p>Bonjour,</p><p>Le jeton d'accès de ton bot <strong>${channel}</strong> n'est plus valide (expiré ou révoqué). Ton bot a été <strong>mis en pause</strong> et ne répond plus à tes clients.</p><p>Reconnecte-le ici&nbsp;: <a href="${link}">${link}</a></p>`,
+    text: `Bonjour,\n\nLe jeton d'accès de ton bot ${channel} n'est plus valide (expiré ou révoqué). Ton bot a été mis en pause.\n\nReconnecte-le ici : ${link}\n`,
+  });
 }
 
 /** Branche le processor sur la file (appelé au démarrage du module). */
