@@ -1,4 +1,5 @@
 import { Response } from 'express';
+import validator from 'validator';
 import { AuthRequest } from '../middleware/auth.middleware';
 import * as productService from '../services/product.service';
 import { generateProductDescription as runProductDescription } from '../services/product-ai.service';
@@ -61,7 +62,9 @@ export async function createProduct(req: AuthRequest, res: Response): Promise<vo
  * Renvoie des URLs d'images externes (téléchargées seulement à la création).
  */
 export async function importProductPreview(req: AuthRequest, res: Response): Promise<void> {
-  const url = (req.body?.url ?? '').toString().trim();
+  // Le sanitizeMiddleware HTML-escape les strings du body (/ → &#x2F;, & → &amp;),
+  // ce qui casse l'URL. On la dé-escape avant usage (même pattern que page.controller).
+  const url = validator.unescape((req.body?.url ?? '').toString()).trim();
   if (!url) {
     res.status(400).json({ error: 'URL requise' });
     return;
@@ -95,7 +98,9 @@ export async function importCreateProduct(req: AuthRequest, res: Response): Prom
 
   // Rapatrie les images externes ; on ignore proprement celles qui échouent.
   const rawImages: string[] = Array.isArray(body.images)
-    ? body.images.filter((u: unknown): u is string => typeof u === 'string')
+    ? body.images
+        .filter((u: unknown): u is string => typeof u === 'string')
+        .map((u: string) => validator.unescape(u)) // dé-escape (sanitizeMiddleware)
     : [];
   const images: string[] = [];
   for (const url of rawImages.slice(0, MAX_IMPORT_IMAGES)) {

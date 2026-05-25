@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import * as cheerio from 'cheerio';
+import validator from 'validator';
 import {
   detectSource,
   extractFromJsonLd,
@@ -18,6 +19,14 @@ describe('detectSource', () => {
   it('refuse les autres domaines et les URLs invalides', () => {
     expect(detectSource('https://example.com/p/1')).toBeNull();
     expect(detectSource('pas une url')).toBeNull();
+  });
+
+  it('reste détectable après escape→unescape du sanitizeMiddleware (régression 400)', () => {
+    // Le body est HTML-escapé par le middleware ; le controller dé-escape avant detectSource.
+    const original = 'https://fr.aliexpress.com/item/1005008158832911.html?sourceType=562&pvid=abc';
+    const escaped = validator.escape(original); // ce que reçoit le controller
+    expect(detectSource(escaped)).toBeNull(); // escapé → cassé (le bug)
+    expect(detectSource(validator.unescape(escaped))).toBe('aliexpress'); // dé-escapé → OK (le fix)
   });
 });
 
