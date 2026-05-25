@@ -12,6 +12,7 @@ import { Plus, Trash2, ImagePlus, Loader2, Star, ArrowUp, ArrowDown, Sparkles, U
 import { cn } from '@/lib/utils';
 import { AiDescriptionButton } from '@/components/dashboard/ai-description-button';
 import { ProductDescriptionEditor } from '@/components/dashboard/product-description-editor';
+import { ImportProductPanel } from '@/components/dashboard/import-product-panel';
 
 type DigitalKind = 'download' | 'course' | 'license' | 'membership' | 'service';
 
@@ -60,6 +61,9 @@ export default function NewProductPage() {
   const searchParams = useSearchParams();
   const storeId = searchParams.get('storeId');
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Saisie manuelle (formulaire complet) vs import depuis un lien marketplace.
+  const [mode, setMode] = useState<'manual' | 'import'>('manual');
 
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
@@ -370,6 +374,33 @@ export default function NewProductPage() {
         <h1 className="truncate text-xl font-bold sm:text-3xl">Nouveau produit</h1>
       </div>
 
+      {/* Onglets : saisie manuelle vs import depuis un lien marketplace */}
+      <div className="inline-flex rounded-lg border border-border bg-muted/40 p-1">
+        <button
+          type="button"
+          onClick={() => setMode('manual')}
+          className={cn(
+            'rounded-md px-4 py-1.5 text-sm font-medium transition-colors',
+            mode === 'manual' ? 'bg-background shadow-sm' : 'text-muted-foreground hover:text-foreground',
+          )}
+        >
+          Saisie manuelle
+        </button>
+        <button
+          type="button"
+          onClick={() => setMode('import')}
+          className={cn(
+            'rounded-md px-4 py-1.5 text-sm font-medium transition-colors',
+            mode === 'import' ? 'bg-background shadow-sm' : 'text-muted-foreground hover:text-foreground',
+          )}
+        >
+          Importer depuis un lien
+        </button>
+      </div>
+
+      {mode === 'import' && <ImportProductPanel storeId={storeId} />}
+
+      {mode === 'manual' && (
       <form onSubmit={handleSubmit} className="space-y-6">
         {error && (
           <div className="rounded-md bg-destructive/10 p-3 text-sm text-destructive">{error}</div>
@@ -893,6 +924,7 @@ export default function NewProductPage() {
           </Button>
         </div>
       </form>
+      )}
     </div>
   );
 }

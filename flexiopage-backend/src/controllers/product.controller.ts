@@ -3,6 +3,11 @@ import { AuthRequest } from '../middleware/auth.middleware';
 import * as productService from '../services/product.service';
 import { generateProductDescription as runProductDescription } from '../services/product-ai.service';
 import { chargeAiGeneration, getOrCreateWallet, aiCostInCurrency } from '../services/wallet.service';
+import { extractProductFromUrl, ImportError } from '../services/product-import.service';
+import { persistRemoteImage } from '../services/storage.service';
+import { logger } from '../lib/logger';
+
+const MAX_IMPORT_IMAGES = 8;
 
 export async function createProduct(req: AuthRequest, res: Response): Promise<void> {
   const store = req.store!;
@@ -40,6 +45,77 @@ export async function createProduct(req: AuthRequest, res: Response): Promise<vo
     digitalFileName: body.digitalFileName,
     weight: body.weight,
     weightUnit: body.weightUnit,
+    isPublished: body.isPublished ?? false,
+    tags: Array.isArray(body.tags)
+      ? body.tags.map((t: unknown) => String(t).trim().toLowerCase()).filter(Boolean)
+      : undefined,
+    seoTitle: body.seoTitle,
+    seoDescription: body.seoDescription,
+  });
+  res.status(201).json({ product });
+}
+
+/**
+ * POST /api/stores/:storeId/products/import-preview
+ * Extrait les infos d'un lien AliExpress/Alibaba/Amazon SANS créer le produit.
+ * Renvoie des URLs d'images externes (téléchargées seulement à la création).
+ */
+export async function importProductPreview(req: AuthRequest, res: Response): Promise<void> {
+  const url = (req.body?.url ?? '').toString().trim();
+  if (!url) {
+    res.status(400).json({ error: 'URL requise' });
+    return;
+  }
+  try {
+    const preview = await extractProductFromUrl(url);
+    res.json({ preview });
+  } catch (err) {
+    const e = err as ImportError;
+    res.status(e.statusCode || 500).json({ error: e.message || "Échec de l'import" });
+  }
+}
+
+/**
+ * POST /api/stores/:storeId/products/import
+ * Crée le produit à partir de l'aperçu édité par le vendeur. Les images
+ * externes (http) sont rapatriées dans notre stockage (pas de hotlink).
+ */
+export async function importCreateProduct(req: AuthRequest, res: Response): Promise<void> {
+  const store = req.store!;
+  const storeId = store._id.toString();
+  const body = req.body;
+  if (!body.name?.trim()) {
+    res.status(400).json({ error: 'Product name is required' });
+    return;
+  }
+  if (typeof body.price !== 'number' || body.price < 0) {
+    res.status(400).json({ error: 'Valid price is required' });
+    return;
+  }
+
+  // Rapatrie les images externes ; on ignore proprement celles qui échouent.
+  const rawImages: string[] = Array.isArray(body.images)
+    ? body.images.filter((u: unknown): u is string => typeof u === 'string')
+    : [];
+  const images: string[] = [];
+  for (const url of rawImages.slice(0, MAX_IMPORT_IMAGES)) {
+    try {
+      images.push(await persistRemoteImage(url, `products/${storeId}`));
+    } catch (err) {
+      logger.warn({ err: (err as Error).message, url }, '[product-import] image non rapatriée — ignorée');
+    }
+  }
+
+  const product = await productService.createProduct({
+    storeId,
+    name: body.name.trim(),
+    description: body.description,
+    type: body.type === 'digital' ? 'digital' : 'physical',
+    price: body.price,
+    compareAtPrice: body.compareAtPrice,
+    sku: body.sku,
+    stock: body.stock ?? 0,
+    images,
     isPublished: body.isPublished ?? false,
     tags: Array.isArray(body.tags)
       ? body.tags.map((t: unknown) => String(t).trim().toLowerCase()).filter(Boolean)

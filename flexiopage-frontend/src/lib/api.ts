@@ -588,6 +588,22 @@ export const storesApi = {
     api.get<{ products: unknown[] }>(`/stores/${storeId}/products`, { params }),
   createProduct: (storeId: string, data: Record<string, unknown>) =>
     api.post<{ product: unknown }>(`/stores/${storeId}/products`, data),
+  /** Extrait les infos d'un lien AliExpress/Alibaba/Amazon (sans créer). */
+  importProductPreview: (storeId: string, url: string) =>
+    api.post<{
+      preview: {
+        source: 'aliexpress' | 'alibaba' | 'amazon';
+        sourceUrl: string;
+        title: string;
+        description?: string;
+        price?: number;
+        currency?: string;
+        images: string[];
+      };
+    }>(`/stores/${storeId}/products/import-preview`, { url }),
+  /** Crée le produit à partir de l'aperçu édité (images externes rapatriées). */
+  importCreateProduct: (storeId: string, data: Record<string, unknown>) =>
+    api.post<{ product: unknown }>(`/stores/${storeId}/products/import`, data),
   /** Generate a punchy product description via AI (charged from text_only wallet). */
   generateProductDescription: (storeId: string, data: {
     name: string;
