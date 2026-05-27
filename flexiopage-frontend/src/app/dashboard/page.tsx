@@ -12,7 +12,7 @@
  * range (today / 7d / 30d / 90d) refreshes the KPIs + chart + lists.
  */
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 import Link from 'next/link';
 import {
   Store,
@@ -389,7 +389,7 @@ export default function DashboardOverviewPage() {
         <section className="grid grid-cols-4 gap-2 sm:gap-3">
           <KpiCard
             label="Revenu (payé)"
-            value={formatCurrency(k?.revenue.value ?? 0, currency)}
+            value={<KpiMoney amount={k?.revenue.value ?? 0} currency={currency} />}
             deltaPct={k?.revenue.deltaPct ?? null}
             previousValue={formatCurrency(k?.revenue.previous ?? 0, currency)}
             icon={Wallet}
@@ -407,7 +407,7 @@ export default function DashboardOverviewPage() {
           />
           <KpiCard
             label="Panier moyen"
-            value={formatCurrency(k?.averageOrderValue.value ?? 0, currency)}
+            value={<KpiMoney amount={k?.averageOrderValue.value ?? 0} currency={currency} />}
             deltaPct={k?.averageOrderValue.deltaPct ?? null}
             previousValue={formatCurrency(k?.averageOrderValue.previous ?? 0, currency)}
             icon={Receipt}
@@ -561,11 +561,42 @@ const KPI_TONE: Record<
   indigo:  { iconBg: 'from-indigo-500 to-blue-600', glow: 'shadow-indigo-500/20' },
 };
 
+/** Money figure for a KPI headline: renders the currency symbol/code at a
+ *  smaller size than the digits, and drops the cents — so the amount stays
+ *  readable in the 4-up grid on a phone, even with 3-letter codes (TND, DZD,
+ *  XOF) that are wider than a "$" or "€" symbol. */
+function KpiMoney({ amount, currency }: { amount: number; currency: string }) {
+  let parts: Intl.NumberFormatPart[];
+  try {
+    parts = new Intl.NumberFormat('en-US', {
+      style: 'currency',
+      currency,
+      maximumFractionDigits: 0,
+    }).formatToParts(amount);
+  } catch {
+    // Unknown currency code — Intl throws; fall back to a plain join.
+    return <>{`${Math.round(amount)} ${currency}`}</>;
+  }
+  return (
+    <>
+      {parts.map((p, i) =>
+        p.type === 'currency' ? (
+          <span key={i} className="align-baseline text-[0.62em] font-bold text-muted-foreground sm:text-[0.7em]">
+            {p.value}
+          </span>
+        ) : (
+          <span key={i}>{p.value}</span>
+        )
+      )}
+    </>
+  );
+}
+
 function KpiCard({
   label, value, deltaPct, previousValue, icon: Icon, tone, loading,
 }: {
   label: string;
-  value: string;
+  value: ReactNode;
   deltaPct: number | null;
   previousValue: string;
   icon: typeof Wallet;
