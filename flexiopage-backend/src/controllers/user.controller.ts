@@ -124,6 +124,64 @@ export async function changePassword(req: AuthRequest, res: Response): Promise<v
   res.json({ ok: true });
 }
 
+/** POST /api/users/change-email — body: { newEmail, currentPassword }
+ * Direct change guarded by the account password (no email-ownership
+ * verification step). Google-only accounts can't use this — they have no
+ * local password to confirm with. */
+export async function changeEmail(req: AuthRequest, res: Response): Promise<void> {
+  if (!req.user) {
+    res.status(401).json({ error: 'Not authenticated' });
+    return;
+  }
+  const { newEmail, currentPassword } = (req.body || {}) as {
+    newEmail?: string;
+    currentPassword?: string;
+  };
+  if (!newEmail || !currentPassword) {
+    res.status(400).json({ error: 'newEmail and currentPassword required' });
+    return;
+  }
+  const email = newEmail.trim().toLowerCase();
+  // Pragmatic RFC-lite check — same shape the rest of the app accepts.
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    res.status(400).json({ error: 'Adresse email invalide', code: 'invalid_email' });
+    return;
+  }
+
+  const user = await User.findById(req.user._id).select('+password');
+  if (!user) {
+    res.status(404).json({ error: 'User not found' });
+    return;
+  }
+  if (!user.password) {
+    res.status(400).json({ error: 'This account uses Google sign-in. No password to confirm.' });
+    return;
+  }
+  if (email === user.email) {
+    res.status(400).json({ error: 'C’est déjà ton adresse actuelle.', code: 'same_email' });
+    return;
+  }
+  const ok = await bcrypt.compare(currentPassword, user.password);
+  if (!ok) {
+    res.status(403).json({ error: 'Mot de passe incorrect' });
+    return;
+  }
+  // Reject if another account already owns this email.
+  const taken = await User.findOne({ email, _id: { $ne: user._id } }).select('_id').lean();
+  if (taken) {
+    res.status(409).json({ error: 'Cette adresse email est déjà utilisée.', code: 'email_taken' });
+    return;
+  }
+
+  user.email = email;
+  // The new address hasn't been proven — drop verified status.
+  user.emailVerified = false;
+  await user.save();
+
+  const { password: _p, ...safe } = user.toObject();
+  res.json({ user: safe });
+}
+
 export async function getStores(req: AuthRequest, res: Response): Promise<void> {
   if (!req.user) {
     res.status(401).json({ error: 'Not authenticated' });

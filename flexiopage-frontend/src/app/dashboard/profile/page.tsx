@@ -102,6 +102,14 @@ export default function ProfilePage() {
   const [savingRegion, setSavingRegion] = useState(false);
   const [regionMsg, setRegionMsg] = useState<{ type: 'success' | 'warn' | 'error'; text: string } | null>(null);
 
+  // Email change — direct change guarded by the account password.
+  const [emailEditing, setEmailEditing] = useState(false);
+  const [newEmail, setNewEmail] = useState('');
+  const [emailPw, setEmailPw] = useState('');
+  const [emailLoading, setEmailLoading] = useState(false);
+  const [emailError, setEmailError] = useState('');
+  const [emailSaved, setEmailSaved] = useState(false);
+
   // Password change
   const [pwCurrent, setPwCurrent] = useState('');
   const [pwNew, setPwNew] = useState('');
@@ -245,6 +253,36 @@ export default function ProfilePage() {
       setPwError(e.response?.data?.error || 'Erreur lors du changement de mot de passe.');
     } finally {
       setPwLoading(false);
+    }
+  }
+
+  async function handleChangeEmail(e: React.FormEvent) {
+    e.preventDefault();
+    setEmailError(''); setEmailSaved(false);
+    const next = newEmail.trim().toLowerCase();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(next)) {
+      setEmailError('Adresse email invalide.');
+      return;
+    }
+    if (next === user?.email) {
+      setEmailError('C’est déjà ton adresse actuelle.');
+      return;
+    }
+    setEmailLoading(true);
+    try {
+      const res = await usersApi.changeEmail({ newEmail: next, currentPassword: emailPw });
+      const updated = res.data.user;
+      setUser((u) => (u ? { ...u, email: updated.email, emailVerified: updated.emailVerified } : u));
+      if (authUser && token) setAuth({ ...authUser, email: updated.email }, token);
+      setEmailSaved(true);
+      setEmailEditing(false);
+      setNewEmail(''); setEmailPw('');
+      window.setTimeout(() => setEmailSaved(false), 3000);
+    } catch (err) {
+      const ex = err as { response?: { data?: { error?: string } } };
+      setEmailError(ex.response?.data?.error || 'Erreur lors du changement d’email.');
+    } finally {
+      setEmailLoading(false);
     }
   }
 
@@ -579,7 +617,7 @@ export default function ProfilePage() {
             <CardTitle className="flex items-center gap-2">
               <UserIcon className="h-4 w-4" /> Informations
             </CardTitle>
-            <CardDescription>Mise à jour de ton nom affiché. L&apos;email est en lecture seule.</CardDescription>
+            <CardDescription>Mise à jour de ton nom affiché et de ton adresse email.</CardDescription>
           </CardHeader>
           <CardContent>
             <form onSubmit={handleSaveName} className="space-y-4">
@@ -594,16 +632,6 @@ export default function ProfilePage() {
                   required
                 />
               </div>
-              <div>
-                <Label htmlFor="email">Email</Label>
-                <Input
-                  id="email"
-                  value={user?.email || ''}
-                  disabled
-                  className="mt-1 cursor-not-allowed bg-muted/40"
-                />
-                <p className="mt-1 text-xs text-muted-foreground">Pour changer d&apos;email, contacte le support.</p>
-              </div>
               <div className="flex items-center gap-3 pt-2">
                 <Button type="submit" disabled={savingName || !name.trim() || name === user?.name}>
                   {savingName ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Enregistrer'}
@@ -615,6 +643,88 @@ export default function ProfilePage() {
                 )}
               </div>
             </form>
+
+            {/* Email — read-only by default; the seller confirms with their
+                password to change it (direct change, no verification mail). */}
+            <div className="mt-4 border-t border-border/60 pt-4">
+              <Label htmlFor="email">Email</Label>
+              {!emailEditing ? (
+                <>
+                  <div className="mt-1 flex flex-col gap-2 sm:flex-row sm:items-center">
+                    <Input
+                      id="email"
+                      value={user?.email || ''}
+                      disabled
+                      className="min-w-0 flex-1 cursor-not-allowed bg-muted/40"
+                    />
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="w-full shrink-0 sm:w-auto"
+                      onClick={() => {
+                        setEmailEditing(true);
+                        setNewEmail(user?.email || '');
+                        setEmailError('');
+                      }}
+                    >
+                      Modifier
+                    </Button>
+                  </div>
+                  {emailSaved && (
+                    <span className="mt-2 inline-flex items-center gap-1 text-sm text-emerald-600">
+                      <Check className="h-3.5 w-3.5" /> Email mis à jour
+                    </span>
+                  )}
+                </>
+              ) : (
+                <form onSubmit={handleChangeEmail} className="mt-1 space-y-3">
+                  <Input
+                    id="email"
+                    type="email"
+                    value={newEmail}
+                    onChange={(e) => setNewEmail(e.target.value)}
+                    placeholder="nouvelle@adresse.com"
+                    autoComplete="email"
+                    required
+                  />
+                  <div>
+                    <Label htmlFor="email-pw" className="text-xs text-muted-foreground">
+                      Confirme avec ton mot de passe actuel
+                    </Label>
+                    <Input
+                      id="email-pw"
+                      type="password"
+                      value={emailPw}
+                      onChange={(e) => setEmailPw(e.target.value)}
+                      autoComplete="current-password"
+                      className="mt-1"
+                      required
+                    />
+                  </div>
+                  {emailError && (
+                    <div className="flex items-start gap-2 rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">
+                      <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+                      {emailError}
+                    </div>
+                  )}
+                  <div className="flex items-center gap-2">
+                    <Button type="submit" disabled={emailLoading}>
+                      {emailLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Changer l’email'}
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      onClick={() => {
+                        setEmailEditing(false);
+                        setNewEmail(''); setEmailPw(''); setEmailError('');
+                      }}
+                    >
+                      Annuler
+                    </Button>
+                  </div>
+                </form>
+              )}
+            </div>
           </CardContent>
         </Card>
 

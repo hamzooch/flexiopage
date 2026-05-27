@@ -88,6 +88,8 @@ export const usersApi = {
     api.patch<{ user: unknown; walletCurrencyUpdated?: boolean; walletCurrencyPinned?: boolean }>('/users/profile', data),
   changePassword: (data: { currentPassword: string; newPassword: string }) =>
     api.post<{ ok: boolean }>('/users/change-password', data),
+  changeEmail: (data: { newEmail: string; currentPassword: string }) =>
+    api.post<{ user: { _id: string; email: string; name: string; emailVerified?: boolean } }>('/users/change-email', data),
   getStores: () => api.get<{ stores: unknown[] }>('/users/stores'),
 };
 

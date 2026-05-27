@@ -11,6 +11,7 @@ router.use(sanitizeMiddleware);
 router.get('/profile', userController.getProfile);
 router.patch('/profile', userController.updateProfile);
 router.post('/change-password', userController.changePassword);
+router.post('/change-email', userController.changeEmail);
 router.get('/stores', userController.getStores);
 
 export default router;
