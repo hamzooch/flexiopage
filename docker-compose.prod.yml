@@ -110,15 +110,12 @@ services:
       - flexiopage
 
   # Caddy v2 — public reverse proxy with auto-TLS.
-  # Issues + renews Let's Encrypt certificates for:
-  #   - the platform apex/subdomains (DNS-01 via Cloudflare, optional),
-  #   - api.${PLATFORM_APEX} (HTTP-01),
-  #   - any verified custom domain a vendor connects (HTTP-01 + on-demand TLS,
-  #     gated by the backend's /internal/cert-ask endpoint).
-  # Uses the caddy:2-alpine image with the Cloudflare DNS module baked in
-  # via a tiny Dockerfile (see caddy/Dockerfile) when DNS-01 is needed.
-  # If you don't need the wildcard, swap to `image: caddy:2-alpine` and drop
-  # the dns directive in caddy/Caddyfile.
+  # Issues + renews Let's Encrypt certificates via HTTP-01 for:
+  #   - the platform apex + www + api,
+  #   - every vendor subdomain (*.PLATFORM_APEX) on-demand,
+  #   - every seller custom domain on-demand,
+  # all gated by the backend's /internal/cert-ask endpoint.
+  # Stock caddy:2-alpine — no custom modules needed.
   caddy:
     image: caddy:2-alpine
     restart: unless-stopped
@@ -129,7 +126,6 @@ services:
     environment:
       PLATFORM_APEX: ${PLATFORM_APEX:-flexiopage.com}
       CADDY_ADMIN_EMAIL: ${CADDY_ADMIN_EMAIL:-admin@flexiopage.com}
-      CF_API_TOKEN: ${CF_API_TOKEN:-}
     volumes:
       - ./caddy/Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy_data:/data            # cert store + ACME account (must persist!)

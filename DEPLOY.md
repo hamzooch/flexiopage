@@ -58,28 +58,27 @@ Paste the output as `JWT_SECRET` in `.env`. Key Caddy-related variables:
 |---|---|---|
 | `PLATFORM_APEX` | yes | `flexiopage.com` |
 | `CADDY_ADMIN_EMAIL` | yes | `admin@flexiopage.com` (Let's Encrypt contact) |
-| `CF_API_TOKEN` | only if using a wildcard cert for `*.PLATFORM_APEX` | Cloudflare API token with `Zone.DNS:Edit` on the apex |
 
 ## 3. SSL is automatic — no manual certbot
 
-Caddy issues and renews every Let's Encrypt certificate on its own
-(HTTP-01 by default, DNS-01 via Cloudflare for the wildcard). On the
-**very first** request to a hostname, Caddy fetches a fresh cert in a
-few seconds, then caches it on the persistent `caddy_data` volume.
+Caddy issues and renews every Let's Encrypt certificate on its own via
+the HTTP-01 challenge — no DNS API tokens, no custom builds, stock
+`caddy:2-alpine` image. On the **very first** request to a hostname,
+Caddy fetches a fresh cert in a few seconds, then caches it on the
+persistent `caddy_data` volume.
 
 Three cert categories are issued:
 
-1. `flexiopage.com`, `www.flexiopage.com`, `*.flexiopage.com` — one
-   wildcard cert via DNS-01 (needs `CF_API_TOKEN`). If you don't have
-   Cloudflare, edit `caddy/Caddyfile` and replace the wildcard with
-   each subdomain you actually use.
-2. `api.flexiopage.com` — single-host cert via HTTP-01.
-3. **Any vendor custom domain** that points to this VPS — issued on
-   demand the first time a visitor hits it, **only after** Caddy
-   checks the backend's `/internal/cert-ask?domain=…` endpoint. The
-   gate accepts a domain when a `Store` document has
-   `customDomain === domain` and `customDomainVerified === true`,
-   which prevents random hostnames from burning the LE rate limit.
+1. `flexiopage.com` + `www.flexiopage.com` — at boot.
+2. `api.flexiopage.com` — at boot.
+3. **Every vendor subdomain** (`<store>.flexiopage.com`) AND **every
+   seller custom domain** — issued on demand the first time a visitor
+   hits the host, **only after** Caddy checks the backend's
+   `/internal/cert-ask?domain=…` endpoint. The gate accepts a domain
+   when it's the platform apex / a `*.PLATFORM_APEX` subdomain, or
+   when a `Store` document has `customDomain === domain` and
+   `customDomainVerified === true`. This prevents random hostnames
+   from burning the LE rate limit.
 
 > Make sure ports 80 AND 443 are open on the VPS firewall, and that
 > nothing else is listening on them on the host — Caddy needs both.

@@ -1,53 +1,46 @@
 # FlexioPage — Caddy reverse proxy with auto-TLS.
 #
+# All certs are issued via Let's Encrypt HTTP-01 challenge — no DNS API
+# tokens required, works with the stock `caddy:2-alpine` image.
+#
 # Three traffic patterns:
 #
-#   1. Platform hosts (flexiopage.com, www, *.flexiopage.com)
-#      → wildcard cert issued via Let's Encrypt DNS-01 (Cloudflare API).
-#      → proxied to the Next.js frontend on :3000.
+#   1. Platform apex + www (flexiopage.com, www.flexiopage.com)
+#      → standard cert at boot, proxied to Next.js on :3000.
 #
 #   2. Backend API (api.flexiopage.com)
-#      → single-name cert, HTTP-01 challenge handled by Caddy automatically.
-#      → proxied to Express on :5000.
+#      → standard cert at boot, proxied to Express on :5000.
 #
-#   3. Seller custom domains (e.g. afrochance.com)
-#      → on-demand TLS: Caddy issues a Let's Encrypt cert the FIRST time
-#        a real visitor lands on the host, but only after asking the
-#        backend whether the domain is a verified storefront.
-#      → proxied to the Next.js frontend on :3000; the Host header is
-#        preserved so Next middleware can resolve the right store.
+#   3. Everything else hitting :443 (vendor subdomains like
+#      macaftans.flexiopage.com AND seller custom domains like
+#      afrochance.com)
+#      → on-demand TLS: Caddy issues a cert the FIRST time a real visitor
+#        lands on the host, only after the backend's /internal/cert-ask
+#        endpoint approves it. Backend approves PLATFORM_APEX +
+#        *.PLATFORM_APEX automatically, and any Store with
+#        customDomainVerified=true.
+#      → proxied to Next.js on :3000 with the Host header preserved so
+#        middleware can resolve the right store.
 #
 # Required env (passed through docker-compose):
-#   PLATFORM_APEX           — bare apex of the platform (default flexiopage.com)
+#   PLATFORM_APEX           — bare apex of the platform (e.g. flexiopage.com)
 #   CADDY_ADMIN_EMAIL       — contact for Let's Encrypt registration
-#   CF_API_TOKEN            — Cloudflare API token with DNS edit on the apex
-#                              (only needed if you want a *.PLATFORM_APEX cert
-#                              via DNS-01; otherwise drop the dns directive
-#                              and add each storefront subdomain explicitly).
 
 {
 	email {$CADDY_ADMIN_EMAIL}
 
-	# Gate on-demand TLS issuance: Caddy will GET this URL with ?domain=<host>
+	# Gate on-demand TLS issuance. Caddy GETs this URL with ?domain=<host>
 	# before requesting a cert. 2xx = proceed, anything else = refuse.
 	# Backend is reachable inside the compose network as http://backend:5000.
 	on_demand_tls {
 		ask http://backend:5000/internal/cert-ask
-		# Generous rate limits so a normal launch day works, but block abuse.
-		# Tune once you have real traffic.
 	}
 }
 
 # ────────────────────────────────────────────────────────────────────
-# Platform hosts — wildcard via Cloudflare DNS-01.
-# Remove the `tls` block if you don't use Cloudflare; Caddy will fall back
-# to HTTP-01 per-subdomain (you'd then need to list each subdomain).
+# Platform apex + www — standard cert.
 # ────────────────────────────────────────────────────────────────────
-{$PLATFORM_APEX:flexiopage.com}, www.{$PLATFORM_APEX:flexiopage.com}, *.{$PLATFORM_APEX:flexiopage.com} {
-	tls {
-		dns cloudflare {$CF_API_TOKEN}
-	}
-
+{$PLATFORM_APEX:flexiopage.com}, www.{$PLATFORM_APEX:flexiopage.com} {
 	encode zstd gzip
 	request_body {
 		max_size 30MB
@@ -66,7 +59,7 @@
 }
 
 # ────────────────────────────────────────────────────────────────────
-# Backend API — single host, HTTP-01 cert.
+# Backend API — single host, standard cert.
 # ────────────────────────────────────────────────────────────────────
 api.{$PLATFORM_APEX:flexiopage.com} {
 	encode zstd gzip
@@ -87,9 +80,11 @@ api.{$PLATFORM_APEX:flexiopage.com} {
 }
 
 # ────────────────────────────────────────────────────────────────────
-# Custom domains (catch-all). on_demand_tls kicks in for any unknown
-# host that resolves to this server. The ask hook (declared globally
-# above) decides whether to actually issue a cert.
+# Catch-all on :443 — handles every other host:
+#   - vendor subdomains (*.flexiopage.com): cert issued on demand, gate
+#     approves because cert-ask returns 200 for "kind: platform".
+#   - seller custom domains: cert issued on demand, gate approves only
+#     when the Store is customDomainVerified.
 #
 # Same upstream as the platform frontend — Next middleware reads the
 # Host header to pick the right store, so it must reach the app intact.
