@@ -211,6 +211,7 @@ export interface StoreType {
   subdomain: string;
   description?: string;
   customDomain?: string;
+  customDomainVerified?: boolean;
   isPublished?: boolean;
   storeType?: 'physical' | 'digital';
   logo?: string;

@@ -72,6 +72,24 @@ export function storeAbsoluteUrl(storeSlug: string, subPath?: string): string {
 }
 
 /**
+ * Public-facing URL of a store. Prefers the verified custom domain when
+ * the seller has connected one; otherwise falls back to the canonical
+ * subdomain via storeAbsoluteUrl. Use this for every "Voir la boutique"
+ * style link in the dashboard/admin so vendors see their own brand URL.
+ */
+export function publicStoreUrl(
+  store: { slug: string; customDomain?: string | null; customDomainVerified?: boolean },
+  subPath?: string,
+): string {
+  if (store.customDomain && store.customDomainVerified) {
+    const clean = subPath?.replace(/^\/+/, '') || '';
+    const host = store.customDomain.toLowerCase();
+    return clean ? `https://${host}/${clean}` : `https://${host}`;
+  }
+  return storeAbsoluteUrl(store.slug, subPath);
+}
+
+/**
  * Resolve a stored media path to a browser-loadable URL.
  *
  * Uploads are saved with a relative `/uploads/...` path that points at the

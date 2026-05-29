@@ -47,7 +47,7 @@ import {
   Check as CheckIcon,
 } from 'lucide-react';
 import { COUNTRIES, COUNTRY_GROUPS, currencyForCountry } from '@/data/countries';
-import { cn, storeAbsoluteUrl } from '@/lib/utils';
+import { cn, publicStoreUrl } from '@/lib/utils';
 
 interface UserDoc {
   _id: string;
@@ -67,6 +67,8 @@ interface StoreDoc {
   isPublished?: boolean;
   storeType?: 'physical' | 'digital';
   description?: string;
+  customDomain?: string;
+  customDomainVerified?: boolean;
 }
 
 function fmtCur(amount: number, currency: string): string {
@@ -481,7 +483,7 @@ export default function ProfilePage() {
                         Réglages
                       </Button>
                     </Link>
-                    <Link href={storeAbsoluteUrl(store.slug)} target="_blank" rel="noopener">
+                    <Link href={publicStoreUrl(store)} target="_blank" rel="noopener">
                       <Button
                         variant="outline"
                         size="sm"

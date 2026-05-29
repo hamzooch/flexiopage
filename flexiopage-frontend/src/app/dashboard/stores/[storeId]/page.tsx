@@ -36,7 +36,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { storesApi } from '@/lib/api';
-import { cn, storeAbsoluteUrl } from '@/lib/utils';
+import { cn, publicStoreUrl } from '@/lib/utils';
 import type { StoreType } from '@/components/dashboard/store-editor';
 import { OnboardingChecklist } from '@/components/dashboard/onboarding-checklist';
 import { ThemePreviewGrid } from '@/components/dashboard/theme-preview-card';
@@ -259,13 +259,13 @@ export default function StoreHubPage() {
             </div>
             <div className="min-w-0">
               <h1 className="truncate text-2xl font-bold tracking-tight sm:text-3xl">{store.name}</h1>
-              <p className="truncate text-sm text-muted-foreground">{storeAbsoluteUrl(store.slug).replace(/^https?:\/\//, '')}</p>
+              <p className="truncate text-sm text-muted-foreground">{publicStoreUrl(store).replace(/^https?:\/\//, '')}</p>
             </div>
           </div>
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
-          <Link href={storeAbsoluteUrl(store.slug)} target="_blank" rel="noopener">
+          <Link href={publicStoreUrl(store)} target="_blank" rel="noopener">
             <Button variant="outline" size="sm" className="gap-1.5">
               <ExternalLink className="h-3.5 w-3.5" />
               Voir la boutique

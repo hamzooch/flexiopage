@@ -18,13 +18,15 @@ import {
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { storesApi, extractApiError } from '@/lib/api';
-import { cn, storeAbsoluteUrl } from '@/lib/utils';
+import { cn, publicStoreUrl } from '@/lib/utils';
 import type { Collection } from '@/types/collection';
 
 interface StoreLite {
   _id: string;
   name: string;
   slug: string;
+  customDomain?: string;
+  customDomainVerified?: boolean;
 }
 
 export default function CollectionsListPage() {
@@ -169,7 +171,7 @@ export default function CollectionsListPage() {
               <div className="flex items-center gap-1">
                 {store && (
                   <Link
-                    href={storeAbsoluteUrl(store.slug) + '/c/' + c.slug}
+                    href={publicStoreUrl(store, `c/${c.slug}`)}
                     target="_blank"
                     rel="noopener"
                     className="grid h-8 w-8 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"

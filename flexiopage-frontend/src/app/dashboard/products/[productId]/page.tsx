@@ -32,7 +32,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { storesApi } from '@/lib/api';
-import { cn, storeAbsoluteUrl } from '@/lib/utils';
+import { cn, publicStoreUrl } from '@/lib/utils';
 import { ProfitCalculator, EMPTY_PROFIT_INPUTS, type ProfitInputs } from '@/components/dashboard/ProfitCalculator';
 import { TagsInput } from '@/components/dashboard/tags-input';
 import { VariantsEditor, type ProductVariant } from '@/components/dashboard/variants-editor';
@@ -105,6 +105,8 @@ export default function EditProductPage() {
   // ── Store metadata (for currency, slug, COD submit label fallback) ─
   const [currency, setCurrency] = useState('USD');
   const [storeSlug, setStoreSlug] = useState('');
+  const [storeCustomDomain, setStoreCustomDomain] = useState<string | undefined>(undefined);
+  const [storeCustomDomainVerified, setStoreCustomDomainVerified] = useState(false);
   const [storeCodSubmit, setStoreCodSubmit] = useState('Commander');
 
   const [loading, setLoading] = useState(true);
@@ -159,9 +161,11 @@ export default function EditProductPage() {
           paymentFeeFixed: Number(p.paymentFeeFixed) || 0,
         });
 
-        const s = (storeRes.data as { store: { slug?: string; settings?: { currency?: string; codForm?: { submitLabel?: string } } } }).store;
+        const s = (storeRes.data as { store: { slug?: string; customDomain?: string; customDomainVerified?: boolean; settings?: { currency?: string; codForm?: { submitLabel?: string } } } }).store;
         if (s?.settings?.currency) setCurrency(s.settings.currency);
         if (s?.slug) setStoreSlug(s.slug);
+        setStoreCustomDomain(s?.customDomain || undefined);
+        setStoreCustomDomainVerified(!!s?.customDomainVerified);
         if (s?.settings?.codForm?.submitLabel) setStoreCodSubmit(s.settings.codForm.submitLabel);
       })
       .catch(() => setError('Produit introuvable'))
@@ -280,7 +284,7 @@ export default function EditProductPage() {
         <div className="flex items-center gap-2">
           {storeSlug && slug && (
             <Link
-              href={`${storeAbsoluteUrl(storeSlug)}/product/${slug}`}
+              href={publicStoreUrl({ slug: storeSlug, customDomain: storeCustomDomain, customDomainVerified: storeCustomDomainVerified }, `product/${slug}`)}
               target="_blank"
               rel="noopener"
             >
@@ -840,7 +844,7 @@ export default function EditProductPage() {
                 </div>
                 <div className="space-y-0.5">
                   <div className="truncate text-[11px] text-emerald-700">
-                    {storeSlug ? `${storeAbsoluteUrl(storeSlug).replace(/^https?:\/\//, '')}/product/${slug}` : `boutique.com/product/${slug}`}
+                    {storeSlug ? publicStoreUrl({ slug: storeSlug, customDomain: storeCustomDomain, customDomainVerified: storeCustomDomainVerified }, `product/${slug}`).replace(/^https?:\/\//, '') : `boutique.com/product/${slug}`}
                   </div>
                   <div className="truncate text-sm font-semibold text-[#1a0dab]">
                     {seoTitle || name || 'Titre du produit'}
