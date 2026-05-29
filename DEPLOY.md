@@ -23,7 +23,7 @@ SSH into the VPS as `root`:
 ```bash
 # System update + tools
 apt update && apt upgrade -y
-apt install -y git curl ufw certbot
+apt install -y git curl ufw
 
 # Install Docker + Compose plugin
 curl -fsSL https://get.docker.com | sh
@@ -43,7 +43,7 @@ cd flexiopage
 
 # Copy and edit the environment template
 cp .env.production.example .env
-nano .env       # → fill in DOMAIN, API_DOMAIN, JWT_SECRET, etc.
+nano .env       # → fill in PLATFORM_APEX, CADDY_ADMIN_EMAIL, JWT_SECRET, etc.
 ```
 
 Generate a strong JWT secret on the VPS:
@@ -52,44 +52,49 @@ Generate a strong JWT secret on the VPS:
 openssl rand -hex 64
 ```
 
-Paste the output as `JWT_SECRET` in `.env`.
+Paste the output as `JWT_SECRET` in `.env`. Key Caddy-related variables:
 
-## 3. Issue the SSL certificate (once)
+| Var | Required | Example |
+|---|---|---|
+| `PLATFORM_APEX` | yes | `flexiopage.com` |
+| `CADDY_ADMIN_EMAIL` | yes | `admin@flexiopage.com` (Let's Encrypt contact) |
+| `CF_API_TOKEN` | only if using a wildcard cert for `*.PLATFORM_APEX` | Cloudflare API token with `Zone.DNS:Edit` on the apex |
 
-Stop anything listening on port 80, then ask certbot for the cert:
+## 3. SSL is automatic — no manual certbot
 
-```bash
-cd /opt/flexiopage
-certbot certonly --standalone \
-  -d flexiopage.com -d www.flexiopage.com -d api.flexiopage.com \
-  --email you@flexiopage.com --agree-tos --no-eff-email
-```
+Caddy issues and renews every Let's Encrypt certificate on its own
+(HTTP-01 by default, DNS-01 via Cloudflare for the wildcard). On the
+**very first** request to a hostname, Caddy fetches a fresh cert in a
+few seconds, then caches it on the persistent `caddy_data` volume.
 
-> Replace the three `-d` values with **your** domains. Both apex and
-> `api.` subdomain need to resolve to this VPS *before* running this.
+Three cert categories are issued:
 
-After success, the certificate lives under `/etc/letsencrypt/live/flexiopage.com/`.
+1. `flexiopage.com`, `www.flexiopage.com`, `*.flexiopage.com` — one
+   wildcard cert via DNS-01 (needs `CF_API_TOKEN`). If you don't have
+   Cloudflare, edit `caddy/Caddyfile` and replace the wildcard with
+   each subdomain you actually use.
+2. `api.flexiopage.com` — single-host cert via HTTP-01.
+3. **Any vendor custom domain** that points to this VPS — issued on
+   demand the first time a visitor hits it, **only after** Caddy
+   checks the backend's `/internal/cert-ask?domain=…` endpoint. The
+   gate accepts a domain when a `Store` document has
+   `customDomain === domain` and `customDomainVerified === true`,
+   which prevents random hostnames from burning the LE rate limit.
 
-## 4. Update nginx config with your real domain
+> Make sure ports 80 AND 443 are open on the VPS firewall, and that
+> nothing else is listening on them on the host — Caddy needs both.
 
-```bash
-nano nginx/conf.d/flexiopage.conf
-```
-
-Replace every occurrence of `flexiopage.com` and `api.flexiopage.com` with
-your real domain(s). Save and quit.
-
-## 5. Launch the stack
+## 4. Launch the stack
 
 ```bash
 ./deploy.sh
 ```
 
-This builds the three images (mongo, backend, frontend), brings nginx
-up, and prints the public URLs. First build takes ~5 min; subsequent
+This builds the images (mongo, backend, frontend), brings Caddy up
+last, and prints the public URLs. First build takes ~5 min; subsequent
 deploys are ~30 s thanks to the Docker layer cache.
 
-## 6. Seed the first admin user
+## 5. Seed the first admin user
 
 ```bash
 docker compose -f docker-compose.prod.yml exec backend \
@@ -114,22 +119,26 @@ docker compose -f docker-compose.prod.yml exec backend \
 > Replace `admin@flexiopage.com` and `CHANGE_ME` with your real credentials.
 > Or use the existing script: `npx tsx scripts/seed-admin.ts`.
 
-## 7. Renew SSL certificates automatically
+## 6. Vendor custom domains — how it works in production
 
-Add a weekly cron (renewal happens at 60 days — Let's Encrypt issues
-90-day certs):
+A seller configures a custom domain from the dashboard
+(`/dashboard/integrations` → tab **Domaine**). The flow is:
 
-```bash
-crontab -e
-```
+1. Seller types `theirshop.com` and clicks **Enregistrer**.
+2. UI shows the DNS records to copy (CNAME → `stores.flexiopage.com`).
+3. Seller adds the records at their registrar, comes back, clicks
+   **Vérifier le DNS**. Backend runs an `nslookup`; on success the
+   store gets `customDomainVerified: true`.
+4. The first browser hitting `https://theirshop.com` triggers Caddy:
+   - Caddy GETs `http://backend:5000/internal/cert-ask?domain=theirshop.com`
+   - Backend returns `200 OK` (the domain is verified)
+   - Caddy obtains a Let's Encrypt cert (HTTP-01, ~3 s)
+   - Connection is upgraded, page renders.
+5. Renewals happen silently in the background.
 
-Add this line:
+No SSH, no admin action, no per-vendor config file.
 
-```
-0 3 * * 0 certbot renew --quiet --deploy-hook "docker compose -f /opt/flexiopage/docker-compose.prod.yml exec nginx nginx -s reload"
-```
-
-## 8. Day-to-day operations
+## 7. Day-to-day operations
 
 | Action | Command |
 |---|---|
@@ -141,11 +150,19 @@ Add this line:
 | Backup Mongo | `docker compose -f docker-compose.prod.yml exec mongodb mongodump --archive --gzip > /opt/backups/$(date +%F).archive.gz` |
 | Storage backup | `tar czf /opt/backups/uploads-$(date +%F).tgz $(docker volume inspect flexiopage_backend_uploads -f '{{ .Mountpoint }}')` |
 
-## 9. Troubleshooting
+## 8. Troubleshooting
 
 **`502 Bad Gateway`** — backend or frontend container crashed.
 Run `docker compose -f docker-compose.prod.yml ps` and check the logs
 of the unhealthy service.
+
+**Custom domain shows `ERR_CERT_COMMON_NAME_INVALID`** — Caddy hasn't
+issued the cert yet. Check three things:
+1. The store actually has `customDomainVerified: true` in Mongo.
+2. `curl http://backend:5000/internal/cert-ask?domain=<the-domain>` from
+   the VPS returns `200`.
+3. Caddy logs (`docker compose -f docker-compose.prod.yml logs -f caddy`)
+   for ACME errors — usually a DNS issue or LE rate-limit hit.
 
 **`Storage failed to persist the file`** on uploads — the
 `backend_uploads` volume isn't mounted, or `STORAGE_DRIVER=local` but

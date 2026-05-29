@@ -1,0 +1,117 @@
+# FlexioPage — Caddy reverse proxy with auto-TLS.
+#
+# Three traffic patterns:
+#
+#   1. Platform hosts (flexiopage.com, www, *.flexiopage.com)
+#      → wildcard cert issued via Let's Encrypt DNS-01 (Cloudflare API).
+#      → proxied to the Next.js frontend on :3000.
+#
+#   2. Backend API (api.flexiopage.com)
+#      → single-name cert, HTTP-01 challenge handled by Caddy automatically.
+#      → proxied to Express on :5000.
+#
+#   3. Seller custom domains (e.g. afrochance.com)
+#      → on-demand TLS: Caddy issues a Let's Encrypt cert the FIRST time
+#        a real visitor lands on the host, but only after asking the
+#        backend whether the domain is a verified storefront.
+#      → proxied to the Next.js frontend on :3000; the Host header is
+#        preserved so Next middleware can resolve the right store.
+#
+# Required env (passed through docker-compose):
+#   PLATFORM_APEX           — bare apex of the platform (default flexiopage.com)
+#   CADDY_ADMIN_EMAIL       — contact for Let's Encrypt registration
+#   CF_API_TOKEN            — Cloudflare API token with DNS edit on the apex
+#                              (only needed if you want a *.PLATFORM_APEX cert
+#                              via DNS-01; otherwise drop the dns directive
+#                              and add each storefront subdomain explicitly).
+
+{
+	email {$CADDY_ADMIN_EMAIL}
+
+	# Gate on-demand TLS issuance: Caddy will GET this URL with ?domain=<host>
+	# before requesting a cert. 2xx = proceed, anything else = refuse.
+	# Backend is reachable inside the compose network as http://backend:5000.
+	on_demand_tls {
+		ask http://backend:5000/internal/cert-ask
+		# Generous rate limits so a normal launch day works, but block abuse.
+		# Tune once you have real traffic.
+	}
+}
+
+# ────────────────────────────────────────────────────────────────────
+# Platform hosts — wildcard via Cloudflare DNS-01.
+# Remove the `tls` block if you don't use Cloudflare; Caddy will fall back
+# to HTTP-01 per-subdomain (you'd then need to list each subdomain).
+# ────────────────────────────────────────────────────────────────────
+{$PLATFORM_APEX:flexiopage.com}, www.{$PLATFORM_APEX:flexiopage.com}, *.{$PLATFORM_APEX:flexiopage.com} {
+	tls {
+		dns cloudflare {$CF_API_TOKEN}
+	}
+
+	encode zstd gzip
+	request_body {
+		max_size 30MB
+	}
+
+	reverse_proxy frontend:3000 {
+		header_up Host {host}
+		header_up X-Real-IP {remote_host}
+		header_up X-Forwarded-For {remote_host}
+		header_up X-Forwarded-Proto {scheme}
+		transport http {
+			read_timeout 600s
+			write_timeout 600s
+		}
+	}
+}
+
+# ────────────────────────────────────────────────────────────────────
+# Backend API — single host, HTTP-01 cert.
+# ────────────────────────────────────────────────────────────────────
+api.{$PLATFORM_APEX:flexiopage.com} {
+	encode zstd gzip
+	request_body {
+		max_size 30MB
+	}
+
+	reverse_proxy backend:5000 {
+		header_up Host {host}
+		header_up X-Real-IP {remote_host}
+		header_up X-Forwarded-For {remote_host}
+		header_up X-Forwarded-Proto {scheme}
+		transport http {
+			read_timeout 600s
+			write_timeout 600s
+		}
+	}
+}
+
+# ────────────────────────────────────────────────────────────────────
+# Custom domains (catch-all). on_demand_tls kicks in for any unknown
+# host that resolves to this server. The ask hook (declared globally
+# above) decides whether to actually issue a cert.
+#
+# Same upstream as the platform frontend — Next middleware reads the
+# Host header to pick the right store, so it must reach the app intact.
+# ────────────────────────────────────────────────────────────────────
+:443 {
+	tls {
+		on_demand
+	}
+
+	encode zstd gzip
+	request_body {
+		max_size 30MB
+	}
+
+	reverse_proxy frontend:3000 {
+		header_up Host {host}
+		header_up X-Real-IP {remote_host}
+		header_up X-Forwarded-For {remote_host}
+		header_up X-Forwarded-Proto {scheme}
+		transport http {
+			read_timeout 600s
+			write_timeout 600s
+		}
+	}
+}

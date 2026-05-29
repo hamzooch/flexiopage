@@ -1,13 +1,15 @@
 # FlexioPage — Production stack for a single VPS (Hostinger / OVH / Hetzner).
 #
 # Layout:
-#   nginx (80/443)  ──┬──>  127.0.0.1:3000   (frontend, Next.js standalone)
-#                     └──>  127.0.0.1:5000   (backend, Express + Mongo client)
-#                              │
-#                              └──>  mongodb:27017  (internal network only)
+#   caddy (80/443) ──┬──>  frontend:3000   (Next.js standalone)
+#                    └──>  backend:5000    (Express + Mongo client)
+#                                  │
+#                                  └──>  mongodb:27017  (internal network only)
 #
-# Backend & frontend are NOT exposed to the public — only nginx listens
-# externally. SSL certificates are mounted from /etc/letsencrypt on the host.
+# Backend & frontend are NOT exposed to the public — only Caddy listens
+# externally. Caddy handles ALL TLS termination, including auto-issuing
+# Let's Encrypt certificates for vendor custom domains via on-demand TLS.
+# The cert store is persisted on the `caddy_data` volume.
 #
 # Usage:
 #   cp .env.production.example .env
@@ -31,7 +33,7 @@ services:
       context: ./flexiopage-backend
       dockerfile: Dockerfile
     restart: unless-stopped
-    # Bind only to localhost — nginx is the public entry point.
+    # Bind only to localhost — Caddy is the public entry point.
     ports:
       - "127.0.0.1:5000:5000"
     environment:
@@ -107,16 +109,31 @@ services:
     networks:
       - flexiopage
 
-  nginx:
-    image: nginx:1.27-alpine
+  # Caddy v2 — public reverse proxy with auto-TLS.
+  # Issues + renews Let's Encrypt certificates for:
+  #   - the platform apex/subdomains (DNS-01 via Cloudflare, optional),
+  #   - api.${PLATFORM_APEX} (HTTP-01),
+  #   - any verified custom domain a vendor connects (HTTP-01 + on-demand TLS,
+  #     gated by the backend's /internal/cert-ask endpoint).
+  # Uses the caddy:2-alpine image with the Cloudflare DNS module baked in
+  # via a tiny Dockerfile (see caddy/Dockerfile) when DNS-01 is needed.
+  # If you don't need the wildcard, swap to `image: caddy:2-alpine` and drop
+  # the dns directive in caddy/Caddyfile.
+  caddy:
+    image: caddy:2-alpine
     restart: unless-stopped
     ports:
       - "80:80"
       - "443:443"
+      - "443:443/udp"   # HTTP/3 (QUIC)
+    environment:
+      PLATFORM_APEX: ${PLATFORM_APEX:-flexiopage.com}
+      CADDY_ADMIN_EMAIL: ${CADDY_ADMIN_EMAIL:-admin@flexiopage.com}
+      CF_API_TOKEN: ${CF_API_TOKEN:-}
     volumes:
-      - ./nginx/conf.d:/etc/nginx/conf.d:ro
-      - /etc/letsencrypt:/etc/letsencrypt:ro
-      - certbot_webroot:/var/www/certbot
+      - ./caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data            # cert store + ACME account (must persist!)
+      - caddy_config:/config
     depends_on:
       - backend
       - frontend
@@ -126,7 +143,8 @@ services:
 volumes:
   mongodb_data:
   backend_uploads:
-  certbot_webroot:
+  caddy_data:
+  caddy_config:
 
 networks:
   flexiopage:

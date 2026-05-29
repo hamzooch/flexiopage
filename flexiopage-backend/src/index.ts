@@ -27,6 +27,7 @@ import complaintRoutes from './routes/complaint.routes';
 import teamRoutes from './routes/team.routes';
 import notificationRoutes from './routes/notification.routes';
 import calculatorRoutes from './routes/calculator.routes';
+import internalRoutes from './routes/internal.routes';
 import { rateLimiter } from './middleware/rateLimiter';
 
 const app = express();
@@ -112,6 +113,11 @@ app.use((req, res, next) => {
 
 // Rate limiting
 app.use(rateLimiter);
+
+// Internal endpoints (reverse-proxy → backend). Mounted at the root so the
+// Caddyfile URL stays short; safe to expose publicly (read-only domain
+// authorization check).
+app.use('/internal', internalRoutes);
 
 // API routes
 app.use('/api/auth', authRoutes);
