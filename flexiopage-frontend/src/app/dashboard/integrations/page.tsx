@@ -345,16 +345,74 @@ function DomainPanel({ store, onSaved, saving, setSaving }: PanelProps) {
                 </span>
               )}
             </div>
-            <p className="mt-2 text-xs text-muted-foreground">
-              Chez ton registrar (OVH, GoDaddy, Namecheap…), ajoute :
+            <p className="mt-3 text-xs text-muted-foreground">
+              Suis ces étapes chez ton fournisseur de domaine (le site où tu as acheté <span className="font-mono text-foreground">{domain}</span> — OVH, GoDaddy, Namecheap, Hostinger, Gandi, etc.) :
             </p>
-            <div className="mt-3 space-y-2">
-              <DnsRow type="CNAME" host={domain} value={target.host || 'stores.flexiopage.com'} />
-              {target.ips.length > 0 && (
-                <DnsRow type="A (apex)" host={domain} value={target.ips.join(', ')} />
-              )}
-            </div>
-            <div className="mt-4 flex items-center gap-2">
+
+            <ol className="mt-3 space-y-3 text-xs">
+              <li className="flex gap-3">
+                <span className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-primary/10 text-[11px] font-bold text-primary">1</span>
+                <div className="min-w-0">
+                  <p className="font-semibold text-foreground">Connecte-toi à ton fournisseur de domaine</p>
+                  <p className="mt-0.5 text-muted-foreground">
+                    Va sur le site où tu as acheté le domaine et connecte-toi à ton compte.
+                  </p>
+                </div>
+              </li>
+              <li className="flex gap-3">
+                <span className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-primary/10 text-[11px] font-bold text-primary">2</span>
+                <div className="min-w-0">
+                  <p className="font-semibold text-foreground">Ouvre la zone DNS du domaine</p>
+                  <p className="mt-0.5 text-muted-foreground">
+                    Cherche un menu nommé <span className="font-mono text-foreground">Zone DNS</span>, <span className="font-mono text-foreground">Manage DNS</span>, <span className="font-mono text-foreground">Advanced DNS</span> ou <span className="font-mono text-foreground">DNS Records</span> selon le fournisseur.
+                  </p>
+                </div>
+              </li>
+              <li className="flex gap-3">
+                <span className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-primary/10 text-[11px] font-bold text-primary">3</span>
+                <div className="min-w-0">
+                  <p className="font-semibold text-foreground">Ajoute le(s) enregistrement(s) ci-dessous</p>
+                  <p className="mt-0.5 text-muted-foreground">
+                    Clique sur <span className="font-mono text-foreground">Ajouter un enregistrement</span> et recopie exactement les valeurs (bouton « Copier » à droite).
+                  </p>
+                  <div className="mt-2.5 space-y-2">
+                    <DnsRow type="CNAME" host={domain} value={target.host || 'stores.flexiopage.com'} />
+                    {target.ips.length > 0 && (
+                      <DnsRow type="A (apex)" host={domain} value={target.ips.join(', ')} />
+                    )}
+                  </div>
+                  <div className="mt-2.5 rounded-lg border border-border/50 bg-card/60 p-2.5 text-[11px] text-muted-foreground">
+                    <p className="font-semibold text-foreground">Comment remplir le formulaire ?</p>
+                    <ul className="mt-1 space-y-0.5">
+                      <li>• <span className="font-mono text-foreground">Type</span> : <span className="font-mono">CNAME</span> {target.ips.length > 0 && <>(ou <span className="font-mono">A</span> pour la ligne « apex »)</>}</li>
+                      <li>• <span className="font-mono text-foreground">Nom</span> / <span className="font-mono text-foreground">Host</span> : la partie avant ton domaine principal (ex. <span className="font-mono">shop</span>) — ou laisse vide / <span className="font-mono">@</span> pour le domaine nu.</li>
+                      <li>• <span className="font-mono text-foreground">Valeur</span> / <span className="font-mono text-foreground">Target</span> : ce qui est affiché à droite de la flèche dans le tableau ci-dessus.</li>
+                      <li>• <span className="font-mono text-foreground">TTL</span> : laisse la valeur par défaut (ou <span className="font-mono">3600</span>).</li>
+                    </ul>
+                  </div>
+                </div>
+              </li>
+              <li className="flex gap-3">
+                <span className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-primary/10 text-[11px] font-bold text-primary">4</span>
+                <div className="min-w-0">
+                  <p className="font-semibold text-foreground">Enregistre puis attends la propagation</p>
+                  <p className="mt-0.5 text-muted-foreground">
+                    Sauvegarde la zone DNS chez ton fournisseur. La propagation prend généralement <span className="font-medium text-foreground">5 à 30 minutes</span> (parfois jusqu'à 24 h).
+                  </p>
+                </div>
+              </li>
+              <li className="flex gap-3">
+                <span className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-primary/10 text-[11px] font-bold text-primary">5</span>
+                <div className="min-w-0">
+                  <p className="font-semibold text-foreground">Reviens ici et clique sur « Vérifier le DNS »</p>
+                  <p className="mt-0.5 text-muted-foreground">
+                    Une fois le badge vert « Vérifié » affiché, ton domaine est actif et ta boutique sera accessible via <span className="font-mono text-foreground">https://{domain}</span>.
+                  </p>
+                </div>
+              </li>
+            </ol>
+
+            <div className="mt-5 flex flex-wrap items-center gap-2">
               <Button variant="outline" size="sm" onClick={handleVerify} disabled={checking} className="gap-1.5">
                 {checking ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
                 Vérifier le DNS
@@ -362,7 +420,7 @@ function DomainPanel({ store, onSaved, saving, setSaving }: PanelProps) {
               {check && !check.verified && (
                 <span className="text-xs text-destructive">
                   {check.reason === 'dns_not_matching'
-                    ? `DNS détecté: ${[...(check.cname || []), ...(check.aRecords || [])].join(', ') || '—'}`
+                    ? `DNS détecté : ${[...(check.cname || []), ...(check.aRecords || [])].join(', ') || '—'} — la propagation n'est peut-être pas terminée, réessaie dans quelques minutes.`
                     : check.reason}
                 </span>
               )}
