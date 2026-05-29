@@ -14,6 +14,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { storesApi } from '@/lib/api';
 import { useStoreStore } from '@/stores/store-store';
 import { Button } from '@/components/ui/button';
@@ -108,10 +109,22 @@ const TABS: { id: TabId; label: string; icon: React.ComponentType<{ className?: 
 
 export default function IntegrationsPage() {
   const { currentStoreId, setCurrentStore } = useStoreStore();
+  const searchParams = useSearchParams();
+  const initialTab: TabId = (() => {
+    const t = searchParams.get('tab');
+    return t === 'shipping' || t === 'pixels' || t === 'domain' ? t : 'domain';
+  })();
   const [stores, setStores] = useState<StoreDoc[]>([]);
   const [loading, setLoading] = useState(true);
-  const [tab, setTab] = useState<TabId>('domain');
+  const [tab, setTab] = useState<TabId>(initialTab);
   const [savingTab, setSavingTab] = useState<TabId | null>(null);
+
+  // Allow ?storeId=… to override the currently selected store (used by the
+  // onboarding checklist links that pass the store id explicitly).
+  useEffect(() => {
+    const sid = searchParams.get('storeId');
+    if (sid && sid !== currentStoreId) setCurrentStore(sid);
+  }, [searchParams, currentStoreId, setCurrentStore]);
 
   const activeStore = useMemo(
     () => stores.find((s) => s._id === currentStoreId) || stores[0] || null,

@@ -128,11 +128,11 @@ export function OnboardingChecklist({ store }: Props) {
         ? []
         : [{
           id: 'delivery',
-          title: 'Connecter MogaDelivery',
+          title: 'Lier un service de livraison',
           hint: deliveryDone
-            ? 'Dispatch automatique configuré.'
-            : 'Pour envoyer tes commandes COD au coursier.',
-          href: `/dashboard/stores/${store._id}/delivery`,
+            ? 'Service de livraison connecté — dispatch automatique actif.'
+            : 'Choisis une société de livraison ou un service logistique pour envoyer tes commandes.',
+          href: `/dashboard/integrations?tab=shipping&storeId=${store._id}`,
           icon: Truck,
           status: deliveryDone ? ('done' as const) : ('todo' as const),
           doneAccent: 'from-rose-500 to-pink-600',

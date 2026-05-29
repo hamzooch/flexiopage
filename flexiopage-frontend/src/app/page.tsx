@@ -124,13 +124,9 @@ function Header() {
           <a href="#faq" className="text-sm font-medium text-muted-foreground transition-colors hover:text-foreground">FAQ</a>
         </nav>
         <div className="flex items-center gap-2">
-          <Link href="/login" className="hidden sm:inline-flex">
-            <Button variant="ghost" size="sm">Se connecter</Button>
-          </Link>
-          <Link href="/register">
+          <Link href="/login">
             <Button size="sm" className="gap-1.5 bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-600 hover:to-orange-700">
-              <span className="hidden sm:inline">Créer ma boutique</span>
-              <span className="sm:hidden">Commencer</span>
+              Se connecter
               <ArrowRight className="h-3.5 w-3.5" />
             </Button>
           </Link>
@@ -186,9 +182,9 @@ function Hero() {
           variants={fadeUp}
           className="mt-8 flex flex-wrap items-center justify-center gap-3 sm:mt-10"
         >
-          <Link href="/register">
+          <Link href="/login">
             <Button size="lg" className="h-12 gap-2 bg-gradient-to-r from-amber-500 to-orange-600 px-7 text-base font-semibold shadow-xl shadow-orange-500/30 transition-all hover:scale-[1.02] hover:from-amber-600 hover:to-orange-700">
-              Démarrer gratuitement
+              Se connecter
               <ArrowRight className="h-4 w-4" />
             </Button>
           </Link>
