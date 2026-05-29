@@ -123,6 +123,11 @@ services:
       - "80:80"
       - "443:443"
       - "443:443/udp"   # HTTP/3 (QUIC)
+    # Public resolvers — the host's systemd-resolved (127.0.0.53) is not
+    # reachable from inside the container, which would break ACME issuance.
+    dns:
+      - 1.1.1.1
+      - 8.8.8.8
     environment:
       PLATFORM_APEX: ${PLATFORM_APEX:-flexiopage.com}
       CADDY_ADMIN_EMAIL: ${CADDY_ADMIN_EMAIL:-admin@flexiopage.com}
