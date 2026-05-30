@@ -15,6 +15,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
+import Image from 'next/image';
 import { useParams, useRouter } from 'next/navigation';
 import {
   ArrowLeft, Loader2, ShoppingBag, Wallet, BadgePercent, X,
@@ -220,7 +221,7 @@ export default function CartCheckoutPage() {
               Tes coordonnées
             </h2>
             <div className="grid gap-3 sm:grid-cols-2">
-              <Field label="Nom complet *" value={name} onChange={setName} placeholder="Aïssatou Diallo" />
+              <Field label="Nom complet *" value={name} onChange={setName} placeholder="Votre nom" />
               <Field label="Téléphone *" value={phone} onChange={setPhone} type="tel" placeholder={`${phonePrefix} 70 000 00 00`} />
             </div>
             <Field label="Email (optionnel)" value={email} onChange={setEmail} type="email" placeholder="ton@email.com" />
@@ -293,7 +294,13 @@ export default function CartCheckoutPage() {
                   <div className="relative aspect-square w-12 shrink-0 overflow-hidden rounded-md bg-muted">
                     {it.image && (
                       /* eslint-disable-next-line @next/next/no-img-element */
-                      <img src={mediaUrl(it.image) || it.image} alt="" className="h-full w-full object-cover" />
+                      <Image
+                        src={mediaUrl(it.image) || it.image}
+                        alt=""
+                        fill
+                        sizes="96px"
+                        className="object-cover"
+                      />
                     )}
                     <span className="absolute -right-1 -top-1 grid h-4 min-w-4 place-items-center rounded-full bg-foreground px-1 text-[9px] font-bold text-background">
                       {it.quantity}

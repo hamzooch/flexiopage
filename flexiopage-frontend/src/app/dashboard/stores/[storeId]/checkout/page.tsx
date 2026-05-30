@@ -353,7 +353,7 @@ function CodFormLivePreview({ cfg }: { cfg: CodFormSettings }) {
 
           {/* Identity row */}
           <div className="grid grid-cols-2 gap-1.5">
-            <PreviewField label="Nom complet *" placeholder="Aïssatou Diallo" />
+            <PreviewField label="Nom complet *" placeholder="Votre nom" />
             <PreviewField label="Téléphone *"   placeholder="+216 55 …" />
           </div>
           {cfg.showEmail && (

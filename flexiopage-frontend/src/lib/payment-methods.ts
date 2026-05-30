@@ -56,6 +56,5 @@ function onlineMethodsForZone(zone: Zone): PaymentMethodOption[] {
 export function getAvailableMethods(country: string, storeType: StoreType): PaymentMethodOption[] {
   const zone = zoneOf(country);
   if (storeType === 'digital') return onlineMethodsForZone(zone);
-  if (zone === 'other') return [COD_OPTION];
-  return [...onlineMethodsForZone(zone), COD_OPTION];
+  return [COD_OPTION];
 }

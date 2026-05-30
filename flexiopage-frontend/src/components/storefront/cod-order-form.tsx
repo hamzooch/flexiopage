@@ -544,7 +544,7 @@ export function CodOrderForm({
 
       {/* Identity */}
       <div className="grid gap-3 sm:grid-cols-2">
-        <Field label="Nom complet *" value={name} onChange={setName} placeholder="Ex. Aïssatou Diallo" theme={theme} radius={radius} />
+        <Field label="Nom complet *" value={name} onChange={setName} placeholder="Votre nom" theme={theme} radius={radius} />
         <Field
           label="Téléphone *"
           value={phone}

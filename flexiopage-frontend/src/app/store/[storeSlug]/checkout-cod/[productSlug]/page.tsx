@@ -16,6 +16,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
+import Image from 'next/image';
 import { useParams, useRouter } from 'next/navigation';
 import { ArrowLeft, Loader2, ShieldCheck, Truck, Wallet } from 'lucide-react';
 import { cn, formatCurrency, mediaUrl } from '@/lib/utils';
@@ -300,7 +301,7 @@ export default function CodCheckoutPage() {
                   <p className="text-xs opacity-70">On te contacte avant le passage du livreur.</p>
                 </div>
                 <div className="grid gap-4 sm:grid-cols-2">
-                  <Field label="Nom complet *" value={name} onChange={setName} placeholder="Aïssatou Diallo" theme={theme} radius={radius} />
+                  <Field label="Nom complet *" value={name} onChange={setName} placeholder="Votre nom" theme={theme} radius={radius} />
                   <Field
                     label="Téléphone *"
                     value={phone}
@@ -437,7 +438,14 @@ export default function CodCheckoutPage() {
                   <div className="flex items-start gap-3">
                     {product.images?.[0] ? (
                       /* eslint-disable-next-line @next/next/no-img-element */
-                      <img src={mediaUrl(product.images[0]) || product.images[0]} alt="" className="h-20 w-20 shrink-0 border object-cover" style={{ borderColor: theme.border, borderRadius: radius }} />
+                      <Image
+                        src={mediaUrl(product.images[0]) || product.images[0]}
+                        alt=""
+                        width={80}
+                        height={80}
+                        className="h-20 w-20 shrink-0 border object-cover"
+                        style={{ borderColor: theme.border, borderRadius: radius }}
+                      />
                     ) : (
                       <div className="grid h-20 w-20 shrink-0 place-items-center text-2xl" style={{ backgroundColor: theme.surfaceMuted, borderRadius: radius }}>📦</div>
                     )}
