@@ -17,6 +17,7 @@
  */
 
 import { useEffect, useRef, useState, useCallback } from 'react';
+import Image from 'next/image';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { cn, mediaUrl } from '@/lib/utils';
 
@@ -38,11 +39,14 @@ export interface SliderConfig {
   slides?: SliderSlide[];
 }
 
+// Mobile: aspect-ratio (16/9) so a typical landscape banner fits in full —
+// no aggressive crop on phones. Desktop keeps the original fixed pixel
+// heights (sm:* overrides the aspect ratio via sm:aspect-auto).
 const HEIGHT_CLASSES: Record<NonNullable<SliderConfig['height']>, string> = {
-  sm: 'h-[260px] sm:h-[320px]',
-  md: 'h-[340px] sm:h-[420px]',
-  lg: 'h-[420px] sm:h-[520px]',
-  xl: 'h-[520px] sm:h-[640px]',
+  sm: 'aspect-[16/9] sm:aspect-auto sm:h-[320px]',
+  md: 'aspect-[16/9] sm:aspect-auto sm:h-[420px]',
+  lg: 'aspect-[16/9] sm:aspect-auto sm:h-[520px]',
+  xl: 'aspect-[16/9] sm:aspect-auto sm:h-[640px]',
 };
 
 const OVERLAY_CLASSES: Record<NonNullable<SliderSlide['overlay']>, string> = {
@@ -135,12 +139,14 @@ export function StorefrontSlider({ config, primary = '#0ea5e9', primaryFg = '#ff
               isActive ? 'opacity-100' : 'opacity-0 pointer-events-none'
             )}
           >
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src={mediaUrl(s.image)}
+            <Image
+              src={mediaUrl(s.image) || s.image}
               alt={s.title || ''}
-              className="absolute inset-0 h-full w-full object-cover"
-              loading={i === 0 ? 'eager' : 'lazy'}
+              fill
+              // First slide is above the fold — priority boosts LCP.
+              priority={i === 0}
+              sizes="100vw"
+              className="object-cover"
             />
             <div className={cn('absolute inset-0', overlay)} />
             <div className={cn('relative z-10 mx-auto flex h-full max-w-5xl flex-col justify-center px-6 sm:px-10', align)}>
