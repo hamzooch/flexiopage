@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import React from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
+import { IMAGE_BLUR_DATA_URL } from '@/lib/image-placeholder';
 import {
   resolveSectionOrder,
   type MovableSectionId,
@@ -655,6 +656,8 @@ function ProductCard({
           // First 4 cards above the fold get priority — boosts LCP on
           // mobile where the grid is 2-up. The rest lazy-load by default.
           priority={index < 4}
+          placeholder="blur"
+          blurDataURL={IMAGE_BLUR_DATA_URL}
           className="object-cover transition-transform duration-[700ms] ease-out group-hover:scale-110 group-hover:rotate-[0.6deg]"
         />
       ) : (

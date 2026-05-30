@@ -14,6 +14,7 @@ import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
 import { useParams } from 'next/navigation';
+import { IMAGE_BLUR_DATA_URL } from '@/lib/image-placeholder';
 import {
   ShoppingBag, Minus, Plus, Trash2, ArrowRight, ArrowLeft,
 } from 'lucide-react';
@@ -117,8 +118,15 @@ export default function CartPage() {
                     className="block aspect-square w-20 shrink-0 overflow-hidden rounded-lg bg-muted sm:w-24"
                   >
                     {it.image ? (
-                      /* eslint-disable-next-line @next/next/no-img-element */
-                      <img src={mediaUrl(it.image) || it.image} alt="" className="h-full w-full object-cover" />
+                      <Image
+                        src={mediaUrl(it.image) || it.image}
+                        alt=""
+                        fill
+                        sizes="96px"
+                        placeholder="blur"
+                        blurDataURL={IMAGE_BLUR_DATA_URL}
+                        className="object-cover"
+                      />
                     ) : (
                       <div className="grid h-full place-items-center text-[10px] text-muted-foreground">
                         Sans image

@@ -15,6 +15,7 @@
 import { useState } from 'react';
 import Image from 'next/image';
 import { mediaUrl } from '@/lib/utils';
+import { IMAGE_BLUR_DATA_URL } from '@/lib/image-placeholder';
 import type { ThemeTokens } from '@/data/store-themes';
 import { WishlistButton } from '@/components/storefront/wishlist-button';
 
@@ -85,6 +86,8 @@ export function ProductGallery({
             fill
             priority
             sizes="(max-width: 768px) 100vw, 50vw"
+            placeholder="blur"
+            blurDataURL={IMAGE_BLUR_DATA_URL}
             className="object-cover"
           />
         ) : (
@@ -144,6 +147,8 @@ export function ProductGallery({
                   alt=""
                   fill
                   sizes="(max-width: 768px) 25vw, 120px"
+                  placeholder="blur"
+                  blurDataURL={IMAGE_BLUR_DATA_URL}
                   className="object-cover"
                 />
               </button>

@@ -18,6 +18,7 @@ import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
 import { useParams, useRouter } from 'next/navigation';
+import { IMAGE_BLUR_DATA_URL } from '@/lib/image-placeholder';
 import { ArrowLeft, Loader2, ShieldCheck, Truck, Wallet } from 'lucide-react';
 import { cn, formatCurrency, mediaUrl } from '@/lib/utils';
 import {
@@ -443,6 +444,8 @@ export default function CodCheckoutPage() {
                         alt=""
                         width={80}
                         height={80}
+                        placeholder="blur"
+                        blurDataURL={IMAGE_BLUR_DATA_URL}
                         className="h-20 w-20 shrink-0 border object-cover"
                         style={{ borderColor: theme.border, borderRadius: radius }}
                       />

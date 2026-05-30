@@ -17,6 +17,7 @@ import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
 import { useParams, useRouter } from 'next/navigation';
+import { IMAGE_BLUR_DATA_URL } from '@/lib/image-placeholder';
 import {
   ArrowLeft, Loader2, ShoppingBag, Wallet, BadgePercent, X,
 } from 'lucide-react';
@@ -299,6 +300,8 @@ export default function CartCheckoutPage() {
                         alt=""
                         fill
                         sizes="96px"
+                        placeholder="blur"
+                        blurDataURL={IMAGE_BLUR_DATA_URL}
                         className="object-cover"
                       />
                     )}

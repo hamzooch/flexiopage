@@ -20,6 +20,7 @@ import { useEffect, useRef, useState, useCallback } from 'react';
 import Image from 'next/image';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { cn, mediaUrl } from '@/lib/utils';
+import { IMAGE_BLUR_DATA_URL } from '@/lib/image-placeholder';
 
 export interface SliderSlide {
   image: string;
@@ -146,6 +147,8 @@ export function StorefrontSlider({ config, primary = '#0ea5e9', primaryFg = '#ff
               // First slide is above the fold — priority boosts LCP.
               priority={i === 0}
               sizes="100vw"
+              placeholder="blur"
+              blurDataURL={IMAGE_BLUR_DATA_URL}
               className="object-cover"
             />
             <div className={cn('absolute inset-0', overlay)} />

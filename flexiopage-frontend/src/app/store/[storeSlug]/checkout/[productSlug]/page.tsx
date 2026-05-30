@@ -17,6 +17,7 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
 import { useParams, useRouter } from 'next/navigation';
+import { IMAGE_BLUR_DATA_URL } from '@/lib/image-placeholder';
 import { Loader2, ShieldCheck, Zap, ArrowLeft, CreditCard } from 'lucide-react';
 import { cn, mediaUrl } from '@/lib/utils';
 import { StoreNavbar, type NavbarConfig } from '@/components/storefront/StoreNavbar';
@@ -347,8 +348,15 @@ export default function CheckoutPage() {
               <div className="p-5">
                 <div className="flex items-start gap-3">
                   {product.images?.[0] ? (
-                    /* eslint-disable-next-line @next/next/no-img-element */
-                    <img src={mediaUrl(product.images[0]) || product.images[0]} alt="" className="h-16 w-16 shrink-0 rounded-xl border border-border/60 object-cover" />
+                    <Image
+                      src={mediaUrl(product.images[0]) || product.images[0]}
+                      alt=""
+                      width={64}
+                      height={64}
+                      placeholder="blur"
+                      blurDataURL={IMAGE_BLUR_DATA_URL}
+                      className="h-16 w-16 shrink-0 rounded-xl border border-border/60 object-cover"
+                    />
                   ) : (
                     <div className="grid h-16 w-16 shrink-0 place-items-center rounded-xl bg-muted text-2xl">📦</div>
                   )}

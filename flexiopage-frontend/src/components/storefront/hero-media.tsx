@@ -8,6 +8,7 @@
  */
 import Image from 'next/image';
 import { mediaUrl } from '@/lib/utils';
+import { IMAGE_BLUR_DATA_URL } from '@/lib/image-placeholder';
 
 interface Props {
   /** Direct file URL OR YouTube/Vimeo watch URL. */
@@ -60,6 +61,8 @@ export function HeroMedia({ videoUrl, imageUrl, overlay = 'dark', alt = '' }: Pr
           fill
           priority
           sizes="100vw"
+          placeholder="blur"
+          blurDataURL={IMAGE_BLUR_DATA_URL}
           className="object-cover"
         />
         <div className="absolute inset-0" style={{ background: overlayLayer }} aria-hidden />
@@ -141,6 +144,8 @@ export function HeroMedia({ videoUrl, imageUrl, overlay = 'dark', alt = '' }: Pr
           fill
           priority
           sizes="100vw"
+          placeholder="blur"
+          blurDataURL={IMAGE_BLUR_DATA_URL}
           className="object-cover"
         />
         <div className="absolute inset-0" style={{ background: overlayLayer }} aria-hidden />
