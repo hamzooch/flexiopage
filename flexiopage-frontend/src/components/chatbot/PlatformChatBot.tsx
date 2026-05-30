@@ -37,30 +37,45 @@ function pathIsStorefront(pathname: string): boolean {
 }
 
 /**
- * True when the browser is on a storefront subdomain (`<slug>.lvh.me`,
- * `<slug>.flexiopage.com`). Necessary because storefront short URLs that
- * land at `/` look identical to the platform landing.
+ * True only when the browser is on the FlexioPage platform itself —
+ * apex (flexiopage.com), www, or localhost/IP in dev. Returns false
+ * for storefront subdomains (`<slug>.flexiopage.com`) AND for any
+ * seller's verified custom domain that points at us. Both are
+ * customer-facing surfaces where the platform marketing bot must
+ * never appear.
  */
-function hostIsStorefrontSubdomain(host: string): boolean {
-  const storefrontHost = (process.env.NEXT_PUBLIC_STOREFRONT_DOMAIN || '')
+function hostIsPlatform(host: string): boolean {
+  if (!host) return false;
+  const h = host.toLowerCase().replace(/:\d+$/, '');
+  // Dev — every local box matches one of these.
+  if (h === 'localhost' || h === '127.0.0.1' || h === '0.0.0.0') return true;
+  if (/^\d+\.\d+\.\d+\.\d+$/.test(h)) return true;
+  const platformHost = (process.env.NEXT_PUBLIC_STOREFRONT_DOMAIN || '')
     .replace(/:\d+$/, '')
     .toLowerCase();
-  if (!storefrontHost) return false;
-  const h = host.toLowerCase().replace(/:\d+$/, '');
-  return h !== storefrontHost && h.endsWith(`.${storefrontHost}`);
+  if (!platformHost) return false;
+  // Apex + www are the platform; anything else is a storefront or a
+  // seller's custom domain.
+  return h === platformHost || h === `www.${platformHost}`;
 }
 
 export function PlatformChatBot() {
   const pathname = usePathname() || '';
-  // Hostname is only known on the client — defer the subdomain check
-  // to after mount to avoid an SSR hydration mismatch.
-  const [host, setHost] = useState<string>('');
+  // Defer the host check to after mount: SSR doesn't know the host,
+  // and rendering the bot before we've confirmed we're on the platform
+  // would briefly flash it on custom-domain storefronts.
+  const [mounted, setMounted] = useState(false);
+  const [onPlatform, setOnPlatform] = useState(false);
   useEffect(() => {
-    if (typeof window !== 'undefined') setHost(window.location.host);
+    setMounted(true);
+    if (typeof window !== 'undefined') {
+      setOnPlatform(hostIsPlatform(window.location.host));
+    }
   }, []);
 
   if (pathIsStorefront(pathname)) return null;
-  if (host && hostIsStorefrontSubdomain(host)) return null;
+  if (!mounted) return null;
+  if (!onPlatform) return null;
 
   return <ChatBot script={flexiopageScript} storageKey="flexiopage-platform-chat" />;
 }
