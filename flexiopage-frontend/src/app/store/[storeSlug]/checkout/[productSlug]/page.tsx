@@ -15,6 +15,7 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
+import Image from 'next/image';
 import { useParams, useRouter } from 'next/navigation';
 import { Loader2, ShieldCheck, Zap, ArrowLeft, CreditCard } from 'lucide-react';
 import { cn, mediaUrl } from '@/lib/utils';

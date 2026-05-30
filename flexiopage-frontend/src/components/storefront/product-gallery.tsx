@@ -13,6 +13,7 @@
  */
 
 import { useState } from 'react';
+import Image from 'next/image';
 import { mediaUrl } from '@/lib/utils';
 import type { ThemeTokens } from '@/data/store-themes';
 import { WishlistButton } from '@/components/storefront/wishlist-button';
@@ -78,11 +79,13 @@ export function ProductGallery({
         style={{ backgroundColor: theme.surfaceMuted, borderColor: theme.border, borderRadius: radius }}
       >
         {activeImage ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
+          <Image
             src={mediaUrl(activeImage) || activeImage}
             alt={productName}
-            className="h-full w-full object-cover"
+            fill
+            priority
+            sizes="(max-width: 768px) 100vw, 50vw"
+            className="object-cover"
           />
         ) : (
           <div className="grid h-full place-items-center" style={{ color: theme.muted }}>
@@ -128,7 +131,7 @@ export function ProductGallery({
                 onClick={() => setActiveIndex(i)}
                 aria-label={`Voir l'image ${i + 1}`}
                 aria-pressed={active}
-                className="aspect-square overflow-hidden border transition-all"
+                className="relative aspect-square overflow-hidden border transition-all"
                 style={{
                   borderColor: active ? theme.primary : theme.border,
                   borderWidth: active ? 2 : 1,
@@ -136,8 +139,13 @@ export function ProductGallery({
                   opacity: active ? 1 : 0.7,
                 }}
               >
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={mediaUrl(img) || img} alt="" className="h-full w-full object-cover" />
+                <Image
+                  src={mediaUrl(img) || img}
+                  alt=""
+                  fill
+                  sizes="(max-width: 768px) 25vw, 120px"
+                  className="object-cover"
+                />
               </button>
             );
           })}

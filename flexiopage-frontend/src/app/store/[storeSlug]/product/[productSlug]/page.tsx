@@ -134,8 +134,12 @@ export default async function PublicProductPage({ params }: Props) {
 
   try {
     const [pRes, sRes] = await Promise.all([
-      fetch(`${apiUrl}/api/public/stores/${storeSlug}/products/${productSlug}`, { cache: 'no-store' }),
-      fetch(`${apiUrl}/api/public/store-by-slug/${storeSlug}`, { cache: 'no-store' }),
+      fetch(`${apiUrl}/api/public/stores/${storeSlug}/products/${productSlug}`, {
+        next: { revalidate: 60, tags: [`store:${storeSlug}`, `product:${storeSlug}:${productSlug}`] },
+      }),
+      fetch(`${apiUrl}/api/public/store-by-slug/${storeSlug}`, {
+        next: { revalidate: 60, tags: [`store:${storeSlug}`] },
+      }),
     ]);
     if (pRes.ok) {
       const body = await pRes.json();

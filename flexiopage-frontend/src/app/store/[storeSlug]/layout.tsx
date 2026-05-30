@@ -53,9 +53,9 @@ async function fetchStore(storeSlug: string): Promise<StoreLite | null> {
   const apiBase = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
   try {
     const res = await fetch(`${apiBase}/api/public/store-by-slug/${storeSlug}`, {
-      // No cache so a favicon/whatsapp change in the dashboard reflects
-      // immediately on the public site.
-      cache: 'no-store',
+      // ISR: cache 60s + tag so the dashboard can revalidate on mutation
+      // via revalidateTag(`store:<slug>`) once a webhook is wired up.
+      next: { revalidate: 60, tags: [`store:${storeSlug}`] },
     });
     if (!res.ok) return null;
     const { store } = (await res.json()) as { store?: StoreLite };

@@ -12,6 +12,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
+import Image from 'next/image';
 import { useParams } from 'next/navigation';
 import {
   ShoppingBag, Minus, Plus, Trash2, ArrowRight, ArrowLeft,

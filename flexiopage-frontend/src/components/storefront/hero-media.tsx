@@ -6,6 +6,7 @@
  * The wrapper is positioned absolutely (`inset-0`) so the parent just
  * needs to be relatively positioned to host it.
  */
+import Image from 'next/image';
 import { mediaUrl } from '@/lib/utils';
 
 interface Props {
@@ -53,11 +54,13 @@ export function HeroMedia({ videoUrl, imageUrl, overlay = 'dark', alt = '' }: Pr
     if (!imageUrl?.trim()) return null;
     return (
       <>
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img
+        <Image
           src={mediaUrl(imageUrl) || imageUrl}
           alt={alt}
-          className="absolute inset-0 h-full w-full object-cover"
+          fill
+          priority
+          sizes="100vw"
+          className="object-cover"
         />
         <div className="absolute inset-0" style={{ background: overlayLayer }} aria-hidden />
       </>
@@ -132,8 +135,14 @@ export function HeroMedia({ videoUrl, imageUrl, overlay = 'dark', alt = '' }: Pr
   if (imageUrl) {
     return (
       <>
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src={mediaUrl(imageUrl) || imageUrl} alt={alt} className="absolute inset-0 h-full w-full object-cover" />
+        <Image
+          src={mediaUrl(imageUrl) || imageUrl}
+          alt={alt}
+          fill
+          priority
+          sizes="100vw"
+          className="object-cover"
+        />
         <div className="absolute inset-0" style={{ background: overlayLayer }} aria-hidden />
       </>
     );

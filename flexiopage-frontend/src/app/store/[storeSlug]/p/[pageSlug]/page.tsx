@@ -68,14 +68,18 @@ interface ProductLite {
 const API = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
 
 async function fetchPage(storeSlug: string, pageSlug: string): Promise<{ store: StoreDoc; page: PageDoc } | null> {
-  const r = await fetch(`${API}/api/public/stores/${storeSlug}/pages/${pageSlug}`, { cache: 'no-store' });
+  const r = await fetch(`${API}/api/public/stores/${storeSlug}/pages/${pageSlug}`, {
+    next: { revalidate: 60, tags: [`store:${storeSlug}`, `page:${storeSlug}:${pageSlug}`] },
+  });
   if (!r.ok) return null;
   return (await r.json()) as { store: StoreDoc; page: PageDoc };
 }
 
 async function fetchProducts(storeSlug: string): Promise<ProductLite[]> {
   try {
-    const r = await fetch(`${API}/api/public/stores/${storeSlug}/products`, { cache: 'no-store' });
+    const r = await fetch(`${API}/api/public/stores/${storeSlug}/products`, {
+      next: { revalidate: 60, tags: [`store:${storeSlug}`, `store:${storeSlug}:products`] },
+    });
     if (!r.ok) return [];
     const d = (await r.json()) as { products?: ProductLite[] };
     return d.products || [];

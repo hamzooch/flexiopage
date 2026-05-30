@@ -85,7 +85,7 @@ async function fetchData(storeSlug: string, collectionSlug: string): Promise<Fet
   try {
     const res = await fetch(
       `${apiBase}/api/public/stores/${storeSlug}/collections/${collectionSlug}`,
-      { cache: 'no-store' }
+      { next: { revalidate: 60, tags: [`store:${storeSlug}`, `collection:${storeSlug}:${collectionSlug}`] } }
     );
     if (!res.ok) return {};
     return (await res.json()) as FetchResult;

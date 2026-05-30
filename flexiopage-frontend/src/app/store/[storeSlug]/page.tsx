@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import React from 'react';
 import Link from 'next/link';
+import Image from 'next/image';
 import {
   resolveSectionOrder,
   type MovableSectionId,
@@ -88,7 +89,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const apiBase = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
   try {
     const res = await fetch(`${apiBase}/api/public/store-by-slug/${storeSlug}`, {
-      cache: 'no-store',
+      next: { revalidate: 60, tags: [`store:${storeSlug}`] },
     });
     if (!res.ok) return {};
     const { store } = (await res.json()) as { store?: StoreDoc };
@@ -124,8 +125,12 @@ export default async function PublicStorePage({ params }: Props) {
 
   try {
     const [storeRes, productsRes] = await Promise.all([
-      fetch(`${apiBase}/api/public/store-by-slug/${storeSlug}`, { cache: 'no-store' }),
-      fetch(`${apiBase}/api/public/stores/${storeSlug}/products`, { cache: 'no-store' }),
+      fetch(`${apiBase}/api/public/store-by-slug/${storeSlug}`, {
+        next: { revalidate: 60, tags: [`store:${storeSlug}`] },
+      }),
+      fetch(`${apiBase}/api/public/stores/${storeSlug}/products`, {
+        next: { revalidate: 60, tags: [`store:${storeSlug}`, `store:${storeSlug}:products`] },
+      }),
     ]);
     if (storeRes.ok) {
       const d = await storeRes.json();
@@ -642,11 +647,15 @@ function ProductCard({
   const image = (
     <>
       {p.images?.[0] ? (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img
+        <Image
           src={mediaUrl(p.images[0]) || p.images[0]}
           alt={p.name}
-          className="h-full w-full object-cover transition-transform duration-[700ms] ease-out group-hover:scale-110 group-hover:rotate-[0.6deg]"
+          fill
+          sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 25vw"
+          // First 4 cards above the fold get priority — boosts LCP on
+          // mobile where the grid is 2-up. The rest lazy-load by default.
+          priority={index < 4}
+          className="object-cover transition-transform duration-[700ms] ease-out group-hover:scale-110 group-hover:rotate-[0.6deg]"
         />
       ) : (
         <div className="grid h-full place-items-center text-xs" style={{ color: theme.muted }}>
