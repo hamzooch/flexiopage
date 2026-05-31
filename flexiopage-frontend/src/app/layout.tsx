@@ -20,7 +20,7 @@ const inter = Inter({ subsets: ['latin'] });
 export const metadata: Metadata = {
   metadataBase: new URL('https://flexiopage.com'),
   title: {
-    default: 'FlexioPage — Crée ta boutique en un clic. Paiement à la livraison inclus.',
+    default: 'FlexioPage',
     template: '%s · FlexioPage',
   },
   description:
