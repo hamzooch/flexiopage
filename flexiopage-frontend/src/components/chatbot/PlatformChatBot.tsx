@@ -29,11 +29,27 @@ const STOREFRONT_PATH_PREFIXES = [
   '/product/',  // short-URL product page
 ];
 
+/**
+ * Dashboard sub-pages that host a live preview of the seller's storefront.
+ * The bot must stay hidden there so it doesn't visually compete with the
+ * preview panel — only the seller's own WhatsApp button (if activated) is
+ * meant to appear in that frame.
+ */
+const LIVE_PREVIEW_PATH_PATTERNS: RegExp[] = [
+  /^\/dashboard\/stores\/[^/]+\/(sections|info|appearance|checkout)(\/|$)/,
+  /^\/dashboard\/products\/(?!new(\/|$))[^/]+(\/|$)/,
+];
+
 /** True when the path itself marks a storefront route. */
 function pathIsStorefront(pathname: string): boolean {
   return STOREFRONT_PATH_PREFIXES.some(
     (p) => pathname === p || pathname.startsWith(p.endsWith('/') ? p : `${p}/`)
   );
+}
+
+/** True when the path hosts a live storefront preview in the dashboard. */
+function pathHasLivePreview(pathname: string): boolean {
+  return LIVE_PREVIEW_PATH_PATTERNS.some((re) => re.test(pathname));
 }
 
 /**
@@ -74,6 +90,9 @@ export function PlatformChatBot() {
   }, []);
 
   if (pathIsStorefront(pathname)) return null;
+  // Hide the bot on dashboard pages that render a live storefront preview —
+  // only the seller's WhatsApp button (if enabled) should appear there.
+  if (pathHasLivePreview(pathname)) return null;
   if (!mounted) return null;
   if (!onPlatform) return null;
 
