@@ -113,7 +113,7 @@ export function StorefrontSlider({ config, primary = '#0ea5e9', primaryFg = '#ff
     <section
       aria-roledescription="carousel"
       aria-label="Carrousel de la boutique"
-      className={cn('relative w-full overflow-hidden', heightClass)}
+      className={cn('relative w-full overflow-hidden bg-neutral-900', heightClass)}
       onMouseEnter={() => setPaused(true)}
       onMouseLeave={() => setPaused(false)}
       onTouchStart={(e) => { touchStartX.current = e.touches[0].clientX; }}
@@ -149,7 +149,9 @@ export function StorefrontSlider({ config, primary = '#0ea5e9', primaryFg = '#ff
               sizes="100vw"
               placeholder="blur"
               blurDataURL={IMAGE_BLUR_DATA_URL}
-              className="object-cover"
+              // Mobile: contain → l'image entière s'affiche (pas de crop).
+              // Desktop: cover → le banner remplit la zone comme prévu.
+              className="object-contain sm:object-cover"
             />
             <div className={cn('absolute inset-0', overlay)} />
             <div className={cn('relative z-10 mx-auto flex h-full max-w-5xl flex-col justify-center px-6 sm:px-10', align)}>

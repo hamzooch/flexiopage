@@ -63,7 +63,8 @@ export function HeroMedia({ videoUrl, imageUrl, overlay = 'dark', alt = '' }: Pr
           sizes="100vw"
           placeholder="blur"
           blurDataURL={IMAGE_BLUR_DATA_URL}
-          className="object-cover"
+          // Mobile: contain → image entière visible. Desktop: cover → fond plein.
+          className="object-contain sm:object-cover"
         />
         <div className="absolute inset-0" style={{ background: overlayLayer }} aria-hidden />
       </>
@@ -76,7 +77,7 @@ export function HeroMedia({ videoUrl, imageUrl, overlay = 'dark', alt = '' }: Pr
     return (
       <>
         <video
-          className="absolute inset-0 h-full w-full object-cover"
+          className="absolute inset-0 h-full w-full object-contain sm:object-cover"
           autoPlay
           muted
           loop
@@ -146,7 +147,8 @@ export function HeroMedia({ videoUrl, imageUrl, overlay = 'dark', alt = '' }: Pr
           sizes="100vw"
           placeholder="blur"
           blurDataURL={IMAGE_BLUR_DATA_URL}
-          className="object-cover"
+          // Mobile: contain → image entière visible. Desktop: cover → fond plein.
+          className="object-contain sm:object-cover"
         />
         <div className="absolute inset-0" style={{ background: overlayLayer }} aria-hidden />
       </>
