@@ -1059,7 +1059,7 @@ function ModalFooter({ template, storeName }: { template: StoreThemeTemplate; st
           className="mt-10 flex flex-wrap items-center justify-between gap-3 border-t pt-6 text-[11px]"
           style={{ borderColor: t.border }}
         >
-          <span>© 2026 {storeName}. Tous droits réservés.</span>
+          <span>© 2026 {storeName}. Tous droits réservés. · Créé par FlexioPage</span>
           <span className="flex items-center gap-2">
             <span>Paiements sécurisés</span>
             {['VISA', 'MC', 'PAYPAL', 'COD'].map((p) => (

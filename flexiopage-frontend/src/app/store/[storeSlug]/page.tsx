@@ -1033,6 +1033,16 @@ function Footer({ store, theme }: { store: StoreDoc; theme: ThemeTokens }) {
         </span>
         <p className="mt-2 text-[11px] sm:text-xs">
           © {new Date().getFullYear()} {store.name}. Tous droits réservés.
+          {' · Créé par '}
+          <a
+            href="https://flexiopage.com"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="font-semibold hover:underline"
+            style={{ color: theme.foreground }}
+          >
+            FlexioPage
+          </a>
         </p>
       </div>
     </footer>

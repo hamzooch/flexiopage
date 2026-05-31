@@ -322,6 +322,16 @@ export function StoreFooter({ storeName, storeSlug, storeLogo, footerNote, confi
           <p className="text-center sm:text-right" style={{ color: theme.muted }}>
             © {new Date().getFullYear()} {storeName}. Tous droits réservés.
             {!hasExtras && footerNote ? ` · ${footerNote}` : ''}
+            {' · Créé par '}
+            <a
+              href="https://flexiopage.com"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="font-semibold hover:underline"
+              style={{ color: theme.foreground }}
+            >
+              FlexioPage
+            </a>
           </p>
         </div>
       </div>

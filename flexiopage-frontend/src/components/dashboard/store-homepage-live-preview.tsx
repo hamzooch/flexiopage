@@ -765,6 +765,7 @@ function FooterBlock({
             {brandNode}
             <div className="pt-0.5 text-[7px]" style={{ color: muted }}>
               {note || `© 2026 ${storeName || 'Ma boutique'}`}
+              <span> · Créé par <span style={{ color: foreground, fontWeight: 600 }}>FlexioPage</span></span>
             </div>
           </div>
           {columns.slice(0, 2).map((col, i) => (
@@ -809,9 +810,10 @@ function FooterBlock({
         </div>
       )}
 
-      {note && columns.length === 0 && !hasContact && (
+      {columns.length === 0 && !hasContact && (
         <div className="pt-1 text-center text-[7px]" style={{ color: muted }}>
-          {note}
+          {note ? `${note} · ` : `© 2026 ${storeName || 'Ma boutique'}. Tous droits réservés. · `}
+          Créé par <span style={{ color: foreground, fontWeight: 600 }}>FlexioPage</span>
         </div>
       )}
     </div>

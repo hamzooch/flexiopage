@@ -1079,6 +1079,15 @@ function FooterSection({ p }: { p: Record<string, unknown> }) {
         )}
         <p className="mt-8 text-center text-xs text-muted-foreground sm:text-start">
           © {new Date().getFullYear()} {brandName}. Tous droits réservés.
+          {' · Créé par '}
+          <a
+            href="https://flexiopage.com"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="font-semibold text-foreground hover:underline"
+          >
+            FlexioPage
+          </a>
         </p>
       </div>
     </footer>
