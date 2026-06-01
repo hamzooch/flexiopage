@@ -110,9 +110,10 @@ const BotConfigSchema = new Schema<IBotConfig>(
     // "vendor" = boutique Flexiopage → ref Store.
     vendor_id: { type: Schema.Types.ObjectId, ref: 'Store', required: true, index: true },
     channel: { type: String, enum: ['messenger', 'whatsapp'], default: 'messenger', index: true },
-    // sparse : seuls les configs Messenger portent un facebook_page_id.
-    facebook_page_id: { type: String, unique: true, sparse: true },
-    whatsapp_phone_number_id: { type: String, unique: true, sparse: true },
+    // Pas d'index ici — défini plus bas en partial pour ignorer les null
+    // (sparse ne suffit pas : MongoDB considère plusieurs null comme des doublons).
+    facebook_page_id: { type: String },
+    whatsapp_phone_number_id: { type: String },
     whatsapp_business_account_id: { type: String },
     whatsapp_display_number: { type: String },
     page_access_token_encrypted: { type: String, required: true },
@@ -164,5 +165,18 @@ const BotConfigSchema = new Schema<IBotConfig>(
 BotConfigSchema.index({ vendor_id: 1, status: 1 });
 // Au plus un bot par (boutique, canal).
 BotConfigSchema.index({ vendor_id: 1, channel: 1 }, { unique: true });
+// Index uniques partiels : un Facebook page_id (resp. WhatsApp phone_number_id)
+// ne peut être rattaché qu'à une boutique. On indexe SEULEMENT les docs où le
+// champ est une chaîne — les autres (null/absents) sont ignorés par l'index,
+// donc plusieurs configs WhatsApp peuvent coexister sans collision sur
+// facebook_page_id, et inversement.
+BotConfigSchema.index(
+  { facebook_page_id: 1 },
+  { unique: true, partialFilterExpression: { facebook_page_id: { $type: 'string' } } },
+);
+BotConfigSchema.index(
+  { whatsapp_phone_number_id: 1 },
+  { unique: true, partialFilterExpression: { whatsapp_phone_number_id: { $type: 'string' } } },
+);
 
 export const BotConfig = mongoose.model<IBotConfig>('BotConfig', BotConfigSchema);

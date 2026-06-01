@@ -39,23 +39,37 @@ export async function connectWhatsApp(req: AuthRequest, res: Response): Promise<
     return;
   }
 
-  const config = await BotConfig.findOneAndUpdate(
-    { vendor_id: storeId, channel: 'whatsapp' },
-    {
-      $set: {
-        vendor_id: storeId,
-        channel: 'whatsapp',
-        whatsapp_phone_number_id: phoneNumberId,
-        whatsapp_business_account_id: wabaId,
-        whatsapp_display_number: display,
-        page_access_token_encrypted: encryptionService.encrypt(accessToken),
-        page_name: display ? `WhatsApp ${display}` : 'WhatsApp',
-        status: 'active',
+  try {
+    const config = await BotConfig.findOneAndUpdate(
+      { vendor_id: storeId, channel: 'whatsapp' },
+      {
+        $set: {
+          vendor_id: storeId,
+          channel: 'whatsapp',
+          whatsapp_phone_number_id: phoneNumberId,
+          whatsapp_business_account_id: wabaId,
+          whatsapp_display_number: display,
+          page_access_token_encrypted: encryptionService.encrypt(accessToken),
+          page_name: display ? `WhatsApp ${display}` : 'WhatsApp',
+          status: 'active',
+        },
+        // Évite que setDefaultsOnInsert ne laisse traîner des null sur le
+        // champ Messenger qui pourraient ressusciter une collision d'index
+        // si les anciens index unique non-partiels n'ont pas été migrés.
+        $unset: { facebook_page_id: '' },
       },
-    },
-    { upsert: true, new: true, setDefaultsOnInsert: true },
-  );
-  res.json({ connected: true, phoneNumberId: config.whatsapp_phone_number_id, displayNumber: config.whatsapp_display_number });
+      { upsert: true, new: true, setDefaultsOnInsert: true },
+    );
+    res.json({ connected: true, phoneNumberId: config.whatsapp_phone_number_id, displayNumber: config.whatsapp_display_number });
+  } catch (err) {
+    const e = err as { code?: number; keyPattern?: Record<string, number> };
+    if (e?.code === 11000) {
+      logger.warn({ err, storeId, phoneNumberId }, '[whatsapp-bot] dup key — index à migrer ?');
+      res.status(409).json({ error: 'Conflit d\'unicité côté base. Réessaie ou contacte le support.' });
+      return;
+    }
+    throw err;
+  }
 }
 
 export async function disconnectWhatsApp(req: AuthRequest, res: Response): Promise<void> {
