@@ -69,9 +69,16 @@ app.use(
 // per-seller subdomains, so for each listed origin we also allow ANY
 // subdomain of its hostname (e.g. macaftans.flexiopage.com when the list
 // contains flexiopage.com).
+// Normalize origins so common misconfigurations (trailing slash, mixed
+// case) don't silently break CORS in prod. We compare a canonical form
+// (lowercased, trailing slash stripped) on both sides.
+function normalizeOrigin(value: string): string {
+  return value.trim().toLowerCase().replace(/\/+$/, '');
+}
+
 const corsOrigins = (process.env.FRONTEND_URL || 'http://localhost:3000,http://localhost:3002')
   .split(',')
-  .map((s) => s.trim())
+  .map(normalizeOrigin)
   .filter(Boolean);
 
 // Pre-compute apex hostnames so subdomain matching is a cheap endsWith().
@@ -85,13 +92,16 @@ app.use(cors({
   credentials: true,
   origin: (origin, cb) => {
     if (!origin) return cb(null, true); // server-to-server / curl
-    if (corsOrigins.includes(origin)) return cb(null, true);
+    const candidate = normalizeOrigin(origin);
+    if (corsOrigins.includes(candidate)) return cb(null, true);
     try {
-      const host = new URL(origin).hostname.toLowerCase();
+      const host = new URL(candidate).hostname.toLowerCase();
       if (allowedApexHosts.some((apex) => host === apex || host.endsWith('.' + apex))) {
         return cb(null, true);
       }
     } catch { /* fall through */ }
+    // Log the exact rejected origin so prod misconfigs are easy to spot.
+    logger.warn({ origin, allowed: corsOrigins }, '[cors] origin rejected');
     cb(new Error(`CORS: origin ${origin} not allowed`));
   },
 }));
