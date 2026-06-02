@@ -6,10 +6,10 @@
  * cerveau partagé via les endpoints channel=whatsapp.
  */
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
-import { Loader2, Check, Send, MessageSquare, RefreshCw, Power, AlertTriangle, Sparkles, Plug } from 'lucide-react';
+import { Loader2, Check, Send, MessageSquare, RefreshCw, Power, AlertTriangle, Sparkles, Plug, QrCode } from 'lucide-react';
 import { whatsappBotApi, extractApiError, type MessengerBotConfig, type MessengerConversation, type MessengerMessage } from '@/lib/api';
 import { COUNTRIES, COUNTRY_GROUPS } from '@/data/countries';
 import { useStoreStore } from '@/stores/store-store';
@@ -65,8 +65,15 @@ export default function WhatsAppBotPage() {
         title="WhatsApp Bot"
         description="Assistant IA sur WhatsApp : répond aux clients en darija/français et crée les commandes COD."
         actions={config?.status === 'active' ? (
-          <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/10 px-2.5 py-1 text-xs font-semibold text-emerald-700">
-            <Check className="h-3 w-3" strokeWidth={3} /> Connecté
+          <span className="inline-flex items-center gap-1.5">
+            <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/10 px-2.5 py-1 text-xs font-semibold text-emerald-700">
+              <Check className="h-3 w-3" strokeWidth={3} /> Connecté
+            </span>
+            {config && (
+              <span className="rounded-full bg-muted px-2 py-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                {config.whatsapp_provider === 'wasender' ? 'Wasender' : 'Meta Cloud'}
+              </span>
+            )}
           </span>
         ) : undefined}
       />
@@ -77,16 +84,24 @@ export default function WhatsAppBotPage() {
         </div>
       )}
 
-      {!config && <ConnectForm storeId={storeId} onConnected={load} />}
+      {!config && <ProviderPicker storeId={storeId} onConnected={load} />}
 
       {config && showUpdate && (
-        <ConnectForm
-          storeId={storeId}
-          mode="update"
-          currentNumber={config.whatsapp_display_number}
-          onCancel={() => setShowUpdate(false)}
-          onConnected={async () => { setShowUpdate(false); await load(); }}
-        />
+        config.whatsapp_provider === 'wasender' ? (
+          <WasenderConnectForm storeId={storeId} mode="update" onCancel={() => setShowUpdate(false)} onConnected={async () => { setShowUpdate(false); await load(); }} />
+        ) : (
+          <ConnectForm
+            storeId={storeId}
+            mode="update"
+            currentNumber={config.whatsapp_display_number}
+            onCancel={() => setShowUpdate(false)}
+            onConnected={async () => { setShowUpdate(false); await load(); }}
+          />
+        )
+      )}
+
+      {config && !showUpdate && config.whatsapp_provider === 'wasender' && config.status !== 'active' && (
+        <WasenderSessionStatus storeId={storeId} onConnected={load} />
       )}
 
       {config && !showUpdate && (
@@ -114,7 +129,15 @@ export default function WhatsAppBotPage() {
               <RefreshCw className="h-3.5 w-3.5" /> Mettre à jour le numéro
             </Button>
             <Button variant="outline" size="sm" className="gap-1.5 text-rose-600"
-              onClick={async () => { if (confirm('Déconnecter WhatsApp ?')) { await whatsappBotApi.disconnect(storeId); await load(); } }}>
+              onClick={async () => {
+                if (!confirm('Déconnecter WhatsApp ?')) return;
+                if (config.whatsapp_provider === 'wasender') {
+                  await whatsappBotApi.wasenderDisconnect(storeId);
+                } else {
+                  await whatsappBotApi.disconnect(storeId);
+                }
+                await load();
+              }}>
               <Power className="h-3.5 w-3.5" /> Déconnecter WhatsApp
             </Button>
           </div>
@@ -391,5 +414,214 @@ function Toggle({ label, checked, onChange }: { label: string; checked: boolean;
       <input type="checkbox" checked={checked} onChange={(e) => onChange(e.target.checked)} className="h-4 w-4 rounded border-input" />
       <span className="font-medium">{label}</span>
     </label>
+  );
+}
+
+/**
+ * Choix du fournisseur WhatsApp : Meta Cloud (officiel, gratuit, nécessite
+ * compte Meta Business + review) vs WasenderAPI (WhatsApp Web/QR, payant, mise
+ * en route immédiate). Affiche la form correspondante.
+ */
+function ProviderPicker({ storeId, onConnected }: { storeId: string; onConnected: () => void }) {
+  const [provider, setProvider] = useState<'meta' | 'wasender'>('wasender');
+  return (
+    <section className="space-y-4">
+      <div className="rounded-2xl border border-border/60 bg-card p-4">
+        <h2 className="text-sm font-semibold">Choisis ton fournisseur WhatsApp</h2>
+        <p className="mt-1 text-xs text-muted-foreground">Les deux servent le même bot Claude — seule la couche d'envoi/réception change.</p>
+        <div className="mt-4 grid gap-3 sm:grid-cols-2">
+          <button
+            type="button"
+            onClick={() => setProvider('wasender')}
+            className={cn(
+              'rounded-xl border p-3 text-left transition',
+              provider === 'wasender' ? 'border-primary bg-primary/5 ring-2 ring-primary/30' : 'border-border/60 hover:bg-muted/40',
+            )}
+          >
+            <div className="flex items-center justify-between">
+              <span className="text-sm font-semibold">WasenderAPI</span>
+              <span className="rounded-full bg-emerald-500/10 px-1.5 py-0.5 text-[9px] font-semibold uppercase text-emerald-700">Recommandé</span>
+            </div>
+            <p className="mt-1 text-[11px] text-muted-foreground">Scan un QR code, prêt en 1 min. Payant (~6$/mois). WhatsApp Web sous le capot.</p>
+          </button>
+          <button
+            type="button"
+            onClick={() => setProvider('meta')}
+            className={cn(
+              'rounded-xl border p-3 text-left transition',
+              provider === 'meta' ? 'border-primary bg-primary/5 ring-2 ring-primary/30' : 'border-border/60 hover:bg-muted/40',
+            )}
+          >
+            <div className="text-sm font-semibold">Meta Cloud API</div>
+            <p className="mt-1 text-[11px] text-muted-foreground">Officiel, gratuit, nécessite un compte Meta Business + review pour la prod.</p>
+          </button>
+        </div>
+      </div>
+      {provider === 'wasender' ? (
+        <WasenderConnectForm storeId={storeId} onConnected={onConnected} />
+      ) : (
+        <ConnectForm storeId={storeId} onConnected={onConnected} />
+      )}
+    </section>
+  );
+}
+
+/**
+ * Formulaire de connexion Wasender : le vendeur colle son Personal Access
+ * Token. Le backend crée la session (avec webhook URL + secret), puis l'UI
+ * affiche le QR à scanner + poll le statut toutes les 3s jusqu'à 'connected'.
+ */
+function WasenderConnectForm({ storeId, onConnected, mode = 'connect', onCancel }: {
+  storeId: string; onConnected: () => void;
+  mode?: 'connect' | 'update'; onCancel?: () => void;
+}) {
+  const isUpdate = mode === 'update';
+  const [pat, setPat] = useState('');
+  const [sessionName, setSessionName] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState('');
+  const [created, setCreated] = useState(false);
+
+  async function connect() {
+    setBusy(true); setErr('');
+    try {
+      const res = await whatsappBotApi.wasenderConnect(storeId, {
+        personalAccessToken: pat.trim(),
+        sessionName: sessionName.trim() || undefined,
+      });
+      if (res.data.status === 'connected') {
+        onConnected();
+      } else {
+        setCreated(true);
+      }
+    } catch (e) {
+      setErr(extractApiError(e, 'Échec de connexion. Vérifie ton Personal Access Token.'));
+    } finally { setBusy(false); }
+  }
+
+  if (created) {
+    return <WasenderQrPanel storeId={storeId} onConnected={onConnected} />;
+  }
+
+  return (
+    <section className="rounded-2xl border border-dashed border-border/70 bg-card p-6">
+      <div className="mx-auto mb-4 grid h-14 w-14 place-items-center rounded-2xl bg-gradient-to-br from-emerald-500 to-teal-600 text-white">
+        <QrCode className="h-7 w-7" />
+      </div>
+      <h2 className="text-center text-base font-semibold">
+        {isUpdate ? 'Reconnecter via WasenderAPI' : 'Connecter via WasenderAPI'}
+      </h2>
+      <p className="mx-auto mt-1 max-w-md text-center text-sm text-muted-foreground">
+        Crée un compte sur <a href="https://wasenderapi.com" target="_blank" rel="noopener noreferrer" className="underline">wasenderapi.com</a>,
+        génère un <strong>Personal Access Token</strong> (Settings → Personal Access Token), puis colle-le ici.
+      </p>
+      <div className="mx-auto mt-5 max-w-md space-y-3">
+        <div className="space-y-1">
+          <Label className="text-xs">Personal Access Token</Label>
+          <Input value={pat} onChange={(e) => setPat(e.target.value)} placeholder="wsk_..." type="password" className="h-10" />
+        </div>
+        <div className="space-y-1">
+          <Label className="text-xs">Nom de session (optionnel)</Label>
+          <Input value={sessionName} onChange={(e) => setSessionName(e.target.value)} placeholder="ex: Boutique principale" className="h-10" />
+        </div>
+        {err && <p className="text-xs text-rose-600">{err}</p>}
+        <div className="flex gap-2">
+          {isUpdate && onCancel && (
+            <Button variant="outline" onClick={onCancel} disabled={busy} className="gap-2">Annuler</Button>
+          )}
+          <Button onClick={connect} disabled={busy || !pat.trim()} className="w-full gap-2 gradient-brand text-white">
+            {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plug className="h-4 w-4" />}
+            {isUpdate ? 'Reconnecter' : 'Créer la session'}
+          </Button>
+        </div>
+        <p className="text-center text-[11px] text-muted-foreground">
+          La session est créée côté Wasender avec un webhook qui pointe vers <code>/webhook/wasender</code>.
+        </p>
+      </div>
+    </section>
+  );
+}
+
+/**
+ * Affiche le QR à scanner + poll le status toutes les 3s. Quand status passe
+ * 'connected', appelle onConnected() pour recharger la page parente.
+ */
+function WasenderQrPanel({ storeId, onConnected }: { storeId: string; onConnected: () => void }) {
+  const [qr, setQr] = useState<string | null>(null);
+  const [status, setStatus] = useState<'need_scan' | 'connected' | 'disconnected' | 'unknown'>('need_scan');
+  const [err, setErr] = useState('');
+  const stopRef = useRef(false);
+
+  const refreshQr = useCallback(async () => {
+    try {
+      const res = await whatsappBotApi.wasenderQr(storeId);
+      setQr(res.data.qr);
+      setStatus(res.data.status);
+    } catch (e) {
+      setErr(extractApiError(e, 'Impossible de récupérer le QR.'));
+    }
+  }, [storeId]);
+
+  useEffect(() => {
+    void refreshQr();
+    const id = setInterval(async () => {
+      if (stopRef.current) return;
+      try {
+        const res = await whatsappBotApi.wasenderStatus(storeId);
+        setStatus(res.data.status);
+        if (res.data.status === 'connected') {
+          stopRef.current = true;
+          clearInterval(id);
+          onConnected();
+        } else if (res.data.status === 'need_scan' && !qr) {
+          await refreshQr();
+        }
+      } catch {
+        // ignore — on retry au tick suivant
+      }
+    }, 3000);
+    return () => { stopRef.current = true; clearInterval(id); };
+  }, [storeId, refreshQr, onConnected, qr]);
+
+  return (
+    <section className="rounded-2xl border border-border/60 bg-card p-6">
+      <div className="text-center">
+        <h2 className="text-base font-semibold">Scanne le QR avec ton WhatsApp</h2>
+        <p className="mx-auto mt-1 max-w-md text-sm text-muted-foreground">
+          Ouvre WhatsApp → Paramètres → Appareils connectés → Connecter un appareil, puis scanne ce code.
+        </p>
+      </div>
+      {err && <p className="mt-3 text-center text-xs text-rose-600">{err}</p>}
+      <div className="mx-auto mt-5 grid place-items-center">
+        {qr ? (
+          <img src={qr.startsWith('data:') ? qr : `data:image/png;base64,${qr}`} alt="QR code WhatsApp"
+            className="h-64 w-64 rounded-xl border border-border/60 bg-white p-2" />
+        ) : (
+          <div className="grid h-64 w-64 place-items-center rounded-xl border border-dashed border-border/60 bg-muted/30">
+            <Loader2 className="h-7 w-7 animate-spin text-muted-foreground" />
+          </div>
+        )}
+      </div>
+      <div className="mt-4 text-center text-xs text-muted-foreground">
+        Statut : <strong>{status === 'connected' ? '✅ Connecté' : status === 'need_scan' ? '⏳ En attente du scan' : status}</strong>
+      </div>
+      <div className="mt-3 flex justify-center">
+        <Button variant="outline" size="sm" onClick={refreshQr} className="gap-1.5">
+          <RefreshCw className="h-3.5 w-3.5" /> Rafraîchir le QR
+        </Button>
+      </div>
+    </section>
+  );
+}
+
+/** Bandeau de statut pour une session Wasender existante mais pas active. */
+function WasenderSessionStatus({ storeId, onConnected }: { storeId: string; onConnected: () => void }) {
+  return (
+    <div className="rounded-2xl border border-amber-500/30 bg-amber-500/5 p-4">
+      <div className="mb-3 flex items-center gap-2 text-sm font-semibold text-amber-800">
+        <AlertTriangle className="h-4 w-4" /> Session Wasender en pause — scanne le QR pour réactiver
+      </div>
+      <WasenderQrPanel storeId={storeId} onConnected={onConnected} />
+    </div>
   );
 }

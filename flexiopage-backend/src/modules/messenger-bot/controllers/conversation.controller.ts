@@ -11,6 +11,7 @@ import { getOwnedStoreId, getChannel } from '../utils/vendorAuth';
 import { sendManualSchema } from '../schemas/config.schema';
 import { messengerService } from '../services/messenger.service';
 import { whatsappService } from '../services/whatsapp.service';
+import { wasenderService } from '../services/wasender.service';
 import { encryptionService } from '../services/encryption.service';
 
 export async function listConversations(req: AuthRequest, res: Response): Promise<void> {
@@ -65,9 +66,13 @@ export async function sendManual(req: AuthRequest, res: Response): Promise<void>
   if (!config) { res.status(404).json({ error: 'Config bot introuvable.' }); return; }
 
   try {
-    const token = encryptionService.decrypt(config.page_access_token_encrypted);
-    // Route selon le canal de la config (même logique que le worker).
-    if (config.channel === 'whatsapp') {
+    // Route selon (canal, provider) — même logique que le worker.
+    if (config.channel === 'whatsapp' && config.whatsapp_provider === 'wasender') {
+      if (!config.wasender_session_token_encrypted) throw new Error('Wasender session token absent');
+      const sessionToken = encryptionService.decrypt(config.wasender_session_token_encrypted);
+      await wasenderService.sendText({ sessionToken, to: conv.customer_psid, message: parsed.data.message });
+    } else if (config.channel === 'whatsapp') {
+      const token = encryptionService.decrypt(config.page_access_token_encrypted);
       await whatsappService.sendText({
         phoneNumberId: config.whatsapp_phone_number_id || '',
         accessToken: token,
@@ -75,10 +80,11 @@ export async function sendManual(req: AuthRequest, res: Response): Promise<void>
         message: parsed.data.message,
       });
     } else {
+      const token = encryptionService.decrypt(config.page_access_token_encrypted);
       await messengerService.sendMessage({ pageAccessToken: token, recipientPsid: conv.customer_psid, message: parsed.data.message });
     }
   } catch (err) {
-    logger.error({ err: (err as Error).message, channel: config.channel }, '[messenger-bot] envoi manuel échec');
+    logger.error({ err: (err as Error).message, channel: config.channel, provider: config.whatsapp_provider }, '[messenger-bot] envoi manuel échec');
     res.status(502).json({ error: 'Échec de l’envoi du message.' });
     return;
   }

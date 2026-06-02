@@ -71,3 +71,14 @@ export const connectWhatsAppSchema = z.object({
   wabaId: z.string().optional(),
   displayNumber: z.string().optional(),
 });
+
+/** POST /wasender/connect — crée une session WhatsApp via WasenderAPI. */
+export const connectWasenderSchema = z.object({
+  storeId: z.string().min(1),
+  /** Personal Access Token Wasender (Settings → Personal Access Token). */
+  personalAccessToken: z.string().min(1),
+  /** Nom libre pour la session (utile dans le dashboard Wasender). */
+  sessionName: z.string().min(1).max(80).optional(),
+  /** Numéro WhatsApp affiché (optionnel, info). */
+  phoneNumber: z.string().max(40).optional(),
+});

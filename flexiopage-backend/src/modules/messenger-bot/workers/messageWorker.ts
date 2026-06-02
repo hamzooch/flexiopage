@@ -22,6 +22,7 @@ import { catalogService } from '../services/catalog.service';
 import { orderCreationService, type CreateOrderToolInput } from '../services/orderCreation.service';
 import { messengerService } from '../services/messenger.service';
 import { whatsappService } from '../services/whatsapp.service';
+import { wasenderService, WasenderApiError } from '../services/wasender.service';
 import { encryptionService } from '../services/encryption.service';
 import { messageQueue, type IncomingMessageJob } from '../services/queue.service';
 import { buildSystemPrompt } from '../prompts/systemPrompt';
@@ -179,8 +180,15 @@ export async function processIncomingMessage(job: IncomingMessageJob): Promise<P
   // Envoi de la réponse via le bon canal (sauf dry-run / token de test).
   if (replyText && !isDryRun()) {
     try {
-      const token = encryptionService.decrypt(config.page_access_token_encrypted);
-      if (config.channel === 'whatsapp') {
+      if (config.channel === 'whatsapp' && config.whatsapp_provider === 'wasender') {
+        // WasenderAPI : envoie avec le session token (différent du PAT).
+        if (!config.wasender_session_token_encrypted) {
+          throw new Error('Wasender session token absent — session non encore connectée');
+        }
+        const sessionToken = encryptionService.decrypt(config.wasender_session_token_encrypted);
+        await wasenderService.sendText({ sessionToken, to: conversation.customer_psid, message: replyText });
+      } else if (config.channel === 'whatsapp') {
+        const token = encryptionService.decrypt(config.page_access_token_encrypted);
         await whatsappService.sendText({
           phoneNumberId: config.whatsapp_phone_number_id || '',
           accessToken: token,
@@ -188,14 +196,17 @@ export async function processIncomingMessage(job: IncomingMessageJob): Promise<P
           message: replyText,
         });
       } else {
+        const token = encryptionService.decrypt(config.page_access_token_encrypted);
         await messengerService.sendTypingIndicator({ pageAccessToken: token, recipientPsid: conversation.customer_psid });
         await messengerService.sendMessage({ pageAccessToken: token, recipientPsid: conversation.customer_psid, message: replyText });
       }
     } catch (err) {
       if (err instanceof MetaApiError && err.isAuthError) {
         await handleInvalidToken(config, err);
+      } else if (err instanceof WasenderApiError && err.isAuthError) {
+        await handleInvalidToken(config, err);
       } else {
-        logger.error({ err: (err as Error).message, channel: config.channel }, '[messenger-bot] envoi réponse échec');
+        logger.error({ err: (err as Error).message, channel: config.channel, provider: config.whatsapp_provider }, '[messenger-bot] envoi réponse échec');
       }
     }
   }
@@ -261,8 +272,15 @@ async function loadWhatsAppImageBlock(
 ): Promise<Anthropic.ImageBlockParam | null> {
   if (!mediaId || config.channel !== 'whatsapp') return null;
   try {
-    const token = encryptionService.decrypt(config.page_access_token_encrypted);
-    const media = await whatsappService.fetchMedia({ mediaId, accessToken: token });
+    let media: { base64: string; mimeType: string; sizeBytes: number } | null = null;
+    if (config.whatsapp_provider === 'wasender') {
+      // Côté Wasender, mediaId est en fait l'URL publique/signée fournie par
+      // le webhook — pas besoin d'auth pour la télécharger.
+      media = await wasenderService.fetchMediaFromUrl({ url: mediaId });
+    } else {
+      const token = encryptionService.decrypt(config.page_access_token_encrypted);
+      media = await whatsappService.fetchMedia({ mediaId, accessToken: token });
+    }
     if (!media || !VISION_SUPPORTED_MIME.has(media.mimeType)) return null;
     return {
       type: 'image',
@@ -279,13 +297,15 @@ async function loadWhatsAppImageBlock(
 }
 
 /**
- * Token expiré/invalide (HTTP 401 / code Meta 190 / OAuthException) : désactive
- * le bot pour stopper les tentatives répétées (y compris les redeliveries) et
- * notifie le vendeur par email avec le lien de reconnexion.
+ * Token expiré/invalide (HTTP 401 / code Meta 190 / OAuthException, OU 401/403
+ * côté Wasender) : désactive le bot pour stopper les tentatives répétées (y
+ * compris les redeliveries) et notifie le vendeur par email avec le lien de
+ * reconnexion.
  */
-async function handleInvalidToken(config: IBotConfig, err: MetaApiError): Promise<void> {
+async function handleInvalidToken(config: IBotConfig, err: MetaApiError | WasenderApiError): Promise<void> {
+  const meta = err instanceof MetaApiError ? { metaCode: err.metaCode } : { provider: 'wasender' };
   logger.error(
-    { channel: config.channel, metaCode: err.metaCode, status: err.status, vendorId: String(config.vendor_id) },
+    { channel: config.channel, ...meta, status: err.status, vendorId: String(config.vendor_id) },
     '[messenger-bot] token invalide/expiré — bot désactivé, notification vendeur',
   );
   await BotConfig.updateOne({ _id: config._id }, { $set: { status: 'disconnected' } });

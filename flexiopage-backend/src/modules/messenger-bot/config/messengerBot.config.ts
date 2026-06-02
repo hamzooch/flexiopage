@@ -45,3 +45,9 @@ export const WHATSAPP_MEDIA_MAX_BYTES = 5 * 1024 * 1024; // 5 Mo
 export const VISION_SUPPORTED_MIME = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/gif']);
 
 export const SUPPORTED_COUNTRIES = ['MA', 'DZ', 'TN'] as const;
+
+// ─── WasenderAPI (WhatsApp Web via QR) ─────────────────────────────────
+/** Base URL de WasenderAPI (configurable via env pour tests/staging). */
+export const WASENDER_BASE_URL = (process.env.WASENDER_BASE_URL || 'https://www.wasenderapi.com').replace(/\/$/, '');
+/** Timeout HTTP par défaut pour les appels Wasender (ms). */
+export const WASENDER_TIMEOUT_MS = 12_000;

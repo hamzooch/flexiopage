@@ -13,6 +13,13 @@ import * as stats from '../controllers/stats.controller';
 import { verifyWebhook, receiveWebhook } from '../controllers/webhook.controller';
 import { verifyWhatsAppWebhook, receiveWhatsAppWebhook } from '../controllers/whatsappWebhook.controller';
 import { connectWhatsApp, disconnectWhatsApp } from '../controllers/whatsappConnect.controller';
+import {
+  connectWasender,
+  disconnectWasender,
+  getWasenderQr,
+  getWasenderStatus,
+} from '../controllers/wasenderConnect.controller';
+import { receiveWasenderWebhook } from '../controllers/wasenderWebhook.controller';
 
 // ── API vendeur (authentifiée) ───────────────────────────────────────
 export const apiRouter = Router();
@@ -30,9 +37,15 @@ apiRouter.post('/facebook/connect', facebookAuth.connectPage);
 apiRouter.post('/facebook/disconnect', facebookAuth.disconnect);
 apiRouter.get('/facebook/pages', facebookAuth.listPages);
 
-// WhatsApp (connexion par token manuel)
+// WhatsApp (connexion par token manuel — Meta Cloud API)
 apiRouter.post('/whatsapp/connect', connectWhatsApp);
 apiRouter.post('/whatsapp/disconnect', disconnectWhatsApp);
+
+// WhatsApp via WasenderAPI (QR + session managée)
+apiRouter.post('/wasender/connect', connectWasender);
+apiRouter.get('/wasender/qr', getWasenderQr);
+apiRouter.get('/wasender/status', getWasenderStatus);
+apiRouter.post('/wasender/disconnect', disconnectWasender);
 
 // Conversations
 apiRouter.get('/conversations', conversation.listConversations);
@@ -54,3 +67,7 @@ webhookRouter.post('/', receiveWebhook);
 export const whatsappWebhookRouter = Router();
 whatsappWebhookRouter.get('/', verifyWhatsAppWebhook);
 whatsappWebhookRouter.post('/', receiveWhatsAppWebhook);
+
+// ── Webhook Wasender (public, secret partagé) ────────────────────────
+export const wasenderWebhookRouter = Router();
+wasenderWebhookRouter.post('/', receiveWasenderWebhook);

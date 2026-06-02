@@ -975,11 +975,16 @@ export const calculatorApi = {
 export interface MessengerBotConfig {
   _id: string;
   vendor_id: string;
+  channel?: 'messenger' | 'whatsapp';
+  /** WhatsApp uniquement : 'meta' (Cloud API) ou 'wasender' (WhatsApp Web/QR). */
+  whatsapp_provider?: 'meta' | 'wasender';
   facebook_page_id: string;
   page_name?: string;
   page_picture_url?: string;
   /** WhatsApp : numéro affiché de la ligne reliée (info). */
   whatsapp_display_number?: string;
+  /** Wasender uniquement : id de la session côté WasenderAPI. */
+  wasender_session_id?: string;
   status: 'active' | 'paused' | 'disconnected';
   language: 'ar' | 'fr' | 'en' | 'darija_ma' | 'darija_dz' | 'darija_tn';
   /** Code pays ISO-2 (tous marchés, cf. src/data/countries.ts). */
@@ -1065,6 +1070,19 @@ export const whatsappBotApi = {
       `/messenger-bot/whatsapp/connect?storeId=${encodeURIComponent(storeId)}`, { storeId, ...data }),
   disconnect: (storeId: string) =>
     api.post<{ disconnected: boolean }>(`/messenger-bot/whatsapp/disconnect?storeId=${encodeURIComponent(storeId)}`, { storeId }),
+  // WasenderAPI (provider alternatif — WhatsApp Web via QR).
+  wasenderConnect: (storeId: string, data: { personalAccessToken: string; sessionName?: string; phoneNumber?: string }) =>
+    api.post<{ connected: boolean; sessionId: string; status: 'need_scan' | 'connected' | 'disconnected' | 'unknown'; provider: 'wasender' }>(
+      `/messenger-bot/wasender/connect?storeId=${encodeURIComponent(storeId)}`, { storeId, ...data }),
+  wasenderQr: (storeId: string) =>
+    api.get<{ qr: string | null; status: 'need_scan' | 'connected' | 'disconnected' | 'unknown' }>(
+      `/messenger-bot/wasender/qr?storeId=${encodeURIComponent(storeId)}`),
+  wasenderStatus: (storeId: string) =>
+    api.get<{ status: 'need_scan' | 'connected' | 'disconnected' | 'unknown'; phoneNumber?: string }>(
+      `/messenger-bot/wasender/status?storeId=${encodeURIComponent(storeId)}`),
+  wasenderDisconnect: (storeId: string) =>
+    api.post<{ disconnected: boolean }>(
+      `/messenger-bot/wasender/disconnect?storeId=${encodeURIComponent(storeId)}`, { storeId }),
   listConversations: (storeId: string, params?: { status?: string; limit?: number; skip?: number }) =>
     api.get<{ conversations: MessengerConversation[]; total: number }>(wb(storeId, '/conversations'), { params }),
   getConversation: (storeId: string, id: string) =>

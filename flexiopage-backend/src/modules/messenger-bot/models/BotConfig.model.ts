@@ -21,6 +21,14 @@ export type AiPersonality = 'friendly' | 'professional' | 'energetic';
 export type BotPlan = 'free' | 'starter' | 'pro' | 'business';
 /** Canal de messagerie. Une boutique peut avoir un bot par canal. */
 export type BotChannel = 'messenger' | 'whatsapp';
+/**
+ * Fournisseur pour le canal WhatsApp :
+ *   - 'meta'     : WhatsApp Cloud API officielle (par défaut, rétro-compat).
+ *   - 'wasender' : WasenderAPI (https://wasenderapi.com) — WhatsApp Web via QR.
+ *
+ * Ignoré sur le canal Messenger.
+ */
+export type WhatsAppProvider = 'meta' | 'wasender';
 
 export interface IShippingFee {
   city: string;
@@ -40,15 +48,34 @@ export interface IBotConfig extends Document {
   vendor_id: mongoose.Types.ObjectId;
   /** Canal : 'messenger' (défaut) ou 'whatsapp'. */
   channel: BotChannel;
+  /**
+   * Fournisseur WhatsApp ('meta' par défaut). Détermine comment on envoie/reçoit
+   * et quels champs `whatsapp_*` / `wasender_*` sont peuplés.
+   */
+  whatsapp_provider?: WhatsAppProvider;
   /** Messenger : id de la Page FB (absent pour WhatsApp). */
   facebook_page_id?: string;
-  /** WhatsApp Cloud API : phone number id (absent pour Messenger). */
+  /** WhatsApp Cloud API (Meta) : phone number id. */
   whatsapp_phone_number_id?: string;
   /** WhatsApp Business Account id (optionnel). */
   whatsapp_business_account_id?: string;
   /** Numéro affiché de la ligne WhatsApp (optionnel, info). */
   whatsapp_display_number?: string;
-  /** Token d'accès du canal, chiffré (Page token Messenger OU token WhatsApp). */
+  /** WasenderAPI : id de la session WhatsApp créée côté Wasender. */
+  wasender_session_id?: string;
+  /**
+   * Token de session WasenderAPI chiffré, utilisé comme Bearer dans les appels
+   * `/api/send-message` une fois la session connectée (différent du personal
+   * access token). Stocké chiffré (AES-256-GCM).
+   */
+  wasender_session_token_encrypted?: string;
+  /**
+   * Token d'accès du canal, chiffré.
+   *   - Messenger        : Page Access Token Meta.
+   *   - WhatsApp (meta)  : access token Meta WhatsApp Cloud.
+   *   - WhatsApp (wasender) : Personal Access Token WasenderAPI (utilisé pour
+   *     gérer la session — QR, status, disconnect).
+   */
   page_access_token_encrypted: string;
   page_name?: string;
   page_picture_url?: string;
@@ -110,12 +137,18 @@ const BotConfigSchema = new Schema<IBotConfig>(
     // "vendor" = boutique Flexiopage → ref Store.
     vendor_id: { type: Schema.Types.ObjectId, ref: 'Store', required: true, index: true },
     channel: { type: String, enum: ['messenger', 'whatsapp'], default: 'messenger', index: true },
+    // 'meta' = WhatsApp Cloud API officielle ; 'wasender' = WasenderAPI (WhatsApp Web/QR).
+    // Optionnel : absent sur les bots Messenger. Défaut historique 'meta' pour
+    // ne pas casser les configs existantes.
+    whatsapp_provider: { type: String, enum: ['meta', 'wasender'], default: 'meta' },
     // Pas d'index ici — défini plus bas en partial pour ignorer les null
     // (sparse ne suffit pas : MongoDB considère plusieurs null comme des doublons).
     facebook_page_id: { type: String },
     whatsapp_phone_number_id: { type: String },
     whatsapp_business_account_id: { type: String },
     whatsapp_display_number: { type: String },
+    wasender_session_id: { type: String },
+    wasender_session_token_encrypted: { type: String },
     page_access_token_encrypted: { type: String, required: true },
     page_name: { type: String },
     page_picture_url: { type: String },
@@ -177,6 +210,11 @@ BotConfigSchema.index(
 BotConfigSchema.index(
   { whatsapp_phone_number_id: 1 },
   { unique: true, partialFilterExpression: { whatsapp_phone_number_id: { $type: 'string' } } },
+);
+// Une session Wasender ne peut être rattachée qu'à une boutique.
+BotConfigSchema.index(
+  { wasender_session_id: 1 },
+  { unique: true, partialFilterExpression: { wasender_session_id: { $type: 'string' } } },
 );
 
 export const BotConfig = mongoose.model<IBotConfig>('BotConfig', BotConfigSchema);

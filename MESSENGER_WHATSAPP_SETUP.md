@@ -77,20 +77,59 @@ Use the public tunnel URL in place of `https://api.flexiopage.com` below.
 
 ---
 
-## 4. WhatsApp
+## 4. WhatsApp — two providers
+
+The vendor picks one in the dashboard. **WasenderAPI** (recommended for quick
+onboarding) and **Meta Cloud API** (official) coexist; only one is active per
+store at a time. Same Claude brain in both cases.
+
+### 4.A — WhatsApp via Meta Cloud API
 
 1. Meta app → **WhatsApp → API Setup**: note the **Phone number ID**, generate
    an **access token**, and add a recipient test number.
 2. **WhatsApp → Configuration → Webhook**: callback URL
    `https://api.flexiopage.com/webhook/whatsapp`, verify token =
    `MESSENGER_VERIFY_TOKEN`, subscribe to **`messages`**.
-3. In FlexioPage: **Dashboard → Applications → WhatsApp Bot → Connecter** →
-   paste the **Phone number ID** + **access token** (validated server-side,
+3. In FlexioPage: **Dashboard → Applications → WhatsApp Bot → Meta Cloud API**
+   → paste the **Phone number ID** + **access token** (validated server-side,
    stored encrypted).
 4. Configure + test live.
 
 > The temporary token expires in 24h — for production, generate a **permanent
 > token** (System User in Business Settings) and reconnect.
+
+### 4.B — WhatsApp via WasenderAPI (https://wasenderapi.com)
+
+WasenderAPI uses WhatsApp Web under the hood — no Meta review, ready in under
+a minute. ~6$/month per session. The vendor never leaves FlexioPage:
+
+1. Sign up at <https://wasenderapi.com> and generate a **Personal Access Token**
+   (Settings → Personal Access Token).
+2. In FlexioPage: **Dashboard → Applications → WhatsApp Bot → WasenderAPI** →
+   paste the PAT → backend creates the session with `webhook_url` pointing to
+   `/webhook/wasender` and stores the PAT + session token encrypted (AES-256-GCM).
+3. The UI displays the **QR code**. Scan it from WhatsApp →
+   Settings → Linked Devices → Link a Device. Status polls every 3 s until
+   `connected`.
+4. Configure + test live.
+
+Backend env vars:
+
+```bash
+# Base URL of WasenderAPI (override for staging if needed).
+WASENDER_BASE_URL=https://www.wasenderapi.com
+# Shared secret sent to Wasender at session-creation time and verified on
+# inbound webhooks (header X-Webhook-Secret / X-Wasender-Secret).
+WASENDER_WEBHOOK_SECRET=<openssl rand -hex 24>
+```
+
+API surface added:
+
+- `POST /api/messenger-bot/wasender/connect`  — create session
+- `GET  /api/messenger-bot/wasender/qr`       — fetch QR
+- `GET  /api/messenger-bot/wasender/status`   — poll status
+- `POST /api/messenger-bot/wasender/disconnect`
+- `POST /webhook/wasender` (public, secret-protected)
 
 ---
 
