@@ -204,8 +204,8 @@ function ConnectForm({ storeId, onConnected, mode = 'connect', currentNumber, on
           <Input value={wabaId} onChange={(e) => setWabaId(e.target.value)} placeholder="optionnel" className="h-10" /></div>
         {err && <p className="text-xs text-rose-600">{err}</p>}
         <div className="flex gap-2">
-          {isUpdate && onCancel && (
-            <Button variant="outline" onClick={onCancel} disabled={busy} className="gap-2">Annuler</Button>
+          {onCancel && (
+            <Button variant="outline" onClick={onCancel} disabled={busy} className="gap-2">{isUpdate ? 'Annuler' : 'Retour'}</Button>
           )}
           <Button onClick={connect} disabled={busy || !phoneNumberId.trim() || !accessToken.trim()} className="w-full gap-2 gradient-brand text-white">
             {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plug className="h-4 w-4" />} {isUpdate ? 'Mettre à jour' : 'Connecter'}
@@ -420,48 +420,64 @@ function Toggle({ label, checked, onChange }: { label: string; checked: boolean;
 /**
  * Choix du fournisseur WhatsApp : Meta Cloud (officiel, gratuit, nécessite
  * compte Meta Business + review) vs WasenderAPI (WhatsApp Web/QR, payant, mise
- * en route immédiate). Affiche la form correspondante.
+ * en route immédiate).
+ *
+ * Tant qu'aucun fournisseur n'est sélectionné (state null), on affiche
+ * uniquement les deux cartes de choix. Une fois sélectionné, la form
+ * correspondante apparaît avec un bouton "← Retour au choix" pour revenir.
  */
 function ProviderPicker({ storeId, onConnected }: { storeId: string; onConnected: () => void }) {
-  const [provider, setProvider] = useState<'meta' | 'wasender'>('wasender');
-  return (
-    <section className="space-y-4">
-      <div className="rounded-2xl border border-border/60 bg-card p-4">
-        <h2 className="text-sm font-semibold">Choisis ton fournisseur WhatsApp</h2>
-        <p className="mt-1 text-xs text-muted-foreground">Les deux servent le même bot Claude — seule la couche d'envoi/réception change.</p>
-        <div className="mt-4 grid gap-3 sm:grid-cols-2">
-          <button
-            type="button"
-            onClick={() => setProvider('wasender')}
-            className={cn(
-              'rounded-xl border p-3 text-left transition',
-              provider === 'wasender' ? 'border-primary bg-primary/5 ring-2 ring-primary/30' : 'border-border/60 hover:bg-muted/40',
-            )}
-          >
-            <div className="flex items-center justify-between">
-              <span className="text-sm font-semibold">WasenderAPI</span>
-              <span className="rounded-full bg-emerald-500/10 px-1.5 py-0.5 text-[9px] font-semibold uppercase text-emerald-700">Recommandé</span>
+  const [provider, setProvider] = useState<'meta' | 'wasender' | null>(null);
+  const goBack = () => setProvider(null);
+
+  if (provider) {
+    return (
+      <section className="space-y-3">
+        <div className="flex items-center justify-between rounded-xl border border-border/60 bg-card px-4 py-2.5">
+          <div className="min-w-0">
+            <div className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Fournisseur</div>
+            <div className="truncate text-sm font-semibold">
+              {provider === 'wasender' ? 'WasenderAPI' : 'Meta Cloud API'}
             </div>
-            <p className="mt-1 text-[11px] text-muted-foreground">Scan un QR code, prêt en 1 min. Payant (~6$/mois). WhatsApp Web sous le capot.</p>
-          </button>
-          <button
-            type="button"
-            onClick={() => setProvider('meta')}
-            className={cn(
-              'rounded-xl border p-3 text-left transition',
-              provider === 'meta' ? 'border-primary bg-primary/5 ring-2 ring-primary/30' : 'border-border/60 hover:bg-muted/40',
-            )}
-          >
-            <div className="text-sm font-semibold">Meta Cloud API</div>
-            <p className="mt-1 text-[11px] text-muted-foreground">Officiel, gratuit, nécessite un compte Meta Business + review pour la prod.</p>
-          </button>
+          </div>
+          <Button variant="outline" size="sm" onClick={goBack} className="shrink-0 gap-1.5">
+            ← Changer de fournisseur
+          </Button>
         </div>
+        {provider === 'wasender' ? (
+          <WasenderConnectForm storeId={storeId} onConnected={onConnected} onCancel={goBack} />
+        ) : (
+          <ConnectForm storeId={storeId} onConnected={onConnected} onCancel={goBack} />
+        )}
+      </section>
+    );
+  }
+
+  return (
+    <section className="rounded-2xl border border-border/60 bg-card p-4">
+      <h2 className="text-sm font-semibold">Choisis ton fournisseur WhatsApp</h2>
+      <p className="mt-1 text-xs text-muted-foreground">Les deux servent le même bot Claude — seule la couche d'envoi/réception change.</p>
+      <div className="mt-4 grid gap-3 sm:grid-cols-2">
+        <button
+          type="button"
+          onClick={() => setProvider('wasender')}
+          className="rounded-xl border border-border/60 p-3 text-left transition hover:border-primary hover:bg-primary/5"
+        >
+          <div className="flex items-center justify-between">
+            <span className="text-sm font-semibold">WasenderAPI</span>
+            <span className="rounded-full bg-emerald-500/10 px-1.5 py-0.5 text-[9px] font-semibold uppercase text-emerald-700">Recommandé</span>
+          </div>
+          <p className="mt-1 text-[11px] text-muted-foreground">Scan un QR code, prêt en 1 min. Payant (~6$/mois). WhatsApp Web sous le capot.</p>
+        </button>
+        <button
+          type="button"
+          onClick={() => setProvider('meta')}
+          className="rounded-xl border border-border/60 p-3 text-left transition hover:border-primary hover:bg-primary/5"
+        >
+          <div className="text-sm font-semibold">Meta Cloud API</div>
+          <p className="mt-1 text-[11px] text-muted-foreground">Officiel, gratuit, nécessite un compte Meta Business + review pour la prod.</p>
+        </button>
       </div>
-      {provider === 'wasender' ? (
-        <WasenderConnectForm storeId={storeId} onConnected={onConnected} />
-      ) : (
-        <ConnectForm storeId={storeId} onConnected={onConnected} />
-      )}
     </section>
   );
 }
@@ -477,7 +493,9 @@ function WasenderConnectForm({ storeId, onConnected, mode = 'connect', onCancel 
 }) {
   const isUpdate = mode === 'update';
   const [pat, setPat] = useState('');
+  const [phoneNumber, setPhoneNumber] = useState('');
   const [sessionName, setSessionName] = useState('');
+  const [accountProtection, setAccountProtection] = useState(true);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
   const [created, setCreated] = useState(false);
@@ -487,7 +505,9 @@ function WasenderConnectForm({ storeId, onConnected, mode = 'connect', onCancel 
     try {
       const res = await whatsappBotApi.wasenderConnect(storeId, {
         personalAccessToken: pat.trim(),
+        phoneNumber: phoneNumber.trim(),
         sessionName: sessionName.trim() || undefined,
+        accountProtection,
       });
       if (res.data.status === 'connected') {
         onConnected();
@@ -521,21 +541,30 @@ function WasenderConnectForm({ storeId, onConnected, mode = 'connect', onCancel 
           <Input value={pat} onChange={(e) => setPat(e.target.value)} placeholder="wsk_..." type="password" className="h-10" />
         </div>
         <div className="space-y-1">
+          <Label className="text-xs">Numéro WhatsApp <span className="text-rose-500">*</span></Label>
+          <Input value={phoneNumber} onChange={(e) => setPhoneNumber(e.target.value)} placeholder="+212600000000" className="h-10" />
+          <p className="text-[10px] text-muted-foreground">Format international, avec indicatif pays.</p>
+        </div>
+        <div className="space-y-1">
           <Label className="text-xs">Nom de session (optionnel)</Label>
           <Input value={sessionName} onChange={(e) => setSessionName(e.target.value)} placeholder="ex: Boutique principale" className="h-10" />
         </div>
-        {err && <p className="text-xs text-rose-600">{err}</p>}
+        <label className="flex items-center gap-2 text-xs">
+          <input type="checkbox" checked={accountProtection} onChange={(e) => setAccountProtection(e.target.checked)} className="h-4 w-4 rounded border-input" />
+          <span>Activer la protection anti-ban (recommandé)</span>
+        </label>
+        {err && <p className="rounded-md bg-rose-500/5 px-2 py-1.5 text-xs text-rose-700">{err}</p>}
         <div className="flex gap-2">
-          {isUpdate && onCancel && (
-            <Button variant="outline" onClick={onCancel} disabled={busy} className="gap-2">Annuler</Button>
+          {onCancel && (
+            <Button variant="outline" onClick={onCancel} disabled={busy} className="gap-2">{isUpdate ? 'Annuler' : 'Retour'}</Button>
           )}
-          <Button onClick={connect} disabled={busy || !pat.trim()} className="w-full gap-2 gradient-brand text-white">
+          <Button onClick={connect} disabled={busy || !pat.trim() || !phoneNumber.trim()} className="w-full gap-2 gradient-brand text-white">
             {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plug className="h-4 w-4" />}
             {isUpdate ? 'Reconnecter' : 'Créer la session'}
           </Button>
         </div>
         <p className="text-center text-[11px] text-muted-foreground">
-          La session est créée côté Wasender avec un webhook qui pointe vers <code>/webhook/wasender</code>.
+          ⚠️ En dev local : lance <code>ngrok http 5050</code> et mets <code>API_PUBLIC_URL=https://xxxx.ngrok.app</code> dans <code>flexiopage-backend/.env</code> avant de créer la session.
         </p>
       </div>
     </section>

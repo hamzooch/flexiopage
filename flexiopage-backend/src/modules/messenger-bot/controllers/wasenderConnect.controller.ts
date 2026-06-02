@@ -21,9 +21,20 @@ import { wasenderService, WasenderApiError } from '../services/wasender.service'
 import { getOwnedStoreId } from '../utils/vendorAuth';
 import { connectWasenderSchema } from '../schemas/config.schema';
 
-function publicWebhookUrl(): string {
-  const base = (process.env.API_PUBLIC_URL || `http://localhost:${process.env.PORT || 5050}`).replace(/\/$/, '');
-  return `${base}/webhook/wasender`;
+/**
+ * URL publique du webhook Wasender. Wasender REJETTE les URLs locales
+ * (`localhost`, `127.0.0.1`, `*.local`, IPs privées) — on doit donc avoir un
+ * `API_PUBLIC_URL` qui pointe vers internet (ngrok, cloudflared, ou prod).
+ * Retourne null si l'URL n'est pas publique → le controller renverra une
+ * 400 explicative.
+ */
+function publicWebhookUrl(): string | null {
+  const raw = (process.env.API_PUBLIC_URL || '').replace(/\/$/, '');
+  if (!raw) return null;
+  if (/localhost|127\.0\.0\.1|0\.0\.0\.0|\.local(\b|:)|^https?:\/\/(10|192\.168|172\.(1[6-9]|2\d|3[01]))\./i.test(raw)) {
+    return null;
+  }
+  return `${raw}/webhook/wasender`;
 }
 
 /** Lit (ou génère + stocke) un secret de webhook par boutique. */
@@ -41,7 +52,21 @@ export async function connectWasender(req: AuthRequest, res: Response): Promise<
   if (!storeId) { res.status(403).json({ error: 'storeId requis et doit t’appartenir.' }); return; }
   const parsed = connectWasenderSchema.safeParse(req.body);
   if (!parsed.success) { res.status(400).json({ error: 'Validation échouée', details: parsed.error.flatten() }); return; }
-  const { personalAccessToken, sessionName, phoneNumber } = parsed.data;
+  const { personalAccessToken, sessionName, phoneNumber, accountProtection } = parsed.data;
+
+  // Wasender exige une URL webhook PUBLIQUE — on garde-fou côté backend pour
+  // éviter un 422 cryptique. En dev local : lance `ngrok http 5050` (ou
+  // `cloudflared tunnel --url http://localhost:5050`) et mets l'URL HTTPS
+  // résultante dans `API_PUBLIC_URL` de ton .env.
+  const webhookUrl = publicWebhookUrl();
+  if (!webhookUrl) {
+    res.status(400).json({
+      error:
+        'API_PUBLIC_URL doit pointer vers une URL HTTPS publique (Wasender refuse localhost). ' +
+        'En dev : `ngrok http 5050` puis API_PUBLIC_URL=https://xxxx.ngrok.app dans flexiopage-backend/.env',
+    });
+    return;
+  }
 
   const webhookSecret = ensureWebhookSecret();
   try {
@@ -49,8 +74,9 @@ export async function connectWasender(req: AuthRequest, res: Response): Promise<
       pat: personalAccessToken,
       name: sessionName || `FlexioPage ${String(storeId).slice(-6)}`,
       phoneNumber,
-      webhookUrl: publicWebhookUrl(),
+      webhookUrl,
       webhookSecret,
+      accountProtection,
     });
 
     if (!session.id) {
@@ -94,10 +120,11 @@ export async function connectWasender(req: AuthRequest, res: Response): Promise<
     });
   } catch (err) {
     if (err instanceof WasenderApiError) {
-      const msg = err.isAuthError
-        ? 'Personal Access Token invalide ou expiré.'
-        : `Échec de création de session Wasender (${err.status || 'réseau'}).`;
-      res.status(err.isAuthError ? 401 : 502).json({ error: msg });
+      // Remonte directement le message Wasender (ex. "This endpoint requires a
+      // valid personal access token — You can generate a new token in your
+      // profile settings."). Bien plus utile qu'un message générique.
+      const prefix = err.isAuthError ? 'Personal Access Token invalide' : 'Échec création session Wasender';
+      res.status(err.isAuthError ? 401 : 502).json({ error: `${prefix} : ${err.message}` });
       return;
     }
     logger.error({ err: (err as Error).message }, '[wasender] connect échec');

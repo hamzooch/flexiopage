@@ -79,6 +79,8 @@ export const connectWasenderSchema = z.object({
   personalAccessToken: z.string().min(1),
   /** Nom libre pour la session (utile dans le dashboard Wasender). */
   sessionName: z.string().min(1).max(80).optional(),
-  /** Numéro WhatsApp affiché (optionnel, info). */
-  phoneNumber: z.string().max(40).optional(),
+  /** Numéro WhatsApp à connecter (requis par Wasender). Format international. */
+  phoneNumber: z.string().min(6).max(40),
+  /** Active la protection anti-ban Wasender (défaut: true). */
+  accountProtection: z.boolean().optional(),
 });

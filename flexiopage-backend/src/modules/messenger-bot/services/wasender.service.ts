@@ -51,10 +51,25 @@ export class WasenderApiError extends Error {
 }
 
 function wasenderErrorFromAxios(err: unknown, fallback: string): WasenderApiError {
-  const ax = err as AxiosError<{ message?: string; error?: string; code?: string }>;
+  const ax = err as AxiosError<{
+    message?: string;
+    error?: string;
+    code?: string;
+    help?: string;
+    errors?: Record<string, string[]>;
+  }>;
   const status = ax.response?.status ?? 0;
   const data = ax.response?.data;
-  const msg = data?.message || data?.error || ax.message || fallback;
+  // Validation Laravel-style → expose chaque erreur explicitement plutôt que
+  // de garder le résumé tronqué "(and N more errors)".
+  let detail = '';
+  if (data?.errors && typeof data.errors === 'object') {
+    const lines = Object.entries(data.errors)
+      .map(([field, msgs]) => `${field}: ${(Array.isArray(msgs) ? msgs : [String(msgs)]).join(', ')}`);
+    if (lines.length) detail = lines.join(' | ');
+  }
+  const parts = [data?.message || data?.error, data?.help, detail].filter(Boolean);
+  const msg = parts.length ? parts.join(' — ') : ax.message || fallback;
   return new WasenderApiError(msg, { status, code: data?.code, raw: data });
 }
 
@@ -96,18 +111,33 @@ export class WasenderService {
   /**
    * POST /api/whatsapp-sessions — crée une session WhatsApp côté Wasender.
    * `pat` = personal access token du vendeur.
+   *
+   * Champs requis par Wasender : `name`, `phone_number`, `account_protection`,
+   * `webhook_url` (publique — localhost rejeté).
    */
-  async createSession(args: { pat: string; name: string; phoneNumber?: string; webhookUrl?: string; webhookSecret?: string }): Promise<WasenderSession> {
+  async createSession(args: {
+    pat: string;
+    name: string;
+    phoneNumber: string;
+    webhookUrl: string;
+    webhookSecret?: string;
+    accountProtection?: boolean;
+  }): Promise<WasenderSession> {
     try {
-      const body: Record<string, unknown> = { name: args.name };
-      if (args.phoneNumber) body.phone_number = args.phoneNumber;
-      if (args.webhookUrl) body.webhook_url = args.webhookUrl;
+      const body: Record<string, unknown> = {
+        name: args.name,
+        phone_number: args.phoneNumber,
+        webhook_url: args.webhookUrl,
+        // Anti-ban activé par défaut — protège le compte d'une déconnexion
+        // rapide en cas de comportement suspect.
+        account_protection: args.accountProtection ?? true,
+      };
       if (args.webhookSecret) body.webhook_secret = args.webhookSecret;
       const res = await this.http(args.pat).post('/api/whatsapp-sessions', body);
       return this.adaptSession(res.data);
     } catch (err) {
       const e = wasenderErrorFromAxios(err, 'Wasender createSession failed');
-      logger.error({ status: e.status, code: e.code }, '[wasender] createSession échec');
+      logger.error({ status: e.status, code: e.code, message: e.message }, '[wasender] createSession échec');
       throw e;
     }
   }

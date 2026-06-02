@@ -1071,7 +1071,7 @@ export const whatsappBotApi = {
   disconnect: (storeId: string) =>
     api.post<{ disconnected: boolean }>(`/messenger-bot/whatsapp/disconnect?storeId=${encodeURIComponent(storeId)}`, { storeId }),
   // WasenderAPI (provider alternatif — WhatsApp Web via QR).
-  wasenderConnect: (storeId: string, data: { personalAccessToken: string; sessionName?: string; phoneNumber?: string }) =>
+  wasenderConnect: (storeId: string, data: { personalAccessToken: string; phoneNumber: string; sessionName?: string; accountProtection?: boolean }) =>
     api.post<{ connected: boolean; sessionId: string; status: 'need_scan' | 'connected' | 'disconnected' | 'unknown'; provider: 'wasender' }>(
       `/messenger-bot/wasender/connect?storeId=${encodeURIComponent(storeId)}`, { storeId, ...data }),
   wasenderQr: (storeId: string) =>
