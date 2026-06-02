@@ -18,6 +18,7 @@ import {
   disconnectWasender,
   getWasenderQr,
   getWasenderStatus,
+  recentWasenderWebhooks,
 } from '../controllers/wasenderConnect.controller';
 import { receiveWasenderWebhook } from '../controllers/wasenderWebhook.controller';
 
@@ -46,6 +47,7 @@ apiRouter.post('/wasender/connect', connectWasender);
 apiRouter.get('/wasender/qr', getWasenderQr);
 apiRouter.get('/wasender/status', getWasenderStatus);
 apiRouter.post('/wasender/disconnect', disconnectWasender);
+apiRouter.get('/wasender/recent-webhooks', recentWasenderWebhooks);
 
 // Conversations
 apiRouter.get('/conversations', conversation.listConversations);

@@ -1083,6 +1083,20 @@ export const whatsappBotApi = {
   wasenderDisconnect: (storeId: string) =>
     api.post<{ disconnected: boolean }>(
       `/messenger-bot/wasender/disconnect?storeId=${encodeURIComponent(storeId)}`, { storeId }),
+  wasenderRecentWebhooks: (storeId: string) =>
+    api.get<{
+      items: Array<{
+        at: string;
+        event: string;
+        sessionId?: string;
+        signatureMatched: boolean;
+        processed: 'enqueued' | 'ignored' | 'unsupported' | 'error' | 'session_status';
+        reason?: string;
+        payload: unknown;
+      }>;
+      total: number;
+      sessionId?: string;
+    }>(`/messenger-bot/wasender/recent-webhooks?storeId=${encodeURIComponent(storeId)}`),
   listConversations: (storeId: string, params?: { status?: string; limit?: number; skip?: number }) =>
     api.get<{ conversations: MessengerConversation[]; total: number }>(wb(storeId, '/conversations'), { params }),
   getConversation: (storeId: string, id: string) =>

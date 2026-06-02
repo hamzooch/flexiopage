@@ -135,6 +135,9 @@ export default function WhatsAppBotPage() {
             </Link>
           </div>
           <Inbox storeId={storeId} />
+          {config.whatsapp_provider === 'wasender' && (
+            <WasenderWebhookDebug storeId={storeId} />
+          )}
           <div className="flex flex-wrap gap-2">
             <Button variant="outline" size="sm" className="gap-1.5"
               onClick={() => setShowUpdate(true)}>
@@ -696,6 +699,83 @@ function qrSrc(qr: string): string {
   // Texte raw du QR (format whatsapp-web "1@…") : on délègue à un service de
   // génération côté client. Repli sûr et offline-ish via api.qrserver.com.
   return `https://api.qrserver.com/v1/create-qr-code/?size=512x512&data=${encodeURIComponent(v)}`;
+}
+
+/**
+ * Panel debug : affiche les 10 derniers webhooks Wasender reçus côté backend,
+ * avec leur état (enqueued / ignored / unsupported / error). Permet de
+ * vérifier en prod si Wasender pousse bien les events, et si oui, ce que
+ * notre parser en fait — sans avoir besoin d'accès aux logs serveur.
+ */
+function WasenderWebhookDebug({ storeId }: { storeId: string }) {
+  const [items, setItems] = useState<Awaited<ReturnType<typeof whatsappBotApi.wasenderRecentWebhooks>>['data']['items']>([]);
+  const [loading, setLoading] = useState(false);
+  const [expandedIdx, setExpandedIdx] = useState<number | null>(null);
+
+  const refresh = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await whatsappBotApi.wasenderRecentWebhooks(storeId);
+      setItems(res.data.items);
+    } catch {
+      setItems([]);
+    } finally { setLoading(false); }
+  }, [storeId]);
+
+  useEffect(() => { void refresh(); }, [refresh]);
+
+  const badgeClass = (processed: string) => {
+    switch (processed) {
+      case 'enqueued': return 'bg-emerald-500/10 text-emerald-700';
+      case 'ignored': return 'bg-muted text-muted-foreground';
+      case 'session_status': return 'bg-sky-500/10 text-sky-700';
+      case 'unsupported': return 'bg-amber-500/10 text-amber-800';
+      case 'error': return 'bg-rose-500/10 text-rose-700';
+      default: return 'bg-muted text-muted-foreground';
+    }
+  };
+
+  return (
+    <section className="rounded-2xl border border-border/60 bg-card">
+      <div className="flex items-center justify-between border-b border-border/40 px-5 py-3">
+        <div>
+          <h2 className="flex items-center gap-1.5 text-sm font-semibold">🔍 Debug Webhooks Wasender ({items.length})</h2>
+          <p className="text-[11px] text-muted-foreground">Les 10 derniers webhooks reçus depuis Wasender. Refresh après un test pour voir ce qui arrive.</p>
+        </div>
+        <button type="button" onClick={refresh} className="grid h-7 w-7 place-items-center rounded-md text-muted-foreground hover:bg-muted">
+          <RefreshCw className={cn('h-3.5 w-3.5', loading && 'animate-spin')} />
+        </button>
+      </div>
+      <ul className="divide-y divide-border/40">
+        {items.length === 0 && (
+          <li className="px-5 py-6 text-center text-xs text-muted-foreground">
+            Aucun webhook reçu encore. Envoie un message depuis un autre numéro vers ta ligne WhatsApp, puis clique le ↻ rafraîchir.
+          </li>
+        )}
+        {items.map((w, i) => (
+          <li key={`${w.at}-${i}`}>
+            <button
+              type="button"
+              onClick={() => setExpandedIdx(expandedIdx === i ? null : i)}
+              className="flex w-full items-center gap-2 px-5 py-2.5 text-left hover:bg-muted/40"
+            >
+              <span className={cn('rounded-full px-1.5 py-0.5 text-[9px] font-semibold uppercase', badgeClass(w.processed))}>
+                {w.processed}
+              </span>
+              <code className="text-xs font-mono">{w.event || '—'}</code>
+              {w.reason && <span className="text-[11px] text-muted-foreground">— {w.reason}</span>}
+              <span className="ml-auto text-[10px] text-muted-foreground">{new Date(w.at).toLocaleTimeString()}</span>
+            </button>
+            {expandedIdx === i && (
+              <pre className="overflow-x-auto bg-muted/30 px-5 py-3 text-[10px] leading-tight">
+                {JSON.stringify(w.payload, null, 2)}
+              </pre>
+            )}
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
 }
 
 /** Bandeau de statut pour une session Wasender existante mais pas active. */

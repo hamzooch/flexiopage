@@ -20,6 +20,7 @@ import { encryptionService } from '../services/encryption.service';
 import { wasenderService, WasenderApiError } from '../services/wasender.service';
 import { getOwnedStoreId } from '../utils/vendorAuth';
 import { connectWasenderSchema } from '../schemas/config.schema';
+import { getCapturedWebhooks } from './wasenderWebhook.controller';
 
 /**
  * URL publique du webhook Wasender. Wasender REJETTE les URLs locales
@@ -207,6 +208,21 @@ export async function getWasenderStatus(req: AuthRequest, res: Response): Promis
     logger.error({ err: (err as Error).message }, '[wasender] status échec');
     res.status(500).json({ error: 'Erreur interne.' });
   }
+}
+
+/**
+ * Renvoie les 10 derniers webhooks reçus côté backend, filtrés sur la session
+ * du vendeur connecté. Permet de debugger en prod sans accès aux logs.
+ */
+export async function recentWasenderWebhooks(req: AuthRequest, res: Response): Promise<void> {
+  const storeId = await getOwnedStoreId(req);
+  if (!storeId) { res.status(403).json({ error: 'storeId requis et doit t’appartenir.' }); return; }
+  const config = await BotConfig.findOne({ vendor_id: storeId, channel: 'whatsapp', whatsapp_provider: 'wasender' });
+  const sid = config?.wasender_session_id;
+  const all = getCapturedWebhooks();
+  // Si on a un session_id, on filtre dessus ; sinon on renvoie tout (debug).
+  const items = sid ? all.filter((w) => !w.sessionId || w.sessionId === sid) : all;
+  res.json({ items, total: items.length, sessionId: sid });
 }
 
 export async function disconnectWasender(req: AuthRequest, res: Response): Promise<void> {

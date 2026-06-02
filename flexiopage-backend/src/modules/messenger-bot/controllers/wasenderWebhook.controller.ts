@@ -33,6 +33,30 @@ interface WasenderPayload {
 }
 
 /**
+ * Buffer mémoire des N derniers webhooks Wasender, exposé via un endpoint
+ * admin pour debug quand on n'a pas accès aux logs prod. RAZ au redémarrage —
+ * suffisant pour comprendre la forme réelle des payloads et débugger en live.
+ */
+export interface CapturedWebhook {
+  at: string;
+  event: string;
+  sessionId?: string;
+  signatureMatched: boolean;
+  processed: 'enqueued' | 'ignored' | 'unsupported' | 'error' | 'session_status';
+  reason?: string;
+  payload: unknown;
+}
+const WEBHOOK_BUFFER_MAX = 10;
+const capturedWebhooks: CapturedWebhook[] = [];
+function capture(entry: CapturedWebhook): void {
+  capturedWebhooks.unshift(entry);
+  if (capturedWebhooks.length > WEBHOOK_BUFFER_MAX) capturedWebhooks.length = WEBHOOK_BUFFER_MAX;
+}
+export function getCapturedWebhooks(): CapturedWebhook[] {
+  return capturedWebhooks;
+}
+
+/**
  * Vrai si le header/secret matche WASENDER_WEBHOOK_SECRET (si défini).
  *
  * Wasender envoie le secret en clair dans `X-Webhook-Signature` (comparaison
@@ -140,21 +164,32 @@ function eventNameOf(payload: WasenderPayload): string {
 }
 
 export async function receiveWasenderWebhook(req: Request, res: Response): Promise<void> {
+  const payload = (req.body || {}) as WasenderPayload;
+  const event = eventNameOf(payload);
+  const sessionIdEarly = String(payload.session_id || payload.sessionId || asObject(payload.data).session_id || '');
+
   if (!verifyWasenderSecret(req)) {
+    capture({
+      at: new Date().toISOString(),
+      event,
+      sessionId: sessionIdEarly,
+      signatureMatched: false,
+      processed: 'error',
+      reason: 'signature invalide',
+      payload,
+    });
     logger.warn(
-      { headers: { 'x-webhook-secret': !!req.header('x-webhook-secret'), 'x-wasender-secret': !!req.header('x-wasender-secret'), 'x-wasender-signature': !!req.header('x-wasender-signature') } },
+      { headers: { 'x-webhook-signature': !!req.header('x-webhook-signature'), 'x-webhook-secret': !!req.header('x-webhook-secret') } },
       '[wasender] webhook secret invalide — rejet',
     );
     res.sendStatus(401);
     return;
   }
 
-  const payload = (req.body || {}) as WasenderPayload;
   // ACK rapide pour éviter les redeliveries en cascade.
   res.status(200).json({ received: true });
 
   try {
-    const event = eventNameOf(payload);
     const topLevelKeys = Object.keys(payload || {});
     logger.info(
       { event, topLevelKeys, hasData: !!payload.data, hasMessage: !!payload.message },
@@ -162,18 +197,27 @@ export async function receiveWasenderWebhook(req: Request, res: Response): Promi
     );
 
     // Événements de session : on met à jour le statut local sans traiter de message.
-    if (event.includes('session') || event.includes('status')) {
+    if (event.includes('session') || event === 'qrcode.updated') {
       await applySessionStatus(payload);
+      capture({ at: new Date().toISOString(), event, sessionId: sessionIdEarly, signatureMatched: true, processed: 'session_status', payload });
       return;
     }
-    // Tout ce qui n'est pas un message entrant est ignoré (sent, status update, reaction…).
-    if (!event.includes('message') || event.includes('sent') || event.includes('status')) {
+    // Filtres : event de test, events sortants, status messages.
+    if (
+      event === 'webhook.test' ||
+      !event.includes('message') ||
+      event.includes('sent') ||
+      event.includes('receipt') ||
+      event.includes('reaction')
+    ) {
+      capture({ at: new Date().toISOString(), event, sessionId: sessionIdEarly, signatureMatched: true, processed: 'ignored', reason: 'event non géré', payload });
       logger.info({ event }, '[wasender] event non géré — ignoré');
       return;
     }
 
-    const sessionId = String(payload.session_id || payload.sessionId || asObject(payload.data).session_id || '');
+    const sessionId = sessionIdEarly;
     if (!sessionId) {
+      capture({ at: new Date().toISOString(), event, signatureMatched: true, processed: 'error', reason: 'session_id absent', payload });
       logger.warn({ topLevelKeys }, '[wasender] webhook sans session_id — ignoré');
       return;
     }
@@ -183,28 +227,34 @@ export async function receiveWasenderWebhook(req: Request, res: Response): Promi
       whatsapp_provider: 'wasender',
     });
     if (!config) {
+      capture({ at: new Date().toISOString(), event, sessionId, signatureMatched: true, processed: 'error', reason: 'aucun BotConfig pour ce session_id', payload });
       logger.warn({ sessionId }, '[wasender] aucun BotConfig pour ce session_id — ignoré');
       return;
     }
     if (config.status !== 'active') {
+      capture({ at: new Date().toISOString(), event, sessionId, signatureMatched: true, processed: 'ignored', reason: `bot status=${config.status}`, payload });
       logger.warn({ sessionId, status: config.status }, '[wasender] bot non actif — ignoré');
       return;
     }
     if (config.conversations_used_this_month >= config.conversations_limit) {
+      capture({ at: new Date().toISOString(), event, sessionId, signatureMatched: true, processed: 'ignored', reason: 'quota atteint', payload });
       logger.info({ sessionId }, '[wasender] quota atteint — message ignoré');
       return;
     }
 
     const norm = normalizeMessage(payload);
     if (norm.fromMe) {
+      capture({ at: new Date().toISOString(), event, sessionId, signatureMatched: true, processed: 'ignored', reason: 'fromMe (echo)', payload });
       logger.info('[wasender] message fromMe (echo) — ignoré');
       return;
     }
     if (!norm.fromJid) {
+      capture({ at: new Date().toISOString(), event, sessionId, signatureMatched: true, processed: 'unsupported', reason: 'fromJid absent', payload });
       logger.warn({ event }, '[wasender] message sans fromJid — ignoré');
       return;
     }
     if (norm.kind === 'unsupported') {
+      capture({ at: new Date().toISOString(), event, sessionId, signatureMatched: true, processed: 'unsupported', reason: 'kind=unsupported (ajuster normalizeMessage)', payload });
       logger.warn({ event, sample: JSON.stringify(payload).slice(0, 500) }, '[wasender] message kind=unsupported — ajuster normalizeMessage');
       return;
     }
@@ -273,6 +323,7 @@ export async function receiveWasenderWebhook(req: Request, res: Response): Promi
     // Le worker récupère l'URL média telle quelle (Wasender renvoie une URL
     // publique ou signée). `mediaId` réutilisé pour transporter l'URL — le
     // worker lit la config pour savoir comment fetch (provider=wasender).
+    capture({ at: new Date().toISOString(), event, sessionId, signatureMatched: true, processed: 'enqueued', reason: norm.kind, payload });
     await messageQueue.enqueue({
       botConfigId: String(config._id),
       conversationId: String(conv._id),
@@ -286,6 +337,7 @@ export async function receiveWasenderWebhook(req: Request, res: Response): Promi
       caption,
     });
   } catch (err) {
+    capture({ at: new Date().toISOString(), event, sessionId: sessionIdEarly, signatureMatched: true, processed: 'error', reason: (err as Error).message, payload });
     logger.error({ err: (err as Error).message }, '[wasender] traitement webhook échec');
   }
 }
