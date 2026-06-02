@@ -32,11 +32,18 @@ interface WasenderPayload {
   [k: string]: unknown;
 }
 
-/** Vrai si le header/secret matche WASENDER_WEBHOOK_SECRET (si défini). */
+/**
+ * Vrai si le header/secret matche WASENDER_WEBHOOK_SECRET (si défini).
+ *
+ * Wasender envoie le secret en clair dans `X-Webhook-Signature` (comparaison
+ * de chaîne, pas HMAC — cf. leur exemple JS dans le dashboard). On supporte
+ * aussi quelques alias par tolérance pour les versions/proxies.
+ */
 function verifyWasenderSecret(req: Request): boolean {
   const expected = process.env.WASENDER_WEBHOOK_SECRET;
   if (!expected) return true; // pas de secret configuré → on accepte
   const candidates = [
+    req.header('x-webhook-signature'), // ← le vrai header Wasender
     req.header('x-webhook-secret'),
     req.header('x-wasender-secret'),
     req.header('x-wasender-signature'),
