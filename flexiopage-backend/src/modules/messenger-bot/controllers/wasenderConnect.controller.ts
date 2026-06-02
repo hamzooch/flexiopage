@@ -190,12 +190,16 @@ export async function getWasenderStatus(req: AuthRequest, res: Response): Promis
     const updates: Record<string, unknown> = {};
     if (session.status === 'connected') updates.status = 'active';
     if (session.status === 'disconnected') updates.status = 'disconnected';
-    if (session.apiToken && !config.wasender_session_token_encrypted) {
-      updates.wasender_session_token_encrypted = encryptionService.encrypt(session.apiToken);
-    }
-    // Backfill du hash si on a le token et que le hash n'est pas (encore) stocké.
-    if (session.apiToken && !config.wasender_session_token_hash) {
-      updates.wasender_session_token_hash = hashWasenderToken(session.apiToken);
+    // Si Wasender retourne un apiToken et qu'il a changé (rotation : session
+    // restart / disconnect+reconnect côté Wasender génère un nouveau token),
+    // on rafraîchit le token chiffré ET le hash. Sans ça, les webhooks
+    // entrants matcheraient encore l'ancien hash → bot ne répond plus.
+    if (session.apiToken) {
+      const newHash = hashWasenderToken(session.apiToken);
+      if (newHash !== config.wasender_session_token_hash) {
+        updates.wasender_session_token_encrypted = encryptionService.encrypt(session.apiToken);
+        updates.wasender_session_token_hash = newHash;
+      }
     }
     if (session.phoneNumber && !config.whatsapp_display_number) {
       updates.whatsapp_display_number = session.phoneNumber;
