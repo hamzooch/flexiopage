@@ -134,7 +134,10 @@ function eventNameOf(payload: WasenderPayload): string {
 
 export async function receiveWasenderWebhook(req: Request, res: Response): Promise<void> {
   if (!verifyWasenderSecret(req)) {
-    logger.warn('[wasender] webhook secret invalide — rejet');
+    logger.warn(
+      { headers: { 'x-webhook-secret': !!req.header('x-webhook-secret'), 'x-wasender-secret': !!req.header('x-wasender-secret'), 'x-wasender-signature': !!req.header('x-wasender-signature') } },
+      '[wasender] webhook secret invalide — rejet',
+    );
     res.sendStatus(401);
     return;
   }
@@ -145,17 +148,26 @@ export async function receiveWasenderWebhook(req: Request, res: Response): Promi
 
   try {
     const event = eventNameOf(payload);
+    const topLevelKeys = Object.keys(payload || {});
+    logger.info(
+      { event, topLevelKeys, hasData: !!payload.data, hasMessage: !!payload.message },
+      '[wasender] webhook reçu',
+    );
+
     // Événements de session : on met à jour le statut local sans traiter de message.
     if (event.includes('session') || event.includes('status')) {
       await applySessionStatus(payload);
       return;
     }
     // Tout ce qui n'est pas un message entrant est ignoré (sent, status update, reaction…).
-    if (!event.includes('message') || event.includes('sent') || event.includes('status')) return;
+    if (!event.includes('message') || event.includes('sent') || event.includes('status')) {
+      logger.info({ event }, '[wasender] event non géré — ignoré');
+      return;
+    }
 
     const sessionId = String(payload.session_id || payload.sessionId || asObject(payload.data).session_id || '');
     if (!sessionId) {
-      logger.warn('[wasender] webhook sans session_id — ignoré');
+      logger.warn({ topLevelKeys }, '[wasender] webhook sans session_id — ignoré');
       return;
     }
     const config = await BotConfig.findOne({
@@ -163,16 +175,32 @@ export async function receiveWasenderWebhook(req: Request, res: Response): Promi
       channel: 'whatsapp',
       whatsapp_provider: 'wasender',
     });
-    if (!config || config.status !== 'active') return;
+    if (!config) {
+      logger.warn({ sessionId }, '[wasender] aucun BotConfig pour ce session_id — ignoré');
+      return;
+    }
+    if (config.status !== 'active') {
+      logger.warn({ sessionId, status: config.status }, '[wasender] bot non actif — ignoré');
+      return;
+    }
     if (config.conversations_used_this_month >= config.conversations_limit) {
       logger.info({ sessionId }, '[wasender] quota atteint — message ignoré');
       return;
     }
 
     const norm = normalizeMessage(payload);
-    if (norm.fromMe) return; // message sortant renvoyé en echo
-    if (!norm.fromJid) return;
-    if (norm.kind === 'unsupported') return;
+    if (norm.fromMe) {
+      logger.info('[wasender] message fromMe (echo) — ignoré');
+      return;
+    }
+    if (!norm.fromJid) {
+      logger.warn({ event }, '[wasender] message sans fromJid — ignoré');
+      return;
+    }
+    if (norm.kind === 'unsupported') {
+      logger.warn({ event, sample: JSON.stringify(payload).slice(0, 500) }, '[wasender] message kind=unsupported — ajuster normalizeMessage');
+      return;
+    }
 
     // Idempotence par id message Wasender.
     if (norm.messageId && (await Message.exists({ messenger_message_id: norm.messageId }))) return;
