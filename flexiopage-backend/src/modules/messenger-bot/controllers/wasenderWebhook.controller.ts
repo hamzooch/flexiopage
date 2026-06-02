@@ -20,6 +20,7 @@ import { BotConfig } from '../models/BotConfig.model';
 import { Conversation } from '../models/Conversation.model';
 import { Message } from '../models/Message.model';
 import { messageQueue } from '../services/queue.service';
+import { hashWasenderToken } from '../services/wasender.service';
 import type { IncomingMediaType } from '../utils/mediaFallback';
 
 interface WasenderPayload {
@@ -221,10 +222,17 @@ export async function receiveWasenderWebhook(req: Request, res: Response): Promi
       logger.warn({ topLevelKeys }, '[wasender] webhook sans session_id — ignoré');
       return;
     }
+    // Wasender envoie l'API token comme sessionId dans le webhook. On cherche
+    // d'abord par hash du token (cas standard), puis par session_id en repli
+    // (anciens docs / si jamais Wasender envoie l'UUID interne dans certains cas).
+    const tokenHash = hashWasenderToken(sessionId);
     const config = await BotConfig.findOne({
-      wasender_session_id: sessionId,
       channel: 'whatsapp',
       whatsapp_provider: 'wasender',
+      $or: [
+        { wasender_session_token_hash: tokenHash },
+        { wasender_session_id: sessionId },
+      ],
     });
     if (!config) {
       capture({ at: new Date().toISOString(), event, sessionId, signatureMatched: true, processed: 'error', reason: 'aucun BotConfig pour ce session_id', payload });
@@ -350,8 +358,16 @@ async function applySessionStatus(payload: WasenderPayload): Promise<void> {
   if (!status) return;
   const next = status === 'connected' ? 'active' : status === 'disconnected' || status === 'logged_out' ? 'disconnected' : null;
   if (!next) return;
+  const tokenHash = hashWasenderToken(sessionId);
   await BotConfig.updateOne(
-    { wasender_session_id: sessionId, channel: 'whatsapp', whatsapp_provider: 'wasender' },
+    {
+      channel: 'whatsapp',
+      whatsapp_provider: 'wasender',
+      $or: [
+        { wasender_session_token_hash: tokenHash },
+        { wasender_session_id: sessionId },
+      ],
+    },
     { $set: { status: next } },
   );
 }

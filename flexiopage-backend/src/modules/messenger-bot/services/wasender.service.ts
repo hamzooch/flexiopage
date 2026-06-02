@@ -13,8 +13,18 @@
  * Docs : https://wasenderapi.com/api-docs
  */
 import axios, { AxiosError, type AxiosInstance } from 'axios';
+import crypto from 'crypto';
 import { logger } from '../../../lib/logger';
 import { WASENDER_BASE_URL, WASENDER_TIMEOUT_MS, WHATSAPP_MEDIA_MAX_BYTES } from '../config/messengerBot.config';
+
+/**
+ * SHA-256 hex du session API token. Wasender envoie ce token comme `sessionId`
+ * dans les payloads webhook entrant — on stocke le hash en DB pour pouvoir
+ * retrouver la BotConfig sans exposer le token en clair.
+ */
+export function hashWasenderToken(token: string): string {
+  return crypto.createHash('sha256').update(token).digest('hex');
+}
 
 /**
  * Statut normalisé d'une session Wasender côté FlexioPage.

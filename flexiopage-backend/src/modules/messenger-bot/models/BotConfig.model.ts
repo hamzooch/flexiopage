@@ -61,7 +61,8 @@ export interface IBotConfig extends Document {
   whatsapp_business_account_id?: string;
   /** Numéro affiché de la ligne WhatsApp (optionnel, info). */
   whatsapp_display_number?: string;
-  /** WasenderAPI : id de la session WhatsApp créée côté Wasender. */
+  /** WasenderAPI : id (UUID/int) interne de la session — utilisé pour les URLs
+   *  `/api/whatsapp-sessions/{id}/qrcode|status|disconnect`. */
   wasender_session_id?: string;
   /**
    * Token de session WasenderAPI chiffré, utilisé comme Bearer dans les appels
@@ -69,6 +70,13 @@ export interface IBotConfig extends Document {
    * access token). Stocké chiffré (AES-256-GCM).
    */
   wasender_session_token_encrypted?: string;
+  /**
+   * SHA-256 (hex) du session API token. Wasender utilise ce token comme
+   * `sessionId` dans les payloads de webhook entrant — on cherche la BotConfig
+   * par ce hash plutôt que par le wasender_session_id (UUID interne) qui ne
+   * matche pas. Indexé partiellement (unique).
+   */
+  wasender_session_token_hash?: string;
   /**
    * Token d'accès du canal, chiffré.
    *   - Messenger        : Page Access Token Meta.
@@ -149,6 +157,7 @@ const BotConfigSchema = new Schema<IBotConfig>(
     whatsapp_display_number: { type: String },
     wasender_session_id: { type: String },
     wasender_session_token_encrypted: { type: String },
+    wasender_session_token_hash: { type: String },
     page_access_token_encrypted: { type: String, required: true },
     page_name: { type: String },
     page_picture_url: { type: String },
@@ -215,6 +224,12 @@ BotConfigSchema.index(
 BotConfigSchema.index(
   { wasender_session_id: 1 },
   { unique: true, partialFilterExpression: { wasender_session_id: { $type: 'string' } } },
+);
+// Hash du session API token — indexé pour la lookup côté webhook entrant
+// (Wasender envoie ce token comme `sessionId` dans le payload).
+BotConfigSchema.index(
+  { wasender_session_token_hash: 1 },
+  { unique: true, partialFilterExpression: { wasender_session_token_hash: { $type: 'string' } } },
 );
 
 export const BotConfig = mongoose.model<IBotConfig>('BotConfig', BotConfigSchema);

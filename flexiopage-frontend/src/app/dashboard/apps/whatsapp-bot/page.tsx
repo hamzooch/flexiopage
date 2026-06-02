@@ -47,6 +47,12 @@ export default function WhatsAppBotPage() {
       if (res.data.connected) {
         const ov = await whatsappBotApi.statsOverview(storeId).catch(() => null);
         setOverview(ov?.data || null);
+        // Trigger backfill du wasender_session_token_hash si manquant — le
+        // hash est nécessaire pour que les webhooks entrants matchent la
+        // bonne BotConfig (Wasender envoie l'API token comme sessionId).
+        if (res.data.config?.whatsapp_provider === 'wasender') {
+          await whatsappBotApi.wasenderStatus(storeId).catch(() => null);
+        }
       }
     } catch (err) {
       setError(extractApiError(err, 'Chargement impossible.'));

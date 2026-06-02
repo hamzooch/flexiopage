@@ -17,7 +17,7 @@ import type { AuthRequest } from '../../../middleware/auth.middleware';
 import { logger } from '../../../lib/logger';
 import { BotConfig } from '../models/BotConfig.model';
 import { encryptionService } from '../services/encryption.service';
-import { wasenderService, WasenderApiError } from '../services/wasender.service';
+import { wasenderService, WasenderApiError, hashWasenderToken } from '../services/wasender.service';
 import { getOwnedStoreId } from '../utils/vendorAuth';
 import { connectWasenderSchema } from '../schemas/config.schema';
 import { getCapturedWebhooks } from './wasenderWebhook.controller';
@@ -115,6 +115,7 @@ export async function connectWasender(req: AuthRequest, res: Response): Promise<
           whatsapp_provider: 'wasender',
           wasender_session_id: session.id,
           wasender_session_token_encrypted: session.apiToken ? encryptionService.encrypt(session.apiToken) : undefined,
+          wasender_session_token_hash: session.apiToken ? hashWasenderToken(session.apiToken) : undefined,
           // page_access_token_encrypted = PAT Wasender (sert à gérer la session).
           page_access_token_encrypted: encryptionService.encrypt(personalAccessToken),
           whatsapp_display_number: session.phoneNumber || phoneNumber,
@@ -191,6 +192,10 @@ export async function getWasenderStatus(req: AuthRequest, res: Response): Promis
     if (session.status === 'disconnected') updates.status = 'disconnected';
     if (session.apiToken && !config.wasender_session_token_encrypted) {
       updates.wasender_session_token_encrypted = encryptionService.encrypt(session.apiToken);
+    }
+    // Backfill du hash si on a le token et que le hash n'est pas (encore) stocké.
+    if (session.apiToken && !config.wasender_session_token_hash) {
+      updates.wasender_session_token_hash = hashWasenderToken(session.apiToken);
     }
     if (session.phoneNumber && !config.whatsapp_display_number) {
       updates.whatsapp_display_number = session.phoneNumber;
