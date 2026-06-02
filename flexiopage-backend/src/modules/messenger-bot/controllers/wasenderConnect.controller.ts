@@ -70,14 +70,28 @@ export async function connectWasender(req: AuthRequest, res: Response): Promise<
 
   const webhookSecret = ensureWebhookSecret();
   try {
-    const session = await wasenderService.createSession({
-      pat: personalAccessToken,
-      name: sessionName || `FlexioPage ${String(storeId).slice(-6)}`,
-      phoneNumber,
-      webhookUrl,
-      webhookSecret,
-      accountProtection,
-    });
+    let session;
+    try {
+      session = await wasenderService.createSession({
+        pat: personalAccessToken,
+        name: sessionName || `FlexioPage ${String(storeId).slice(-6)}`,
+        phoneNumber,
+        webhookUrl,
+        webhookSecret,
+        accountProtection,
+      });
+    } catch (err) {
+      // "The phone number has already been taken" : une session existe déjà
+      // côté Wasender (tentative précédente). On la retrouve via listSessions
+      // et on la ré-attache à cette boutique au lieu de demander au vendeur
+      // d'aller supprimer la session dans le dashboard Wasender.
+      const isTaken = err instanceof WasenderApiError && /phone[_ ]?number.*taken|already.*taken/i.test(err.message);
+      if (!isTaken) throw err;
+      const existing = await wasenderService.listSessions({ pat: personalAccessToken });
+      const normalized = phoneNumber.replace(/[^\d]/g, '');
+      session = existing.find((s) => (s.phoneNumber || '').replace(/[^\d]/g, '') === normalized);
+      if (!session || !session.id) throw err;
+    }
 
     if (!session.id) {
       res.status(502).json({ error: 'Réponse Wasender invalide (session_id absent).' });

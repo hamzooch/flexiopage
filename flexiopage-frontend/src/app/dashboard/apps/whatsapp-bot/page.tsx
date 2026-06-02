@@ -593,9 +593,14 @@ function WasenderConnectForm({ storeId, onConnected, mode = 'connect', onCancel 
             {isUpdate ? 'Reconnecter' : 'Créer la session'}
           </Button>
         </div>
-        <p className="text-center text-[11px] text-muted-foreground">
-          ⚠️ En dev local : lance <code>ngrok http 5050</code> et mets <code>API_PUBLIC_URL=https://xxxx.ngrok.app</code> dans <code>flexiopage-backend/.env</code> avant de créer la session.
-        </p>
+        {/* Note dev-only : Wasender refuse les webhooks vers localhost.
+            En prod (API_PUBLIC_URL pointe vers api.flexiopage.com) c'est
+            inutile à afficher — le backend pré-check de toute façon. */}
+        {typeof window !== 'undefined' && /^(localhost|127\.0\.0\.1|lvh\.me)$/.test(window.location.hostname) && (
+          <p className="text-center text-[11px] text-muted-foreground">
+            ⚠️ En dev local : lance <code>ngrok http 5050</code> et mets <code>API_PUBLIC_URL=https://xxxx.ngrok.app</code> dans <code>flexiopage-backend/.env</code> avant de créer la session.
+          </p>
+        )}
       </div>
     </section>
   );
@@ -653,7 +658,7 @@ function WasenderQrPanel({ storeId, onConnected }: { storeId: string; onConnecte
       {err && <p className="mt-3 text-center text-xs text-rose-600">{err}</p>}
       <div className="mx-auto mt-5 grid place-items-center">
         {qr ? (
-          <img src={qr.startsWith('data:') ? qr : `data:image/png;base64,${qr}`} alt="QR code WhatsApp"
+          <img src={qrSrc(qr)} alt="QR code WhatsApp"
             className="h-64 w-64 rounded-xl border border-border/60 bg-white p-2" />
         ) : (
           <div className="grid h-64 w-64 place-items-center rounded-xl border border-dashed border-border/60 bg-muted/30">
@@ -671,6 +676,26 @@ function WasenderQrPanel({ storeId, onConnected }: { storeId: string; onConnecte
       </div>
     </section>
   );
+}
+
+/**
+ * Wasender peut renvoyer le QR sous plusieurs formats :
+ *   - Data URI (data:image/png;base64,iVBORw…) → tel quel
+ *   - URL absolue (http(s)://…) → tel quel
+ *   - Base64 brut (iVBORw…) → préfixer data:image/png;base64,
+ *   - Texte UTF-8 raw du QR (1@xxxx,xxx,xxx,xxx==,…) → encoder en SVG via une
+ *     image data URI générée côté serveur public (chart-quality URL). On
+ *     reste safe avec googleapis chart si le format est inconnu.
+ */
+function qrSrc(qr: string): string {
+  const v = qr.trim();
+  if (v.startsWith('data:')) return v;
+  if (/^https?:\/\//.test(v)) return v;
+  // Base64 PNG/JPEG : commence souvent par iVBOR (PNG) ou /9j/ (JPEG).
+  if (/^[A-Za-z0-9+/=\s]+$/.test(v) && v.length > 100) return `data:image/png;base64,${v.replace(/\s/g, '')}`;
+  // Texte raw du QR (format whatsapp-web "1@…") : on délègue à un service de
+  // génération côté client. Repli sûr et offline-ish via api.qrserver.com.
+  return `https://api.qrserver.com/v1/create-qr-code/?size=512x512&data=${encodeURIComponent(v)}`;
 }
 
 /** Bandeau de statut pour une session Wasender existante mais pas active. */

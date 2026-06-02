@@ -142,14 +142,54 @@ export class WasenderService {
     }
   }
 
+  /**
+   * GET /api/whatsapp-sessions — liste toutes les sessions du compte. Utilisé
+   * pour retrouver une session existante quand `createSession` échoue avec
+   * "phone_number already taken".
+   */
+  async listSessions(args: { pat: string }): Promise<WasenderSession[]> {
+    try {
+      const res = await this.http(args.pat).get('/api/whatsapp-sessions');
+      const root = (res.data && typeof res.data === 'object' ? (res.data as Record<string, unknown>) : {}) as Record<string, unknown>;
+      const list = Array.isArray(root.data)
+        ? (root.data as unknown[])
+        : Array.isArray(root.sessions)
+          ? (root.sessions as unknown[])
+          : Array.isArray(res.data)
+            ? (res.data as unknown[])
+            : [];
+      return list.map((s) => this.adaptSession(s));
+    } catch (err) {
+      throw wasenderErrorFromAxios(err, 'Wasender listSessions failed');
+    }
+  }
+
   /** GET /api/whatsapp-sessions/{id}/qrcode — renvoie le QR (data URI ou string). */
   async getQrCode(args: { pat: string; sessionId: string }): Promise<{ qr: string | null; status: WasenderSessionStatus; raw: unknown }> {
     try {
       const res = await this.http(args.pat).get(`/api/whatsapp-sessions/${encodeURIComponent(args.sessionId)}/qrcode`);
       const data = (res.data && typeof res.data === 'object' ? (res.data as Record<string, unknown>) : {}) as Record<string, unknown>;
       const payload = (data.data && typeof data.data === 'object' ? (data.data as Record<string, unknown>) : data) as Record<string, unknown>;
-      const qr = String(payload.qr || payload.qrcode || payload.qr_code || payload.image || '') || null;
+      // Wasender peut renvoyer le QR sous plusieurs noms de clés selon la version.
+      const qr = String(
+        payload.qr ||
+          payload.qrcode ||
+          payload.qr_code ||
+          payload.qrCode ||
+          payload.image ||
+          payload.qr_image ||
+          payload.qrImage ||
+          payload.code ||
+          payload.base64 ||
+          '',
+      ) || null;
       const status = normalizeStatus(payload.status);
+      // Log dev-only : la doc Wasender est imprécise, on garde une trace de la
+      // forme réelle de la réponse pour ajuster les clés si besoin.
+      logger.info(
+        { sessionId: args.sessionId, status, qrPresent: !!qr, keys: Object.keys(payload) },
+        '[wasender] getQrCode response',
+      );
       return { qr, status, raw: res.data };
     } catch (err) {
       throw wasenderErrorFromAxios(err, 'Wasender getQrCode failed');
