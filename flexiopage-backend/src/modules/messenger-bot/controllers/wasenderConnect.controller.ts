@@ -220,8 +220,12 @@ export async function recentWasenderWebhooks(req: AuthRequest, res: Response): P
   const config = await BotConfig.findOne({ vendor_id: storeId, channel: 'whatsapp', whatsapp_provider: 'wasender' });
   const sid = config?.wasender_session_id;
   const all = getCapturedWebhooks();
-  // Si on a un session_id, on filtre dessus ; sinon on renvoie tout (debug).
-  const items = sid ? all.filter((w) => !w.sessionId || w.sessionId === sid) : all;
+  // Inclut : événements sans session_id, ceux qui matchent notre session, ET
+  // les events de test (sessionId placeholder "YOUR_API_KEY" du simulator
+  // Wasender). Comme ça le simulator reste visible pendant le debug.
+  const items = sid
+    ? all.filter((w) => !w.sessionId || w.sessionId === sid || w.event === 'webhook.test' || w.sessionId === 'YOUR_API_KEY')
+    : all;
   res.json({ items, total: items.length, sessionId: sid });
 }
 
