@@ -106,8 +106,12 @@ export async function connectWasender(req: AuthRequest, res: Response): Promise<
           page_name: session.phoneNumber ? `WhatsApp ${session.phoneNumber}` : 'WhatsApp (Wasender)',
           status: session.status === 'connected' ? 'active' : 'paused',
         },
-        // Évite que setDefaultsOnInsert ne ressuscite un facebook_page_id null.
-        $unset: { facebook_page_id: '', whatsapp_phone_number_id: '' },
+        // Nettoie les champs des autres providers (cas du switch Meta → Wasender).
+        $unset: {
+          facebook_page_id: '',
+          whatsapp_phone_number_id: '',
+          whatsapp_business_account_id: '',
+        },
       },
       { upsert: true, new: true, setDefaultsOnInsert: true },
     );

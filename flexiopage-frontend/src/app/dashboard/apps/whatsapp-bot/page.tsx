@@ -31,6 +31,12 @@ export default function WhatsAppBotPage() {
   const [config, setConfig] = useState<MessengerBotConfig | null>(null);
   const [overview, setOverview] = useState<Overview | null>(null);
   const [showUpdate, setShowUpdate] = useState(false);
+  /**
+   * Force l'affichage du picker même quand un bot est déjà connecté — permet
+   * au vendeur de basculer entre Meta Cloud et WasenderAPI. Le bouton Retour
+   * du picker remet ce flag à false.
+   */
+  const [showPicker, setShowPicker] = useState(false);
 
   const load = useCallback(async () => {
     if (!storeId) { setLoading(false); return; }
@@ -84,7 +90,13 @@ export default function WhatsAppBotPage() {
         </div>
       )}
 
-      {!config && <ProviderPicker storeId={storeId} onConnected={load} />}
+      {(!config || showPicker) && (
+        <ProviderPicker
+          storeId={storeId}
+          onConnected={async () => { setShowPicker(false); await load(); }}
+          onClose={config ? () => setShowPicker(false) : undefined}
+        />
+      )}
 
       {config && showUpdate && (
         config.whatsapp_provider === 'wasender' ? (
@@ -100,11 +112,11 @@ export default function WhatsAppBotPage() {
         )
       )}
 
-      {config && !showUpdate && config.whatsapp_provider === 'wasender' && config.status !== 'active' && (
+      {config && !showUpdate && !showPicker && config.whatsapp_provider === 'wasender' && config.status !== 'active' && (
         <WasenderSessionStatus storeId={storeId} onConnected={load} />
       )}
 
-      {config && !showUpdate && (
+      {config && !showUpdate && !showPicker && (
         <>
           {overview && <StatsRow overview={overview} />}
           <div className="grid gap-6 lg:grid-cols-2">
@@ -127,6 +139,10 @@ export default function WhatsAppBotPage() {
             <Button variant="outline" size="sm" className="gap-1.5"
               onClick={() => setShowUpdate(true)}>
               <RefreshCw className="h-3.5 w-3.5" /> Mettre à jour le numéro
+            </Button>
+            <Button variant="outline" size="sm" className="gap-1.5"
+              onClick={() => setShowPicker(true)}>
+              <Plug className="h-3.5 w-3.5" /> Changer de fournisseur
             </Button>
             <Button variant="outline" size="sm" className="gap-1.5 text-rose-600"
               onClick={async () => {
@@ -426,7 +442,12 @@ function Toggle({ label, checked, onChange }: { label: string; checked: boolean;
  * uniquement les deux cartes de choix. Une fois sélectionné, la form
  * correspondante apparaît avec un bouton "← Retour au choix" pour revenir.
  */
-function ProviderPicker({ storeId, onConnected }: { storeId: string; onConnected: () => void }) {
+function ProviderPicker({ storeId, onConnected, onClose }: {
+  storeId: string;
+  onConnected: () => void;
+  /** Si fourni : bouton "← Retour" qui revient à la vue précédente (cas du switch sur un bot déjà connecté). */
+  onClose?: () => void;
+}) {
   const [provider, setProvider] = useState<'meta' | 'wasender' | null>(null);
   const goBack = () => setProvider(null);
 
@@ -455,8 +476,17 @@ function ProviderPicker({ storeId, onConnected }: { storeId: string; onConnected
 
   return (
     <section className="rounded-2xl border border-border/60 bg-card p-4">
-      <h2 className="text-sm font-semibold">Choisis ton fournisseur WhatsApp</h2>
-      <p className="mt-1 text-xs text-muted-foreground">Les deux servent le même bot Claude — seule la couche d'envoi/réception change.</p>
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <h2 className="text-sm font-semibold">Choisis ton fournisseur WhatsApp</h2>
+          <p className="mt-1 text-xs text-muted-foreground">Les deux servent le même bot Claude — seule la couche d'envoi/réception change.</p>
+        </div>
+        {onClose && (
+          <Button variant="outline" size="sm" onClick={onClose} className="shrink-0 gap-1.5">
+            ← Retour
+          </Button>
+        )}
+      </div>
       <div className="mt-4 grid gap-3 sm:grid-cols-2">
         <button
           type="button"

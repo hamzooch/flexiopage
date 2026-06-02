@@ -46,6 +46,7 @@ export async function connectWhatsApp(req: AuthRequest, res: Response): Promise<
         $set: {
           vendor_id: storeId,
           channel: 'whatsapp',
+          whatsapp_provider: 'meta',
           whatsapp_phone_number_id: phoneNumberId,
           whatsapp_business_account_id: wabaId,
           whatsapp_display_number: display,
@@ -53,10 +54,12 @@ export async function connectWhatsApp(req: AuthRequest, res: Response): Promise<
           page_name: display ? `WhatsApp ${display}` : 'WhatsApp',
           status: 'active',
         },
-        // Évite que setDefaultsOnInsert ne laisse traîner des null sur le
-        // champ Messenger qui pourraient ressusciter une collision d'index
-        // si les anciens index unique non-partiels n'ont pas été migrés.
-        $unset: { facebook_page_id: '' },
+        // Nettoie les champs des autres providers :
+        //   - facebook_page_id : évite de ressusciter une collision d'index si
+        //     les anciens index unique non-partiels n'ont pas été migrés.
+        //   - wasender_* : cas du switch Wasender → Meta (sinon doc stale qui
+        //     occupe l'index unique partiel wasender_session_id).
+        $unset: { facebook_page_id: '', wasender_session_id: '', wasender_session_token_encrypted: '' },
       },
       { upsert: true, new: true, setDefaultsOnInsert: true },
     );
