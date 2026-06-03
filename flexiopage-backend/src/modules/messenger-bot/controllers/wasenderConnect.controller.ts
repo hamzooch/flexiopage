@@ -21,6 +21,7 @@ import { wasenderService, WasenderApiError, hashWasenderToken } from '../service
 import { getOwnedStoreId } from '../utils/vendorAuth';
 import { connectWasenderSchema } from '../schemas/config.schema';
 import { getCapturedWebhooks } from './wasenderWebhook.controller';
+import { getCapturedWorkerRuns } from '../workers/messageWorker';
 
 /**
  * Base URL publique du backend (sans le suffixe webhook). Wasender REJETTE
@@ -248,6 +249,19 @@ export async function recentWasenderWebhooks(req: AuthRequest, res: Response): P
     ? all.filter((w) => !w.sessionId || w.sessionId === sid || w.event === 'webhook.test' || w.sessionId === 'YOUR_API_KEY')
     : all;
   res.json({ items, total: items.length, sessionId: sid });
+}
+
+/**
+ * Renvoie les 10 derniers traitements de messages côté worker, filtrés par
+ * vendor du caller. Permet de voir si le bot a planté en cours de génération
+ * (Claude/OpenRouter erreur, tool_use sans texte final, send échec, etc).
+ */
+export async function recentWorkerRuns(req: AuthRequest, res: Response): Promise<void> {
+  const storeId = await getOwnedStoreId(req);
+  if (!storeId) { res.status(403).json({ error: 'storeId requis et doit t’appartenir.' }); return; }
+  const all = getCapturedWorkerRuns();
+  const items = all.filter((r) => r.vendorId === storeId);
+  res.json({ items, total: items.length });
 }
 
 export async function disconnectWasender(req: AuthRequest, res: Response): Promise<void> {

@@ -1097,6 +1097,25 @@ export const whatsappBotApi = {
       total: number;
       sessionId?: string;
     }>(`/messenger-bot/wasender/recent-webhooks?storeId=${encodeURIComponent(storeId)}`),
+  wasenderRecentWorkerRuns: (storeId: string) =>
+    api.get<{
+      items: Array<{
+        at: string;
+        conversationId: string;
+        vendorId: string;
+        customerText: string;
+        status: 'success' | 'error' | 'empty_reply';
+        step: 'load_context' | 'claude_call' | 'tool_execution' | 'persist' | 'send' | 'complete';
+        errorMessage?: string;
+        modelUsed?: string;
+        toolsUsed?: string[];
+        replyPreview?: string;
+        tokensInput?: number;
+        tokensOutput?: number;
+        costUsd?: number;
+      }>;
+      total: number;
+    }>(`/messenger-bot/wasender/recent-worker-runs?storeId=${encodeURIComponent(storeId)}`),
   listConversations: (storeId: string, params?: { status?: string; limit?: number; skip?: number }) =>
     api.get<{ conversations: MessengerConversation[]; total: number }>(wb(storeId, '/conversations'), { params }),
   getConversation: (storeId: string, id: string) =>

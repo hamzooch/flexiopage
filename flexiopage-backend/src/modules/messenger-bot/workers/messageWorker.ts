@@ -37,6 +37,37 @@ import { User } from '../../../models/User.model';
 
 const MAX_TOOL_ITERATIONS = 4;
 
+/**
+ * Buffer mémoire des N derniers traitements de messages — exposé via un
+ * endpoint admin pour debug en prod quand on n'a pas accès aux logs.
+ * RAZ au redémarrage. Capture le résultat (success/error) de chaque
+ * processIncomingMessage, avec assez de détail pour identifier où ça casse.
+ */
+export interface CapturedWorkerRun {
+  at: string;
+  conversationId: string;
+  vendorId: string;
+  customerText: string;
+  status: 'success' | 'error' | 'empty_reply';
+  step: 'load_context' | 'claude_call' | 'tool_execution' | 'persist' | 'send' | 'complete';
+  errorMessage?: string;
+  modelUsed?: string;
+  toolsUsed?: string[];
+  replyPreview?: string;
+  tokensInput?: number;
+  tokensOutput?: number;
+  costUsd?: number;
+}
+const WORKER_BUFFER_MAX = 10;
+const capturedWorkerRuns: CapturedWorkerRun[] = [];
+function captureRun(entry: CapturedWorkerRun): void {
+  capturedWorkerRuns.unshift(entry);
+  if (capturedWorkerRuns.length > WORKER_BUFFER_MAX) capturedWorkerRuns.length = WORKER_BUFFER_MAX;
+}
+export function getCapturedWorkerRuns(): CapturedWorkerRun[] {
+  return capturedWorkerRuns;
+}
+
 function isDryRun(): boolean {
   return process.env.MESSENGER_DRY_RUN === '1' || process.env.MESSENGER_DRY_RUN === 'true';
 }
@@ -59,6 +90,15 @@ export async function processIncomingMessage(job: IncomingMessageJob): Promise<P
   const config = await BotConfig.findById(job.botConfigId);
   const conversation = await Conversation.findById(job.conversationId);
   if (!config || !conversation) {
+    captureRun({
+      at: new Date().toISOString(),
+      conversationId: job.conversationId,
+      vendorId: job.vendorId,
+      customerText: (job.text || '').slice(0, 100),
+      status: 'error',
+      step: 'load_context',
+      errorMessage: 'BotConfig ou Conversation introuvable',
+    });
     throw new Error('BotConfig ou Conversation introuvable');
   }
 
@@ -210,9 +250,45 @@ export async function processIncomingMessage(job: IncomingMessageJob): Promise<P
         await handleInvalidToken(config, err);
       } else {
         logger.error({ err: (err as Error).message, channel: config.channel, provider: config.whatsapp_provider }, '[messenger-bot] envoi réponse échec');
+        captureRun({
+          at: new Date().toISOString(),
+          conversationId: String(conversation._id),
+          vendorId: String(config.vendor_id),
+          customerText: (job.text || '').slice(0, 100),
+          status: 'error',
+          step: 'send',
+          errorMessage: `Envoi ${config.whatsapp_provider || config.channel} échec : ${(err as Error).message}`,
+          modelUsed: lastModel,
+          toolsUsed,
+          replyPreview: replyText.slice(0, 200),
+          tokensInput: totalIn,
+          tokensOutput: totalOut,
+          costUsd: totalCost,
+        });
       }
     }
   }
+
+  // Capture du run global. Si replyText est vide, on flag explicitement
+  // 'empty_reply' pour qu'on voie tout de suite si Claude n'a pas généré de
+  // texte (cas tool-use sans message final, max iterations atteint, etc).
+  captureRun({
+    at: new Date().toISOString(),
+    conversationId: String(conversation._id),
+    vendorId: String(config.vendor_id),
+    customerText: (job.text || '').slice(0, 100),
+    status: replyText ? 'success' : 'empty_reply',
+    step: replyText ? 'complete' : 'claude_call',
+    modelUsed: lastModel,
+    toolsUsed,
+    replyPreview: replyText.slice(0, 200),
+    tokensInput: totalIn,
+    tokensOutput: totalOut,
+    costUsd: totalCost,
+    errorMessage: replyText
+      ? undefined
+      : `Claude a terminé sans produire de texte (tools: ${toolsUsed.join(',') || 'aucun'}, iterations max=${MAX_TOOL_ITERATIONS}). Vérifier le system prompt / la cohérence tool_use.`,
+  });
 
   return { replyText, toolsUsed, orderId: createdOrderId, tokensInput: totalIn, tokensOutput: totalOut, costUsd: totalCost };
 }
@@ -345,7 +421,21 @@ async function sendTokenInvalidEmail(to: string, config: IBotConfig): Promise<vo
 /** Branche le processor sur la file (appelé au démarrage du module). */
 export function registerMessageWorker(): void {
   messageQueue.registerProcessor(async (job) => {
-    await processIncomingMessage(job);
+    try {
+      await processIncomingMessage(job);
+    } catch (err) {
+      // Filet de sécurité — toute erreur non capturée plus haut atterrit ici.
+      captureRun({
+        at: new Date().toISOString(),
+        conversationId: job.conversationId,
+        vendorId: job.vendorId,
+        customerText: (job.text || '').slice(0, 100),
+        status: 'error',
+        step: 'claude_call',
+        errorMessage: (err as Error).message || String(err),
+      });
+      throw err;
+    }
   });
   logger.info('[messenger-bot] worker enregistré (in-process — BullMQ à venir)');
 }

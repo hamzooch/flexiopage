@@ -142,7 +142,10 @@ export default function WhatsAppBotPage() {
           </div>
           <Inbox storeId={storeId} />
           {config.whatsapp_provider === 'wasender' && (
-            <WasenderWebhookDebug storeId={storeId} />
+            <>
+              <WasenderWorkerDebug storeId={storeId} />
+              <WasenderWebhookDebug storeId={storeId} />
+            </>
           )}
           <div className="flex flex-wrap gap-2">
             <Button variant="outline" size="sm" className="gap-1.5"
@@ -683,6 +686,99 @@ function WasenderQrPanel({ storeId, onConnected }: { storeId: string; onConnecte
           <RefreshCw className="h-3.5 w-3.5" /> Rafraîchir le QR
         </Button>
       </div>
+    </section>
+  );
+}
+
+/**
+ * Panel debug worker : montre les 10 derniers traitements Claude+Wasender,
+ * avec leur étape finale et l'erreur éventuelle. Permet de diagnostiquer
+ * pourquoi le bot ne répond pas (Claude vide, send échec, etc) sans logs.
+ */
+function WasenderWorkerDebug({ storeId }: { storeId: string }) {
+  const [items, setItems] = useState<Awaited<ReturnType<typeof whatsappBotApi.wasenderRecentWorkerRuns>>['data']['items']>([]);
+  const [loading, setLoading] = useState(false);
+  const [expandedIdx, setExpandedIdx] = useState<number | null>(null);
+
+  const refresh = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await whatsappBotApi.wasenderRecentWorkerRuns(storeId);
+      setItems(res.data.items);
+    } catch {
+      setItems([]);
+    } finally { setLoading(false); }
+  }, [storeId]);
+
+  useEffect(() => { void refresh(); }, [refresh]);
+
+  const badgeClass = (status: string) => {
+    switch (status) {
+      case 'success': return 'bg-emerald-500/10 text-emerald-700';
+      case 'empty_reply': return 'bg-amber-500/10 text-amber-800';
+      case 'error': return 'bg-rose-500/10 text-rose-700';
+      default: return 'bg-muted text-muted-foreground';
+    }
+  };
+
+  return (
+    <section className="rounded-2xl border border-border/60 bg-card">
+      <div className="flex items-center justify-between border-b border-border/40 px-5 py-3">
+        <div>
+          <h2 className="flex items-center gap-1.5 text-sm font-semibold">⚙️ Debug Worker Claude ({items.length})</h2>
+          <p className="text-[11px] text-muted-foreground">Les 10 derniers traitements de messages — voir si Claude répond, où ça casse.</p>
+        </div>
+        <button type="button" onClick={refresh} className="grid h-7 w-7 place-items-center rounded-md text-muted-foreground hover:bg-muted">
+          <RefreshCw className={cn('h-3.5 w-3.5', loading && 'animate-spin')} />
+        </button>
+      </div>
+      <ul className="divide-y divide-border/40">
+        {items.length === 0 && (
+          <li className="px-5 py-6 text-center text-xs text-muted-foreground">
+            Aucun traitement de message encore. Envoie un message client puis clique le ↻.
+          </li>
+        )}
+        {items.map((r, i) => (
+          <li key={`${r.at}-${i}`}>
+            <button
+              type="button"
+              onClick={() => setExpandedIdx(expandedIdx === i ? null : i)}
+              className="flex w-full items-center gap-2 px-5 py-2.5 text-left hover:bg-muted/40"
+            >
+              <span className={cn('rounded-full px-1.5 py-0.5 text-[9px] font-semibold uppercase', badgeClass(r.status))}>
+                {r.status}
+              </span>
+              <code className="text-xs font-mono">{r.step}</code>
+              <span className="truncate text-[11px] text-muted-foreground">
+                {r.customerText ? `« ${r.customerText.slice(0, 40)} »` : ''}
+              </span>
+              {r.errorMessage && <span className="text-[11px] text-rose-700">— {r.errorMessage.slice(0, 50)}</span>}
+              <span className="ml-auto text-[10px] text-muted-foreground">{new Date(r.at).toLocaleTimeString()}</span>
+            </button>
+            {expandedIdx === i && (
+              <div className="space-y-2 bg-muted/30 px-5 py-3 text-[11px]">
+                <div><strong>Client :</strong> {r.customerText || '—'}</div>
+                <div><strong>Status :</strong> {r.status} · <strong>Step :</strong> {r.step}</div>
+                {r.modelUsed && <div><strong>Modèle :</strong> {r.modelUsed}</div>}
+                {r.toolsUsed && r.toolsUsed.length > 0 && (
+                  <div><strong>Tools utilisés :</strong> {r.toolsUsed.join(', ')}</div>
+                )}
+                {r.tokensInput !== undefined && (
+                  <div><strong>Tokens :</strong> in {r.tokensInput} · out {r.tokensOutput} · ${r.costUsd?.toFixed(5)}</div>
+                )}
+                {r.replyPreview && (
+                  <div><strong>Réponse :</strong> {r.replyPreview}</div>
+                )}
+                {r.errorMessage && (
+                  <div className="rounded-md bg-rose-500/10 px-2 py-1.5 text-rose-700">
+                    <strong>Erreur :</strong> {r.errorMessage}
+                  </div>
+                )}
+              </div>
+            )}
+          </li>
+        ))}
+      </ul>
     </section>
   );
 }
