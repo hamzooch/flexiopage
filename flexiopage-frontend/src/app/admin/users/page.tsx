@@ -12,9 +12,13 @@ import {
   Search, Loader2, Crown, Mail, Store as StoreIcon, BadgeCheck, Ban, Clock, ChevronRight,
   Plus, X, ShieldCheck, ShieldAlert, Eye, AlertCircle, CheckCircle2,
 } from 'lucide-react';
+import { Pagination } from '@/components/ui/pagination';
 
 export default function AdminUsersPage() {
   const [users, setUsers] = useState<AdminUser[]>([]);
+  const [total, setTotal] = useState(0);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(20);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [showCreate, setShowCreate] = useState(false);
@@ -26,20 +30,26 @@ export default function AdminUsersPage() {
   async function load() {
     setLoading(true);
     try {
-      const res = await adminApi.users(search.trim() || undefined);
+      const skip = (page - 1) * pageSize;
+      const res = await adminApi.users({
+        search: search.trim() || undefined,
+        limit: pageSize,
+        skip,
+      });
       setUsers(res.data.users);
+      setTotal(res.data.total ?? 0);
     } finally {
       setLoading(false);
     }
   }
-  useEffect(() => { load(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, []);
+  useEffect(() => { load(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [page, pageSize]);
 
   return (
     <Card>
       <CardHeader>
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="min-w-0">
-            <CardTitle className="text-base sm:text-lg">Utilisateurs ({users.length})</CardTitle>
+            <CardTitle className="text-base sm:text-lg">Utilisateurs ({total})</CardTitle>
             <CardDescription className="text-xs sm:text-sm">Clique sur une ligne pour voir le détail.</CardDescription>
           </div>
           {canCreate && (
@@ -60,7 +70,7 @@ export default function AdminUsersPage() {
           />
         )}
 
-        <form onSubmit={(e) => { e.preventDefault(); load(); }} className="mb-5 flex gap-2">
+        <form onSubmit={(e) => { e.preventDefault(); if (page !== 1) setPage(1); else load(); }} className="mb-5 flex gap-2">
           <div className="relative flex-1">
             <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <Input
@@ -80,6 +90,7 @@ export default function AdminUsersPage() {
             Aucun utilisateur trouvé.
           </p>
         ) : (
+          <>
           <ul className="divide-y divide-border">
             {users.map((u) => {
               const initials = (u.name || u.email).split(/[\s@]/).map((s) => s[0]).filter(Boolean).slice(0, 2).join('').toUpperCase();
@@ -126,6 +137,16 @@ export default function AdminUsersPage() {
               );
             })}
           </ul>
+          <Pagination
+            className="mt-4"
+            total={total}
+            page={page}
+            pageSize={pageSize}
+            onPageChange={setPage}
+            onPageSizeChange={(s) => { setPageSize(s); setPage(1); }}
+            disabled={loading}
+          />
+          </>
         )}
       </CardContent>
     </Card>

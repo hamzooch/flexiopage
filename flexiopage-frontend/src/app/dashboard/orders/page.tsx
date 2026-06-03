@@ -49,6 +49,7 @@ import {
   Check,
 } from 'lucide-react';
 import { PageHeader } from '@/components/dashboard/page-header';
+import { Pagination } from '@/components/ui/pagination';
 
 interface StoreType {
   _id: string;
@@ -154,6 +155,9 @@ export default function DashboardOrdersPage() {
   const { storeId: selectedStoreId, setStoreId: setSelectedStoreId } = useScopedStoreId(storeIdParam);
   const [stores, setStores] = useState<StoreType[]>([]);
   const [orders, setOrders] = useState<OrderType[]>([]);
+  const [total, setTotal] = useState(0);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(20);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
@@ -176,16 +180,25 @@ export default function DashboardOrdersPage() {
   const refreshOrders = useCallback(() => {
     if (!selectedStoreId) {
       setOrders([]);
+      setTotal(0);
       setLoading(false);
       return Promise.resolve();
     }
     setLoading(true);
+    const skip = (page - 1) * pageSize;
     return storesApi
-      .listOrders(selectedStoreId)
-      .then((res) => setOrders((res.data as { orders: OrderType[] }).orders))
-      .catch(() => setOrders([]))
+      .listOrders(selectedStoreId, { limit: pageSize, skip })
+      .then((res) => {
+        const data = res.data as { orders: OrderType[]; total: number };
+        setOrders(data.orders);
+        setTotal(data.total ?? 0);
+      })
+      .catch(() => {
+        setOrders([]);
+        setTotal(0);
+      })
       .finally(() => setLoading(false));
-  }, [selectedStoreId]);
+  }, [selectedStoreId, page, pageSize]);
 
   useEffect(() => { void refreshOrders(); }, [refreshOrders]);
 
@@ -555,18 +568,30 @@ export default function DashboardOrdersPage() {
             : 'Aucune commande ne correspond à tes filtres.'}
         />
       ) : (
-        <ul className="space-y-2.5">
-          {filteredOrders.map((o) => (
-            <OrderCard
-              key={o._id}
-              order={o}
-              storeId={selectedStoreId || ''}
-              expanded={expandedId === o._id}
-              onToggle={() => setExpandedId((id) => (id === o._id ? null : o._id))}
-              onChanged={refreshOrders}
+        <>
+          <ul className="space-y-2.5">
+            {filteredOrders.map((o) => (
+              <OrderCard
+                key={o._id}
+                order={o}
+                storeId={selectedStoreId || ''}
+                expanded={expandedId === o._id}
+                onToggle={() => setExpandedId((id) => (id === o._id ? null : o._id))}
+                onChanged={refreshOrders}
+              />
+            ))}
+          </ul>
+          <div className="mt-4 rounded-2xl border border-border/60 bg-card">
+            <Pagination
+              total={total}
+              page={page}
+              pageSize={pageSize}
+              onPageChange={setPage}
+              onPageSizeChange={(s) => { setPageSize(s); setPage(1); }}
+              disabled={loading}
             />
-          ))}
-        </ul>
+          </div>
+        </>
       )}
     </div>
   );

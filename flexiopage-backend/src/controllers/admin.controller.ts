@@ -473,6 +473,7 @@ export async function getStoreDrilldown(req: AuthRequest, res: Response): Promis
 export async function listUsers(req: AuthRequest, res: Response): Promise<void> {
   const search = String(req.query.search || '').trim();
   const limit = Math.min(parseInt(String(req.query.limit || DEFAULT_LIMIT), 10) || DEFAULT_LIMIT, 200);
+  const skip = parseInt(String(req.query.skip || '0'), 10) || 0;
   const filter: Record<string, unknown> = {};
   if (search) {
     filter.$or = [
@@ -480,11 +481,15 @@ export async function listUsers(req: AuthRequest, res: Response): Promise<void> 
       { name: { $regex: search, $options: 'i' } },
     ];
   }
-  const users = await User.find(filter)
-    .select('email name role emailVerified createdAt')
-    .sort({ createdAt: -1 })
-    .limit(limit)
-    .lean();
+  const [users, total] = await Promise.all([
+    User.find(filter)
+      .select('email name role emailVerified createdAt')
+      .sort({ createdAt: -1 })
+      .limit(limit)
+      .skip(skip)
+      .lean(),
+    User.countDocuments(filter),
+  ]);
 
   // Augment with counts (stores per user) — single aggregation
   const ids = users.map((u) => u._id);
@@ -499,30 +504,42 @@ export async function listUsers(req: AuthRequest, res: Response): Promise<void> 
       ...u,
       storeCount: countByOwner.get(u._id.toString()) || 0,
     })),
-    total: await User.countDocuments(filter),
+    total,
+    limit,
+    skip,
   });
 }
 
 /** GET /api/admin/stores */
 export async function listStores(req: AuthRequest, res: Response): Promise<void> {
   const limit = Math.min(parseInt(String(req.query.limit || DEFAULT_LIMIT), 10) || DEFAULT_LIMIT, 200);
-  const stores = await Store.find()
-    .populate('ownerId', 'email name')
-    .sort({ createdAt: -1 })
-    .limit(limit)
-    .lean();
-  res.json({ stores, total: await Store.countDocuments() });
+  const skip = parseInt(String(req.query.skip || '0'), 10) || 0;
+  const [stores, total] = await Promise.all([
+    Store.find()
+      .populate('ownerId', 'email name')
+      .sort({ createdAt: -1 })
+      .limit(limit)
+      .skip(skip)
+      .lean(),
+    Store.countDocuments(),
+  ]);
+  res.json({ stores, total, limit, skip });
 }
 
 /** GET /api/admin/orders */
 export async function listOrders(req: AuthRequest, res: Response): Promise<void> {
   const limit = Math.min(parseInt(String(req.query.limit || DEFAULT_LIMIT), 10) || DEFAULT_LIMIT, 200);
-  const orders = await Order.find()
-    .populate('storeId', 'name slug')
-    .sort({ createdAt: -1 })
-    .limit(limit)
-    .lean();
-  res.json({ orders, total: await Order.countDocuments() });
+  const skip = parseInt(String(req.query.skip || '0'), 10) || 0;
+  const [orders, total] = await Promise.all([
+    Order.find()
+      .populate('storeId', 'name slug')
+      .sort({ createdAt: -1 })
+      .limit(limit)
+      .skip(skip)
+      .lean(),
+    Order.countDocuments(),
+  ]);
+  res.json({ orders, total, limit, skip });
 }
 
 /** GET /api/admin/wallets */

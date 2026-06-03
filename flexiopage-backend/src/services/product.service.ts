@@ -75,11 +75,23 @@ export async function updateProduct(
 
 export async function getProductsByStore(
   storeId: string,
-  options?: { publishedOnly?: boolean }
-): Promise<IProduct[]> {
+  options?: { publishedOnly?: boolean; limit?: number; skip?: number; search?: string }
+): Promise<{ products: IProduct[]; total: number }> {
   const q: Record<string, unknown> = { storeId };
   if (options?.publishedOnly) q.isPublished = true;
-  return Product.find(q).sort({ updatedAt: -1 }).lean<IProduct[]>();
+  if (options?.search) {
+    const re = new RegExp(options.search.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
+    q.$or = [{ name: re }, { slug: re }];
+  }
+  const [products, total] = await Promise.all([
+    Product.find(q)
+      .sort({ updatedAt: -1 })
+      .limit(options?.limit ?? 1000) // legacy callers : pas de limite stricte
+      .skip(options?.skip ?? 0)
+      .lean<IProduct[]>(),
+    Product.countDocuments(q),
+  ]);
+  return { products, total };
 }
 
 export async function getProductById(productId: string, storeId: string): Promise<IProduct | null> {

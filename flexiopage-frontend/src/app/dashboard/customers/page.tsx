@@ -6,6 +6,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { storesApi } from '@/lib/api';
 import { useScopedStoreId } from '@/lib/use-scoped-store';
 import { Users } from 'lucide-react';
+import { Pagination } from '@/components/ui/pagination';
 
 interface StoreType {
   _id: string;
@@ -25,6 +26,9 @@ export default function DashboardCustomersPage() {
   const { storeId: selectedStoreId, setStoreId: setSelectedStoreId } = useScopedStoreId(storeIdParam);
   const [stores, setStores] = useState<StoreType[]>([]);
   const [customers, setCustomers] = useState<CustomerType[]>([]);
+  const [total, setTotal] = useState(0);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(20);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -39,16 +43,25 @@ export default function DashboardCustomersPage() {
   useEffect(() => {
     if (!selectedStoreId) {
       setCustomers([]);
+      setTotal(0);
       setLoading(false);
       return;
     }
     setLoading(true);
+    const skip = (page - 1) * pageSize;
     storesApi
-      .listCustomers(selectedStoreId)
-      .then((res) => setCustomers((res.data as { customers: CustomerType[] }).customers))
-      .catch(() => setCustomers([]))
+      .listCustomers(selectedStoreId, { limit: pageSize, skip })
+      .then((res) => {
+        const data = res.data as { customers: CustomerType[]; total: number };
+        setCustomers(data.customers);
+        setTotal(data.total ?? 0);
+      })
+      .catch(() => {
+        setCustomers([]);
+        setTotal(0);
+      })
       .finally(() => setLoading(false));
-  }, [selectedStoreId]);
+  }, [selectedStoreId, page, pageSize]);
 
   return (
     <div className="space-y-5 sm:space-y-8">
@@ -144,6 +157,17 @@ export default function DashboardCustomersPage() {
               </div>
             </CardContent>
           </Card>
+
+          <div className="mt-4 rounded-2xl border border-border/60 bg-card">
+            <Pagination
+              total={total}
+              page={page}
+              pageSize={pageSize}
+              onPageChange={setPage}
+              onPageSizeChange={(s) => { setPageSize(s); setPage(1); }}
+              disabled={loading}
+            />
+          </div>
         </>
       )}
     </div>

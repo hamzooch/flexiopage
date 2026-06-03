@@ -209,13 +209,18 @@ export async function updateOrderFulfillment(
 export async function getOrdersByStore(
   storeId: string,
   options?: { limit?: number; skip?: number }
-): Promise<IOrder[]> {
-  return Order.find({ storeId })
-    .sort({ createdAt: -1 })
-    .limit(options?.limit ?? 50)
-    .skip(options?.skip ?? 0)
-    .populate('customerId', 'email name phone')
-    .lean<IOrder[]>();
+): Promise<{ orders: IOrder[]; total: number }> {
+  const filter = { storeId };
+  const [orders, total] = await Promise.all([
+    Order.find(filter)
+      .sort({ createdAt: -1 })
+      .limit(options?.limit ?? 50)
+      .skip(options?.skip ?? 0)
+      .populate('customerId', 'email name phone')
+      .lean<IOrder[]>(),
+    Order.countDocuments(filter),
+  ]);
+  return { orders, total };
 }
 
 export async function getOrderById(orderId: string, storeId: string): Promise<IOrder | null> {

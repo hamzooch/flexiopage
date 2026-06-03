@@ -159,7 +159,7 @@ router.get('/stores/:storeSlug/products', async (req: Request, res: Response): P
     res.status(404).json({ error: 'Store not found' });
     return;
   }
-  const products = await productService.getProductsByStore(store._id.toString(), { publishedOnly: true });
+  const { products } = await productService.getProductsByStore(store._id.toString(), { publishedOnly: true });
   res.json({ products });
 });
 

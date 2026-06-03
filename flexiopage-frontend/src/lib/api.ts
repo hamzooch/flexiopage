@@ -467,8 +467,8 @@ export const adminApi = {
     api.get<import('@/types/admin-analytics').AdminOverviewRich>('/admin/overview/rich', { params: { range } }),
   storeDrilldown: (storeId: string, range: import('@/types/analytics').RangeKey = '30d') =>
     api.get<import('@/types/admin-analytics').AdminStoreDrilldown>(`/admin/stores/${storeId}/analytics`, { params: { range } }),
-  users: (search?: string) =>
-    api.get<{ users: AdminUser[]; total: number }>('/admin/users', { params: { search } }),
+  users: (params?: { search?: string; limit?: number; skip?: number }) =>
+    api.get<{ users: AdminUser[]; total: number; limit: number; skip: number }>('/admin/users', { params }),
   userDetail: (userId: string) =>
     api.get<AdminUserDetail>(`/admin/users/${userId}`),
   createUser: (data: { email: string; name: string; password: string; role: StaffRole }) =>
@@ -506,8 +506,10 @@ export const adminApi = {
     ),
   deleteUser: (userId: string) =>
     api.delete<{ ok: boolean; email: string }>(`/admin/users/${userId}`),
-  stores: () => api.get<{ stores: AdminStore[]; total: number }>('/admin/stores'),
-  orders: () => api.get<{ orders: AdminOrder[]; total: number }>('/admin/orders'),
+  stores: (params?: { limit?: number; skip?: number }) =>
+    api.get<{ stores: AdminStore[]; total: number; limit: number; skip: number }>('/admin/stores', { params }),
+  orders: (params?: { limit?: number; skip?: number }) =>
+    api.get<{ orders: AdminOrder[]; total: number; limit: number; skip: number }>('/admin/orders', { params }),
   wallets: () => api.get<{ wallets: AdminWallet[] }>('/admin/wallets'),
   activity: (params?: { limit?: number; cursor?: string; type?: string }) =>
     api.get<{ items: AdminActivityEvent[]; nextCursor: string | null }>('/admin/activity', { params }),
@@ -586,8 +588,8 @@ export const storesApi = {
   testSheets: (storeId: string, webhookUrl?: string) =>
     api.post<{ ok: boolean; status?: number; error?: string }>(`/stores/${storeId}/integrations/sheets/test`, { webhookUrl }),
   // Products
-  listProducts: (storeId: string, params?: { published?: string }) =>
-    api.get<{ products: unknown[] }>(`/stores/${storeId}/products`, { params }),
+  listProducts: (storeId: string, params?: { published?: string; limit?: number; skip?: number; search?: string }) =>
+    api.get<{ products: unknown[]; total: number; limit: number; skip: number }>(`/stores/${storeId}/products`, { params }),
   createProduct: (storeId: string, data: Record<string, unknown>) =>
     api.post<{ product: unknown }>(`/stores/${storeId}/products`, data),
   /** Extrait les infos d'un lien AliExpress/Alibaba/Amazon (sans créer). */
@@ -761,7 +763,7 @@ export const storesApi = {
     api.delete(`/stores/${storeId}/pages/${pageId}`),
   // Orders
   listOrders: (storeId: string, params?: { limit?: number; skip?: number }) =>
-    api.get<{ orders: unknown[] }>(`/stores/${storeId}/orders`, { params }),
+    api.get<{ orders: unknown[]; total: number; limit: number; skip: number }>(`/stores/${storeId}/orders`, { params }),
   createOrder: (storeId: string, data: Record<string, unknown>) =>
     api.post<{ order: unknown }>(`/stores/${storeId}/orders`, data),
   getOrder: (storeId: string, orderId: string) =>
@@ -787,8 +789,8 @@ export const storesApi = {
   }) =>
     api.patch<{ order: unknown; restockedItems: number }>(`/stores/${storeId}/orders/${orderId}/confirmation`, data),
   // Customers
-  listCustomers: (storeId: string) =>
-    api.get<{ customers: unknown[] }>(`/stores/${storeId}/customers`),
+  listCustomers: (storeId: string, params?: { limit?: number; skip?: number; search?: string }) =>
+    api.get<{ customers: unknown[]; total: number; limit: number; skip: number }>(`/stores/${storeId}/customers`, { params }),
   // Media
   listMedia: (storeId: string) => api.get<{ media: unknown[] }>(`/stores/${storeId}/media`),
   uploadMedia: (storeId: string, file: File) => {

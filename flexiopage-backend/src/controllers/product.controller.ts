@@ -134,8 +134,13 @@ export async function importCreateProduct(req: AuthRequest, res: Response): Prom
 export async function listProducts(req: AuthRequest, res: Response): Promise<void> {
   const store = req.store!;
   const publishedOnly = req.query.published === 'true';
-  const products = await productService.getProductsByStore(store._id.toString(), { publishedOnly });
-  res.json({ products });
+  const limit = Math.min(parseInt(req.query.limit as string, 10) || 50, 200);
+  const skip = parseInt(req.query.skip as string, 10) || 0;
+  const search = String(req.query.search || '').trim() || undefined;
+  const { products, total } = await productService.getProductsByStore(store._id.toString(), {
+    publishedOnly, limit, skip, search,
+  });
+  res.json({ products, total, limit, skip });
 }
 
 export async function getProduct(req: AuthRequest, res: Response): Promise<void> {

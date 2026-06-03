@@ -9,6 +9,7 @@ import { storesApi } from '@/lib/api';
 import { useScopedStoreId } from '@/lib/use-scoped-store';
 import { cn, formatCurrency, mediaUrl } from '@/lib/utils';
 import { Package, Plus, ImageIcon, Cloud } from 'lucide-react';
+import { Pagination } from '@/components/ui/pagination';
 
 interface StoreType {
   _id: string;
@@ -35,6 +36,9 @@ export default function DashboardProductsPage() {
   const { storeId: selectedStoreId, setStoreId: setSelectedStoreId } = useScopedStoreId(storeIdParam);
   const [stores, setStores] = useState<StoreType[]>([]);
   const [products, setProducts] = useState<ProductType[]>([]);
+  const [total, setTotal] = useState(0);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(20);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -49,16 +53,25 @@ export default function DashboardProductsPage() {
   useEffect(() => {
     if (!selectedStoreId) {
       setProducts([]);
+      setTotal(0);
       setLoading(false);
       return;
     }
     setLoading(true);
+    const skip = (page - 1) * pageSize;
     storesApi
-      .listProducts(selectedStoreId)
-      .then((res) => setProducts((res.data as { products: ProductType[] }).products))
-      .catch(() => setProducts([]))
+      .listProducts(selectedStoreId, { limit: pageSize, skip })
+      .then((res) => {
+        const data = res.data as { products: ProductType[]; total: number };
+        setProducts(data.products);
+        setTotal(data.total ?? 0);
+      })
+      .catch(() => {
+        setProducts([]);
+        setTotal(0);
+      })
       .finally(() => setLoading(false));
-  }, [selectedStoreId]);
+  }, [selectedStoreId, page, pageSize]);
 
   const activeStore = stores.find((s) => s._id === selectedStoreId);
   const isDigitalStore = activeStore?.storeType === 'digital';
@@ -121,6 +134,7 @@ export default function DashboardProductsPage() {
           </CardContent>
         </Card>
       ) : (
+        <>
         <div className="grid gap-3 grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
           {products.map((p, i) => {
             const cover = mediaUrl(p.images?.[0]);
@@ -226,6 +240,17 @@ export default function DashboardProductsPage() {
             );
           })}
         </div>
+        <div className="mt-4 rounded-2xl border border-border/60 bg-card">
+          <Pagination
+            total={total}
+            page={page}
+            pageSize={pageSize}
+            onPageChange={setPage}
+            onPageSizeChange={(s) => { setPageSize(s); setPage(1); }}
+            disabled={loading}
+          />
+        </div>
+        </>
       )}
 
       {/* Card animations — keyframes colocated; pure CSS, no JS. */}

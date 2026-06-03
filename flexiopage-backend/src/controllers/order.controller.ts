@@ -53,8 +53,8 @@ export async function listOrders(req: AuthRequest, res: Response): Promise<void>
   const store = req.store!;
   const limit = Math.min(parseInt(req.query.limit as string, 10) || 50, 100);
   const skip = parseInt(req.query.skip as string, 10) || 0;
-  const orders = await orderService.getOrdersByStore(store._id.toString(), { limit, skip });
-  res.json({ orders });
+  const { orders, total } = await orderService.getOrdersByStore(store._id.toString(), { limit, skip });
+  res.json({ orders, total, limit, skip });
 }
 
 export async function getOrder(req: AuthRequest, res: Response): Promise<void> {
