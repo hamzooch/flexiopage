@@ -24,6 +24,11 @@ COPY --from=builder /app/dist ./dist
 # They stay in scripts/ as TypeScript files; tsx is now a prod dep and
 # executes them on the fly via `npm run seed:*`.
 COPY scripts ./scripts
+# Les scripts importent depuis '../src/...' (config, models, services).
+# tsx résout les chemins relatifs à partir du fichier source — on copie
+# donc src/ aussi pour que les `npm run seed:*` fonctionnent en prod
+# sans avoir à pré-builder les scripts ou bricoler les imports.
+COPY src ./src
 
 EXPOSE 5000
 
