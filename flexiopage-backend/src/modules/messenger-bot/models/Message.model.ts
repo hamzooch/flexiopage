@@ -27,6 +27,14 @@ export interface IMessage extends Document {
   tool_calls?: Record<string, unknown>[];
 
   messenger_message_id?: string;
+  /**
+   * Clé déterministe pour la déduplication atomique au niveau DB. Calculée par
+   * le webhook entrant comme SHA-256(conversation_id + sender + content +
+   * timeBucket60s). Un index unique partiel rejette toute insertion en
+   * doublon, ce qui évite les conditions de course (check-then-write) quand
+   * Wasender renvoie plusieurs events pour le même message client.
+   */
+  dedup_key?: string;
   delivered?: boolean;
   read?: boolean;
 
@@ -53,6 +61,7 @@ const MessageSchema = new Schema<IMessage>(
     tool_calls: { type: [Schema.Types.Mixed], default: undefined },
 
     messenger_message_id: { type: String },
+    dedup_key: { type: String },
     delivered: { type: Boolean },
     read: { type: Boolean },
 
@@ -69,6 +78,14 @@ MessageSchema.index({ conversation_id: 1, timestamp: 1 });
 MessageSchema.index(
   { messenger_message_id: 1 },
   { unique: true, partialFilterExpression: { messenger_message_id: { $type: 'string' } } },
+);
+// Dedup atomique : si plusieurs webhooks Wasender (messages.received +
+// messages.upsert + messages-personal.received) arrivent simultanément pour
+// le même message client, le 2e insert lèvera 11000 et sera ignoré
+// silencieusement par le controller.
+MessageSchema.index(
+  { dedup_key: 1 },
+  { unique: true, partialFilterExpression: { dedup_key: { $type: 'string' } } },
 );
 
 export const Message = mongoose.model<IMessage>('Message', MessageSchema);

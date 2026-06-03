@@ -358,25 +358,10 @@ export async function receiveWasenderWebhook(req: Request, res: Response): Promi
       return;
     }
 
-    // Dedup fuzzy : si plusieurs events (messages.received + messages.upsert
-    // + messages-personal.received) sont souscrits côté Wasender pour la même
-    // session, ils arrivent avec des messageId potentiellement différents pour
-    // le même message client. On ignore donc tout message du même expéditeur
-    // avec le même contenu reçu dans les 30 dernières secondes.
+    // Le texte effectif sert à la dedup atomique côté DB (cf. dedupKey plus
+    // bas). On le prépare ici pour l'utiliser à la fois dans le hash et
+    // dans le contenu enregistré.
     const text = norm.kind === 'text' ? (norm.text || '') : `[${norm.kind}]${norm.caption ? ' ' + norm.caption : ''}`;
-    if (text) {
-      const fuzzyDupe = await Message.exists({
-        vendor_id: config.vendor_id,
-        sender: 'customer',
-        content: text,
-        timestamp: { $gte: new Date(Date.now() - 30_000) },
-      });
-      if (fuzzyDupe) {
-        capture({ at: new Date().toISOString(), event, sessionId, signatureMatched: true, processed: 'ignored', reason: 'fuzzy duplicate (30s window)', payload });
-        logger.info({ event, text: text.slice(0, 40) }, '[wasender] message dupliqué (fenêtre 30s) — ignoré');
-        return;
-      }
-    }
 
     let content: string;
     let mediaType: IncomingMediaType | undefined;
@@ -413,6 +398,17 @@ export async function receiveWasenderWebhook(req: Request, res: Response): Promi
       });
     }
 
+    // Clé de dedup déterministe : hash de (conversation + sender + contenu +
+    // bucket 60s). Si plusieurs webhooks Wasender arrivent en parallèle pour
+    // le même message client, le 2e insert tombera sur l'index unique
+    // partial → 11000 → on skip silencieusement. Aucune race possible vs le
+    // check-then-write précédent.
+    const bucket60s = Math.floor(Date.now() / 60_000);
+    const dedupKey = crypto
+      .createHash('sha256')
+      .update(`${conv._id.toString()}|customer|${content}|${bucket60s}`)
+      .digest('hex');
+
     try {
       await Message.create({
         conversation_id: conv._id,
@@ -421,9 +417,14 @@ export async function receiveWasenderWebhook(req: Request, res: Response): Promi
         content,
         attachments,
         messenger_message_id: norm.messageId,
+        dedup_key: dedupKey,
       });
     } catch (e) {
-      if ((e as { code?: number }).code === 11000) return;
+      if ((e as { code?: number }).code === 11000) {
+        capture({ at: new Date().toISOString(), event, sessionId, signatureMatched: true, processed: 'ignored', reason: 'dedup_key duplicate (atomic)', payload });
+        logger.info({ event, text: content.slice(0, 40) }, '[wasender] message dupliqué (dedup_key) — ignoré');
+        return;
+      }
       throw e;
     }
     conv.message_count += 1;
