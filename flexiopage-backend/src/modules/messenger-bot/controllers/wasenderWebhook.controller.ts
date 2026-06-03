@@ -16,7 +16,8 @@
 import type { Request, Response } from 'express';
 import crypto from 'crypto';
 import { logger } from '../../../lib/logger';
-import { BotConfig } from '../models/BotConfig.model';
+import { BotConfig, type IBotConfig } from '../models/BotConfig.model';
+import type { HydratedDocument } from 'mongoose';
 import { Conversation } from '../models/Conversation.model';
 import { Message } from '../models/Message.model';
 import { messageQueue } from '../services/queue.service';
@@ -213,7 +214,7 @@ export async function receiveWasenderWebhook(req: Request, res: Response): Promi
   // Si la route inclut un :webhookId → mode multi-vendeur : on lookup la
   // BotConfig dès le départ pour vérifier le secret par session. Si pas
   // d'id (route legacy `/webhook/wasender`) on tombe sur le secret global.
-  let routedConfig: Awaited<ReturnType<typeof BotConfig.findOne>> | null = null;
+  let routedConfig: HydratedDocument<IBotConfig> | null = null;
   if (webhookIdParam) {
     routedConfig = await BotConfig.findOne({
       wasender_webhook_id: webhookIdParam,
