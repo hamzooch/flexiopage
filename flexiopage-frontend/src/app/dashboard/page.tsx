@@ -388,10 +388,10 @@ export default function DashboardOverviewPage() {
       {activeStore && (
         <section className="grid grid-cols-4 gap-2 sm:gap-3">
           <KpiCard
-            label="Revenu (payé)"
-            value={<KpiMoney amount={k?.revenue.value ?? 0} currency={currency} />}
-            deltaPct={k?.revenue.deltaPct ?? null}
-            previousValue={formatCurrency(k?.revenue.previous ?? 0, currency)}
+            label="Revenu total"
+            value={<KpiMoney amount={k?.sales.value ?? 0} currency={currency} />}
+            deltaPct={k?.sales.deltaPct ?? null}
+            previousValue={formatCurrency(k?.sales.previous ?? 0, currency)}
             icon={Wallet}
             tone="emerald"
             loading={loadingAnalytics && !analytics}
