@@ -32,6 +32,7 @@ import { ProductPageEditor } from '@/components/dashboard/product-page-editor';
 import { StoreHomepageLivePreview } from '@/components/dashboard/store-homepage-live-preview';
 import type { ProductPageSettings } from '@/lib/product-page-order';
 import type { ThemeTokens } from '@/data/store-themes';
+import { getRecommendedSectionsForTheme, type SectionId as ThemeSectionId } from '@/lib/theme-sections';
 import {
   Megaphone,
   Navigation,
@@ -45,6 +46,9 @@ import {
   MessageCircle,
   ChevronUp,
   ChevronDown,
+  Eye,
+  EyeOff,
+  Palette,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -167,6 +171,10 @@ export default function StoreSectionsPage() {
   const searchParams = useSearchParams();
   const initialScope = searchParams?.get('scope') === 'product' ? 'product' : 'home';
   const [scope, setScope] = useState<'home' | 'product'>(initialScope);
+  // Quand `false`, l'éditeur ne montre que les sections recommandées par le
+  // thème actif. Quand `true`, on affiche tout (utile pour réactiver une
+  // section masquée par le thème mais que le vendeur veut quand même).
+  const [showAllSections, setShowAllSections] = useState(false);
 
   useEffect(() => {
     if (!storeId) return;
@@ -287,6 +295,17 @@ export default function StoreSectionsPage() {
     return <p className="text-muted-foreground">Loading...</p>;
   }
 
+  // Sync thème ↔ sections : filtrer les sections en fonction des
+  // recommandations du thème actif. Le vendeur peut tout afficher via le
+  // toggle pour réactiver une section masquée.
+  const themeRec = getRecommendedSectionsForTheme(store.theme as Partial<ThemeTokens> | undefined);
+  const visibleSections = showAllSections
+    ? SECTIONS
+    : SECTIONS.filter((s) => themeRec.recommended.has(s.id as ThemeSectionId));
+  const visibleSectionIds = new Set(visibleSections.map((s) => s.id));
+  const hiddenByThemeCount = SECTIONS.length - visibleSections.length;
+  const isCardVisible = (id: string) => visibleSectionIds.has(id);
+
   const storefrontActiveCount = SECTIONS.filter((s) => s.isActive(storefront)).length;
   const totalSections = SECTIONS.length + 1; // + Whatsapp
   const activeCount = storefrontActiveCount + (WHATSAPP_SECTION.isActive(whatsapp) ? 1 : 0);
@@ -378,7 +397,9 @@ export default function StoreSectionsPage() {
                     ordered.push(s);
                   }
                 }
-                return ordered;
+                // Filtre selon la recommandation du thème actif (sauf si
+                // showAllSections est ON, auquel cas on garde tout).
+                return ordered.filter((s) => visibleSectionIds.has(s.id));
               })().map((s, navIndex, navArr) => {
                 const Icon = s.icon;
                 const isActive = s.isActive(storefront);
@@ -518,6 +539,34 @@ export default function StoreSectionsPage() {
 
         {/* ── RIGHT — scrollable section cards ──────────────────── */}
         <div className="space-y-5">
+          {/* Bandeau info : explique quelles sections sont recommandées
+              par le thème actif. Permet aussi de tout afficher si le
+              vendeur veut réactiver une section masquée. */}
+          {hiddenByThemeCount > 0 || !showAllSections ? (
+            <div className="flex flex-col gap-2 rounded-2xl border border-primary/20 bg-gradient-to-r from-primary/5 to-fuchsia-500/5 p-3 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex items-start gap-2.5 min-w-0">
+                <span className="grid h-7 w-7 shrink-0 place-items-center rounded-lg bg-gradient-to-br from-primary to-fuchsia-600 text-white shadow-sm">
+                  <Palette className="h-3.5 w-3.5" />
+                </span>
+                <div className="min-w-0">
+                  <div className="text-xs font-semibold text-foreground">
+                    {hiddenByThemeCount > 0 && !showAllSections
+                      ? `${hiddenByThemeCount} section${hiddenByThemeCount > 1 ? 's' : ''} masquée${hiddenByThemeCount > 1 ? 's' : ''} par le thème`
+                      : 'Toutes les sections affichées'}
+                  </div>
+                  <p className="text-[11px] text-muted-foreground">{themeRec.rationale}</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowAllSections((v) => !v)}
+                className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-border/60 bg-card px-2.5 py-1.5 text-[11px] font-semibold text-foreground hover:bg-muted"
+              >
+                {showAllSections ? <><EyeOff className="h-3 w-3" /> Replier sur le thème</> : <><Eye className="h-3 w-3" /> Afficher tout</>}
+              </button>
+            </div>
+          ) : null}
+
           <Card id="announcement" className="scroll-mt-6">
             <CardHeader>
               <CardTitle className="flex items-center gap-2 text-base">
@@ -556,7 +605,7 @@ export default function StoreSectionsPage() {
             </CardContent>
           </Card>
 
-          <Card id="hero" className="scroll-mt-6">
+          {isCardVisible('hero') && <Card id="hero" className="scroll-mt-6">
             <CardHeader>
               <CardTitle className="flex items-center gap-2 text-base">
                 <SparklesIcon className="h-4 w-4 text-primary" />
@@ -622,9 +671,9 @@ export default function StoreSectionsPage() {
                 </div>
               )}
             </CardContent>
-          </Card>
+          </Card>}
 
-          <Card id="slider" className="scroll-mt-6">
+          {isCardVisible('slider') && <Card id="slider" className="scroll-mt-6">
             <CardHeader>
               <CardTitle className="flex items-center gap-2 text-base">
                 <GalleryHorizontal className="h-4 w-4 text-primary" />
@@ -642,9 +691,9 @@ export default function StoreSectionsPage() {
                 onChange={(slider) => setStorefront({ ...storefront, slider })}
               />
             </CardContent>
-          </Card>
+          </Card>}
 
-          <Card id="products" className="scroll-mt-6">
+          {isCardVisible('products') && <Card id="products" className="scroll-mt-6">
             <CardHeader>
               <CardTitle className="flex items-center gap-2 text-base">
                 <LayoutGrid className="h-4 w-4 text-primary" />
@@ -675,9 +724,9 @@ export default function StoreSectionsPage() {
                 </div>
               )}
             </CardContent>
-          </Card>
+          </Card>}
 
-          <Card id="testimonials" className="scroll-mt-6">
+          {isCardVisible('testimonials') && <Card id="testimonials" className="scroll-mt-6">
             <CardHeader>
               <CardTitle className="flex items-center gap-2 text-base">
                 <MessageSquareQuote className="h-4 w-4 text-primary" />
@@ -694,9 +743,9 @@ export default function StoreSectionsPage() {
                 onChange={(testimonials) => setStorefront({ ...storefront, testimonials })}
               />
             </CardContent>
-          </Card>
+          </Card>}
 
-          <Card id="footer" className="scroll-mt-6">
+          {isCardVisible('footer') && <Card id="footer" className="scroll-mt-6">
             <CardHeader>
               <CardTitle className="flex items-center gap-2 text-base">
                 <PanelBottom className="h-4 w-4 text-primary" />
@@ -738,7 +787,7 @@ export default function StoreSectionsPage() {
                 </div>
               )}
             </CardContent>
-          </Card>
+          </Card>}
 
           <Card id="whatsapp" className="scroll-mt-6">
             <CardHeader>
