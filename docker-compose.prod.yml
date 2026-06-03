@@ -78,6 +78,12 @@ services:
       # Si OPENROUTER_API_KEY est défini, le service bascule sur OpenRouter
       # (compatible Messages API). Sinon Anthropic direct.
       OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+      # Override des slugs côté OpenRouter (les slugs réels ne suivent pas
+      # toujours la convention auto : claude-haiku-4.5 peut ne pas exister
+      # encore alors que claude-3-5-haiku existe). Laisser vide pour utiliser
+      # l'auto-convert depuis CLAUDE_MODEL_*.
+      OPENROUTER_MODEL_PRIMARY: ${OPENROUTER_MODEL_PRIMARY:-}
+      OPENROUTER_MODEL_FALLBACK: ${OPENROUTER_MODEL_FALLBACK:-}
       CLAUDE_MODEL_PRIMARY: ${CLAUDE_MODEL_PRIMARY:-claude-haiku-4-5-20251001}
       CLAUDE_MODEL_FALLBACK: ${CLAUDE_MODEL_FALLBACK:-claude-sonnet-4-5}
       FACEBOOK_APP_ID: ${FACEBOOK_APP_ID:-}

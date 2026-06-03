@@ -118,6 +118,15 @@ function getClient(provider: Provider): Anthropic {
  */
 function modelForProvider(model: string, provider: Provider): string {
   if (provider !== 'openrouter') return model;
+  // Override explicite via env (priorité maximale). Pratique car les slugs
+  // OpenRouter ne suivent pas toujours l'auto-convert (claude-haiku-4.5
+  // pourrait ne pas exister encore alors que claude-3-5-haiku existe).
+  if (model === CLAUDE_MODELS.primary && process.env.OPENROUTER_MODEL_PRIMARY) {
+    return process.env.OPENROUTER_MODEL_PRIMARY;
+  }
+  if (model === CLAUDE_MODELS.fallback && process.env.OPENROUTER_MODEL_FALLBACK) {
+    return process.env.OPENROUTER_MODEL_FALLBACK;
+  }
   if (model.includes('/')) return model; // déjà préfixé → tel quel
   const m = model.match(/^claude-(haiku|sonnet|opus)-(\d+)-(\d+)/i);
   if (m) return `anthropic/claude-${m[1].toLowerCase()}-${m[2]}.${m[3]}`;
@@ -137,17 +146,32 @@ export class ClaudeService {
       { type: 'text', text: systemPrompt, cache_control: { type: 'ephemeral' } },
     ];
 
-    const call = (model: string) =>
-      getClient(provider).messages.create({
-        model: modelForProvider(model, provider),
+    const callWith = (p: Provider) => (model: string) =>
+      getClient(p).messages.create({
+        model: modelForProvider(model, p),
         max_tokens: maxTokens,
         system,
         tools: tools && tools.length ? tools : undefined,
         messages: conversationHistory as Anthropic.MessageParam[],
       });
 
-    const resp = await this.withRetryAndFallback(call, provider);
-    return this.toResult(resp.model, resp.response);
+    try {
+      const resp = await this.withRetryAndFallback(callWith(provider), provider);
+      return this.toResult(resp.model, resp.response);
+    } catch (primaryErr) {
+      // Fallback inter-provider : si on était sur OpenRouter et qu'il a tout
+      // rejeté (typique : 404 sur un slug de modèle inconnu chez eux), on
+      // tente Anthropic direct comme dernier recours.
+      if (provider === 'openrouter' && process.env.ANTHROPIC_API_KEY) {
+        logger.warn(
+          { err: (primaryErr as Error).message },
+          '[messenger-bot] OpenRouter en échec — bascule sur Anthropic direct',
+        );
+        const resp = await this.withRetryAndFallback(callWith('anthropic'), 'anthropic');
+        return this.toResult(resp.model, resp.response);
+      }
+      throw primaryErr;
+    }
   }
 
   /**
