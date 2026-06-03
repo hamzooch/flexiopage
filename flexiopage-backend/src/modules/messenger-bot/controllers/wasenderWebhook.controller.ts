@@ -317,8 +317,31 @@ export async function receiveWasenderWebhook(req: Request, res: Response): Promi
       return;
     }
 
-    // Idempotence par id message Wasender.
-    if (norm.messageId && (await Message.exists({ messenger_message_id: norm.messageId }))) return;
+    // Idempotence stricte par id message Wasender.
+    if (norm.messageId && (await Message.exists({ messenger_message_id: norm.messageId }))) {
+      capture({ at: new Date().toISOString(), event, sessionId, signatureMatched: true, processed: 'ignored', reason: 'duplicate messageId', payload });
+      return;
+    }
+
+    // Dedup fuzzy : si plusieurs events (messages.received + messages.upsert
+    // + messages-personal.received) sont souscrits côté Wasender pour la même
+    // session, ils arrivent avec des messageId potentiellement différents pour
+    // le même message client. On ignore donc tout message du même expéditeur
+    // avec le même contenu reçu dans les 30 dernières secondes.
+    const text = norm.kind === 'text' ? (norm.text || '') : `[${norm.kind}]${norm.caption ? ' ' + norm.caption : ''}`;
+    if (text) {
+      const fuzzyDupe = await Message.exists({
+        vendor_id: config.vendor_id,
+        sender: 'customer',
+        content: text,
+        timestamp: { $gte: new Date(Date.now() - 30_000) },
+      });
+      if (fuzzyDupe) {
+        capture({ at: new Date().toISOString(), event, sessionId, signatureMatched: true, processed: 'ignored', reason: 'fuzzy duplicate (30s window)', payload });
+        logger.info({ event, text: text.slice(0, 40) }, '[wasender] message dupliqué (fenêtre 30s) — ignoré');
+        return;
+      }
+    }
 
     let content: string;
     let mediaType: IncomingMediaType | undefined;
