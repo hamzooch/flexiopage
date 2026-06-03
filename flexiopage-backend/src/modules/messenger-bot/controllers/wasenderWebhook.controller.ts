@@ -101,31 +101,64 @@ interface NormalizedMsg {
 }
 
 function normalizeMessage(payload: WasenderPayload): NormalizedMsg {
-  // Wasender encapsule typiquement le message dans `data` ou `data.message`.
+  // Wasender envoie le message sous `data.messages` (cf. docs officielles) :
+  //   - messages.received → data.messages est un OBJET unique
+  //   - messages.upsert (Baileys) → data.messages est un TABLEAU
+  //   - Variants legacy → data.message singulier
   const root = asObject(payload);
   const data = asObject(root.data);
-  const msg = asObject(data.message ?? root.message ?? data);
+  const raw = data.messages ?? data.message ?? root.message ?? data;
+  const msg = Array.isArray(raw) ? asObject(raw[0] as unknown) : asObject(raw);
   const key = asObject(msg.key);
-  const messageBody = asObject(msg.messageBody ?? msg.body ?? msg.content ?? msg);
+
+  // `messageBody` peut être une STRING (format messages.received) ou un OBJET
+  // (format messages.upsert avec imageMessage, audioMessage…).
+  const bodyRaw = msg.messageBody ?? msg.body ?? msg.content;
+  const bodyText = typeof bodyRaw === 'string' ? bodyRaw : undefined;
+  const bodyObj = bodyRaw && typeof bodyRaw === 'object' && !Array.isArray(bodyRaw)
+    ? asObject(bodyRaw)
+    : {};
+  const innerMsg = asObject(msg.message);
 
   const messageId = String(key.id || msg.id || data.id || '') || undefined;
   const fromMe = Boolean(key.fromMe ?? msg.fromMe ?? data.fromMe);
+
+  // Numéro expéditeur — Wasender expose `cleanedSenderPn` ("1234567890") qui est
+  // le plus propre. Repli sur senderPn / remoteJid (avec stripping du suffixe
+  // @s.whatsapp.net).
+  const cleanedPn = (key.cleanedSenderPn || msg.cleanedSenderPn) as string | undefined;
+  const senderPn = (key.senderPn || msg.senderPn) as string | undefined;
   const remoteJid = String(key.remoteJid || msg.from || data.from || msg.chatId || data.chatId || '');
-  const fromJid = remoteJid.split('@')[0] || undefined;
+  const fromJid = cleanedPn
+    ? String(cleanedPn).replace(/[^\d]/g, '')
+    : senderPn
+      ? String(senderPn).split('@')[0]
+      : remoteJid
+        ? remoteJid.split('@')[0]
+        : undefined;
   const fromName = (msg.pushName || data.pushName || msg.senderName || data.senderName || undefined) as string | undefined;
 
-  // Texte simple : plusieurs variantes selon Wasender.
+  // Texte simple : ordre de priorité = string messageBody (format
+  // messages.received) → conversation/extendedTextMessage (format upsert) →
+  // texte natif inner message.
   const text =
-    (messageBody.conversation as string | undefined) ||
-    (messageBody.text as string | undefined) ||
-    ((asObject(messageBody.extendedTextMessage).text) as string | undefined) ||
+    bodyText ||
+    (bodyObj.conversation as string | undefined) ||
+    (bodyObj.text as string | undefined) ||
+    (asObject(bodyObj.extendedTextMessage).text as string | undefined) ||
+    (innerMsg.conversation as string | undefined) ||
+    (asObject(innerMsg.extendedTextMessage).text as string | undefined) ||
     (msg.text as string | undefined);
 
-  const img = asObject(messageBody.imageMessage ?? messageBody.image);
-  const aud = asObject(messageBody.audioMessage ?? messageBody.audio);
-  const vid = asObject(messageBody.videoMessage ?? messageBody.video);
-  const doc = asObject(messageBody.documentMessage ?? messageBody.document);
-  const stk = asObject(messageBody.stickerMessage ?? messageBody.sticker);
+  // Médias : on cherche dans bodyObj (upsert) ET dans innerMsg (autres formats).
+  const candidates = [bodyObj, innerMsg];
+  const findMedia = (kind: 'imageMessage' | 'audioMessage' | 'videoMessage' | 'documentMessage' | 'stickerMessage' | 'image' | 'audio' | 'video' | 'document' | 'sticker') =>
+    candidates.reduce<Record<string, unknown>>((acc, c) => Object.keys(acc).length ? acc : asObject(c[kind]), {});
+  const img = Object.keys(findMedia('imageMessage')).length ? findMedia('imageMessage') : findMedia('image');
+  const aud = Object.keys(findMedia('audioMessage')).length ? findMedia('audioMessage') : findMedia('audio');
+  const vid = Object.keys(findMedia('videoMessage')).length ? findMedia('videoMessage') : findMedia('video');
+  const doc = Object.keys(findMedia('documentMessage')).length ? findMedia('documentMessage') : findMedia('document');
+  const stk = Object.keys(findMedia('stickerMessage')).length ? findMedia('stickerMessage') : findMedia('sticker');
 
   const pickMedia = (m: Record<string, unknown>) =>
     ({
@@ -217,23 +250,40 @@ export async function receiveWasenderWebhook(req: Request, res: Response): Promi
     }
 
     const sessionId = sessionIdEarly;
-    if (!sessionId) {
-      capture({ at: new Date().toISOString(), event, signatureMatched: true, processed: 'error', reason: 'session_id absent', payload });
-      logger.warn({ topLevelKeys }, '[wasender] webhook sans session_id — ignoré');
-      return;
+    // Wasender N'INCLUT PAS toujours de sessionId dans le payload des vrais
+    // messages (cf. docs `messages.received`). On résout la session par ordre
+    // de priorité :
+    //   1. Si sessionId est présent (cas simulator) : match par hash de l'API
+    //      token, puis par UUID interne (legacy).
+    //   2. Sinon, fallback single-tenant : on prend l'unique BotConfig
+    //      wasender active du système. Multi-tenant nécessitera des webhook
+    //      URLs distinctes par session — pas critique pour l'instant.
+    let config = null;
+    if (sessionId) {
+      const tokenHash = hashWasenderToken(sessionId);
+      config = await BotConfig.findOne({
+        channel: 'whatsapp',
+        whatsapp_provider: 'wasender',
+        $or: [
+          { wasender_session_token_hash: tokenHash },
+          { wasender_session_id: sessionId },
+        ],
+      });
     }
-    // Wasender envoie l'API token comme sessionId dans le webhook. On cherche
-    // d'abord par hash du token (cas standard), puis par session_id en repli
-    // (anciens docs / si jamais Wasender envoie l'UUID interne dans certains cas).
-    const tokenHash = hashWasenderToken(sessionId);
-    const config = await BotConfig.findOne({
-      channel: 'whatsapp',
-      whatsapp_provider: 'wasender',
-      $or: [
-        { wasender_session_token_hash: tokenHash },
-        { wasender_session_id: sessionId },
-      ],
-    });
+    if (!config) {
+      const candidates = await BotConfig.find({
+        channel: 'whatsapp',
+        whatsapp_provider: 'wasender',
+        status: 'active',
+      }).limit(2);
+      if (candidates.length === 1) {
+        config = candidates[0];
+      } else if (candidates.length > 1) {
+        capture({ at: new Date().toISOString(), event, sessionId: sessionId || undefined, signatureMatched: true, processed: 'error', reason: 'sessionId absent + plusieurs bots wasender actifs (multi-tenant non supporté)', payload });
+        logger.warn({ count: candidates.length }, '[wasender] webhook sans sessionId et plusieurs bots — ignoré');
+        return;
+      }
+    }
     if (!config) {
       capture({ at: new Date().toISOString(), event, sessionId, signatureMatched: true, processed: 'error', reason: 'aucun BotConfig pour ce session_id', payload });
       logger.warn({ sessionId }, '[wasender] aucun BotConfig pour ce session_id — ignoré');
