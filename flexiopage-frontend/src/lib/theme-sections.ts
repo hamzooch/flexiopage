@@ -102,22 +102,18 @@ export function getRecommendedSectionsForTheme(theme: Partial<ThemeTokens> | und
  * pas aux contenus du vendeur (titres, images, témoignages…), juste aux
  * toggles d'activation.
  */
-export function applyThemeRecommendationsToStorefront<T extends {
-  showHero?: boolean;
-  showProductsGrid?: boolean;
-  showFeatures?: boolean;
-  showFooter?: boolean;
-  slider?: { enabled?: boolean } & Record<string, unknown>;
-}>(storefront: T, theme: Partial<ThemeTokens> | undefined | null): T {
+export function applyThemeRecommendationsToStorefront<T extends Record<string, unknown>>(
+  storefront: T,
+  theme: Partial<ThemeTokens> | undefined | null,
+): T {
   const { recommended } = getRecommendedSectionsForTheme(theme);
+  const slider = (storefront as { slider?: Record<string, unknown> }).slider;
   return {
     ...storefront,
     showHero: recommended.has('hero'),
     showProductsGrid: recommended.has('products'),
     showFooter: recommended.has('footer'),
-    showFeatures: storefront.showFeatures !== false, // pas piloté par le thème
-    slider: storefront.slider
-      ? { ...storefront.slider, enabled: recommended.has('slider') }
-      : storefront.slider,
+    showFeatures: (storefront as { showFeatures?: boolean }).showFeatures !== false,
+    ...(slider ? { slider: { ...slider, enabled: recommended.has('slider') } } : {}),
   };
 }

@@ -17,6 +17,7 @@ import { MediaPicker } from '@/components/dashboard/MediaPicker';
 import { StoreSubPageShell, type SaveStatus } from '@/components/dashboard/store-sub-page';
 import { StoreHomepageLivePreview } from '@/components/dashboard/store-homepage-live-preview';
 import type { StorefrontSettings, StoreType, WhatsappSettings } from '@/components/dashboard/store-editor';
+import { applyThemeRecommendationsToStorefront } from '@/lib/theme-sections';
 
 export default function StoreAppearancePage() {
   const params = useParams();
@@ -30,6 +31,12 @@ export default function StoreAppearancePage() {
   // The full theme tokens to be saved — selecting a template seeds these,
   // the palette editor mutates them in place.
   const [themeTokens, setThemeTokens] = useState<ThemeTokens | null>(null);
+  // On retient le templateId initialement chargé pour détecter un changement
+  // de thème au moment du save. Si le vendeur switch de thème, on auto-
+  // applique la recommandation de sections au storefront (showHero,
+  // slider.enabled, etc.) dans le même PATCH — pas besoin d'aller dans
+  // l'onglet Sections pour ré-aligner manuellement.
+  const [originalTemplateId, setOriginalTemplateId] = useState<string | null>(null);
 
   useEffect(() => {
     if (!storeId) return;
@@ -50,6 +57,7 @@ export default function StoreAppearancePage() {
           } else if (tpl) {
             setThemeTokens(tpl.theme);
           }
+          setOriginalTemplateId(saved.templateId);
         }
       })
       .catch(() => setStore(null))
@@ -65,10 +73,24 @@ export default function StoreAppearancePage() {
     setStatus('saving');
     setErrorMessage('');
     try {
+      // Si le thème a changé, on resync les toggles de sections du
+      // storefront (showHero, slider.enabled, etc.) à la recommandation
+      // du nouveau thème dans le même PATCH. On ne touche jamais aux
+      // contenus (titres, images, témoignages déjà saisis) — uniquement
+      // les flags d'activation.
+      const themeChanged = themeTokens?.templateId && themeTokens.templateId !== originalTemplateId;
+      let settingsPatch: Record<string, unknown> | undefined;
+      if (themeChanged) {
+        const currentStorefront = (store.settings?.storefront || {}) as Record<string, unknown>;
+        const adjusted = applyThemeRecommendationsToStorefront(currentStorefront, themeTokens || undefined);
+        settingsPatch = { ...(store.settings || {}), storefront: adjusted };
+      }
+
       const res = await storesApi.update(storeId, {
         logo: logo ?? '',
         favicon: favicon ?? '',
         theme: themeTokens ? (themeTokens as unknown as Record<string, unknown>) : undefined,
+        ...(settingsPatch ? { settings: settingsPatch } : {}),
       });
       // Re-sync from the server response so the next save builds on top of
       // what's actually in the DB (e.g. unescaped URLs).
@@ -80,6 +102,7 @@ export default function StoreAppearancePage() {
       if (savedTheme?.primary && savedTheme?.background) {
         setThemeTokens(withLayoutFallback(savedTheme as ThemeTokens));
       }
+      if (savedTheme?.templateId) setOriginalTemplateId(savedTheme.templateId);
       setStatus('saved');
       setTimeout(() => setStatus('idle'), 2400);
     } catch (err: unknown) {
