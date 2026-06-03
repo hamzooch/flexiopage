@@ -125,6 +125,9 @@ export async function processIncomingMessage(job: IncomingMessageJob): Promise<P
       conversationHistory: messages,
       systemPrompt,
       tools: claudeTools,
+      // Routing provider : darija/arabe → Anthropic ; autres → OpenRouter
+      // si disponible. Cf. claude.service.pickProvider().
+      language: detectedLanguage ?? config.language,
     });
     totalIn += result.tokensInput;
     totalOut += result.tokensOutput;

@@ -11,6 +11,7 @@ import Anthropic from '@anthropic-ai/sdk';
 import { logger } from '../../../lib/logger';
 import { CLAUDE_MODELS, CLAUDE_MAX_RETRIES, MAX_OUTPUT_TOKENS } from '../config/messengerBot.config';
 import { computeCost } from '../utils/tokenCounter';
+import type { BotLanguage } from '../models/BotConfig.model';
 
 export interface ClaudeMessage {
   role: 'user' | 'assistant';
@@ -43,21 +44,93 @@ export interface GenerateResponseArgs {
   /** Contexte vendeur additionnel (déjà majoritairement inclus dans le prompt). */
   vendorContext?: Record<string, unknown>;
   maxTokens?: number;
+  /**
+   * Langue de la conversation. Sert au routing provider : darija + arabe →
+   * Anthropic Claude (meilleur sur dialectes maghrébins) ; français + anglais
+   * + autres → OpenRouter (moins cher, qualité suffisante).
+   */
+  language?: BotLanguage;
 }
 
-let client: Anthropic | null = null;
-function getClient(): Anthropic {
-  if (!process.env.ANTHROPIC_API_KEY) {
-    throw new Error('ANTHROPIC_API_KEY manquant.');
+type Provider = 'anthropic' | 'openrouter';
+
+/**
+ * Langues qui DOIVENT utiliser Anthropic Claude (qualité supérieure sur
+ * dialectes maghrébins + arabe standard). Pour le reste, on autorise le
+ * routing vers OpenRouter si disponible.
+ */
+const ANTHROPIC_PREFERRED_LANGUAGES = new Set<BotLanguage>([
+  'ar',
+  'darija_ma',
+  'darija_dz',
+  'darija_tn',
+]);
+
+/**
+ * Choisit le provider pour une conversation donnée.
+ *   1. Si la langue fait partie des "Anthropic preferred" → Anthropic (si clé).
+ *   2. Sinon → OpenRouter (si clé), à défaut Anthropic.
+ *   3. Si aucune clé → throw plus tard.
+ */
+function pickProvider(language?: BotLanguage): Provider {
+  const hasAnthropic = !!process.env.ANTHROPIC_API_KEY;
+  const hasOpenRouter = !!process.env.OPENROUTER_API_KEY;
+  if (language && ANTHROPIC_PREFERRED_LANGUAGES.has(language) && hasAnthropic) {
+    return 'anthropic';
   }
-  if (!client) client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
-  return client;
+  if (hasOpenRouter) return 'openrouter';
+  return 'anthropic';
+}
+
+const clients: { anthropic?: Anthropic; openrouter?: Anthropic } = {};
+
+function getClient(provider: Provider): Anthropic {
+  if (provider === 'openrouter') {
+    if (!clients.openrouter) {
+      if (!process.env.OPENROUTER_API_KEY) {
+        throw new Error('OPENROUTER_API_KEY manquant pour le provider openrouter.');
+      }
+      clients.openrouter = new Anthropic({
+        apiKey: process.env.OPENROUTER_API_KEY,
+        baseURL: 'https://openrouter.ai/api/v1',
+        defaultHeaders: {
+          'HTTP-Referer': process.env.FRONTEND_URL?.split(',')[0] || 'https://flexiopage.com',
+          'X-Title': 'FlexioPage',
+        },
+      });
+    }
+    return clients.openrouter;
+  }
+  if (!clients.anthropic) {
+    if (!process.env.ANTHROPIC_API_KEY) {
+      throw new Error('ANTHROPIC_API_KEY manquant pour le provider anthropic.');
+    }
+    clients.anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+  }
+  return clients.anthropic;
+}
+
+/**
+ * Map du nom de modèle vers ce que le provider attend. OpenRouter exige le
+ * préfixe `anthropic/` et un format différent (claude-haiku-4.5 vs
+ * claude-haiku-4-5-20251001). Sur OpenRouter, on peut aussi pointer vers
+ * d'autres providers (ex: openai/gpt-4o-mini) via un override env.
+ */
+function modelForProvider(model: string, provider: Provider): string {
+  if (provider !== 'openrouter') return model;
+  if (model.includes('/')) return model; // déjà préfixé → tel quel
+  const m = model.match(/^claude-(haiku|sonnet|opus)-(\d+)-(\d+)/i);
+  if (m) return `anthropic/claude-${m[1].toLowerCase()}-${m[2]}.${m[3]}`;
+  return `anthropic/${model}`;
 }
 
 export class ClaudeService {
   /** Génère la réponse du bot pour l'historique fourni. */
   async generateResponse(args: GenerateResponseArgs): Promise<ClaudeResult> {
-    const { conversationHistory, systemPrompt, tools, maxTokens = MAX_OUTPUT_TOKENS } = args;
+    const { conversationHistory, systemPrompt, tools, maxTokens = MAX_OUTPUT_TOKENS, language } = args;
+
+    // Routing par langue : arabe/darija → Anthropic ; autres → OpenRouter (si dispo).
+    const provider = pickProvider(language);
 
     // Le system prompt est mis en cache (préfixe stable de la conversation).
     const system: Anthropic.TextBlockParam[] = [
@@ -65,15 +138,15 @@ export class ClaudeService {
     ];
 
     const call = (model: string) =>
-      getClient().messages.create({
-        model,
+      getClient(provider).messages.create({
+        model: modelForProvider(model, provider),
         max_tokens: maxTokens,
         system,
         tools: tools && tools.length ? tools : undefined,
         messages: conversationHistory as Anthropic.MessageParam[],
       });
 
-    const resp = await this.withRetryAndFallback(call);
+    const resp = await this.withRetryAndFallback(call, provider);
     return this.toResult(resp.model, resp.response);
   }
 
@@ -83,8 +156,9 @@ export class ClaudeService {
    */
   async classifyIntent(message: string): Promise<'order' | 'question' | 'complaint' | 'greeting' | 'other'> {
     try {
-      const resp = await getClient().messages.create({
-        model: CLAUDE_MODELS.primary,
+      const provider = pickProvider();
+      const resp = await getClient(provider).messages.create({
+        model: modelForProvider(CLAUDE_MODELS.primary, provider),
         max_tokens: 8,
         system: [
           {
@@ -108,6 +182,7 @@ export class ClaudeService {
 
   private async withRetryAndFallback(
     call: (model: string) => Promise<Anthropic.Message>,
+    provider: Provider,
   ): Promise<{ model: string; response: Anthropic.Message }> {
     let lastErr: unknown;
     for (let attempt = 1; attempt <= CLAUDE_MAX_RETRIES; attempt++) {
@@ -117,18 +192,18 @@ export class ClaudeService {
       } catch (err) {
         lastErr = err;
         logger.warn(
-          { err: (err as Error).message, attempt },
-          '[messenger-bot] Claude primary échec, retry',
+          { err: (err as Error).message, attempt, provider },
+          '[messenger-bot] LLM primary échec, retry',
         );
       }
     }
     // Bascule fallback (1 essai).
     try {
       const response = await call(CLAUDE_MODELS.fallback);
-      logger.info('[messenger-bot] bascule sur le modèle fallback');
+      logger.info({ provider }, '[messenger-bot] bascule sur le modèle fallback');
       return { model: CLAUDE_MODELS.fallback, response };
     } catch (err) {
-      logger.error({ err: (err as Error).message }, '[messenger-bot] Claude fallback échec');
+      logger.error({ err: (err as Error).message, provider }, '[messenger-bot] LLM fallback échec');
       throw lastErr || err;
     }
   }

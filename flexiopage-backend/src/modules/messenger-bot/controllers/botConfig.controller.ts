@@ -81,6 +81,7 @@ export async function testBot(req: AuthRequest, res: Response): Promise<void> {
       conversationHistory: [{ role: 'user', content: parsed.data.message }],
       systemPrompt,
       tools: claudeTools,
+      language: detectedLanguage ?? config.language,
     });
     res.json({
       reply: result.content,

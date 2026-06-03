@@ -75,6 +75,9 @@ services:
       MOGADELIVERY_WEBHOOK_URL: ${MOGADELIVERY_WEBHOOK_URL:-}
       # ── Messenger Bot ──
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      # Si OPENROUTER_API_KEY est défini, le service bascule sur OpenRouter
+      # (compatible Messages API). Sinon Anthropic direct.
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
       CLAUDE_MODEL_PRIMARY: ${CLAUDE_MODEL_PRIMARY:-claude-haiku-4-5-20251001}
       CLAUDE_MODEL_FALLBACK: ${CLAUDE_MODEL_FALLBACK:-claude-sonnet-4-5}
       FACEBOOK_APP_ID: ${FACEBOOK_APP_ID:-}
