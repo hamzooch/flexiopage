@@ -54,7 +54,7 @@ export const claudeTools: Anthropic.Tool[] = [
   {
     name: 'escalate_to_human',
     description:
-      "Transférer la conversation à un agent humain (réclamation complexe, litige, demande hors périmètre du bot).",
+      "⚠️ Outil de DERNIER RECOURS. À utiliser EXCLUSIVEMENT pour : (a) une réclamation d'un client mécontent (produit cassé, retard de livraison qu'il signale, demande de remboursement), (b) un litige sur un montant déjà facturé, (c) un comportement hors-sujet répété malgré 2 relances vers les produits. NE JAMAIS utiliser cet outil pour : confirmer une commande (utilise create_order à la place), répondre à 'salut/bonjour', donner les frais de livraison, présenter le catalogue, ou toute interaction commerciale standard. En cas de doute, ne PAS l'utiliser.",
     input_schema: {
       type: 'object',
       properties: {

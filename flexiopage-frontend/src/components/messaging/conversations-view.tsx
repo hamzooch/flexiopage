@@ -28,6 +28,7 @@ export interface MessagingApi {
   listConversations: (storeId: string, params?: { status?: string; limit?: number; skip?: number }) => Promise<Res<{ conversations: MessengerConversation[]; total: number }>>;
   getConversation: (storeId: string, id: string) => Promise<Res<{ conversation: MessengerConversation; messages: MessengerMessage[] }>>;
   takeover: (storeId: string, id: string) => Promise<Res<unknown>>;
+  release: (storeId: string, id: string) => Promise<Res<unknown>>;
   sendManual: (storeId: string, id: string, message: string) => Promise<Res<unknown>>;
 }
 
@@ -115,6 +116,16 @@ export function ConversationsView({ storeId, api, channel, backHref, title }: {
       await refreshList(true);
     } catch (e) {
       setErr(extractApiError(e, 'Reprise en main impossible.'));
+    }
+  }
+
+  async function releaseToBot() {
+    if (!sel) return;
+    try {
+      await api.release(storeId, sel);
+      await refreshList(true);
+    } catch (e) {
+      setErr(extractApiError(e, 'Réactivation du bot impossible.'));
     }
   }
 
@@ -235,9 +246,14 @@ export function ConversationsView({ storeId, api, channel, backHref, title }: {
                   </div>
                 </div>
                 {selectedConv?.status === 'human_takeover' ? (
-                  <span className="inline-flex items-center gap-1 rounded-full bg-amber-500/10 px-2.5 py-1 text-[11px] font-semibold text-amber-700">
-                    <Hand className="h-3 w-3" /> Mode manuel
-                  </span>
+                  <div className="flex items-center gap-2">
+                    <span className="inline-flex items-center gap-1 rounded-full bg-amber-500/10 px-2.5 py-1 text-[11px] font-semibold text-amber-700">
+                      <Hand className="h-3 w-3" /> Mode manuel
+                    </span>
+                    <Button variant="outline" size="sm" className="gap-1.5" onClick={releaseToBot} title="Réactiver le bot sur cette conversation">
+                      🤖 Rendre au bot
+                    </Button>
+                  </div>
                 ) : (
                   <Button variant="outline" size="sm" className="gap-1.5" onClick={takeover}>
                     <Hand className="h-3.5 w-3.5" /> Reprendre la main

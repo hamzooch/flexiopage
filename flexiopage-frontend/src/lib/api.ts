@@ -1044,6 +1044,8 @@ export const messengerBotApi = {
     api.get<{ conversation: MessengerConversation; messages: MessengerMessage[] }>(mb(storeId, `/conversations/${id}`)),
   takeover: (storeId: string, id: string) =>
     api.post<{ conversation: MessengerConversation }>(mb(storeId, `/conversations/${id}/takeover`), { storeId }),
+  release: (storeId: string, id: string) =>
+    api.post<{ conversation: MessengerConversation }>(mb(storeId, `/conversations/${id}/release`), { storeId }),
   sendManual: (storeId: string, id: string, message: string) =>
     api.post<{ message: MessengerMessage }>(mb(storeId, `/conversations/${id}/send`), { storeId, message }),
   // Stats
@@ -1124,6 +1126,8 @@ export const whatsappBotApi = {
     api.get<{ conversation: MessengerConversation; messages: MessengerMessage[] }>(wb(storeId, `/conversations/${id}`)),
   takeover: (storeId: string, id: string) =>
     api.post<{ conversation: MessengerConversation }>(wb(storeId, `/conversations/${id}/takeover`), { storeId }),
+  release: (storeId: string, id: string) =>
+    api.post<{ conversation: MessengerConversation }>(wb(storeId, `/conversations/${id}/release`), { storeId }),
   sendManual: (storeId: string, id: string, message: string) =>
     api.post<{ message: MessengerMessage }>(wb(storeId, `/conversations/${id}/send`), { storeId, message }),
   statsOverview: (storeId: string) =>

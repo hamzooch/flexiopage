@@ -55,6 +55,7 @@ apiRouter.get('/wasender/recent-worker-runs', recentWorkerRuns);
 apiRouter.get('/conversations', conversation.listConversations);
 apiRouter.get('/conversations/:id', conversation.getConversation);
 apiRouter.post('/conversations/:id/takeover', conversation.takeover);
+apiRouter.post('/conversations/:id/release', conversation.releaseToBot);
 apiRouter.post('/conversations/:id/send', conversation.sendManual);
 
 // Stats

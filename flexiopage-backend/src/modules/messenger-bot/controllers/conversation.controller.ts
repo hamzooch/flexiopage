@@ -53,6 +53,24 @@ export async function takeover(req: AuthRequest, res: Response): Promise<void> {
   res.json({ conversation: conv });
 }
 
+/**
+ * Rebascule une conversation 'human_takeover' vers 'active' → le bot
+ * reprend la main sur les prochains messages entrants. Utile quand le bot
+ * a escaladé à tort (cas typique : il a confirmé une commande verbalement
+ * en disant "un agent va te recontacter" au lieu d'appeler create_order).
+ */
+export async function releaseToBot(req: AuthRequest, res: Response): Promise<void> {
+  const storeId = await getOwnedStoreId(req);
+  if (!storeId) { res.status(403).json({ error: 'storeId requis et doit t’appartenir.' }); return; }
+  const conv = await Conversation.findOneAndUpdate(
+    { _id: req.params.id, vendor_id: storeId },
+    { $set: { status: 'active' } },
+    { new: true },
+  ).lean();
+  if (!conv) { res.status(404).json({ error: 'Conversation introuvable.' }); return; }
+  res.json({ conversation: conv });
+}
+
 export async function sendManual(req: AuthRequest, res: Response): Promise<void> {
   const storeId = await getOwnedStoreId(req);
   if (!storeId) { res.status(403).json({ error: 'storeId requis et doit t’appartenir.' }); return; }
