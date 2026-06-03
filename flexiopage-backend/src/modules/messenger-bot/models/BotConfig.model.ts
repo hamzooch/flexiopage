@@ -78,6 +78,20 @@ export interface IBotConfig extends Document {
    */
   wasender_session_token_hash?: string;
   /**
+   * Identifiant aléatoire (hex 32 chars) inclus dans l'URL de webhook
+   * `https://api/.../webhook/wasender/{id}` pour permettre la route
+   * multi-vendeur. Chaque BotConfig a son propre `wasender_webhook_id` →
+   * l'URL elle-même identifie la session sans ambiguïté.
+   */
+  wasender_webhook_id?: string;
+  /**
+   * SHA-256 (hex) du secret de webhook propre à cette session. Wasender envoie
+   * la valeur en clair dans `X-Webhook-Signature` à chaque webhook. Chaque
+   * BotConfig a son secret unique → vérification d'auth par session, pas un
+   * secret partagé global.
+   */
+  wasender_webhook_secret_hash?: string;
+  /**
    * Token d'accès du canal, chiffré.
    *   - Messenger        : Page Access Token Meta.
    *   - WhatsApp (meta)  : access token Meta WhatsApp Cloud.
@@ -158,6 +172,8 @@ const BotConfigSchema = new Schema<IBotConfig>(
     wasender_session_id: { type: String },
     wasender_session_token_encrypted: { type: String },
     wasender_session_token_hash: { type: String },
+    wasender_webhook_id: { type: String },
+    wasender_webhook_secret_hash: { type: String },
     page_access_token_encrypted: { type: String, required: true },
     page_name: { type: String },
     page_picture_url: { type: String },
@@ -230,6 +246,12 @@ BotConfigSchema.index(
 BotConfigSchema.index(
   { wasender_session_token_hash: 1 },
   { unique: true, partialFilterExpression: { wasender_session_token_hash: { $type: 'string' } } },
+);
+// ID utilisé dans la route multi-vendeur /webhook/wasender/{id} — un seul bot
+// peut posséder un ID donné, indexé pour lookup rapide sur le hot path.
+BotConfigSchema.index(
+  { wasender_webhook_id: 1 },
+  { unique: true, partialFilterExpression: { wasender_webhook_id: { $type: 'string' } } },
 );
 
 export const BotConfig = mongoose.model<IBotConfig>('BotConfig', BotConfigSchema);

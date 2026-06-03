@@ -57,16 +57,8 @@ export function getCapturedWebhooks(): CapturedWebhook[] {
   return capturedWebhooks;
 }
 
-/**
- * Vrai si le header/secret matche WASENDER_WEBHOOK_SECRET (si défini).
- *
- * Wasender envoie le secret en clair dans `X-Webhook-Signature` (comparaison
- * de chaîne, pas HMAC — cf. leur exemple JS dans le dashboard). On supporte
- * aussi quelques alias par tolérance pour les versions/proxies.
- */
-function verifyWasenderSecret(req: Request): boolean {
-  const expected = process.env.WASENDER_WEBHOOK_SECRET;
-  if (!expected) return true; // pas de secret configuré → on accepte
+/** Headers Wasender / alias acceptés pour le secret webhook. */
+function readSignatureHeader(req: Request): string | null {
   const candidates = [
     req.header('x-webhook-signature'), // ← le vrai header Wasender
     req.header('x-webhook-secret'),
@@ -74,13 +66,28 @@ function verifyWasenderSecret(req: Request): boolean {
     req.header('x-wasender-signature'),
     String(req.query.secret || ''),
   ].filter(Boolean) as string[];
-  return candidates.some((c) => {
-    try {
-      return c.length === expected.length && crypto.timingSafeEqual(Buffer.from(c), Buffer.from(expected));
-    } catch {
-      return false;
-    }
-  });
+  return candidates[0] || null;
+}
+
+/**
+ * Compare deux secrets en temps constant. Sans risque si l'un des deux est
+ * vide / mal formé.
+ */
+function constantTimeEq(a: string, b: string): boolean {
+  if (a.length !== b.length) return false;
+  try { return crypto.timingSafeEqual(Buffer.from(a), Buffer.from(b)); }
+  catch { return false; }
+}
+
+/**
+ * Vérif legacy (route `/webhook/wasender` sans :webhookId) : compare au
+ * `WASENDER_WEBHOOK_SECRET` global. Accepte tout si non défini (compat dev).
+ */
+function verifyLegacyWasenderSecret(req: Request): boolean {
+  const expected = process.env.WASENDER_WEBHOOK_SECRET;
+  if (!expected) return true;
+  const got = readSignatureHeader(req);
+  return !!got && constantTimeEq(got, expected);
 }
 
 function asObject(v: unknown): Record<string, unknown> {
@@ -201,20 +208,47 @@ export async function receiveWasenderWebhook(req: Request, res: Response): Promi
   const payload = (req.body || {}) as WasenderPayload;
   const event = eventNameOf(payload);
   const sessionIdEarly = String(payload.session_id || payload.sessionId || asObject(payload.data).session_id || '');
+  const webhookIdParam = String(req.params.webhookId || '');
 
-  if (!verifyWasenderSecret(req)) {
+  // Si la route inclut un :webhookId → mode multi-vendeur : on lookup la
+  // BotConfig dès le départ pour vérifier le secret par session. Si pas
+  // d'id (route legacy `/webhook/wasender`) on tombe sur le secret global.
+  let routedConfig: Awaited<ReturnType<typeof BotConfig.findOne>> | null = null;
+  if (webhookIdParam) {
+    routedConfig = await BotConfig.findOne({
+      wasender_webhook_id: webhookIdParam,
+      channel: 'whatsapp',
+      whatsapp_provider: 'wasender',
+    });
+    if (!routedConfig) {
+      capture({ at: new Date().toISOString(), event, sessionId: sessionIdEarly, signatureMatched: false, processed: 'error', reason: `webhookId ${webhookIdParam} inconnu`, payload });
+      logger.warn({ webhookId: webhookIdParam }, '[wasender] webhookId inconnu — rejet');
+      res.sendStatus(404);
+      return;
+    }
+    // Vérif du secret par session (hash en DB).
+    const got = readSignatureHeader(req);
+    const expectedHash = routedConfig.wasender_webhook_secret_hash;
+    const matched = !!got && !!expectedHash && constantTimeEq(crypto.createHash('sha256').update(got).digest('hex'), expectedHash);
+    if (!matched) {
+      capture({ at: new Date().toISOString(), event, sessionId: sessionIdEarly, signatureMatched: false, processed: 'error', reason: 'signature per-session invalide', payload });
+      logger.warn({ webhookId: webhookIdParam }, '[wasender] signature per-session invalide — rejet');
+      res.sendStatus(401);
+      return;
+    }
+  } else if (!verifyLegacyWasenderSecret(req)) {
     capture({
       at: new Date().toISOString(),
       event,
       sessionId: sessionIdEarly,
       signatureMatched: false,
       processed: 'error',
-      reason: 'signature invalide',
+      reason: 'signature legacy invalide',
       payload,
     });
     logger.warn(
       { headers: { 'x-webhook-signature': !!req.header('x-webhook-signature'), 'x-webhook-secret': !!req.header('x-webhook-secret') } },
-      '[wasender] webhook secret invalide — rejet',
+      '[wasender] webhook secret legacy invalide — rejet',
     );
     res.sendStatus(401);
     return;
@@ -250,16 +284,16 @@ export async function receiveWasenderWebhook(req: Request, res: Response): Promi
     }
 
     const sessionId = sessionIdEarly;
-    // Wasender N'INCLUT PAS toujours de sessionId dans le payload des vrais
-    // messages (cf. docs `messages.received`). On résout la session par ordre
-    // de priorité :
-    //   1. Si sessionId est présent (cas simulator) : match par hash de l'API
-    //      token, puis par UUID interne (legacy).
-    //   2. Sinon, fallback single-tenant : on prend l'unique BotConfig
-    //      wasender active du système. Multi-tenant nécessitera des webhook
-    //      URLs distinctes par session — pas critique pour l'instant.
-    let config = null;
-    if (sessionId) {
+    // Résolution de la BotConfig par ordre de priorité :
+    //   1. Route multi-vendeur : `routedConfig` déjà résolu via :webhookId.
+    //   2. sessionId présent dans le payload (simulator) : match par hash de
+    //      l'API token, puis par UUID interne (legacy).
+    //   3. Fallback single-tenant (route legacy `/webhook/wasender` sans id)
+    //      sur l'unique BotConfig wasender active du système. Multi-vendeur
+    //      sur la route legacy n'est PAS supporté — utiliser la route avec
+    //      :webhookId.
+    let config = routedConfig;
+    if (!config && sessionId) {
       const tokenHash = hashWasenderToken(sessionId);
       config = await BotConfig.findOne({
         channel: 'whatsapp',
@@ -279,8 +313,8 @@ export async function receiveWasenderWebhook(req: Request, res: Response): Promi
       if (candidates.length === 1) {
         config = candidates[0];
       } else if (candidates.length > 1) {
-        capture({ at: new Date().toISOString(), event, sessionId: sessionId || undefined, signatureMatched: true, processed: 'error', reason: 'sessionId absent + plusieurs bots wasender actifs (multi-tenant non supporté)', payload });
-        logger.warn({ count: candidates.length }, '[wasender] webhook sans sessionId et plusieurs bots — ignoré');
+        capture({ at: new Date().toISOString(), event, sessionId: sessionId || undefined, signatureMatched: true, processed: 'error', reason: 'route legacy + plusieurs bots wasender actifs (utiliser la route /webhook/wasender/{id})', payload });
+        logger.warn({ count: candidates.length }, '[wasender] route legacy avec plusieurs bots — ignoré');
         return;
       }
     }

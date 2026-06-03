@@ -23,29 +23,38 @@ import { connectWasenderSchema } from '../schemas/config.schema';
 import { getCapturedWebhooks } from './wasenderWebhook.controller';
 
 /**
- * URL publique du webhook Wasender. Wasender REJETTE les URLs locales
- * (`localhost`, `127.0.0.1`, `*.local`, IPs privées) — on doit donc avoir un
- * `API_PUBLIC_URL` qui pointe vers internet (ngrok, cloudflared, ou prod).
- * Retourne null si l'URL n'est pas publique → le controller renverra une
- * 400 explicative.
+ * Base URL publique du backend (sans le suffixe webhook). Wasender REJETTE
+ * les URLs locales — on a besoin d'un `API_PUBLIC_URL` qui pointe vers
+ * internet (ngrok, cloudflared, ou prod). Retourne null si non publique.
  */
-function publicWebhookUrl(): string | null {
+function publicApiBase(): string | null {
   const raw = (process.env.API_PUBLIC_URL || '').replace(/\/$/, '');
   if (!raw) return null;
   if (/localhost|127\.0\.0\.1|0\.0\.0\.0|\.local(\b|:)|^https?:\/\/(10|192\.168|172\.(1[6-9]|2\d|3[01]))\./i.test(raw)) {
     return null;
   }
-  return `${raw}/webhook/wasender`;
+  return raw;
 }
 
-/** Lit (ou génère + stocke) un secret de webhook par boutique. */
-function ensureWebhookSecret(): string {
-  // Secret partagé global : Wasender ne signe pas tous ses webhooks de façon
-  // cohérente, on s'en sert comme "shared secret" propagé en header / query.
-  const env = process.env.WASENDER_WEBHOOK_SECRET;
-  if (env) return env;
-  // Génère un secret en mémoire au boot — recommandé : définir l'env en prod.
-  return crypto.randomBytes(24).toString('hex');
+/** URL webhook personnalisée pour une session — chaque BotConfig a la sienne. */
+function webhookUrlFor(webhookId: string): string | null {
+  const base = publicApiBase();
+  return base ? `${base}/webhook/wasender/${webhookId}` : null;
+}
+
+/**
+ * Génère un secret webhook UNIQUE par session : Wasender stocke ce secret
+ * côté leur serveur et l'envoie en clair dans `X-Webhook-Signature` à chaque
+ * webhook. On stocke uniquement le SHA-256 côté BotConfig pour vérification.
+ * Chaque vendeur a son propre secret → pas de partage entre boutiques.
+ */
+function generatePerSessionWebhookSecret(): string {
+  return crypto.randomBytes(32).toString('hex');
+}
+
+/** ID public utilisé dans la route /webhook/wasender/{id} — hex 32 chars. */
+function generateWebhookId(): string {
+  return crypto.randomBytes(16).toString('hex');
 }
 
 export async function connectWasender(req: AuthRequest, res: Response): Promise<void> {
@@ -55,11 +64,11 @@ export async function connectWasender(req: AuthRequest, res: Response): Promise<
   if (!parsed.success) { res.status(400).json({ error: 'Validation échouée', details: parsed.error.flatten() }); return; }
   const { personalAccessToken, sessionName, phoneNumber, accountProtection } = parsed.data;
 
-  // Wasender exige une URL webhook PUBLIQUE — on garde-fou côté backend pour
-  // éviter un 422 cryptique. En dev local : lance `ngrok http 5050` (ou
-  // `cloudflared tunnel --url http://localhost:5050`) et mets l'URL HTTPS
-  // résultante dans `API_PUBLIC_URL` de ton .env.
-  const webhookUrl = publicWebhookUrl();
+  // On (re)trouve la BotConfig existante pour réutiliser son webhook_id si
+  // déjà présent — sinon on en génère un nouveau. Idem pour le secret.
+  const existing = await BotConfig.findOne({ vendor_id: storeId, channel: 'whatsapp' }).lean();
+  const webhookId = existing?.wasender_webhook_id || generateWebhookId();
+  const webhookUrl = webhookUrlFor(webhookId);
   if (!webhookUrl) {
     res.status(400).json({
       error:
@@ -69,7 +78,8 @@ export async function connectWasender(req: AuthRequest, res: Response): Promise<
     return;
   }
 
-  const webhookSecret = ensureWebhookSecret();
+  // Secret généré par bot (pas un secret partagé) → multi-vendeur isolé.
+  const webhookSecret = generatePerSessionWebhookSecret();
   try {
     let session;
     try {
@@ -116,6 +126,8 @@ export async function connectWasender(req: AuthRequest, res: Response): Promise<
           wasender_session_id: session.id,
           wasender_session_token_encrypted: session.apiToken ? encryptionService.encrypt(session.apiToken) : undefined,
           wasender_session_token_hash: session.apiToken ? hashWasenderToken(session.apiToken) : undefined,
+          wasender_webhook_id: webhookId,
+          wasender_webhook_secret_hash: hashWasenderToken(webhookSecret),
           // page_access_token_encrypted = PAT Wasender (sert à gérer la session).
           page_access_token_encrypted: encryptionService.encrypt(personalAccessToken),
           whatsapp_display_number: session.phoneNumber || phoneNumber,

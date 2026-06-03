@@ -70,6 +70,11 @@ export const whatsappWebhookRouter = Router();
 whatsappWebhookRouter.get('/', verifyWhatsAppWebhook);
 whatsappWebhookRouter.post('/', receiveWhatsAppWebhook);
 
-// ── Webhook Wasender (public, secret partagé) ────────────────────────
+// ── Webhook Wasender (public) ────────────────────────────────────────
+// Route legacy `/webhook/wasender` (sans id) : single-tenant + secret via
+// WASENDER_WEBHOOK_SECRET. Garde l'historique pour les sessions existantes.
+// Route multi-vendeur `/webhook/wasender/:webhookId` : chaque session a son
+// id dans l'URL → lookup direct, secret vérifié par hash en DB.
 export const wasenderWebhookRouter = Router();
 wasenderWebhookRouter.post('/', receiveWasenderWebhook);
+wasenderWebhookRouter.post('/:webhookId', receiveWasenderWebhook);
