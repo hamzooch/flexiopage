@@ -175,10 +175,13 @@ export function buildCatalogBlock(catalog: CatalogProduct[], currency: string): 
     .join('\n');
 }
 
-/** Bloc frais de livraison par ville + frais par défaut. */
+/** Bloc frais de livraison par ville + frais par défaut. Quand le frais
+ *  vaut 0, on l'écrit explicitement "GRATUITE" pour que Claude utilise le
+ *  bon vocabulaire ("livraison gratuite/offerte") au lieu d'écrire "0 XOF". */
 export function buildShippingBlock(config: Pick<IBotConfig, 'shipping_fees' | 'default_shipping_fee'>, currency: string): string {
-  const lines = (config.shipping_fees || []).map((s) => `- ${s.city} : ${s.fee} ${currency}`);
-  const def = `- Autres villes : ${config.default_shipping_fee ?? 30} ${currency}`;
+  const fmt = (fee: number) => (fee === 0 ? 'GRATUITE (0)' : `${fee} ${currency}`);
+  const lines = (config.shipping_fees || []).map((s) => `- ${s.city} : ${fmt(s.fee)}`);
+  const def = `- Autres villes : ${fmt(config.default_shipping_fee ?? 30)}`;
   return [...lines, def].join('\n');
 }
 
