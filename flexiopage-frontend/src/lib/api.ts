@@ -567,7 +567,7 @@ export const storesApi = {
     api.get<StoreAnalyticsSummary>(`/stores/${storeId}/analytics`),
   getAnalyticsRich: (
     storeId: string,
-    range: 'today' | '7d' | '30d' | '90d' | '12m' | 'custom' = '30d',
+    range: import('@/types/analytics').RangeKey = '30d',
     customRange?: { from: string; to: string },
   ) =>
     api.get<import('@/types/analytics').StoreAnalyticsRich>(`/stores/${storeId}/analytics/rich`, {
