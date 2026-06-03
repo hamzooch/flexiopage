@@ -13,7 +13,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { storesApi } from '@/lib/api';
+import { storesApi, messengerBotApi, whatsappBotApi } from '@/lib/api';
 import { useStoreStore } from '@/stores/store-store';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -131,6 +131,16 @@ export default function AppsPage() {
   const [stores, setStores] = useState<StoreDoc[]>([]);
   const [loading, setLoading] = useState(true);
   const [openApp, setOpenApp] = useState<AppId | null>(null);
+  /**
+   * Statut de connexion des apps qui vivent en dehors du modèle Store (les
+   * bots dépendent de leur propre BotConfig). On fetch en arrière-plan une
+   * fois la boutique active connue → la fonction `connected(id)` ci-dessous
+   * matche les bons indicateurs sans cas particulier dans le rendu.
+   */
+  const [botStatus, setBotStatus] = useState<{ messengerBot: boolean; whatsappBot: boolean }>({
+    messengerBot: false,
+    whatsappBot: false,
+  });
 
   const activeStore = useMemo(
     () => stores.find((s) => s._id === currentStoreId) || stores[0] || null,
@@ -150,6 +160,23 @@ export default function AppsPage() {
   }, [currentStoreId, setCurrentStore]);
 
   useEffect(() => { void refreshStores(); }, [refreshStores]);
+
+  // Statut bot Messenger / WhatsApp par boutique active. Best-effort —
+  // si l'appel échoue on garde l'état précédent (pas bloquant pour la page).
+  useEffect(() => {
+    if (!activeStore?._id) return;
+    const sid = activeStore._id;
+    void (async () => {
+      const [mb, wb] = await Promise.all([
+        messengerBotApi.getConfig(sid).catch(() => null),
+        whatsappBotApi.getConfig(sid).catch(() => null),
+      ]);
+      setBotStatus({
+        messengerBot: !!mb?.data.connected,
+        whatsappBot: !!wb?.data.connected,
+      });
+    })();
+  }, [activeStore?._id]);
 
   if (loading) {
     return (
@@ -187,10 +214,24 @@ export default function AppsPage() {
   }
 
   const connected = (id: AppId): boolean => {
-    if (id === 'google-sheets') {
-      return !!(activeStore.integrations?.googleSheets?.enabled && activeStore.integrations.googleSheets.webhookUrl);
+    switch (id) {
+      case 'google-sheets':
+        return !!(activeStore.integrations?.googleSheets?.enabled && activeStore.integrations.googleSheets.webhookUrl);
+      case 'messenger-bot':
+        return botStatus.messengerBot;
+      case 'whatsapp-bot':
+        return botStatus.whatsappBot;
+      default:
+        return false;
     }
-    return false;
+  };
+
+  const installedApps = APPS.filter((a) => connected(a.id));
+
+  const openAppHandler = (id: AppId) => {
+    if (id === 'messenger-bot') router.push(`/dashboard/apps/messenger-bot?storeId=${activeStore._id}`);
+    else if (id === 'whatsapp-bot') router.push(`/dashboard/apps/whatsapp-bot?storeId=${activeStore._id}`);
+    else setOpenApp(id);
   };
 
   return (
@@ -212,24 +253,69 @@ export default function AppsPage() {
         ) : undefined}
       />
 
+      {/* Mes apps installées — accès rapide en haut de page. Seulement
+          visible si au moins une app est connectée pour cette boutique. */}
+      {installedApps.length > 0 && (
+        <section>
+          <div className="mb-3 flex items-center gap-2">
+            <h2 className="text-sm font-semibold">Mes applications installées</h2>
+            <span className="rounded-full bg-emerald-500/10 px-2 py-0.5 text-[10px] font-semibold text-emerald-700">
+              {installedApps.length}
+            </span>
+          </div>
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            {installedApps.map((app) => (
+              <InstalledAppShortcut key={app.id} app={app} onOpen={() => openAppHandler(app.id)} />
+            ))}
+          </div>
+        </section>
+      )}
+
       {/* App grid */}
-      <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-        {APPS.map((app) => (
-          <AppCard
-            key={app.id}
-            app={app}
-            connected={connected(app.id)}
-            onOpen={() =>
-              app.id === 'messenger-bot'
-                ? router.push(`/dashboard/apps/messenger-bot?storeId=${activeStore._id}`)
-                : app.id === 'whatsapp-bot'
-                  ? router.push(`/dashboard/apps/whatsapp-bot?storeId=${activeStore._id}`)
-                  : setOpenApp(app.id)
-            }
-          />
-        ))}
+      <section>
+        {installedApps.length > 0 && (
+          <h2 className="mb-3 text-sm font-semibold">Toutes les applications</h2>
+        )}
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+          {APPS.map((app) => (
+            <AppCard
+              key={app.id}
+              app={app}
+              connected={connected(app.id)}
+              onOpen={() => openAppHandler(app.id)}
+            />
+          ))}
+        </div>
       </section>
     </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// Installed app shortcut — carte compacte pour la section "Mes apps installées"
+// ─────────────────────────────────────────────────────────────────────
+function InstalledAppShortcut({ app, onOpen }: { app: AppDef; onOpen: () => void }) {
+  const Icon = app.icon;
+  return (
+    <button
+      type="button"
+      onClick={onOpen}
+      className="group flex items-center gap-3 rounded-2xl border border-border/60 bg-card p-3 text-left transition-all hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-md"
+    >
+      <div className={cn(
+        'grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-gradient-to-br text-white shadow-sm transition-transform group-hover:scale-110',
+        app.accent,
+      )}>
+        <Icon className="h-5 w-5" />
+      </div>
+      <div className="min-w-0 flex-1">
+        <div className="flex items-center gap-1.5">
+          <span className="truncate text-sm font-semibold">{app.name}</span>
+          <Check className="h-3 w-3 shrink-0 text-emerald-600" strokeWidth={3} />
+        </div>
+        <div className="text-[10px] text-muted-foreground">Gérer →</div>
+      </div>
+    </button>
   );
 }
 
