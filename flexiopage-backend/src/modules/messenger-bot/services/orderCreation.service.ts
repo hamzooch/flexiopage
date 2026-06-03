@@ -5,6 +5,7 @@
  */
 import { logger } from '../../../lib/logger';
 import * as orderService from '../../../services/order.service';
+import { notifyOrderCreated } from '../../../services/notification.service';
 import { Store } from '../../../models/Store.model';
 import { BotConfig, type IBotConfig } from '../models/BotConfig.model';
 import { BotUsage } from '../models/BotUsage.model';
@@ -115,6 +116,26 @@ export class OrderCreationService {
       { $inc: { orders_created: 1 }, $setOnInsert: { bot_config_id: config._id } },
       { upsert: true },
     );
+
+    // Notification cloche dashboard (best-effort, identique au flow COD
+    // storefront — pour qu'un order arrivé via Messenger/WhatsApp Bot soit
+    // visible immédiatement par le vendeur sans rafraîchir manuellement).
+    try {
+      const storeForNotif = await Store.findById(config.vendor_id).select('ownerId').lean();
+      if (storeForNotif?.ownerId) {
+        await notifyOrderCreated({
+          userId: storeForNotif.ownerId,
+          storeId: config.vendor_id,
+          orderId: order._id.toString(),
+          orderNumber: order.orderNumber,
+          total: order.total,
+          currency: order.currency,
+          customerName: order.customerName,
+        });
+      }
+    } catch (err) {
+      logger.warn({ err: (err as Error).message }, '[messenger-bot] notification dashboard échec (non-fatal)');
+    }
 
     return {
       ok: true,
