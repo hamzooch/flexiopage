@@ -83,6 +83,13 @@ services:
       FACEBOOK_REDIRECT_URI: ${FACEBOOK_REDIRECT_URI:-}
       FACEBOOK_GRAPH_VERSION: ${FACEBOOK_GRAPH_VERSION:-v19.0}
       TOKEN_ENCRYPTION_KEY: ${TOKEN_ENCRYPTION_KEY:-}
+      # ── WhatsApp via WasenderAPI ──
+      # Base URL Wasender (défaut OK — n'a besoin d'être set que pour staging/tests).
+      WASENDER_BASE_URL: ${WASENDER_BASE_URL:-https://www.wasenderapi.com}
+      # Secret partagé envoyé à Wasender à la création de session et vérifié
+      # sur les webhooks entrants (header X-Webhook-Signature). Sans cette
+      # valeur, l'endpoint /webhook/wasender accepte n'importe quel POST.
+      WASENDER_WEBHOOK_SECRET: ${WASENDER_WEBHOOK_SECRET:-}
       # Optional — when set, the bot uses BullMQ instead of in-process processing
       REDIS_URL: ${REDIS_URL:-}
     depends_on:
