@@ -37,8 +37,10 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAuthStore, type TeamRole } from '@/stores/auth-store';
+import { useStoreStore } from '@/stores/store-store';
 import { BrandLogo } from '@/components/brand-logo';
 import { useT, type TKey } from '@/lib/i18n';
+import { useInstalledApps } from '@/lib/installed-apps';
 
 interface NavItem {
   href: string;
@@ -119,7 +121,11 @@ interface Props {
 export function Sidebar({ mobileOpen = false, onMobileClose }: Props) {
   const pathname = usePathname();
   const user = useAuthStore((s) => s.user);
+  const currentStoreId = useStoreStore((s) => s.currentStoreId);
   const { t } = useT();
+  // Apps installées pour la boutique active — affichées comme sous-items
+  // sous l'entrée principale "Applications" (logos en mini gradient).
+  const installedApps = useInstalledApps(currentStoreId);
   const initials = (user?.name || user?.email || 'U')
     .split(/[\s@]/)
     .map((s) => s[0])
@@ -218,6 +224,10 @@ export function Sidebar({ mobileOpen = false, onMobileClose }: Props) {
                   const isActive =
                     pathname === item.href ||
                     (item.href !== '/dashboard' && pathname.startsWith(item.href));
+                  // L'entrée "Applications" déploie ses apps installées en
+                  // sous-items quand il y en a — accès direct depuis la
+                  // sidebar avec leur logo gradient.
+                  const showInstalled = item.href === '/dashboard/apps' && installedApps.length > 0;
                   return (
                     <li key={item.href}>
                       <Link
@@ -235,7 +245,42 @@ export function Sidebar({ mobileOpen = false, onMobileClose }: Props) {
                         )}
                         <item.icon className="h-[17px] w-[17px] shrink-0" />
                         <span className="truncate">{t(item.labelKey)}</span>
+                        {showInstalled && (
+                          <span className="ms-auto rounded-full bg-emerald-500/10 px-1.5 py-0.5 text-[9px] font-semibold text-emerald-700">
+                            {installedApps.length}
+                          </span>
+                        )}
                       </Link>
+                      {showInstalled && (
+                        <ul className="ms-3 mt-0.5 space-y-0.5 border-s border-border/40 ps-2.5">
+                          {installedApps.map((app) => {
+                            const SubIcon = app.icon;
+                            const subActive = pathname === app.href.split('?')[0];
+                            return (
+                              <li key={app.id}>
+                                <Link
+                                  href={app.href}
+                                  onClick={onMobileClose}
+                                  className={cn(
+                                    'group flex items-center gap-2 rounded-md px-2 py-1.5 text-[13px] transition-colors',
+                                    subActive
+                                      ? 'bg-primary/8 text-primary font-medium'
+                                      : 'text-foreground/65 hover:bg-sidebar-muted hover:text-foreground'
+                                  )}
+                                >
+                                  <span className={cn(
+                                    'grid h-5 w-5 shrink-0 place-items-center rounded-md bg-gradient-to-br text-white shadow-sm',
+                                    app.accent,
+                                  )}>
+                                    <SubIcon className="h-3 w-3" />
+                                  </span>
+                                  <span className="truncate">{app.name}</span>
+                                </Link>
+                              </li>
+                            );
+                          })}
+                        </ul>
+                      )}
                     </li>
                   );
                 })}
