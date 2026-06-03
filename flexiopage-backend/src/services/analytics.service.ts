@@ -43,7 +43,7 @@ export interface StoreAnalytics {
   productViewsThisMonth?: number;
 }
 
-export type RangeKey = 'today' | '7d' | '30d' | '90d' | '12m' | 'custom';
+export type RangeKey = 'today' | 'yesterday' | '7d' | '30d' | '90d' | '12m' | 'custom';
 
 export interface CustomRange {
   /** Inclusive start date — interpreted as local midnight. */
@@ -100,6 +100,19 @@ function resolveRange(range: RangeKey, now: Date = new Date(), custom?: CustomRa
       ? days
       : (cTo.getFullYear() - cFrom.getFullYear()) * 12 + (cTo.getMonth() - cFrom.getMonth()) + 1;
     return { from: cFrom, to: cTo, prevFrom, prevTo, bucket, buckets };
+  }
+  // 'yesterday' : fenêtre de 1 jour = la journée d'hier (00:00 → 23:59 locale).
+  // Window précédente = avant-hier, pour un delta J-1 vs J-2 cohérent.
+  if (range === 'yesterday') {
+    const yEnd = new Date(now);
+    yEnd.setDate(yEnd.getDate() - 1);
+    yEnd.setHours(23, 59, 59, 999);
+    const yStart = new Date(yEnd);
+    yStart.setHours(0, 0, 0, 0);
+    const prevTo = new Date(yStart.getTime() - 1);
+    const prevFrom = new Date(prevTo);
+    prevFrom.setHours(0, 0, 0, 0);
+    return { from: yStart, to: yEnd, prevFrom, prevTo, bucket: 'day', buckets: 1 };
   }
   // `today` is a 1-day window starting at local midnight; the previous
   // window is yesterday so the delta KPI is meaningful day-over-day.

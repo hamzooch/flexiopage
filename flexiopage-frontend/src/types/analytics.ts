@@ -1,9 +1,9 @@
 /**
  * Shape mirrors the backend `StoreAnalyticsRich` payload returned by
- * GET /api/stores/:storeId/analytics/rich?range=<today|7d|30d|90d|12m|custom>.
+ * GET /api/stores/:storeId/analytics/rich?range=<today|yesterday|7d|30d|90d|12m|custom>.
  * When range='custom', the caller must also send `from` + `to` (YYYY-MM-DD).
  */
-export type RangeKey = 'today' | '7d' | '30d' | '90d' | '12m' | 'custom';
+export type RangeKey = 'today' | 'yesterday' | '7d' | '30d' | '90d' | '12m' | 'custom';
 
 export interface KpiValue {
   value: number;

@@ -70,6 +70,7 @@ interface AbandonedCart { _id: string; recovered: boolean }
 
 const RANGE_LABELS: Record<RangeKey, string> = {
   today: "Aujourd'hui",
+  yesterday: 'Hier',
   '7d': '7 jours',
   '30d': '30 jours',
   '90d': '90 jours',
@@ -79,7 +80,7 @@ const RANGE_LABELS: Record<RangeKey, string> = {
 
 /** Preset chips shown on the overview — kept short on purpose. The seller
  *  reaches for longer windows (90j / 12m) via the "Personnaliser" picker. */
-const QUICK_RANGES: ReadonlyArray<Exclude<RangeKey, 'custom' | '90d' | '12m'>> = ['today', '7d', '30d'];
+const QUICK_RANGES: ReadonlyArray<Exclude<RangeKey, 'custom' | '90d' | '12m'>> = ['today', 'yesterday', '7d', '30d'];
 
 function todayISO(): string {
   const d = new Date();
@@ -383,10 +384,11 @@ export default function DashboardOverviewPage() {
       {/* ── No-store fallback ─────────────────────────────────── */}
       {!loadingStores && stores.length === 0 && <EmptyState />}
 
-      {/* ── KPI cards (4) — 4 columns on every breakpoint so the seller
-            scans the whole picture at a glance, including on mobile. ── */}
+      {/* ── KPI cards (4) — 2 colonnes en mobile pour que les chiffres
+            restent lisibles, 4 colonnes à partir de sm: pour scanner
+            l'ensemble d'un coup d'œil. ── */}
       {activeStore && (
-        <section className="grid grid-cols-4 gap-2 sm:gap-3">
+        <section className="grid grid-cols-2 gap-2 sm:grid-cols-4 sm:gap-3">
           <KpiCard
             label="Revenu total"
             value={<KpiMoney amount={k?.sales.value ?? 0} currency={currency} />}
