@@ -183,11 +183,12 @@ export async function getOverview(_req: AuthRequest, res: Response): Promise<voi
  * PLUS: signup timeseries, commission timeseries, geo breakdown, alerts, and
  * top stores enriched with currency-grouped GMV.
  */
-type AdminRange = 'today' | '7d' | '30d' | '90d' | '12m';
+type AdminRange = 'today' | 'yesterday' | '7d' | '30d' | '90d' | '12m';
 interface AdminWindow { from: Date; to: Date; bucket: 'day' | 'month'; }
 
 function resolveAdminRange(range: AdminRange): AdminWindow {
-  const to = new Date();
+  const now = new Date();
+  const to = new Date(now);
   to.setHours(23, 59, 59, 999);
   if (range === '12m') {
     const from = new Date(to);
@@ -195,6 +196,15 @@ function resolveAdminRange(range: AdminRange): AdminWindow {
     from.setDate(1);
     from.setHours(0, 0, 0, 0);
     return { from, to, bucket: 'month' };
+  }
+  // 'yesterday' = la journée d'hier entière [hier 00:00 → hier 23:59].
+  if (range === 'yesterday') {
+    const yEnd = new Date(now);
+    yEnd.setDate(yEnd.getDate() - 1);
+    yEnd.setHours(23, 59, 59, 999);
+    const yStart = new Date(yEnd);
+    yStart.setHours(0, 0, 0, 0);
+    return { from: yStart, to: yEnd, bucket: 'day' };
   }
   // `today` = 1 day window starting at local midnight
   const days = range === 'today' ? 1 : range === '7d' ? 7 : range === '90d' ? 90 : 30;
@@ -232,7 +242,7 @@ function denseSeries(
 }
 
 export async function getOverviewRich(req: AuthRequest, res: Response): Promise<void> {
-  const allowed: AdminRange[] = ['today', '7d', '30d', '90d', '12m'];
+  const allowed: AdminRange[] = ['today', 'yesterday', '7d', '30d', '90d', '12m'];
   const raw = String(req.query.range || '30d');
   const range = (allowed as string[]).includes(raw) ? (raw as AdminRange) : '30d';
   const w = resolveAdminRange(range);
@@ -439,7 +449,7 @@ export async function getStoreDrilldown(req: AuthRequest, res: Response): Promis
     return;
   }
   const { getStoreAnalyticsRich } = await import('../services/analytics.service');
-  const allowed = ['today', '7d', '30d', '90d', '12m'] as const;
+  const allowed = ['today', 'yesterday', '7d', '30d', '90d', '12m'] as const;
   const raw = String(req.query.range || '30d');
   const range = (allowed as readonly string[]).includes(raw) ? (raw as typeof allowed[number]) : '30d';
   const analytics = await getStoreAnalyticsRich(storeId, range);
