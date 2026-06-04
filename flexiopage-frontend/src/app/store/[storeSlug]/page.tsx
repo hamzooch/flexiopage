@@ -37,7 +37,9 @@ interface StorefrontConfig {
   heroTitle?: string;
   heroSubtitle?: string;
   heroImage?: string;
+  heroImageMobile?: string;
   heroVideo?: string;
+  heroVideoMobile?: string;
   showProductsGrid?: boolean;
   productsGridTitle?: string;
   productsGridSubtitle?: string;
@@ -403,8 +405,10 @@ function Hero({ store, theme, isDigital = false }: { store: StoreDoc; theme: The
   const title = store.settings?.storefront?.heroTitle || store.name;
   const subtitle = store.settings?.storefront?.heroSubtitle || store.description;
   const heroImageRaw = store.settings?.storefront?.heroImage;
+  const heroImageMobileRaw = store.settings?.storefront?.heroImageMobile;
   const heroVideoRaw = store.settings?.storefront?.heroVideo;
-  const hasMedia = !!(heroImageRaw || heroVideoRaw);
+  const heroVideoMobileRaw = store.settings?.storefront?.heroVideoMobile;
+  const hasMedia = !!(heroImageRaw || heroVideoRaw || heroImageMobileRaw || heroVideoMobileRaw);
   const eyebrow = isDigital ? 'Téléchargement instantané' : 'Nouvelle collection';
   const radius = RADIUS_PX[theme.borderRadius];
 
@@ -419,7 +423,14 @@ function Hero({ store, theme, isDigital = false }: { store: StoreDoc; theme: The
   if (hasMedia) {
     return (
       <section className="relative overflow-hidden" style={{ backgroundColor: theme.surfaceMuted, minHeight: 420 }}>
-        <HeroMedia videoUrl={heroVideoRaw} imageUrl={heroImageRaw} overlay="dark" alt="" />
+        <HeroMedia
+          videoUrl={heroVideoRaw}
+          imageUrl={heroImageRaw}
+          videoUrlMobile={heroVideoMobileRaw}
+          imageUrlMobile={heroImageMobileRaw}
+          overlay="dark"
+          alt=""
+        />
         <div className="relative mx-auto max-w-6xl px-4 py-20 sm:px-6 sm:py-28 lg:py-36">
           <div className="mx-auto max-w-3xl text-center">
             <div

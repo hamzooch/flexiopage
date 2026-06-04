@@ -24,6 +24,8 @@ import { IMAGE_BLUR_DATA_URL } from '@/lib/image-placeholder';
 
 export interface SliderSlide {
   image: string;
+  /** Optionnel — image alternative pour mobile (portrait/carré). */
+  imageMobile?: string;
   title?: string;
   subtitle?: string;
   ctaLabel?: string;
@@ -140,19 +142,35 @@ export function StorefrontSlider({ config, primary = '#0ea5e9', primaryFg = '#ff
               isActive ? 'opacity-100' : 'opacity-0 pointer-events-none'
             )}
           >
+            {/* Si le vendeur a fourni une image mobile dédiée, on en rend
+                deux : desktop visible md+, mobile visible <md. Sinon, une
+                seule image qui s'adapte (comportement historique). */}
             <Image
               src={mediaUrl(s.image) || s.image}
               alt={s.title || ''}
               fill
-              // First slide is above the fold — priority boosts LCP.
               priority={i === 0}
               sizes="100vw"
               placeholder="blur"
               blurDataURL={IMAGE_BLUR_DATA_URL}
-              // Mobile: contain → l'image entière s'affiche (pas de crop).
-              // Desktop: cover → le banner remplit la zone comme prévu.
-              className="object-contain sm:object-cover"
+              className={
+                s.imageMobile?.trim()
+                  ? 'hidden md:block object-cover'
+                  : 'object-contain sm:object-cover'
+              }
             />
+            {s.imageMobile?.trim() && (
+              <Image
+                src={mediaUrl(s.imageMobile) || s.imageMobile}
+                alt={s.title || ''}
+                fill
+                priority={i === 0}
+                sizes="100vw"
+                placeholder="blur"
+                blurDataURL={IMAGE_BLUR_DATA_URL}
+                className="block md:hidden object-cover"
+              />
+            )}
             <div className={cn('absolute inset-0', overlay)} />
             <div className={cn('relative z-10 mx-auto flex h-full max-w-5xl flex-col justify-center px-6 sm:px-10', align)}>
               {s.title && (

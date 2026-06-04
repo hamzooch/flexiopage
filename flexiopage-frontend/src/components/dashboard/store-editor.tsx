@@ -87,6 +87,9 @@ export interface CodFormSettings {
 
 export interface SlideItem {
   image: string;
+  /** Optionnel — image plus adaptée au format mobile (portrait/carré).
+   *  Vide → on retombe sur `image` (rétro-compat). */
+  imageMobile?: string;
   title?: string;
   subtitle?: string;
   ctaLabel?: string;
@@ -183,8 +186,12 @@ export interface StorefrontSettings {
   heroTitle?: string;
   heroSubtitle?: string;
   heroImage?: string;
+  /** Image hero pour mobile (portrait/carré). Vide → on utilise heroImage. */
+  heroImageMobile?: string;
   /** Optional video URL — wins over heroImage when set (mp4/webm or YouTube/Vimeo). */
   heroVideo?: string;
+  /** Optionnel — vidéo mobile (mp4/webm/yt/vimeo). Vide → heroVideo. */
+  heroVideoMobile?: string;
   showProductsGrid?: boolean;
   productsGridTitle?: string;
   /** Sous-titre court affiché sous le titre (vide = texte par défaut). */
@@ -506,8 +513,15 @@ export function SliderEditor({
                         </button>
                       </div>
                     </div>
-                    <div className="grid gap-3 sm:grid-cols-[200px_1fr]">
-                      <MediaPicker storeId={storeId} value={slide.image} onChange={(url) => updateSlide(i, { image: url || '' })} shape="wide" />
+                    <div className="grid gap-3 sm:grid-cols-[200px_140px_1fr]">
+                      <div className="space-y-1">
+                        <MediaPicker storeId={storeId} value={slide.image} onChange={(url) => updateSlide(i, { image: url || '' })} shape="wide" />
+                        <p className="text-[10px] text-muted-foreground">🖥️ Bureau (16:9)</p>
+                      </div>
+                      <div className="space-y-1">
+                        <MediaPicker storeId={storeId} value={slide.imageMobile} onChange={(url) => updateSlide(i, { imageMobile: url || '' })} shape="square" />
+                        <p className="text-[10px] text-muted-foreground">📱 Mobile (vide = même)</p>
+                      </div>
                       <div className="space-y-2">
                         <Input placeholder="Titre du slide (optionnel)" value={slide.title || ''} onChange={(e) => updateSlide(i, { title: e.target.value })} className="h-9" />
                         <Input placeholder="Sous-titre (optionnel)" value={slide.subtitle || ''} onChange={(e) => updateSlide(i, { subtitle: e.target.value })} className="h-9" />

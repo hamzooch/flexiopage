@@ -647,18 +647,32 @@ export default function StoreSectionsPage() {
                     />
                     <p className="text-[11px] text-muted-foreground">Vide = description de la boutique.</p>
                   </div>
-                  <div className="sm:col-span-2 max-w-md">
+                  {/* Image bureau (16:9 large) + image mobile (4:5 portrait) :
+                      la vitrine swap automatiquement selon la taille d'écran.
+                      Si seule la version bureau est fournie, on l'utilise sur
+                      mobile aussi (rétro-compat). */}
+                  <div className="space-y-1.5">
                     <MediaPicker
                       storeId={storeId}
                       value={storefront.heroImage}
                       onChange={(url) => setStorefront({ ...storefront, heroImage: url || '' })}
-                      label="Image de fond du hero (optionnel)"
+                      label="🖥️ Image de fond — bureau (optionnel)"
                       shape="wide"
-                      helper="1920×1080 recommandé."
+                      helper="Format paysage 1920×1080 (16:9) recommandé."
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <MediaPicker
+                      storeId={storeId}
+                      value={storefront.heroImageMobile}
+                      onChange={(url) => setStorefront({ ...storefront, heroImageMobile: url || '' })}
+                      label="📱 Image de fond — mobile (optionnel)"
+                      shape="square"
+                      helper="Format portrait 1080×1350 (4:5) ou carré recommandé. Vide = même image que bureau."
                     />
                   </div>
                   <div className="sm:col-span-2 space-y-1.5">
-                    <Label htmlFor="hero-video">Vidéo de fond (optionnel — gagne sur l&apos;image)</Label>
+                    <Label htmlFor="hero-video">🎬 Vidéo de fond — bureau (optionnel — gagne sur l&apos;image)</Label>
                     <Input
                       id="hero-video"
                       placeholder="Ex: https://youtu.be/abc123 · https://vimeo.com/123456 · /uploads/promo.mp4"
@@ -668,6 +682,18 @@ export default function StoreSectionsPage() {
                     <p className="text-[11px] text-muted-foreground">
                       YouTube, Vimeo, ou fichier <code className="rounded bg-muted px-1">.mp4</code>/<code className="rounded bg-muted px-1">.webm</code>.
                       Lecture autoplay muet en boucle.
+                    </p>
+                  </div>
+                  <div className="sm:col-span-2 space-y-1.5">
+                    <Label htmlFor="hero-video-mobile">📱 Vidéo de fond — mobile (optionnel)</Label>
+                    <Input
+                      id="hero-video-mobile"
+                      placeholder="Ex: /uploads/promo-vertical.mp4 (format portrait recommandé)"
+                      value={storefront.heroVideoMobile || ''}
+                      onChange={(e) => setStorefront({ ...storefront, heroVideoMobile: e.target.value })}
+                    />
+                    <p className="text-[11px] text-muted-foreground">
+                      Vide = même vidéo que bureau. Pour un rendu propre sur mobile, recadre en vertical (9:16) ou carré.
                     </p>
                   </div>
                 </div>
