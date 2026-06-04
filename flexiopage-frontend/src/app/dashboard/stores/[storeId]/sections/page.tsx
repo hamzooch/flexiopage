@@ -712,15 +712,98 @@ export default function StoreSectionsPage() {
                 onChange={(v) => setStorefront({ ...storefront, showProductsGrid: v })}
               />
               {storefront.showProductsGrid !== false && (
-                <div className="space-y-1.5">
-                  <Label htmlFor="grid-title">Titre de la section produits</Label>
-                  <Input
-                    id="grid-title"
-                    placeholder="Ex: Nos produits · Le catalogue · Découvrir"
-                    value={storefront.productsGridTitle || ''}
-                    onChange={(e) => setStorefront({ ...storefront, productsGridTitle: e.target.value })}
+                <div className="space-y-4">
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <div className="space-y-1.5">
+                      <Label htmlFor="grid-title">Titre de la section</Label>
+                      <Input
+                        id="grid-title"
+                        placeholder="Ex: Nos produits · Le catalogue · Découvrir"
+                        value={storefront.productsGridTitle || ''}
+                        onChange={(e) => setStorefront({ ...storefront, productsGridTitle: e.target.value })}
+                      />
+                      <p className="text-[11px] text-muted-foreground">Vide = « Nos produits ».</p>
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label htmlFor="grid-subtitle">Sous-titre (optionnel)</Label>
+                      <Input
+                        id="grid-subtitle"
+                        placeholder="Ex: Tous nos produits, choisis avec soin"
+                        value={storefront.productsGridSubtitle || ''}
+                        onChange={(e) => setStorefront({ ...storefront, productsGridSubtitle: e.target.value })}
+                      />
+                      <p className="text-[11px] text-muted-foreground">Vide = texte par défaut.</p>
+                    </div>
+                  </div>
+
+                  <div className="grid gap-3 sm:grid-cols-3">
+                    <div className="space-y-1.5">
+                      <Label htmlFor="grid-max">Nombre maximum de produits</Label>
+                      <Input
+                        id="grid-max"
+                        type="number"
+                        min={0}
+                        step={1}
+                        placeholder="0 = tous"
+                        value={storefront.productsGridMaxItems ?? ''}
+                        onChange={(e) => {
+                          const n = parseInt(e.target.value, 10);
+                          setStorefront({
+                            ...storefront,
+                            productsGridMaxItems: Number.isFinite(n) && n > 0 ? n : undefined,
+                          });
+                        }}
+                      />
+                      <p className="text-[11px] text-muted-foreground">Vide ou 0 = tous les produits publiés.</p>
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <Label htmlFor="grid-cols">Colonnes par ligne</Label>
+                      <select
+                        id="grid-cols"
+                        className="h-10 w-full rounded-md border border-border/60 bg-background px-2 text-sm"
+                        value={storefront.productsGridColumns ?? ''}
+                        onChange={(e) => {
+                          const v = e.target.value;
+                          setStorefront({
+                            ...storefront,
+                            productsGridColumns: v === '' ? undefined : (parseInt(v, 10) as 2 | 3 | 4),
+                          });
+                        }}
+                      >
+                        <option value="">Auto (selon le thème)</option>
+                        <option value="2">2 colonnes</option>
+                        <option value="3">3 colonnes</option>
+                        <option value="4">4 colonnes</option>
+                      </select>
+                      <p className="text-[11px] text-muted-foreground">Le mobile garde 2 colonnes max.</p>
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <Label htmlFor="grid-sort">Tri des produits</Label>
+                      <select
+                        id="grid-sort"
+                        className="h-10 w-full rounded-md border border-border/60 bg-background px-2 text-sm"
+                        value={storefront.productsGridSort ?? 'recent'}
+                        onChange={(e) => {
+                          const v = e.target.value as 'recent' | 'price-asc' | 'price-desc' | 'name-asc';
+                          setStorefront({ ...storefront, productsGridSort: v });
+                        }}
+                      >
+                        <option value="recent">Plus récents en premier</option>
+                        <option value="price-asc">Prix croissant</option>
+                        <option value="price-desc">Prix décroissant</option>
+                        <option value="name-asc">Nom (A → Z)</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  <FieldToggle
+                    label="Masquer les produits en rupture de stock"
+                    sublabel="Par défaut, ils sont affichés avec un badge 'Rupture'."
+                    checked={!!storefront.productsGridHideOutOfStock}
+                    onChange={(v) => setStorefront({ ...storefront, productsGridHideOutOfStock: v })}
                   />
-                  <p className="text-[11px] text-muted-foreground">Vide = « Nos produits » par défaut.</p>
                 </div>
               )}
             </CardContent>

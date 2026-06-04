@@ -187,6 +187,16 @@ export interface StorefrontSettings {
   heroVideo?: string;
   showProductsGrid?: boolean;
   productsGridTitle?: string;
+  /** Sous-titre court affiché sous le titre (vide = texte par défaut). */
+  productsGridSubtitle?: string;
+  /** Nombre maximum de produits affichés. 0 ou undefined = tous. */
+  productsGridMaxItems?: number;
+  /** Colonnes (2 / 3 / 4) — override la valeur du thème. */
+  productsGridColumns?: 2 | 3 | 4;
+  /** Ordre de tri des produits dans la grille. Défaut : recent. */
+  productsGridSort?: 'recent' | 'price-asc' | 'price-desc' | 'name-asc';
+  /** Masquer les produits en rupture (par défaut : affichés grisés). */
+  productsGridHideOutOfStock?: boolean;
   showFeatures?: boolean;
   testimonials?: TestimonialsSettings;
   showFooter?: boolean;

@@ -40,6 +40,11 @@ interface StorefrontConfig {
   heroVideo?: string;
   showProductsGrid?: boolean;
   productsGridTitle?: string;
+  productsGridSubtitle?: string;
+  productsGridMaxItems?: number;
+  productsGridColumns?: 2 | 3 | 4;
+  productsGridSort?: 'recent' | 'price-asc' | 'price-desc' | 'name-asc';
+  productsGridHideOutOfStock?: boolean;
   showFeatures?: boolean;
   testimonials?: TestimonialsConfig;
   showFooter?: boolean;
@@ -81,6 +86,55 @@ interface ProductDoc {
   type?: 'physical' | 'digital';
   digitalKind?: 'download' | 'course' | 'license' | 'membership' | 'service';
   digitalAssets?: Array<{ id: string; name: string; kind: string; size?: number }>;
+  /** Stock côté physique (digital n'utilise pas ce champ). */
+  stock?: number;
+  /** createdAt utilisé pour le tri 'recent' — peut manquer sur les anciens docs. */
+  createdAt?: string;
+}
+
+/**
+ * Applique le tri / la limite / le filtre stock définis par le vendeur dans
+ * /dashboard/stores/:id/sections (StorefrontSettings.productsGrid*). Pure :
+ * ne mute pas l'array d'entrée. Si aucune option n'est définie, retourne
+ * la liste telle quelle (rétro-compat).
+ */
+function applyGridSettings(
+  products: ProductDoc[],
+  sf: {
+    productsGridMaxItems?: number;
+    productsGridSort?: 'recent' | 'price-asc' | 'price-desc' | 'name-asc';
+    productsGridHideOutOfStock?: boolean;
+  },
+): ProductDoc[] {
+  let out = [...products];
+
+  if (sf.productsGridHideOutOfStock) {
+    // Digital products n'ont pas de stock → on les garde toujours visibles.
+    out = out.filter((p) => p.type === 'digital' || typeof p.stock !== 'number' || p.stock > 0);
+  }
+
+  switch (sf.productsGridSort) {
+    case 'price-asc':
+      out.sort((a, b) => (a.price || 0) - (b.price || 0));
+      break;
+    case 'price-desc':
+      out.sort((a, b) => (b.price || 0) - (a.price || 0));
+      break;
+    case 'name-asc':
+      out.sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }));
+      break;
+    case 'recent':
+    default:
+      // 'recent' = ordre fourni par l'API (sort {updatedAt: -1}), pas de
+      // ré-tri ici. On garde le comportement par défaut.
+      break;
+  }
+
+  if (sf.productsGridMaxItems && sf.productsGridMaxItems > 0) {
+    out = out.slice(0, sf.productsGridMaxItems);
+  }
+
+  return out;
 }
 
 const FALLBACK_THEME = STORE_THEME_TEMPLATES[0].theme;
@@ -211,11 +265,13 @@ export default async function PublicStorePage({ params }: Props) {
             products: showGrid ? (
               <ProductsGrid
                 theme={theme}
-                products={products}
+                products={applyGridSettings(products, sf)}
                 storeSlug={store.slug}
                 currency={currency}
                 isDigital={isDigital}
                 title={sf.productsGridTitle}
+                subtitle={sf.productsGridSubtitle}
+                columnsOverride={sf.productsGridColumns}
               />
             ) : null,
             testimonials: <StorefrontTestimonials config={sf.testimonials} theme={theme} />,
@@ -879,6 +935,8 @@ function ProductsGrid({
   currency,
   isDigital = false,
   title,
+  subtitle,
+  columnsOverride,
 }: {
   theme: ThemeTokens;
   products: ProductDoc[];
@@ -886,13 +944,18 @@ function ProductsGrid({
   currency: string;
   isDigital?: boolean;
   title?: string;
+  /** Sous-titre custom (override le texte 'Tous nos produits, choisis avec soin'). */
+  subtitle?: string;
+  /** Override du nombre de colonnes (sinon, valeur du thème). */
+  columnsOverride?: 2 | 3 | 4;
 }) {
   const radius = RADIUS_PX[theme.borderRadius];
   // "Bold" nav themes (Volt, Studio) also use loud uppercase section heads.
   const uppercase = theme.layout?.nav === 'bold';
   // Editorial / left-aligned section heads vs centered ones.
   const leftAlign = theme.layout?.hero === 'editorial' || theme.layout?.hero === 'minimal';
-  const cols = theme.layout?.gridColumns || 3;
+  // Le vendeur peut forcer le nombre de colonnes — sinon, fallback sur le thème.
+  const cols = columnsOverride || theme.layout?.gridColumns || 3;
   const gridClass = GRID_COLS_CLASS[cols] || GRID_COLS_CLASS[3];
 
   return (
@@ -919,7 +982,12 @@ function ProductsGrid({
           </h2>
           {!leftAlign && (
             <p className="mt-2 text-xs sm:text-sm" style={{ color: theme.muted }}>
-              Tous nos produits, choisis avec soin.
+              {subtitle?.trim() || 'Tous nos produits, choisis avec soin.'}
+            </p>
+          )}
+          {leftAlign && subtitle?.trim() && (
+            <p className="mt-2 text-xs sm:text-sm" style={{ color: theme.muted }}>
+              {subtitle.trim()}
             </p>
           )}
         </div>
