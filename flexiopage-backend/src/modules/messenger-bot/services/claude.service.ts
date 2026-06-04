@@ -92,7 +92,10 @@ function getClient(provider: Provider): Anthropic {
       }
       clients.openrouter = new Anthropic({
         apiKey: process.env.OPENROUTER_API_KEY,
-        baseURL: 'https://openrouter.ai/api/v1',
+        // ⚠️ Le SDK Anthropic ajoute /v1/messages automatiquement → on ne
+        // DOIT PAS inclure /v1 dans le baseURL. Avant : '/api/v1' → URL
+        // finale '/api/v1/v1/messages' → 404 HTML 'Not Found | OpenRouter'.
+        baseURL: 'https://openrouter.ai/api',
         defaultHeaders: {
           'HTTP-Referer': process.env.FRONTEND_URL?.split(',')[0] || 'https://flexiopage.com',
           'X-Title': 'FlexioPage',
