@@ -37,6 +37,22 @@ export default function WhatsAppBotPage() {
    * du picker remet ce flag à false.
    */
   const [showPicker, setShowPicker] = useState(false);
+  // Panels Debug Worker + Debug Webhooks : utiles pendant le rodage du
+  // bot, masqués par défaut une fois l'intégration stable. Persisté en
+  // localStorage pour que le toggle survive aux refresh.
+  const [devMode, setDevMode] = useState(false);
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      setDevMode(localStorage.getItem('flexiopage:wasender:devMode') === '1');
+    }
+  }, []);
+  const toggleDevMode = () => {
+    const next = !devMode;
+    setDevMode(next);
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('flexiopage:wasender:devMode', next ? '1' : '0');
+    }
+  };
 
   const load = useCallback(async () => {
     if (!storeId) { setLoading(false); return; }
@@ -141,7 +157,7 @@ export default function WhatsAppBotPage() {
             </Link>
           </div>
           <Inbox storeId={storeId} />
-          {config.whatsapp_provider === 'wasender' && (
+          {config.whatsapp_provider === 'wasender' && devMode && (
             <>
               <WasenderWorkerDebug storeId={storeId} />
               <WasenderWebhookDebug storeId={storeId} />
@@ -168,6 +184,12 @@ export default function WhatsAppBotPage() {
               }}>
               <Power className="h-3.5 w-3.5" /> Déconnecter WhatsApp
             </Button>
+            {config.whatsapp_provider === 'wasender' && (
+              <Button variant="ghost" size="sm" className="gap-1.5 text-muted-foreground hover:text-foreground"
+                onClick={toggleDevMode} title="Affiche/masque les panels Debug Worker + Debug Webhooks">
+                {devMode ? '🛠️ Mode dev (ON)' : '🛠️ Mode dev'}
+              </Button>
+            )}
           </div>
         </>
       )}
