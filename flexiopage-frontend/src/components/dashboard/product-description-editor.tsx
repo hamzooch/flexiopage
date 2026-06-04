@@ -17,8 +17,12 @@ import { Bold, List, Image as ImageIcon, Link as LinkIcon, Link2, Loader2, Smile
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { MediaPicker } from '@/components/dashboard/MediaPicker';
-import { storesApi } from '@/lib/api';
+import { storesApi, extractApiError } from '@/lib/api';
 import { cn } from '@/lib/utils';
+
+/** Limite côté backend (cf. media.controller.MAX_UPLOAD_BYTES). On signale
+ *  au vendeur avant l'upload pour éviter le round-trip + 413. */
+const MAX_UPLOAD_MB = 50;
 
 /** Emojis/icônes courants pour enrichir une description produit. */
 const EMOJIS = [
@@ -105,18 +109,33 @@ export function ProductDescriptionEditor({ storeId, value, onChange, placeholder
 
   /** Téléverse des fichiers image/GIF puis les insère au curseur (collage / drop). */
   async function uploadAndInsert(files: File[]) {
+    // Sépare ce qui est image (.gif inclus) du reste pour message clair.
     const images = files.filter((f) => f.type.startsWith('image/'));
-    if (!images.length) return;
+    const rejected = files.filter((f) => !f.type.startsWith('image/'));
+    if (rejected.length && !images.length) {
+      setUploadError(`Format non supporté : ${rejected.map((f) => f.name).join(', ')}. Seules les images et GIF sont acceptés.`);
+      return;
+    }
+    // Filtre les images trop lourdes AVANT l'upload pour éviter le 413.
+    const tooBig = images.filter((f) => f.size > MAX_UPLOAD_MB * 1024 * 1024);
+    const ok = images.filter((f) => f.size <= MAX_UPLOAD_MB * 1024 * 1024);
+    if (tooBig.length) {
+      const names = tooBig.map((f) => `${f.name} (${(f.size / 1024 / 1024).toFixed(1)} Mo)`).join(', ');
+      setUploadError(`Trop volumineux : ${names}. Limite ${MAX_UPLOAD_MB} Mo par fichier.`);
+      if (!ok.length) return;
+    }
     setUploading(true);
-    setUploadError('');
+    if (!tooBig.length) setUploadError('');
     try {
-      for (const file of images) {
+      for (const file of ok) {
         const res = await storesApi.uploadMedia(storeId, file);
         const url = (res.data as { media?: { url?: string } }).media?.url;
         if (url) insertImage(url);
       }
-    } catch {
-      setUploadError("Échec du téléversement de l'image collée.");
+    } catch (err) {
+      // Remonte le vrai message du backend (ex: "Fichier trop volumineux. Limite : 50 Mo.")
+      // plutôt qu'un générique.
+      setUploadError(extractApiError(err, "Échec du téléversement de l'image."));
     } finally {
       setUploading(false);
     }
@@ -124,18 +143,18 @@ export function ProductDescriptionEditor({ storeId, value, onChange, placeholder
 
   /** Colle une image/GIF depuis le presse-papier (screenshot, image copiée). */
   function handlePaste(e: React.ClipboardEvent<HTMLTextAreaElement>) {
-    const files = Array.from(e.clipboardData?.files || []).filter((f) => f.type.startsWith('image/'));
-    if (!files.length) return; // pas d'image → on laisse le collage texte normal.
+    const all = Array.from(e.clipboardData?.files || []);
+    if (!all.length) return; // pas de fichier → on laisse le collage texte normal.
     e.preventDefault();
-    void uploadAndInsert(files);
+    void uploadAndInsert(all);
   }
 
   /** Glisser-déposer une image/GIF dans la zone de texte. */
   function handleDrop(e: React.DragEvent<HTMLTextAreaElement>) {
-    const files = Array.from(e.dataTransfer?.files || []).filter((f) => f.type.startsWith('image/'));
-    if (!files.length) return;
+    const all = Array.from(e.dataTransfer?.files || []);
+    if (!all.length) return;
     e.preventDefault();
-    void uploadAndInsert(files);
+    void uploadAndInsert(all);
   }
 
   /** Insère une image / GIF à partir d'un lien collé (Giphy, CDN, etc.). */

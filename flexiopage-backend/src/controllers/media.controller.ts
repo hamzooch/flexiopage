@@ -5,9 +5,9 @@ import { Media } from '../models/Media.model';
 import * as storageService from '../services/storage.service';
 import { logger } from '../lib/logger';
 
-// 25MB covers modern phone photos (HEIC/JPEG up to ~15MB) and short audio clips
-// without becoming a DoS surface. Bumping above 50MB would require chunked uploads.
-const MAX_UPLOAD_BYTES = 25 * 1024 * 1024;
+// 50MB — couvre les GIF animés (souvent 10-30MB), photos HEIC/JPEG modernes
+// (~15MB), et de courts clips audio. Au-delà il faudrait des uploads chunkés.
+const MAX_UPLOAD_BYTES = 50 * 1024 * 1024;
 
 const upload = multer({
   storage: multer.memoryStorage(),
