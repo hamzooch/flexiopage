@@ -362,9 +362,11 @@ export default function StoreSectionsPage() {
           storeType={store.storeType}
         />
       ) : (
-      <div className="grid gap-6 lg:grid-cols-[220px_minmax(0,1fr)_320px]">
-        {/* ── STICKY LEFT NAV — quick-jump to any section ────────── */}
-        <aside className="lg:sticky lg:top-6 lg:self-start">
+      <div className="grid gap-4 md:gap-5 md:grid-cols-[180px_minmax(0,1fr)] lg:grid-cols-[220px_minmax(0,1fr)_320px] lg:gap-6">
+        {/* ── STICKY LEFT NAV — quick-jump to any section ──────────
+            md+ : sticky pour rester accessible pendant qu'on scrolle les cards
+            lg+ : 3 colonnes avec la preview à droite */}
+        <aside className="md:sticky md:top-4 md:self-start lg:top-6">
           <div className="rounded-2xl border border-border/60 bg-card p-3 shadow-sm">
             <div className="flex items-center justify-between gap-2 px-1.5 pb-2">
               <span className="text-[10px] font-bold uppercase tracking-[0.15em] text-muted-foreground">
@@ -889,8 +891,12 @@ export default function StoreSectionsPage() {
           </Card>
         </div>
 
-        {/* ── STICKY RIGHT — real-time mini-storefront mock ────── */}
-        <aside className="lg:sticky lg:top-6 lg:self-start">
+        {/* ── STICKY RIGHT — real-time mini-storefront mock ──────
+            Masqué sous lg pour donner toute la place à l'édition sur
+            tablette ; le vendeur peut prévisualiser via le bouton
+            "Voir la boutique" du shell parent ou en ouvrant l'URL
+            publique dans un autre onglet. */}
+        <aside className="hidden lg:sticky lg:top-6 lg:self-start lg:block">
           <StoreHomepageLivePreview
             storeName={store.name}
             logo={store.logo}

@@ -279,8 +279,8 @@ export default function StoreCheckoutPage() {
       </Card>
         </div>
 
-        {/* RIGHT — sticky live preview of the COD form */}
-        <aside className="lg:sticky lg:top-4 lg:self-start">
+        {/* RIGHT — sticky live preview of the COD form (masquée sous lg). */}
+        <aside className="hidden lg:sticky lg:top-4 lg:self-start lg:block">
           <CodFormLivePreview cfg={codForm} />
         </aside>
       </div>

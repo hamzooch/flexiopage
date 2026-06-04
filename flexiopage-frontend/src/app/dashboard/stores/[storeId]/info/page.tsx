@@ -237,8 +237,9 @@ export default function StoreInfoPage() {
       </Card>
         </div>
 
-        {/* ── STICKY RIGHT — real-time mini-storefront mock ────── */}
-        <aside className="lg:sticky lg:top-4 lg:self-start">
+        {/* ── STICKY RIGHT — real-time mini-storefront mock ──────
+            Masqué sous lg pour libérer l'espace d'édition sur tablette. */}
+        <aside className="hidden lg:sticky lg:top-4 lg:self-start lg:block">
           <StoreHomepageLivePreview
             storeName={name || store.name}
             logo={store.logo}

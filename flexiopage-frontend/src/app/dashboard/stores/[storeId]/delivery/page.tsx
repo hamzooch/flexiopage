@@ -269,8 +269,9 @@ export default function StoreDeliveryPage() {
       </Card>
         </div>
 
-        {/* ── STICKY RIGHT — real-time integration readiness checklist ── */}
-        <aside className="lg:sticky lg:top-4 lg:self-start">
+        {/* ── STICKY RIGHT — real-time integration readiness checklist ──
+            Masquée sous lg pour libérer l'espace d'édition sur tablette. */}
+        <aside className="hidden lg:sticky lg:top-4 lg:self-start lg:block">
           <DeliveryReadinessPreview cfg={delivery} />
         </aside>
       </div>
