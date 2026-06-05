@@ -16,7 +16,6 @@ import { useEffect, useRef, useState } from 'react';
 import { Bold, List, Image as ImageIcon, Link as LinkIcon, Link2, Loader2, Smile, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { MediaPicker } from '@/components/dashboard/MediaPicker';
 import { storesApi, extractApiError } from '@/lib/api';
 import { cn } from '@/lib/utils';
 
@@ -43,6 +42,10 @@ interface Props {
 
 export function ProductDescriptionEditor({ storeId, value, onChange, placeholder, rows = 8 }: Props) {
   const ref = useRef<HTMLTextAreaElement | null>(null);
+  // Un seul input file caché qu'on reconfigure (accept) avant d'ouvrir le picker
+  // selon que le vendeur clique sur "Image" ou "GIF". Plus simple et plus fiable
+  // que de passer par la modal MediaPicker (qui avalait les erreurs en silence).
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   /** Ajuste la hauteur du textarea à son contenu (le vendeur voit tout sans scroll). */
   function autosize() {
@@ -168,7 +171,22 @@ export function ProductDescriptionEditor({ storeId, value, onChange, placeholder
     insertImage(url);
   }
 
-  function openMedia(mode: 'image' | 'gif') {
+  /** Ouvre directement le file picker système — pas de modal intermédiaire.
+   *  Le vendeur clique "Image" → choisit son fichier → upload → insertion. */
+  function pickFile(mode: 'image' | 'gif') {
+    setMediaMode(mode);
+    setEmojiOpen(false);
+    setUploadError('');
+    const input = fileInputRef.current;
+    if (!input) return;
+    // Configure l'accept selon le bouton cliqué (GIF strict ou toute image).
+    input.accept = mode === 'gif' ? 'image/gif,.gif' : 'image/*';
+    input.value = ''; // permet de re-sélectionner le même fichier
+    input.click();
+  }
+
+  /** Ouvre la modal de paste de lien (Giphy, CDN externe). */
+  function openLinkModal(mode: 'image' | 'gif') {
     setMediaMode(mode);
     setEmojiOpen(false);
     setImageModalOpen(true);
@@ -178,6 +196,13 @@ export function ProductDescriptionEditor({ storeId, value, onChange, placeholder
     setImageModalOpen(false);
     setLinkUrl('');
     setUrlError('');
+  }
+
+  /** Handler du file input caché — relayé vers uploadAndInsert. */
+  function onFileInputChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const files = Array.from(e.target.files || []);
+    if (!files.length) return;
+    void uploadAndInsert(files);
   }
 
   function insertLink() {
@@ -197,11 +222,22 @@ export function ProductDescriptionEditor({ storeId, value, onChange, placeholder
         <ToolbarBtn onClick={insertLink} title="Insérer un lien">
           <LinkIcon className="h-3.5 w-3.5" />
         </ToolbarBtn>
-        <ToolbarBtn onClick={() => openMedia('image')} title="Insérer une image">
-          <ImageIcon className="h-3.5 w-3.5" />
+        <ToolbarBtn onClick={() => pickFile('image')} title="Téléverser une image">
+          {uploading && mediaMode === 'image' ? (
+            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+          ) : (
+            <ImageIcon className="h-3.5 w-3.5" />
+          )}
         </ToolbarBtn>
-        <ToolbarBtn onClick={() => openMedia('gif')} title="Insérer un GIF">
-          <span className="text-[9px] font-bold leading-none tracking-tight">GIF</span>
+        <ToolbarBtn onClick={() => pickFile('gif')} title="Téléverser un GIF">
+          {uploading && mediaMode === 'gif' ? (
+            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+          ) : (
+            <span className="text-[9px] font-bold leading-none tracking-tight">GIF</span>
+          )}
+        </ToolbarBtn>
+        <ToolbarBtn onClick={() => openLinkModal(mediaMode)} title="Insérer depuis un lien (Giphy, CDN)">
+          <Link2 className="h-3.5 w-3.5" />
         </ToolbarBtn>
         <ToolbarBtn onClick={() => setEmojiOpen((v) => !v)} title="Emoji / icône" active={emojiOpen}>
           <Smile className="h-3.5 w-3.5" />
@@ -228,6 +264,14 @@ export function ProductDescriptionEditor({ storeId, value, onChange, placeholder
         )}
       </div>
 
+      {/* File input caché, partagé par les boutons Image et GIF de la toolbar. */}
+      <input
+        ref={fileInputRef}
+        type="file"
+        hidden
+        onChange={onFileInputChange}
+      />
+
       <textarea
         ref={ref}
         value={value}
@@ -249,10 +293,22 @@ export function ProductDescriptionEditor({ storeId, value, onChange, placeholder
 
       {uploading && (
         <p className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
-          <Loader2 className="h-3 w-3 animate-spin" /> Téléversement de l&apos;image collée…
+          <Loader2 className="h-3 w-3 animate-spin" /> Téléversement en cours…
         </p>
       )}
-      {uploadError && <p className="text-[11px] text-rose-600">{uploadError}</p>}
+      {uploadError && (
+        <div className="flex items-start justify-between gap-2 rounded-md border border-rose-200 bg-rose-50 px-2.5 py-2 text-[11px] text-rose-700">
+          <span>{uploadError}</span>
+          <button
+            type="button"
+            onClick={() => setUploadError('')}
+            className="shrink-0 text-rose-500 hover:text-rose-700"
+            aria-label="Fermer"
+          >
+            <X className="h-3 w-3" />
+          </button>
+        </div>
+      )}
 
       <p className="text-[11px] text-muted-foreground">
         Mise en forme acceptée : <code className="rounded bg-muted px-1">**gras**</code> · <code className="rounded bg-muted px-1">- listes</code> · <code className="rounded bg-muted px-1">[lien](url)</code> · <code className="rounded bg-muted px-1">![](url-image.gif)</code> pour images / GIFs · emojis 😊 via le bouton 🙂. Tu peux aussi <strong>coller</strong> (Ctrl/Cmd+V) ou glisser-déposer une image / un GIF directement.
@@ -268,7 +324,7 @@ export function ProductDescriptionEditor({ storeId, value, onChange, placeholder
             onClick={(e) => e.stopPropagation()}
           >
             <div className="mb-3 flex items-center justify-between">
-              <h3 className="text-sm font-semibold">{mediaMode === 'gif' ? 'Insérer un GIF' : 'Insérer une image'}</h3>
+              <h3 className="text-sm font-semibold">{mediaMode === 'gif' ? 'Insérer un GIF par lien' : "Insérer une image par lien"}</h3>
               <button
                 type="button"
                 onClick={closeImageModal}
@@ -279,9 +335,8 @@ export function ProductDescriptionEditor({ storeId, value, onChange, placeholder
               </button>
             </div>
 
-            {/* Option 1 : coller un lien (Giphy, CDN, etc.) */}
             <label className="mb-1.5 block text-[11px] font-medium text-muted-foreground">
-              {mediaMode === 'gif' ? 'Coller un lien GIF' : "Coller un lien d'image"}
+              {mediaMode === 'gif' ? 'Coller un lien GIF (Giphy, Tenor…)' : "Coller un lien d'image (Unsplash, CDN…)"}
             </label>
             <div className="flex gap-2">
               <Input
@@ -290,6 +345,7 @@ export function ProductDescriptionEditor({ storeId, value, onChange, placeholder
                 onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); insertImageUrl(); } }}
                 placeholder={mediaMode === 'gif' ? 'https://media.giphy.com/…/giphy.gif' : 'https://…/photo.jpg'}
                 className="h-9"
+                autoFocus
               />
               <Button type="button" size="sm" onClick={insertImageUrl} disabled={!linkUrl.trim()} className="h-9 shrink-0 gap-1.5">
                 <Link2 className="h-3.5 w-3.5" /> Insérer
@@ -300,19 +356,9 @@ export function ProductDescriptionEditor({ storeId, value, onChange, placeholder
               <p className="mt-1 text-[11px] text-muted-foreground">Astuce : sur Giphy, clic droit sur le GIF → « Copier l&apos;adresse de l&apos;image » (lien finissant par .gif).</p>
             )}
 
-            <div className="my-4 flex items-center gap-3 text-[11px] text-muted-foreground">
-              <span className="h-px flex-1 bg-border" /> ou téléverser <span className="h-px flex-1 bg-border" />
-            </div>
-
-            {/* Option 2 : upload / galerie */}
-            <MediaPicker
-              storeId={storeId}
-              value=""
-              onChange={(url) => url && insertImage(url)}
-              label=""
-              shape="square"
-              helper={mediaMode === 'gif' ? 'Téléverse un GIF animé (.gif).' : 'Formats supportés : PNG, JPG, WebP, GIF animé.'}
-            />
+            <p className="mt-4 rounded-md bg-muted/50 p-2.5 text-[11px] text-muted-foreground">
+              💡 Pour téléverser un fichier depuis ton ordinateur, ferme cette fenêtre et utilise les boutons <strong>Image</strong> ou <strong>GIF</strong> de la barre d&apos;outils.
+            </p>
           </div>
         </div>
       )}

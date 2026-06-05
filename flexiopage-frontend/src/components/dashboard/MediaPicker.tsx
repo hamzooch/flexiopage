@@ -9,7 +9,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Image as ImageIcon, Loader2, Trash2, Upload, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { storesApi } from '@/lib/api';
+import { storesApi, extractApiError } from '@/lib/api';
 import { cn } from '@/lib/utils';
 
 const API_BASE = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000').replace(/\/$/, '');
@@ -51,17 +51,28 @@ export function MediaPicker({
   uploadDisabled = false,
 }: Props) {
   const [uploading, setUploading] = useState(false);
+  const [uploadError, setUploadError] = useState('');
   const [galleryOpen, setGalleryOpen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const previewUrl = absolutize(value);
 
   async function handleFile(file: File) {
-    if (!file.type.startsWith('image/')) return;
+    if (!file.type.startsWith('image/')) {
+      setUploadError(`Format non supporté (${file.type || 'inconnu'}). Choisis une image PNG, JPG, WebP ou GIF.`);
+      return;
+    }
     setUploading(true);
+    setUploadError('');
     try {
       const res = await storesApi.uploadMedia(storeId, file);
       const data = res.data as { media?: { url?: string } };
-      if (data.media?.url) onChange(data.media.url);
+      if (data.media?.url) {
+        onChange(data.media.url);
+      } else {
+        setUploadError("Le serveur n'a pas renvoyé d'URL d'image.");
+      }
+    } catch (err) {
+      setUploadError(extractApiError(err, "Échec du téléversement."));
     } finally {
       setUploading(false);
     }
@@ -155,6 +166,20 @@ export function MediaPicker({
       </div>
 
       {helper && <p className="text-[11px] text-muted-foreground">{helper}</p>}
+
+      {uploadError && (
+        <div className="flex items-start justify-between gap-2 rounded-md border border-rose-200 bg-rose-50 px-2.5 py-2 text-[11px] text-rose-700">
+          <span>{uploadError}</span>
+          <button
+            type="button"
+            onClick={() => setUploadError('')}
+            className="shrink-0 text-rose-500 hover:text-rose-700"
+            aria-label="Fermer"
+          >
+            <X className="h-3 w-3" />
+          </button>
+        </div>
+      )}
 
       {galleryOpen && (
         <GalleryModal
