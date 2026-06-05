@@ -35,22 +35,33 @@ function renderInline(line: string): string {
   out = out.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
   // Italic *x* (skip **)
   out = out.replace(/(^|[^*])\*([^*\n]+)\*(?!\*)/g, '$1<em>$2</em>');
-  // Images / GIFs ![alt](url) — must run BEFORE the [label](url) link rule
-  // since the syntax is a superset. URL is validated to http(s):// or a
-  // store-relative path so a malicious description can't embed a
-  // javascript: pseudo-URL. Lazy-loaded so the page text renders fast.
-  // ⚠️ Les uploads sont stockés en chemin relatif "/uploads/..." qui pointe
-  // vers le serveur API, PAS le domaine du storefront → on les résout via
-  // mediaUrl() avant injection sinon le navigateur essaie de les charger
-  // depuis le storefront (404).
-  out = out.replace(/!\[([^\]]*)\]\(([^)]+)\)/g, (_m, alt: string, url: string) => {
+  // Helpers partagés entre la règle image et la règle lien.
+  const isImageUrl = (u: string): boolean =>
+    /\.(jpe?g|png|gif|webp|avif|svg)(\?.*)?$/i.test(u) || u.includes('/uploads/');
+  const renderImage = (alt: string, url: string): string => {
     const safe = url.startsWith('http://') || url.startsWith('https://') || url.startsWith('/') ? url : '';
     if (!safe) return '';
+    // Les uploads sont stockés en chemin relatif "/uploads/..." qui pointe vers
+    // le serveur API, PAS le domaine du storefront → on les résout via mediaUrl()
+    // avant injection sinon le navigateur essaie de les charger depuis le
+    // storefront (404).
     const resolved = mediaUrl(safe) || safe;
     return `<img src="${escapeHtml(resolved)}" alt="${escapeHtml(alt || '')}" loading="lazy" />`;
-  });
-  // Links [label](url)
-  out = out.replace(/\[([^\]]+)\]\(([^)]+)\)/g, (_m, label: string, url: string) => {
+  };
+
+  // Images / GIFs syntaxe explicite ![alt](url) — doit tourner AVANT la règle
+  // [label](url) car la syntaxe en est un sur-ensemble.
+  out = out.replace(/!\[([^\]]*)\]\(([^)]+)\)/g, (_m, alt: string, url: string) => renderImage(alt, url));
+
+  // Filet de sécurité : si le vendeur a tapé [](url-image) (sans le `!`) ou
+  // [texte](url-image), on rend quand même comme une image quand l'URL ressemble
+  // clairement à un fichier image. Évite que la photo apparaisse en texte brut
+  // ou en lien quand le `!` a sauté à l'édition. Étiquette tolérée vide ici.
+  out = out.replace(/\[([^\]]*)\]\(([^)]+)\)/g, (_match, label: string, url: string) => {
+    if (isImageUrl(url)) return renderImage(label, url);
+    // Lien classique — étiquette doit avoir au moins un caractère utile,
+    // sinon on laisse passer (sera traité comme texte brut).
+    if (!label.trim()) return _match;
     const safe = url.startsWith('http://') || url.startsWith('https://') || url.startsWith('/') || url.startsWith('#') ? url : `#`;
     const external = safe.startsWith('http');
     const attrs = external ? ` target="_blank" rel="noopener noreferrer"` : '';
