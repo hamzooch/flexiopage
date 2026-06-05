@@ -132,14 +132,28 @@ export interface IStore extends Document {
       heroTitle?: string;            // overrides store.name when set
       heroSubtitle?: string;         // overrides store.description when set
       heroImage?: string;            // background image URL
+      /** Image dédiée mobile (portrait/carré). Vide → fallback heroImage. */
+      heroImageMobile?: string;
       /**
        * Optional video URL — wins over `heroImage` when set. Accepts a
        * direct mp4/webm/mov path or a YouTube/Vimeo URL (we detect and
        * embed iframe-style). Autoplay muted loop, no controls.
        */
       heroVideo?: string;
+      /** Vidéo dédiée mobile (recadrage portrait). Vide → fallback heroVideo. */
+      heroVideoMobile?: string;
       showProductsGrid?: boolean;    // default true
       productsGridTitle?: string;    // default "Nos produits"
+      /** Sous-titre court sous le titre (vide → texte par défaut). */
+      productsGridSubtitle?: string;
+      /** Nombre max de produits affichés (0 / vide → tous). */
+      productsGridMaxItems?: number;
+      /** Override des colonnes du thème (2/3/4). */
+      productsGridColumns?: 2 | 3 | 4;
+      /** Ordre de tri de la grille. Défaut : 'recent'. */
+      productsGridSort?: 'recent' | 'price-asc' | 'price-desc' | 'name-asc';
+      /** Masquer les produits en rupture (par défaut affichés). */
+      productsGridHideOutOfStock?: boolean;
       showFeatures?: boolean;        // default true (3 reassurance pills)
       /**
        * Render order of the four movable body sections. Unknown / missing
@@ -288,6 +302,8 @@ export interface IStore extends Document {
         height?: 'sm' | 'md' | 'lg' | 'xl'; // default 'lg'
         slides?: Array<{
           image: string;             // required — background image URL
+          /** Optionnel — image dédiée mobile (portrait/carré). Vide → fallback image. */
+          imageMobile?: string;
           title?: string;
           subtitle?: string;
           ctaLabel?: string;
@@ -466,9 +482,16 @@ const StoreSchema = new Schema<IStore>(
         heroTitle: { type: String },
         heroSubtitle: { type: String },
         heroImage: { type: String },
+        heroImageMobile: { type: String },
         heroVideo: { type: String, trim: true },
+        heroVideoMobile: { type: String, trim: true },
         showProductsGrid: { type: Boolean, default: true },
         productsGridTitle: { type: String },
+        productsGridSubtitle: { type: String },
+        productsGridMaxItems: { type: Number },
+        productsGridColumns: { type: Number, enum: [2, 3, 4] },
+        productsGridSort: { type: String, enum: ['recent', 'price-asc', 'price-desc', 'name-asc'] },
+        productsGridHideOutOfStock: { type: Boolean },
         showFeatures: { type: Boolean, default: true },
         sectionOrder: [{ type: String, enum: ['hero', 'slider', 'products', 'testimonials'] }],
         productPage: {
@@ -574,6 +597,7 @@ const StoreSchema = new Schema<IStore>(
           slides: [
             {
               image: { type: String, required: true },
+              imageMobile: { type: String },
               title: { type: String },
               subtitle: { type: String },
               ctaLabel: { type: String },
