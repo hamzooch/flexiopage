@@ -212,6 +212,29 @@ export function ProductDescriptionEditor({ storeId, value, onChange, placeholder
     insert('[TEXT](https://)', { wrap: true });
   }
 
+  /** Extrait toutes les URLs d'image du markdown (avec ou sans `!`) pour le
+   *  panneau diagnostic. On accepte ![](url), [](url-image) et liens vers
+   *  /uploads/* — comme le renderMarkdown. */
+  function extractImageUrls(src: string): string[] {
+    const urls: string[] = [];
+    const re = /!?\[([^\]]*)\]\(([^)]+)\)/g;
+    let m: RegExpExecArray | null;
+    while ((m = re.exec(src)) !== null) {
+      const url = m[2];
+      const looksLikeImage = /\.(jpe?g|png|gif|webp|avif|svg)(\?.*)?$/i.test(url) || url.includes('/uploads/');
+      if (m[0].startsWith('!') || looksLikeImage) urls.push(url);
+    }
+    return urls;
+  }
+
+  /** Résout une URL relative en URL absolue API (même logique que mediaUrl).
+   *  Inline ici parce qu'on en a besoin dans le rendu, pas besoin d'importer. */
+  function resolveImageUrl(url: string): string {
+    if (/^https?:\/\//.test(url) || url.startsWith('data:') || url.startsWith('blob:')) return url;
+    const apiBase = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000').replace(/\/$/, '');
+    return `${apiBase}${url.startsWith('/') ? '' : '/'}${url}`;
+  }
+
   return (
     <div className="space-y-2">
       {/* Onglets Édition / Aperçu — l'aperçu rend exactement comme la vitrine. */}
@@ -248,6 +271,56 @@ export function ProductDescriptionEditor({ storeId, value, onChange, placeholder
           ) : (
             <p className="text-sm text-muted-foreground">L&apos;aperçu apparaîtra ici quand tu auras écrit quelque chose.</p>
           )}
+
+          {/* Diagnostic : liste chaque image détectée + son URL résolue + statut
+              de chargement. Permet au vendeur de voir si c'est un 404 ou si
+              le markdown n'est tout simplement pas reconnu. */}
+          {value.trim() && (() => {
+            const urls = extractImageUrls(value);
+            if (urls.length === 0) {
+              return (
+                <div className="mt-4 rounded-md border border-amber-200 bg-amber-50 p-3 text-[11px] text-amber-800">
+                  ⚠️ Aucune image détectée dans la description. Vérifie que tu as bien cliqué sur l&apos;icône 🖼️ Image (pas le lien 🔗) pour téléverser.
+                </div>
+              );
+            }
+            return (
+              <div className="mt-4 rounded-md border border-border/60 bg-muted/30 p-3">
+                <p className="mb-2 text-[11px] font-semibold text-muted-foreground">
+                  🔍 Images détectées dans la description ({urls.length})
+                </p>
+                <ul className="space-y-2">
+                  {urls.map((u, i) => {
+                    const resolved = resolveImageUrl(u);
+                    return (
+                      <li key={i} className="flex items-center gap-2 rounded-md bg-card p-2 text-[11px]">
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img
+                          src={resolved}
+                          alt=""
+                          className="h-12 w-12 shrink-0 rounded border border-border/60 object-cover"
+                          onError={(e) => {
+                            e.currentTarget.style.opacity = '0.3';
+                            e.currentTarget.title = 'Échec de chargement (404 ou CORS)';
+                          }}
+                        />
+                        <div className="flex-1 truncate font-mono text-[10px] text-muted-foreground">
+                          <div className="truncate">Markdown: {u}</div>
+                          <div className="truncate">
+                            URL: <a href={resolved} target="_blank" rel="noopener noreferrer" className="text-primary underline">{resolved}</a>
+                          </div>
+                        </div>
+                      </li>
+                    );
+                  })}
+                </ul>
+                <p className="mt-2 text-[11px] text-muted-foreground">
+                  Si une miniature apparaît grisée, le serveur ne sert pas l&apos;image (clique l&apos;URL pour voir l&apos;erreur exacte).
+                </p>
+              </div>
+            );
+          })()}
+
           <p className="mt-4 border-t border-border/40 pt-3 text-[11px] text-muted-foreground">
             👁️ Voici exactement ce que les clients verront sur la page produit publique.
           </p>
