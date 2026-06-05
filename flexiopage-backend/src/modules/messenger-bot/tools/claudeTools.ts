@@ -12,20 +12,33 @@ export const claudeTools: Anthropic.Tool[] = [
   {
     name: 'create_order',
     description:
-      "Créer une commande COD (paiement à la livraison) dans Flexiopage une fois TOUTES les informations collectées et confirmées par le client. N'appelle ce tool que si le client a explicitement confirmé.",
+      "Créer une commande COD (paiement à la livraison) dans Flexiopage une fois TOUTES les informations collectées et confirmées par le client. N'appelle ce tool que si le client a explicitement confirmé.\n\n🛒 PLUSIEURS PRODUITS : si le client commande PLUS d'un produit (ex: 'je veux 2 caméras + 1 support' ou 'ajoute aussi un câble'), utilise le paramètre `items` qui prend un TABLEAU. Pour UN seul produit, tu peux soit utiliser `items` avec un seul élément, soit les anciens champs `product_name` + `quantity` (rétro-compat). NE JAMAIS appeler create_order plusieurs fois pour un même client — TOUS les produits doivent être dans le MÊME appel.",
     input_schema: {
       type: 'object',
       properties: {
-        product_name: { type: 'string', description: 'Nom exact du produit choisi (depuis le catalogue).' },
-        product_id: { type: 'string', description: 'Identifiant du produit si connu (sinon vide).' },
-        quantity: { type: 'number', description: 'Quantité commandée (>= 1).' },
+        items: {
+          type: 'array',
+          description: "Tableau de produits commandés. Préférer ce champ dès qu'il y a >= 2 produits. Chaque élément = { product_name, quantity, product_id? }.",
+          items: {
+            type: 'object',
+            properties: {
+              product_name: { type: 'string', description: 'Nom exact du produit (depuis le catalogue).' },
+              product_id: { type: 'string', description: 'Identifiant du produit si connu.' },
+              quantity: { type: 'number', description: 'Quantité commandée pour ce produit (>= 1).' },
+            },
+            required: ['product_name', 'quantity'],
+          },
+        },
+        product_name: { type: 'string', description: '(Legacy — pour un seul produit) Nom exact du produit choisi.' },
+        product_id: { type: 'string', description: '(Legacy) Identifiant du produit si connu.' },
+        quantity: { type: 'number', description: '(Legacy) Quantité commandée (>= 1).' },
         customer_name: { type: 'string', description: 'Nom complet du client.' },
         customer_phone: { type: 'string', description: 'Téléphone du client (format local).' },
         customer_city: { type: 'string', description: 'Ville de livraison.' },
         customer_address: { type: 'string', description: 'Adresse complète de livraison.' },
         notes: { type: 'string', description: 'Remarques éventuelles (taille, couleur, instructions).' },
       },
-      required: ['product_name', 'quantity', 'customer_name', 'customer_phone', 'customer_city', 'customer_address'],
+      required: ['customer_name', 'customer_phone', 'customer_city', 'customer_address'],
     },
   },
   {

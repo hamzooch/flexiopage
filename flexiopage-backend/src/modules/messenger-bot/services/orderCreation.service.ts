@@ -13,10 +13,19 @@ import type { IConversation } from '../models/Conversation.model';
 import { catalogService } from './catalog.service';
 import type { CatalogProduct } from '../prompts/promptBuilders';
 
-export interface CreateOrderToolInput {
+export interface CreateOrderToolItem {
   product_name: string;
   product_id?: string;
   quantity: number;
+}
+
+export interface CreateOrderToolInput {
+  /** Tableau de produits commandés — préféré dès qu'il y a >= 2 produits. */
+  items?: CreateOrderToolItem[];
+  /** Legacy single-product fields, gardés pour la rétro-compat. */
+  product_name?: string;
+  product_id?: string;
+  quantity?: number;
   customer_name: string;
   customer_phone: string;
   customer_city: string;
@@ -55,18 +64,50 @@ export class OrderCreationService {
   }): Promise<CreateOrderOutcome> {
     const { config, conversation, catalog, input } = args;
 
-    const product = catalogService.findProduct(catalog, { id: input.product_id, name: input.product_name });
-    if (!product) {
-      return { ok: false, error: `Produit "${input.product_name}" introuvable dans le catalogue.` };
-    }
-    if (typeof product.stock === 'number' && product.stock <= 0) {
-      return { ok: false, error: `Produit "${product.name}" en rupture de stock.` };
+    // Normalise l'input vers un tableau d'items, qu'on parte de `items[]`
+    // (nouveau format multi-produits) ou des champs legacy (product_name +
+    // quantity).
+    const rawItems: CreateOrderToolItem[] =
+      Array.isArray(input.items) && input.items.length > 0
+        ? input.items
+        : input.product_name
+          ? [{ product_name: input.product_name, product_id: input.product_id, quantity: input.quantity || 1 }]
+          : [];
+
+    if (rawItems.length === 0) {
+      return { ok: false, error: 'Aucun produit fourni. Renseigne items[] ou product_name + quantity.' };
     }
 
-    const quantity = Math.max(1, Math.min(Number(input.quantity) || 1, 99));
+    // Résout chaque item du catalogue + vérifie le stock. On accumule toutes
+    // les erreurs au lieu d'échouer sur la première — message plus clair pour
+    // le bot qui peut redemander précisément ce qui cloche.
+    const resolved: Array<{ product: CatalogProduct; quantity: number }> = [];
+    const errors: string[] = [];
+    for (const it of rawItems) {
+      const found = catalogService.findProduct(catalog, { id: it.product_id, name: it.product_name });
+      if (!found) {
+        errors.push(`Produit "${it.product_name}" introuvable dans le catalogue.`);
+        continue;
+      }
+      const qty = Math.max(1, Math.min(Number(it.quantity) || 1, 99));
+      if (typeof found.stock === 'number' && found.stock < qty) {
+        errors.push(`"${found.name}" : stock insuffisant (${found.stock} dispo, ${qty} demandés).`);
+        continue;
+      }
+      resolved.push({ product: found, quantity: qty });
+    }
+    if (errors.length && !resolved.length) {
+      return { ok: false, error: errors.join(' ') };
+    }
+    if (errors.length) {
+      // Au moins un produit OK + au moins un en erreur → on signale l'erreur
+      // pour que Claude redemande, plutôt que de créer une commande partielle.
+      return { ok: false, error: errors.join(' ') };
+    }
+
     const store = await Store.findById(config.vendor_id).select('settings.currency').lean();
     const currency = store?.settings?.currency || 'MAD';
-    const subtotal = product.price * quantity;
+    const subtotal = resolved.reduce((sum, r) => sum + r.product.price * r.quantity, 0);
     const shippingFee = this.shippingFeeFor(config, input.customer_city);
 
     let order;
@@ -81,19 +122,17 @@ export class OrderCreationService {
           city: input.customer_city.trim(),
           country: config.country,
         },
-        items: [
-          {
-            productId: product.id || String(config.vendor_id),
-            name: product.name,
-            quantity,
-            price: product.price,
-          },
-        ],
+        items: resolved.map((r) => ({
+          productId: r.product.id || String(config.vendor_id),
+          name: r.product.name,
+          quantity: r.quantity,
+          price: r.product.price,
+        })),
         subtotal,
         shippingCost: shippingFee,
         currency,
         paymentMethod: 'cod',
-        notes: input.notes?.trim() || 'Commande via Messenger Bot',
+        notes: input.notes?.trim() || `Commande via Messenger Bot${resolved.length > 1 ? ` (${resolved.length} produits)` : ''}`,
       });
     } catch (err) {
       logger.error({ err: (err as Error).message }, '[messenger-bot] createOrder échec');
