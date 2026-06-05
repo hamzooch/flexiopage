@@ -18,6 +18,8 @@
  * swap this for `marked` or `react-markdown`.
  */
 
+import { mediaUrl } from '@/lib/utils';
+
 function escapeHtml(s: string): string {
   return s
     .replace(/&/g, '&amp;')
@@ -37,10 +39,15 @@ function renderInline(line: string): string {
   // since the syntax is a superset. URL is validated to http(s):// or a
   // store-relative path so a malicious description can't embed a
   // javascript: pseudo-URL. Lazy-loaded so the page text renders fast.
+  // ⚠️ Les uploads sont stockés en chemin relatif "/uploads/..." qui pointe
+  // vers le serveur API, PAS le domaine du storefront → on les résout via
+  // mediaUrl() avant injection sinon le navigateur essaie de les charger
+  // depuis le storefront (404).
   out = out.replace(/!\[([^\]]*)\]\(([^)]+)\)/g, (_m, alt: string, url: string) => {
     const safe = url.startsWith('http://') || url.startsWith('https://') || url.startsWith('/') ? url : '';
     if (!safe) return '';
-    return `<img src="${escapeHtml(safe)}" alt="${escapeHtml(alt || '')}" loading="lazy" />`;
+    const resolved = mediaUrl(safe) || safe;
+    return `<img src="${escapeHtml(resolved)}" alt="${escapeHtml(alt || '')}" loading="lazy" />`;
   });
   // Links [label](url)
   out = out.replace(/\[([^\]]+)\]\(([^)]+)\)/g, (_m, label: string, url: string) => {
