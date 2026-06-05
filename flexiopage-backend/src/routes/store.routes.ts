@@ -10,6 +10,7 @@ import * as couponController from '../controllers/coupon.controller';
 import * as subscriberController from '../controllers/subscriber.controller';
 import * as reviewController from '../controllers/review.controller';
 import * as abandonedCartController from '../controllers/abandoned-cart.controller';
+import * as supplierController from '../controllers/supplier.controller';
 import { authMiddleware } from '../middleware/auth.middleware';
 import { requireStoreAccess } from '../middleware/storeAccess';
 import { sanitizeMiddleware } from '../middleware/validate';
@@ -48,6 +49,14 @@ router.post('/:storeId/products/import', productController.importCreateProduct);
 router.get('/:storeId/products/:productId', productController.getProduct);
 router.patch('/:storeId/products/:productId', productController.updateProduct);
 router.delete('/:storeId/products/:productId', productController.deleteProduct);
+
+// Suppliers (fournisseurs) — gestion sourcing pour le module stock.
+router.get('/:storeId/suppliers', supplierController.listSuppliers);
+router.post('/:storeId/suppliers', supplierController.createSupplier);
+router.get('/:storeId/suppliers/:supplierId', supplierController.getSupplier);
+router.patch('/:storeId/suppliers/:supplierId', supplierController.updateSupplier);
+router.post('/:storeId/suppliers/:supplierId/archive', supplierController.archiveSupplier);
+router.post('/:storeId/suppliers/:supplierId/restore', supplierController.restoreSupplier);
 
 router.get('/:storeId/pages', pageController.listPages);
 router.get('/:storeId/pages/templates/list', pageController.getTemplates);

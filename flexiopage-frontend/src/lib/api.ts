@@ -791,6 +791,19 @@ export const storesApi = {
   // Customers
   listCustomers: (storeId: string, params?: { limit?: number; skip?: number; search?: string }) =>
     api.get<{ customers: unknown[]; total: number; limit: number; skip: number }>(`/stores/${storeId}/customers`, { params }),
+  // Suppliers
+  listSuppliers: (storeId: string, params?: { limit?: number; skip?: number; search?: string; includeArchived?: boolean }) =>
+    api.get<{ suppliers: import('@/types/supplier').Supplier[]; total: number; limit: number; skip: number }>(`/stores/${storeId}/suppliers`, { params }),
+  getSupplier: (storeId: string, supplierId: string) =>
+    api.get<{ supplier: import('@/types/supplier').Supplier }>(`/stores/${storeId}/suppliers/${supplierId}`),
+  createSupplier: (storeId: string, data: Partial<import('@/types/supplier').Supplier>) =>
+    api.post<{ supplier: import('@/types/supplier').Supplier }>(`/stores/${storeId}/suppliers`, data),
+  updateSupplier: (storeId: string, supplierId: string, data: Partial<import('@/types/supplier').Supplier>) =>
+    api.patch<{ supplier: import('@/types/supplier').Supplier }>(`/stores/${storeId}/suppliers/${supplierId}`, data),
+  archiveSupplier: (storeId: string, supplierId: string) =>
+    api.post<{ supplier: import('@/types/supplier').Supplier }>(`/stores/${storeId}/suppliers/${supplierId}/archive`, {}),
+  restoreSupplier: (storeId: string, supplierId: string) =>
+    api.post<{ supplier: import('@/types/supplier').Supplier }>(`/stores/${storeId}/suppliers/${supplierId}/restore`, {}),
   // Media
   listMedia: (storeId: string) => api.get<{ media: unknown[] }>(`/stores/${storeId}/media`),
   uploadMedia: (storeId: string, file: File) => {

@@ -64,6 +64,7 @@ const DICTIONARY = {
   // Sidebar — sales items
   'sidebar.orders': { fr: 'Commandes', en: 'Orders', ar: 'الطلبات' },
   'sidebar.products': { fr: 'Produits', en: 'Products', ar: 'المنتجات' },
+  'sidebar.suppliers': { fr: 'Fournisseurs', en: 'Suppliers', ar: 'الموردون' },
   'sidebar.offers': { fr: 'Offres', en: 'Offers', ar: 'العروض' },
   'sidebar.landingPages': { fr: 'Landing pages', en: 'Landing pages', ar: 'صفحات الهبوط' },
   // "AI Studio" is widely understood; "استوديو الذكاء الاصطناعي" is the full

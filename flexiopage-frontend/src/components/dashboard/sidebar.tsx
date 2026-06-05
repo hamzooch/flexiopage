@@ -34,6 +34,7 @@ import {
   Activity,
   Calculator,
   Wand2,
+  Building2,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAuthStore, type TeamRole } from '@/stores/auth-store';
@@ -90,6 +91,7 @@ const SECTIONS: { titleKey: TKey; items: NavItem[] }[] = [
     items: [
       { href: '/dashboard/orders', labelKey: 'sidebar.orders', icon: ShoppingCart },
       { href: '/dashboard/products', labelKey: 'sidebar.products', icon: Package },
+      { href: '/dashboard/suppliers', labelKey: 'sidebar.suppliers', icon: Building2 },
       { href: '/dashboard/offers', labelKey: 'sidebar.offers', icon: Layers },
       { href: '/dashboard/pages', labelKey: 'sidebar.landingPages', icon: FileText },
       { href: '/dashboard/pages/poster', labelKey: 'sidebar.aiStudio', icon: Wand2 },

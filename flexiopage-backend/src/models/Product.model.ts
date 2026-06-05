@@ -51,6 +51,29 @@ export interface IProductVariant {
   options?: Record<string, string>;
 }
 
+/**
+ * Lien produit ↔ fournisseur. Un même produit peut être sourcé chez plusieurs
+ * fournisseurs (prix différents, délais différents). Le drapeau `isPrimary`
+ * désigne celui utilisé par défaut quand on crée une importation.
+ */
+export interface IProductSupplier {
+  supplierId: mongoose.Types.ObjectId;
+  /** Référence/SKU côté fournisseur. */
+  supplierSku?: string;
+  /** Prix d'achat unitaire chez ce fournisseur. */
+  costPrice?: number;
+  /** Devise du costPrice (peut différer de la devise de vente). */
+  currency?: string;
+  /** Délai d'approvisionnement spécifique (override du défaut du fournisseur). */
+  leadTimeDays?: number;
+  /** Quantité minimum à commander chez ce fournisseur. */
+  minOrderQty?: number;
+  /** Lien direct du produit chez le fournisseur (AliExpress, etc). */
+  productUrl?: string;
+  isPrimary?: boolean;
+  notes?: string;
+}
+
 export interface IProduct extends Document {
   storeId: mongoose.Types.ObjectId;
   name: string;
@@ -77,6 +100,10 @@ export interface IProduct extends Document {
   trackInventory: boolean;
   allowBackorder: boolean;
   variants: IProductVariant[];
+  /** Sourcing : liste des fournisseurs qui fournissent ce produit, avec
+   *  leurs conditions (prix d'achat, délai, MOQ). Optionnel — utilisé par
+   *  le module de gestion du stock et des importations. */
+  suppliers?: IProductSupplier[];
   images: string[];
 
   /** Legacy single-file fields — kept for backward compatibility. */
@@ -220,6 +247,21 @@ export interface IRelatedOffer {
   order?: number;
 }
 
+const ProductSupplierSchema = new Schema<IProductSupplier>(
+  {
+    supplierId: { type: Schema.Types.ObjectId, ref: 'Supplier', required: true },
+    supplierSku: { type: String, trim: true },
+    costPrice: { type: Number, min: 0 },
+    currency: { type: String, trim: true, uppercase: true },
+    leadTimeDays: { type: Number, min: 0 },
+    minOrderQty: { type: Number, min: 1 },
+    productUrl: { type: String, trim: true },
+    isPrimary: { type: Boolean, default: false },
+    notes: { type: String, trim: true, maxlength: 500 },
+  },
+  { _id: false },
+);
+
 const ProductVariantSchema = new Schema<IProductVariant>(
   {
     name: { type: String, required: true },
@@ -277,6 +319,7 @@ const ProductSchema = new Schema<IProduct>(
     trackInventory: { type: Boolean, default: true },
     allowBackorder: { type: Boolean, default: false },
     variants: [ProductVariantSchema],
+    suppliers: [ProductSupplierSchema],
     images: [{ type: String }],
 
     digitalFileUrl: { type: String },
