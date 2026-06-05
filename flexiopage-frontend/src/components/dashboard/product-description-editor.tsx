@@ -13,11 +13,12 @@
  */
 
 import { useEffect, useRef, useState } from 'react';
-import { Bold, List, Image as ImageIcon, Link as LinkIcon, Link2, Loader2, Smile, X } from 'lucide-react';
+import { Bold, Eye, List, Image as ImageIcon, Link as LinkIcon, Link2, Loader2, Pencil, Smile, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { storesApi, extractApiError } from '@/lib/api';
 import { cn } from '@/lib/utils';
+import { renderMarkdown } from '@/lib/markdown';
 
 /** Limite côté backend (cf. media.controller.MAX_UPLOAD_BYTES). On signale
  *  au vendeur avant l'upload pour éviter le round-trip + 413. */
@@ -64,6 +65,8 @@ export function ProductDescriptionEditor({ storeId, value, onChange, placeholder
   const [urlError, setUrlError] = useState('');
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState('');
+  // Onglet actif : édition (textarea) vs aperçu (rendu HTML identique au public).
+  const [view, setView] = useState<'edit' | 'preview'>('edit');
 
   /** Inject text at the current caret, preserving the selection if any. */
   function insert(snippet: string, opts?: { wrap?: boolean }) {
@@ -211,6 +214,46 @@ export function ProductDescriptionEditor({ storeId, value, onChange, placeholder
 
   return (
     <div className="space-y-2">
+      {/* Onglets Édition / Aperçu — l'aperçu rend exactement comme la vitrine. */}
+      <div className="flex gap-1 rounded-md border border-border/60 bg-muted/30 p-0.5 text-xs">
+        <button
+          type="button"
+          onClick={() => setView('edit')}
+          className={cn(
+            'flex flex-1 items-center justify-center gap-1.5 rounded px-3 py-1.5 transition-colors',
+            view === 'edit' ? 'bg-card text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground',
+          )}
+        >
+          <Pencil className="h-3.5 w-3.5" /> Édition
+        </button>
+        <button
+          type="button"
+          onClick={() => setView('preview')}
+          className={cn(
+            'flex flex-1 items-center justify-center gap-1.5 rounded px-3 py-1.5 transition-colors',
+            view === 'preview' ? 'bg-card text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground',
+          )}
+        >
+          <Eye className="h-3.5 w-3.5" /> Aperçu
+        </button>
+      </div>
+
+      {view === 'preview' ? (
+        <div className="min-h-[14rem] rounded-md border border-border/60 bg-background p-4 lg:min-h-[26rem]">
+          {value.trim() ? (
+            <div
+              className="prose-storefront text-sm leading-relaxed"
+              dangerouslySetInnerHTML={{ __html: renderMarkdown(value) }}
+            />
+          ) : (
+            <p className="text-sm text-muted-foreground">L&apos;aperçu apparaîtra ici quand tu auras écrit quelque chose.</p>
+          )}
+          <p className="mt-4 border-t border-border/40 pt-3 text-[11px] text-muted-foreground">
+            👁️ Voici exactement ce que les clients verront sur la page produit publique.
+          </p>
+        </div>
+      ) : (
+      <>
       {/* Toolbar */}
       <div className="relative flex flex-wrap items-center gap-1.5">
         <ToolbarBtn onClick={() => insert('**TEXT**', { wrap: true })} title="Gras (Ctrl+B)">
@@ -311,8 +354,10 @@ export function ProductDescriptionEditor({ storeId, value, onChange, placeholder
       )}
 
       <p className="text-[11px] text-muted-foreground">
-        Mise en forme acceptée : <code className="rounded bg-muted px-1">**gras**</code> · <code className="rounded bg-muted px-1">- listes</code> · <code className="rounded bg-muted px-1">[lien](url)</code> · <code className="rounded bg-muted px-1">![](url-image.gif)</code> pour images / GIFs · emojis 😊 via le bouton 🙂. Tu peux aussi <strong>coller</strong> (Ctrl/Cmd+V) ou glisser-déposer une image / un GIF directement.
+        Mise en forme acceptée : <code className="rounded bg-muted px-1">**gras**</code> · <code className="rounded bg-muted px-1">- listes</code> · <code className="rounded bg-muted px-1">[lien](url)</code> · <code className="rounded bg-muted px-1">![](url-image.gif)</code> pour images / GIFs · emojis 😊 via le bouton 🙂. Tu peux aussi <strong>coller</strong> (Ctrl/Cmd+V) ou glisser-déposer une image / un GIF directement. Bascule sur <strong>Aperçu</strong> pour voir le rendu final.
       </p>
+      </>
+      )}
 
       {imageModalOpen && (
         <div
