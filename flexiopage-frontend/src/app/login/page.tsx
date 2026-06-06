@@ -7,6 +7,7 @@ import { ArrowRight, Eye, EyeOff, Lock, Mail, ShieldCheck, Sparkles, Truck } fro
 import { Button } from '@/components/ui/button';
 import { authApi, extractApiError } from '@/lib/api';
 import { useAuthStore } from '@/stores/auth-store';
+import { isStaff } from '@/lib/is-staff';
 import { BrandLogo } from '@/components/brand-logo';
 import { GoogleOAuthWrapper, isGoogleAuthAvailable } from '@/components/auth/google-oauth-wrapper';
 import { GoogleSignInButton } from '@/components/auth/google-sign-in-button';
@@ -54,8 +55,8 @@ function LoginInner() {
   useEffect(() => {
     if (typeof window === 'undefined') return;
     const apply = () => {
-      const { token } = useAuthStore.getState();
-      if (token) router.replace(next || '/select-store');
+      const { token, user } = useAuthStore.getState();
+      if (token) router.replace(next || (isStaff(user) ? '/select-space' : '/select-store'));
     };
     if (useAuthStore.persist?.hasHydrated?.()) {
       apply();
@@ -75,10 +76,10 @@ function LoginInner() {
       const { data } = await authApi.login({ email, password });
       const d = data as { user: { _id: string; email: string; name: string }; token: string };
       setAuth(d.user, d.token);
-      // After login, honor ?next= if present (we came from a protected
-      // page) — otherwise send the seller to the store picker so they
-      // choose which store the dashboard should scope to.
-      router.push(next || '/select-store');
+      // Honor ?next= if present (we came from a protected page). Otherwise
+      // staff land on /select-space so they can pick between admin and the
+      // seller dashboard; regular sellers go straight to the store picker.
+      router.push(next || (isStaff(d.user) ? '/select-space' : '/select-store'));
       router.refresh();
     } catch (err: unknown) {
       setError(extractApiError(err, 'Connexion échouée'));
@@ -113,7 +114,8 @@ function LoginInner() {
                 <GoogleSignInButton
                   text="signin_with"
                   onSuccess={() => {
-                    router.push(next || '/select-store');
+                    const u = useAuthStore.getState().user;
+                    router.push(next || (isStaff(u) ? '/select-space' : '/select-store'));
                     router.refresh();
                   }}
                 />

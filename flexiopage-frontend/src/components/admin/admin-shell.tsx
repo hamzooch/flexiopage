@@ -186,29 +186,26 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
 
         {/* User row */}
         <div className="shrink-0 border-t border-border/60 p-3">
-          <div className="flex items-center gap-2">
-            <Link
-              href="/admin/profile"
-              className="flex min-w-0 flex-1 items-center gap-2.5 rounded-lg p-1.5 transition-colors hover:bg-muted/60"
-            >
-              <div className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-gradient-to-br from-rose-600 to-orange-600 text-[11px] font-semibold text-white shadow-sm">
-                {initials}
-              </div>
-              <div className="min-w-0 flex-1 leading-tight">
-                <div className="truncate text-sm font-medium">{user?.name}</div>
-                <div className="truncate text-[11px] text-muted-foreground">{user?.email}</div>
-              </div>
-            </Link>
-            <button
-              type="button"
-              onClick={() => { logout(); router.push('/'); }}
-              className="grid h-8 w-8 shrink-0 place-items-center rounded-lg text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
-              aria-label="Logout"
-              title="Se déconnecter"
-            >
-              <LogOut className="h-4 w-4" />
-            </button>
-          </div>
+          <Link
+            href="/admin/profile"
+            className="flex min-w-0 items-center gap-2.5 rounded-lg p-1.5 transition-colors hover:bg-muted/60"
+          >
+            <div className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-gradient-to-br from-rose-600 to-orange-600 text-[11px] font-semibold text-white shadow-sm">
+              {initials}
+            </div>
+            <div className="min-w-0 flex-1 leading-tight">
+              <div className="truncate text-sm font-medium">{user?.name}</div>
+              <div className="truncate text-[11px] text-muted-foreground">{user?.email}</div>
+            </div>
+          </Link>
+          <button
+            type="button"
+            onClick={async () => { await logout(); router.push('/login'); }}
+            className="mt-2 flex w-full items-center justify-center gap-2 rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2 text-sm font-medium text-destructive transition-colors hover:bg-destructive/10"
+          >
+            <LogOut className="h-4 w-4" />
+            Se déconnecter
+          </button>
         </div>
       </aside>
 
@@ -244,6 +241,15 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
             >
               {initials}
             </Link>
+            <button
+              type="button"
+              onClick={async () => { await logout(); router.push('/login'); }}
+              className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border bg-card px-2.5 text-xs font-medium text-foreground/80 transition-colors hover:border-destructive/30 hover:bg-destructive/5 hover:text-destructive"
+              title="Se déconnecter"
+            >
+              <LogOut className="h-3.5 w-3.5" />
+              <span className="hidden sm:inline">Déconnexion</span>
+            </button>
           </div>
         </header>
 
