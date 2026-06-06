@@ -17,7 +17,7 @@ const FAQ_ITEMS = [
   },
   {
     q: "Que se passe-t-il si une commande n'est pas livrée ?",
-    a: "Aucun frais. La commission n'est prélevée que lorsque MogaDelivery confirme la livraison ET la collecte du paiement client. Annulation, retour, refus → 0 frais.",
+    a: "Aucun frais. La commission n'est prélevée que lorsque ton transporteur confirme la livraison ET la collecte du paiement client. Annulation, retour, refus → 0 frais.",
   },
   {
     q: 'Dans quels pays opérez-vous ?',
@@ -381,8 +381,8 @@ function Features() {
     },
     {
       icon: Truck,
-      title: 'Livraison auto MogaDelivery',
-      desc: 'Chaque commande est envoyée au coursier. Suivi, statuts, collecte de paiement gérés pour toi.',
+      title: 'Intègre ta société de livraison facilement',
+      desc: 'Connecte le coursier de ton choix : envoi des commandes, suivi des statuts et collecte du paiement gérés pour toi.',
       gradient: 'from-indigo-500 to-violet-600',
     },
     {
@@ -640,7 +640,7 @@ function Faq() {
     },
     {
       q: 'Que se passe-t-il si une commande n’est pas livrée ?',
-      a: 'Aucun frais. La commission n’est prélevée que lorsque MogaDelivery confirme la livraison ET la collecte du paiement client. Annulation, retour, refus → 0 frais.',
+      a: 'Aucun frais. La commission n’est prélevée que lorsque ton transporteur confirme la livraison ET la collecte du paiement client. Annulation, retour, refus → 0 frais.',
     },
     {
       q: 'Dans quels pays vous opérez ?',

@@ -24,7 +24,7 @@ export const metadata: Metadata = {
     template: '%s · FlexioPage',
   },
   description:
-    "FlexioPage : la plateforme tout-en-un pour créer ta boutique en ligne en 60 secondes. Génère tes landing pages par IA, accepte le paiement à la livraison (COD), dispatche automatiquement via MogaDelivery. Sénégal, Maroc, Tunisie, Algérie, Côte d'Ivoire — 16 pays.",
+    "FlexioPage : la plateforme tout-en-un pour créer ta boutique en ligne en 60 secondes. Génère tes landing pages par IA, accepte le paiement à la livraison (COD), intègre facilement ta société de livraison. Sénégal, Maroc, Tunisie, Algérie, Côte d'Ivoire — 16 pays.",
   applicationName: 'FlexioPage',
   authors: [{ name: 'FlexioPage' }],
   creator: 'FlexioPage',
@@ -42,7 +42,7 @@ export const metadata: Metadata = {
     'landing page IA',
     'générateur landing page',
     'e-commerce Afrique',
-    'MogaDelivery',
+    'intégration livraison',
     'SaaS e-commerce',
     'dropshipping',
     'متجر إلكتروني',

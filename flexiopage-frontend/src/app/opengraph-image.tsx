@@ -104,7 +104,7 @@ export default async function OpengraphImage() {
             Crée ta boutique en un clic.
           </div>
           <div style={{ fontSize: '32px', fontWeight: 500, opacity: 0.92, lineHeight: 1.3 }}>
-            Landing pages IA · Paiement à la livraison · MogaDelivery inclus
+            Landing pages IA · Paiement à la livraison · Livraison intégrée
           </div>
         </div>
 
