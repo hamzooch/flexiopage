@@ -8,6 +8,7 @@ import { verifyAndSaveDomain, getDomainTarget, checkDomain, normalizeDomain, isV
 import { testSheetsWebhook } from '../services/sheets.service';
 import { effectiveOwnerId, isTeamMember } from '../lib/owner';
 import { logActivity } from '../services/activity-log.service';
+import { notifyRevalidate } from '../lib/revalidate';
 
 // sanitizeMiddleware escapes string values recursively (e.g. "/" → "&#x2F;",
 // "&" → "&amp;"). That's fine for free-text fields but breaks config blobs
@@ -160,6 +161,7 @@ export async function updateStore(req: AuthRequest, res: Response): Promise<void
       metadata: { slug: store.slug },
     });
   }
+  notifyRevalidate(`store:${store.slug}`);
   res.json({ store: updated });
 }
 

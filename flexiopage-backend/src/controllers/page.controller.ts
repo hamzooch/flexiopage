@@ -12,6 +12,7 @@ import { chargeAiGeneration, aiCostInCurrency } from '../services/wallet.service
 import { getOrCreateWallet } from '../services/wallet.service';
 import type { AiKind } from '../models/Settings.model';
 import validator from 'validator';
+import { notifyRevalidate } from '../lib/revalidate';
 
 /**
  * Debit the seller's AI balance before launching a generation. Throws a
@@ -247,6 +248,7 @@ export async function createPage(req: AuthRequest, res: Response): Promise<void>
     currency,
     direction: direction === 'rtl' ? 'rtl' : direction === 'ltr' ? 'ltr' : undefined,
   });
+  notifyRevalidate([`store:${store.slug}`, `page:${store.slug}:${page.slug}`]);
   res.status(201).json({ page });
 }
 
@@ -290,6 +292,7 @@ export async function updatePage(req: AuthRequest, res: Response): Promise<void>
     res.status(404).json({ error: 'Page not found' });
     return;
   }
+  notifyRevalidate([`store:${store.slug}`, `page:${store.slug}:${updated.slug}`]);
   res.json({ page: updated });
 }
 
@@ -300,6 +303,7 @@ export async function deletePage(req: AuthRequest, res: Response): Promise<void>
     res.status(404).json({ error: 'Page not found' });
     return;
   }
+  notifyRevalidate(`store:${store.slug}`);
   res.json({ message: 'Page deleted' });
 }
 

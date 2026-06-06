@@ -7,6 +7,7 @@ import { chargeAiGeneration, getOrCreateWallet, aiCostInCurrency } from '../serv
 import { extractProductFromUrl, ImportError } from '../services/product-import.service';
 import { persistRemoteImage } from '../services/storage.service';
 import { logger } from '../lib/logger';
+import { notifyRevalidate } from '../lib/revalidate';
 
 const MAX_IMPORT_IMAGES = 8;
 
@@ -53,6 +54,7 @@ export async function createProduct(req: AuthRequest, res: Response): Promise<vo
     seoTitle: body.seoTitle,
     seoDescription: body.seoDescription,
   });
+  notifyRevalidate([`store:${store.slug}`, `store:${store.slug}:products`]);
   res.status(201).json({ product });
 }
 
@@ -128,6 +130,7 @@ export async function importCreateProduct(req: AuthRequest, res: Response): Prom
     seoTitle: body.seoTitle,
     seoDescription: body.seoDescription,
   });
+  notifyRevalidate([`store:${store.slug}`, `store:${store.slug}:products`]);
   res.status(201).json({ product });
 }
 
@@ -194,6 +197,11 @@ export async function updateProduct(req: AuthRequest, res: Response): Promise<vo
     res.status(404).json({ error: 'Product not found' });
     return;
   }
+  notifyRevalidate([
+    `store:${store.slug}`,
+    `store:${store.slug}:products`,
+    `product:${store.slug}:${updated.slug}`,
+  ]);
   res.json({ product: updated });
 }
 
@@ -204,6 +212,9 @@ export async function deleteProduct(req: AuthRequest, res: Response): Promise<vo
     res.status(404).json({ error: 'Product not found' });
     return;
   }
+  // Store-level tag is enough to drop every product page of this store
+  // (each product page is tagged with both `store:<slug>` and its own tag).
+  notifyRevalidate([`store:${store.slug}`, `store:${store.slug}:products`]);
   res.json({ message: 'Product deleted' });
 }
 

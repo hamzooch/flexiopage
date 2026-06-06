@@ -8,6 +8,7 @@ import { Response } from 'express';
 import { AuthRequest } from '../middleware/auth.middleware';
 import * as collectionService from '../services/collection.service';
 import type { ICollectionRules } from '../models/Collection.model';
+import { notifyRevalidate } from '../lib/revalidate';
 
 interface CollectionBody {
   name?: string;
@@ -48,6 +49,7 @@ export async function createCollection(req: AuthRequest, res: Response): Promise
     seoTitle: body.seoTitle,
     seoDescription: body.seoDescription,
   });
+  notifyRevalidate([`store:${store.slug}`, `collection:${store.slug}:${collection.slug}`]);
   res.status(201).json({ collection });
 }
 
@@ -86,6 +88,7 @@ export async function updateCollection(req: AuthRequest, res: Response): Promise
     res.status(404).json({ error: 'Collection not found' });
     return;
   }
+  notifyRevalidate([`store:${store.slug}`, `collection:${store.slug}:${updated.slug}`]);
   res.json({ collection: updated });
 }
 
@@ -96,5 +99,6 @@ export async function deleteCollection(req: AuthRequest, res: Response): Promise
     res.status(404).json({ error: 'Collection not found' });
     return;
   }
+  notifyRevalidate(`store:${store.slug}`);
   res.status(204).end();
 }
