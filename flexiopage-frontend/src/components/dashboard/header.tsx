@@ -38,6 +38,21 @@ export function Header({ onOpenMobileNav }: Props = {}) {
   const [activeStoreName, setActiveStoreName] = useState<string | null>(null);
   const { t } = useT();
 
+  // Zustand persist hydrates from localStorage AFTER the first client render,
+  // so on a fresh mount `user` is briefly null and the dropdown would flash
+  // "Utilisateur" before snapping to the seller's real name. Track hydration
+  // explicitly and hold a placeholder during the gap.
+  const [hydrated, setHydrated] = useState(false);
+  useEffect(() => {
+    const apply = () => setHydrated(true);
+    if (useAuthStore.persist?.hasHydrated?.()) {
+      apply();
+      return;
+    }
+    const unsub = useAuthStore.persist?.onFinishHydration?.(apply);
+    return () => { if (typeof unsub === 'function') unsub(); };
+  }, []);
+
   // The header shows which store the dashboard is currently scoped to. We
   // fetch the name lazily so we don't add a heavy load — list endpoint is
   // already cached on most pages.
@@ -71,9 +86,17 @@ export function Header({ onOpenMobileNav }: Props = {}) {
   } else {
     title = prettySegment(lastSeg);
   }
-  const initials = (user?.name || user?.email || 'U')
-    .split(' ')
+  // Best display name we can build for this user. Falls back to the email
+  // username (before @) when `name` is missing/blank — much friendlier than
+  // a generic "Utilisateur" translation when we actually know who it is.
+  const trimmedName = user?.name?.trim();
+  const emailLocal = user?.email?.split('@')[0];
+  const displayName = trimmedName || emailLocal || t('common.user');
+
+  const initials = (trimmedName || emailLocal || 'U')
+    .split(/[\s.\-_]+/)
     .map((s) => s[0])
+    .filter(Boolean)
     .slice(0, 2)
     .join('')
     .toUpperCase();
@@ -190,8 +213,12 @@ export function Header({ onOpenMobileNav }: Props = {}) {
                 {initials}
               </div>
               <div className="min-w-0">
-                <div className="truncate text-sm font-medium">{user?.name || t('common.user')}</div>
-                <div className="truncate text-xs text-muted-foreground">{user?.email}</div>
+                <div className="truncate text-sm font-medium">
+                  {hydrated ? displayName : <span className="inline-block h-3 w-24 animate-pulse rounded bg-muted" />}
+                </div>
+                <div className="truncate text-xs text-muted-foreground">
+                  {hydrated ? user?.email : <span className="inline-block h-2.5 w-32 animate-pulse rounded bg-muted/70" />}
+                </div>
               </div>
             </div>
             <div className="my-1 h-px bg-border/70" />
