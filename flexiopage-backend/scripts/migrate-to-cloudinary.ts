@@ -152,6 +152,15 @@ async function uploadAll(map: UrlMap): Promise<void> {
 }
 
 // ── Phase 2 ────────────────────────────────────────────────────────────
+/** Detect "plain" objects — anything else (ObjectId, Date, Buffer, Decimal128,
+ *  Binary, RegExp…) must pass through unchanged or we'd corrupt subdoc _id's
+ *  by walking into their internal `buffer` field. */
+function isPlainObject(v: unknown): v is Record<string, unknown> {
+  if (v === null || typeof v !== 'object') return false;
+  const proto = Object.getPrototypeOf(v);
+  return proto === Object.prototype || proto === null;
+}
+
 /**
  * Walk a value (object/array/primitive) and replace every string that
  * contains one of the local URLs in the map with the Cloudinary URL.
@@ -178,21 +187,26 @@ function deepReplace(value: unknown, lookup: Map<string, string>): { value: unkn
     });
     return { value: next, changed };
   }
-  if (value && typeof value === 'object') {
+  if (isPlainObject(value)) {
     let changed = false;
     const next: Record<string, unknown> = {};
-    for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+    for (const [k, v] of Object.entries(value)) {
       const r = deepReplace(v, lookup);
       if (r.changed) changed = true;
       next[k] = r.value;
     }
     return { value: next, changed };
   }
+  // ObjectId, Date, Buffer, Decimal128… — leave alone.
   return { value, changed: false };
 }
 
 async function rewriteCollection(
-  Model: { modelName: string; find: (filter: object) => { lean: () => Promise<unknown[]> }; updateOne: (filter: object, update: object) => Promise<unknown> },
+  Model: {
+    modelName: string;
+    find: (filter: object) => { lean: () => Promise<unknown[]> };
+    collection: { updateOne: (filter: object, update: object) => Promise<unknown> };
+  },
   lookup: Map<string, string>,
 ): Promise<void> {
   const docs = (await Model.find({}).lean()) as Array<{ _id: unknown }>;
@@ -204,7 +218,10 @@ async function rewriteCollection(
     updated++;
     console.log(`  → ${Model.modelName} ${String(_id)} (${countChangedFields(rest, r.value)} champ(s))`);
     if (!DRY_RUN) {
-      await Model.updateOne({ _id }, { $set: r.value as Record<string, unknown> });
+      // Use the native driver: Mongoose's updateOne re-casts the whole $set
+      // through the schema, which fails on already-cast embedded _id's
+      // returned by .lean(). The native driver writes the doc tree as-is.
+      await Model.collection.updateOne({ _id }, { $set: r.value as Record<string, unknown> });
     }
   }
   console.log(`  ${Model.modelName}: ${updated}/${docs.length} document(s) mis à jour.`);
