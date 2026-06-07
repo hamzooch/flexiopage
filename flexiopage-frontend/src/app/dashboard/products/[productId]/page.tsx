@@ -112,6 +112,7 @@ export default function EditProductPage() {
   const [loading, setLoading] = useState(true);
   const [status, setStatus] = useState<SaveStatus>('idle');
   const [error, setError] = useState('');
+  const [deleting, setDeleting] = useState(false);
 
   // ── Load product + store ──────────────────────────────────────────
   useEffect(() => {
@@ -225,6 +226,23 @@ export default function EditProductPage() {
     }
   }
 
+  async function handleDelete() {
+    if (!storeId) return;
+    const ok = window.confirm(
+      `Supprimer définitivement « ${name || 'ce produit'} » ?\n\nCette action est irréversible. La page produit publique deviendra inaccessible immédiatement.`
+    );
+    if (!ok) return;
+    setDeleting(true);
+    setError('');
+    try {
+      await storesApi.deleteProduct(storeId, productId);
+      router.push(`/dashboard/products?storeId=${storeId}`);
+    } catch {
+      setError('La suppression a échoué. Réessaie.');
+      setDeleting(false);
+    }
+  }
+
   const hasDiscount = useMemo(
     () => !!compareAtPrice && parseFloat(compareAtPrice) > (parseFloat(price) || 0),
     [compareAtPrice, price]
@@ -282,6 +300,44 @@ export default function EditProductPage() {
           </div>
         </div>
         <div className="flex items-center gap-2">
+          {/* Publish toggle — duplicated from Section 1 so the seller can
+              flip status without scrolling. The change is staged in form
+              state; it persists on the next "Enregistrer" click. */}
+          <button
+            type="button"
+            onClick={() => setIsPublished((v) => !v)}
+            aria-pressed={isPublished}
+            title={isPublished ? 'Cliquer pour mettre en brouillon' : 'Cliquer pour publier'}
+            className={cn(
+              'inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors',
+              isPublished
+                ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-700 hover:bg-emerald-500/15'
+                : 'border-amber-500/40 bg-amber-500/10 text-amber-700 hover:bg-amber-500/15'
+            )}
+          >
+            {isPublished ? (
+              <>
+                <Eye className="h-3.5 w-3.5" />
+                Publié
+              </>
+            ) : (
+              <>
+                <EyeOff className="h-3.5 w-3.5" />
+                Publier
+              </>
+            )}
+          </button>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={handleDelete}
+            disabled={deleting || status === 'saving'}
+            className="gap-1.5 border-destructive/30 text-destructive hover:bg-destructive/10 hover:text-destructive"
+          >
+            {deleting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
+            Supprimer
+          </Button>
           {storeSlug && slug && (
             <Link
               href={publicStoreUrl({ slug: storeSlug, customDomain: storeCustomDomain, customDomainVerified: storeCustomDomainVerified }, `product/${slug}`)}

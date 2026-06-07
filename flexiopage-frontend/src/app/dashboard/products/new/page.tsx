@@ -8,7 +8,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { storesApi } from '@/lib/api';
-import { Plus, Trash2, ImagePlus, Loader2, Star, ArrowUp, ArrowDown, Sparkles, Upload, X, Download, Video, Key, Crown, Wrench, FileText } from 'lucide-react';
+import { Plus, Trash2, ImagePlus, Loader2, Star, ArrowUp, ArrowDown, Sparkles, Upload, X, Download, Video, Key, Crown, Wrench, FileText, Eye, EyeOff } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { AiDescriptionButton } from '@/components/dashboard/ai-description-button';
 import { ProductDescriptionEditor } from '@/components/dashboard/product-description-editor';
@@ -367,11 +367,39 @@ export default function NewProductPage() {
 
   return (
     <div className="mx-auto max-w-4xl space-y-5 sm:space-y-8">
-      <div className="flex items-center gap-2 sm:gap-4">
-        <Button variant="ghost" size="sm" onClick={() => router.push('/dashboard/products')} className="shrink-0 px-2 sm:px-3">
-          ← <span className="hidden sm:inline ml-1">Back</span>
-        </Button>
-        <h1 className="truncate text-xl font-bold sm:text-3xl">Nouveau produit</h1>
+      <div className="flex flex-wrap items-center justify-between gap-3 sm:gap-4">
+        <div className="flex min-w-0 items-center gap-2 sm:gap-4">
+          <Button variant="ghost" size="sm" onClick={() => router.push('/dashboard/products')} className="shrink-0 px-2 sm:px-3">
+            ← <span className="hidden sm:inline ml-1">Back</span>
+          </Button>
+          <h1 className="truncate text-xl font-bold sm:text-3xl">Nouveau produit</h1>
+        </div>
+        {/* Prominent publish toggle — sellers were missing the checkbox at
+            the bottom of the form and creating drafts by accident. */}
+        <button
+          type="button"
+          onClick={() => setIsPublished((v) => !v)}
+          className={cn(
+            'inline-flex shrink-0 items-center gap-2 rounded-full border px-4 py-2 text-sm font-semibold transition-all',
+            isPublished
+              ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-700 shadow-sm shadow-emerald-500/10 hover:bg-emerald-500/15'
+              : 'border-amber-500/40 bg-amber-500/10 text-amber-700 hover:bg-amber-500/15'
+          )}
+          aria-pressed={isPublished}
+          title={isPublished ? 'Cliquer pour mettre en brouillon' : 'Cliquer pour publier dans la boutique'}
+        >
+          {isPublished ? (
+            <>
+              <Eye className="h-4 w-4" />
+              Publié — visible dans la boutique
+            </>
+          ) : (
+            <>
+              <EyeOff className="h-4 w-4" />
+              Brouillon — cliquer pour publier
+            </>
+          )}
+        </button>
       </div>
 
       {/* Onglets : saisie manuelle vs import depuis un lien marketplace */}
@@ -891,22 +919,6 @@ export default function NewProductPage() {
                 className="flex min-h-[60px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
                 placeholder="Short description for search results"
               />
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Publish */}
-        <Card>
-          <CardContent className="pt-6">
-            <div className="flex items-center gap-2">
-              <input
-                type="checkbox"
-                id="isPublished"
-                checked={isPublished}
-                onChange={(e) => setIsPublished(e.target.checked)}
-                className="h-4 w-4 rounded border-input"
-              />
-              <Label htmlFor="isPublished">Publish this product (visible in storefront)</Label>
             </div>
           </CardContent>
         </Card>
