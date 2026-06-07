@@ -7,13 +7,7 @@
 import mongoose, { FilterQuery } from 'mongoose';
 import { Collection, ICollection, ICollectionRules } from '../models/Collection.model';
 import { Product, IProduct } from '../models/Product.model';
-
-function slugify(text: string): string {
-  return text
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-|-$/g, '');
-}
+import { slugify } from '../lib/slugify';
 
 export interface CreateCollectionInput {
   storeId: string;
@@ -30,7 +24,7 @@ export interface CreateCollectionInput {
 }
 
 export async function createCollection(input: CreateCollectionInput): Promise<ICollection> {
-  const baseSlug = slugify(input.name);
+  const baseSlug = slugify(input.name, 'collection');
   let slug = baseSlug;
   let n = 0;
   while (await Collection.findOne({ storeId: input.storeId, slug })) {

@@ -1,4 +1,5 @@
 import { LandingPage, ILandingPage, IPageSection, Direction, PageKind } from '../models/LandingPage.model';
+import { slugify } from '../lib/slugify';
 
 export interface CreatePageInput {
   storeId: string;
@@ -15,15 +16,8 @@ export interface CreatePageInput {
   direction?: Direction;
 }
 
-function slugify(text: string): string {
-  return text
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-|-$/g, '');
-}
-
 export async function createPage(input: CreatePageInput): Promise<ILandingPage> {
-  const baseSlug = input.slug?.trim() || slugify(input.name) || 'page';
+  const baseSlug = input.slug?.trim() || slugify(input.name, 'page');
   let slug = baseSlug;
   let n = 0;
   while (await LandingPage.findOne({ storeId: input.storeId, slug })) {

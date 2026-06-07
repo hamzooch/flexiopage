@@ -1,12 +1,6 @@
 import { Product, IProduct, IProductVariant, IProductPageSettings, IProductBundle } from '../models/Product.model';
 import mongoose from 'mongoose';
-
-function slugify(text: string): string {
-  return text
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-|-$/g, '');
-}
+import { slugify } from '../lib/slugify';
 
 export interface CreateProductInput {
   storeId: string;
@@ -43,7 +37,7 @@ export interface CreateProductInput {
 export async function createProduct(input: CreateProductInput): Promise<IProduct> {
   // Products are unlimited under the commission-per-sale model. The seller is
   // billed when an order is delivered, not for each catalogue item.
-  const baseSlug = slugify(input.name);
+  const baseSlug = slugify(input.name, 'product');
   let slug = baseSlug;
   let n = 0;
   while (await Product.findOne({ storeId: input.storeId, slug })) {

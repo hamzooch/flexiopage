@@ -1,6 +1,7 @@
 import { Store, IStore, StoreType } from '../models/Store.model';
 import { LandingPage } from '../models/LandingPage.model';
 import mongoose from 'mongoose';
+import { slugify } from '../lib/slugify';
 
 /**
  * Standard info pages seeded into every new store. Each becomes a
@@ -170,18 +171,11 @@ function directionFor(lang?: string): 'ltr' | 'rtl' {
   return RTL_LANGS.has(lang.split('-')[0].toLowerCase()) ? 'rtl' : 'ltr';
 }
 
-function slugify(text: string): string {
-  return text
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-|-$/g, '');
-}
-
 export async function createStore(input: CreateStoreInput): Promise<IStore> {
   // Stores are unlimited under the commission-per-sale model. Sellers pay only
   // when an order is delivered (debited from the wallet), so capping store
   // creation no longer fits the business model.
-  const baseSlug = input.slug?.trim() || slugify(input.name);
+  const baseSlug = input.slug?.trim() || slugify(input.name, 'store', { ascii: true });
   let slug = baseSlug;
   let subdomain = baseSlug;
   let n = 0;
