@@ -16,6 +16,7 @@
     "seed:messenger-bot": "tsx scripts/seed-messenger-bot.ts",
     "test:messenger-bot": "tsx scripts/test-messenger-bot.ts",
     "migrate:wallets-usd": "tsx scripts/migrate-wallets-to-usd.ts",
+    "migrate:to-cloudinary": "tsx scripts/migrate-to-cloudinary.ts",
     "test": "vitest run",
     "test:watch": "vitest"
   },
