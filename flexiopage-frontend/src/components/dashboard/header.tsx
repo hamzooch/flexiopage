@@ -18,6 +18,13 @@ function prettySegment(seg: string) {
   return seg.replace(/-/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
+// Mongo ObjectIds are 24 lowercase hex chars. Detect them so the breadcrumb
+// doesn't dump "6a1727a316b93972ddc08ac9" in the seller's face.
+const OBJECT_ID_RE = /^[a-f0-9]{24}$/i;
+function isObjectId(seg: string): boolean {
+  return OBJECT_ID_RE.test(seg);
+}
+
 interface Props {
   onOpenMobileNav?: () => void;
 }
@@ -50,7 +57,20 @@ export function Header({ onOpenMobileNav }: Props = {}) {
   }, [currentStoreId]);
 
   const segments = pathname.split('/').filter(Boolean);
-  const title = segments.length <= 1 ? t('header.overview') : prettySegment(segments[segments.length - 1]);
+  const lastSeg = segments[segments.length - 1] || '';
+  let title: string;
+  if (segments.length <= 1) {
+    title = t('header.overview');
+  } else if (isObjectId(lastSeg) && lastSeg === currentStoreId && activeStoreName) {
+    // Landing on /dashboard/stores/<storeId> — show the store's name.
+    title = activeStoreName;
+  } else if (isObjectId(lastSeg)) {
+    // Generic ObjectId (order, product…) — keep the last 6 chars so it stays
+    // visually distinct from a slug but doesn't dominate the header.
+    title = `#${lastSeg.slice(-6)}`;
+  } else {
+    title = prettySegment(lastSeg);
+  }
   const initials = (user?.name || user?.email || 'U')
     .split(' ')
     .map((s) => s[0])
