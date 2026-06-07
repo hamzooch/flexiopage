@@ -5,7 +5,7 @@
  * Réutilise usersApi.updateProfile + usersApi.changePassword.
  */
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -51,6 +51,10 @@ export default function AdminProfilePage() {
 
   const [savingName, setSavingName] = useState(false);
   const [nameSaved, setNameSaved] = useState(false);
+
+  const avatarInputRef = useRef<HTMLInputElement>(null);
+  const [avatarUploading, setAvatarUploading] = useState(false);
+  const [avatarError, setAvatarError] = useState('');
 
   const [pwCurrent, setPwCurrent] = useState('');
   const [pwNew, setPwNew] = useState('');
@@ -109,6 +113,32 @@ export default function AdminProfilePage() {
       window.setTimeout(() => setNameSaved(false), 2200);
     } finally {
       setSavingName(false);
+    }
+  }
+
+  async function handleAvatarFile(file: File) {
+    setAvatarError('');
+    if (!file.type.startsWith('image/')) {
+      setAvatarError('Le fichier doit être une image.');
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      setAvatarError('Image trop volumineuse (max 5 Mo).');
+      return;
+    }
+    setAvatarUploading(true);
+    try {
+      const res = await usersApi.uploadAvatar(file);
+      const url = res.data.avatar;
+      setAvatar(url);
+      setUser((u) => (u ? { ...u, avatar: url } : u));
+      if (authUser && token) setAuth({ ...authUser, avatar: url }, token);
+      setAvatarEditing(false);
+    } catch (err) {
+      const e = err as { response?: { data?: { error?: string } } };
+      setAvatarError(e.response?.data?.error || 'Upload échoué.');
+    } finally {
+      setAvatarUploading(false);
     }
   }
 
@@ -233,36 +263,50 @@ export default function AdminProfilePage() {
                 <Input id="name" value={name} onChange={(e) => setName(e.target.value)} required />
               </div>
               <div>
-                <div className="flex items-center justify-between">
-                  <Label htmlFor="avatar">Photo de profil</Label>
-                  {!avatarEditing && (
-                    <button
-                      type="button"
-                      onClick={() => setAvatarEditing(true)}
-                      className="text-xs font-medium text-primary hover:underline"
-                    >
-                      {avatar ? 'Modifier' : 'Ajouter une URL'}
-                    </button>
-                  )}
+                <Label>Photo de profil</Label>
+                <input
+                  ref={avatarInputRef}
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={(e) => {
+                    const f = e.target.files?.[0];
+                    if (f) void handleAvatarFile(f);
+                    e.target.value = '';
+                  }}
+                />
+                <div className="mt-1 flex flex-wrap items-center gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => avatarInputRef.current?.click()}
+                    disabled={avatarUploading}
+                    className="gap-1.5"
+                  >
+                    {avatarUploading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <SettingsIcon className="h-3.5 w-3.5" />}
+                    {avatarUploading ? 'Envoi…' : 'Téléverser une image'}
+                  </Button>
+                  <button
+                    type="button"
+                    onClick={() => setAvatarEditing((v) => !v)}
+                    className="text-xs font-medium text-muted-foreground hover:text-foreground"
+                  >
+                    {avatarEditing ? 'Masquer URL' : 'ou coller une URL'}
+                  </button>
                 </div>
-                {avatarEditing ? (
-                  <>
-                    <Input
-                      id="avatar"
-                      type="url"
-                      value={avatar}
-                      onChange={(e) => setAvatar(e.target.value)}
-                      placeholder="https://… (lien d'une image)"
-                      className="mt-1"
-                    />
-                    <p className="mt-1 text-[11px] text-muted-foreground">
-                      Colle l&apos;URL d&apos;une image publique. L&apos;upload direct arrive bientôt.
-                    </p>
-                  </>
-                ) : (
-                  <p className="mt-1 truncate text-xs text-muted-foreground">
-                    {avatar || 'Pas de photo — les initiales seront affichées.'}
-                  </p>
+                {avatarEditing && (
+                  <Input
+                    id="avatar"
+                    type="url"
+                    value={avatar}
+                    onChange={(e) => setAvatar(e.target.value)}
+                    placeholder="https://… (lien d'une image)"
+                    className="mt-2"
+                  />
+                )}
+                {avatarError && (
+                  <p className="mt-1 text-[11px] text-destructive">{avatarError}</p>
                 )}
               </div>
               <div>

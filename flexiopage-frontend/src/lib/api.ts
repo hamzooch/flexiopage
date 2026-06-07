@@ -91,6 +91,12 @@ export const usersApi = {
   changeEmail: (data: { newEmail: string; currentPassword: string }) =>
     api.post<{ user: { _id: string; email: string; name: string; emailVerified?: boolean } }>('/users/change-email', data),
   getStores: () => api.get<{ stores: unknown[] }>('/users/stores'),
+  uploadAvatar: (file: File) => {
+    const form = new FormData();
+    form.append('file', file);
+    // Do NOT set Content-Type — axios needs to inject the multipart boundary.
+    return api.post<{ user: { avatar?: string }; avatar: string }>('/users/avatar', form);
+  },
 };
 
 // Team — seller invites staff (managers, confirmation agents)

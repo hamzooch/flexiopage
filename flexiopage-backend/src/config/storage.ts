@@ -1,7 +1,7 @@
 /**
  * File storage abstraction: local filesystem or S3-compatible (e.g. MinIO, AWS S3)
  */
-export type StorageDriver = 'local' | 's3';
+export type StorageDriver = 'local' | 's3' | 'cloudinary';
 
 export interface StorageConfig {
   driver: StorageDriver;
@@ -12,6 +12,9 @@ export interface StorageConfig {
   s3AccessKey?: string;
   s3SecretKey?: string;
   publicUrlPrefix?: string;
+  cloudinaryCloudName?: string;
+  cloudinaryApiKey?: string;
+  cloudinaryApiSecret?: string;
 }
 
 export interface UploadResult {

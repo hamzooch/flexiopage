@@ -4,8 +4,10 @@ import { AuthRequest } from '../middleware/auth.middleware';
 import { User } from '../models/User.model';
 import { Subscription } from '../models/Subscription.model';
 import * as storeService from '../services/store.service';
+import * as storageService from '../services/storage.service';
 import { currencyForCountry, isKnownCountry } from '../data/countries';
 import { effectiveOwnerId } from '../lib/owner';
+import { logger } from '../lib/logger';
 
 export async function getProfile(req: AuthRequest, res: Response): Promise<void> {
   if (!req.user) {
@@ -189,4 +191,45 @@ export async function getStores(req: AuthRequest, res: Response): Promise<void> 
   }
   const stores = await storeService.getStoresByOwner(effectiveOwnerId(req.user));
   res.json({ stores });
+}
+
+/** POST /api/users/avatar — multipart, field name "file".
+ *  Uploads the image to the configured storage backend (Cloudinary in prod,
+ *  local in dev) and saves the resulting URL on the user's profile. */
+export async function uploadAvatar(req: AuthRequest, res: Response): Promise<void> {
+  if (!req.user) {
+    res.status(401).json({ error: 'Not authenticated' });
+    return;
+  }
+  const file = req.file as Express.Multer.File | undefined;
+  if (!file) {
+    res.status(400).json({ error: 'No file uploaded' });
+    return;
+  }
+  if (!file.mimetype.startsWith('image/')) {
+    res.status(400).json({ error: 'Only image files are accepted for avatars' });
+    return;
+  }
+  try {
+    const result = await storageService.uploadFile(
+      file.buffer,
+      file.originalname,
+      `avatars/${req.user._id}`,
+      file.mimetype,
+    );
+    const updated = await User.findByIdAndUpdate(
+      req.user._id,
+      { $set: { avatar: result.url } },
+      { new: true }
+    );
+    if (!updated) {
+      res.status(404).json({ error: 'User not found' });
+      return;
+    }
+    const { password: _p, ...safe } = updated.toObject();
+    res.json({ user: safe, avatar: result.url });
+  } catch (err) {
+    logger.error({ err, userId: req.user._id.toString() }, 'avatar upload failed');
+    res.status(500).json({ error: 'Storage failed to persist the avatar' });
+  }
 }

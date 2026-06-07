@@ -1,10 +1,11 @@
 import path from 'path';
 import fs from 'fs/promises';
 import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
-import type { StorageConfig, UploadResult } from '../config/storage';
+import { v2 as cloudinary } from 'cloudinary';
+import type { StorageConfig, UploadResult, StorageDriver } from '../config/storage';
 
 const config: StorageConfig = {
-  driver: (process.env.STORAGE_DRIVER as 'local' | 's3') || 'local',
+  driver: (process.env.STORAGE_DRIVER as StorageDriver) || 'local',
   localPath: process.env.UPLOAD_PATH || path.join(process.cwd(), 'uploads'),
   s3Bucket: process.env.S3_BUCKET,
   s3Region: process.env.S3_REGION || 'us-east-1',
@@ -12,7 +13,27 @@ const config: StorageConfig = {
   s3AccessKey: process.env.S3_ACCESS_KEY,
   s3SecretKey: process.env.S3_SECRET_KEY,
   publicUrlPrefix: process.env.PUBLIC_URL_PREFIX || '/uploads',
+  cloudinaryCloudName: process.env.CLOUDINARY_CLOUD_NAME,
+  cloudinaryApiKey: process.env.CLOUDINARY_API_KEY,
+  cloudinaryApiSecret: process.env.CLOUDINARY_API_SECRET,
 };
+
+// Configure Cloudinary once at module load. The SDK keeps the config on its
+// global v2 object, so we don't need to pass credentials on every call.
+let cloudinaryConfigured = false;
+function ensureCloudinaryConfigured(): void {
+  if (cloudinaryConfigured) return;
+  if (!config.cloudinaryCloudName || !config.cloudinaryApiKey || !config.cloudinaryApiSecret) {
+    throw new Error('Cloudinary not configured — set CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY, CLOUDINARY_API_SECRET');
+  }
+  cloudinary.config({
+    cloud_name: config.cloudinaryCloudName,
+    api_key: config.cloudinaryApiKey,
+    api_secret: config.cloudinaryApiSecret,
+    secure: true,
+  });
+  cloudinaryConfigured = true;
+}
 
 let s3Client: S3Client | null = null;
 
@@ -71,6 +92,41 @@ async function uploadS3(
   return { key, url, size: buffer.length, mimeType };
 }
 
+/** Upload buffer to Cloudinary. Returns the secure_url + public_id (as key)
+ *  so it can be deleted later via the same SDK. */
+async function uploadCloudinary(
+  key: string,
+  buffer: Buffer,
+  mimeType?: string
+): Promise<UploadResult> {
+  ensureCloudinaryConfigured();
+  // Strip the extension — Cloudinary auto-detects format from the content
+  // and appends its own. Keeping our extension would result in /xxx.jpg.png.
+  const publicIdNoExt = key.replace(/\.[^./]+$/, '');
+  const result = await new Promise<{ secure_url: string; public_id: string; bytes: number; format: string }>(
+    (resolve, reject) => {
+      const stream = cloudinary.uploader.upload_stream(
+        {
+          public_id: publicIdNoExt,
+          resource_type: 'auto', // images, videos, raw all supported
+          overwrite: false,
+        },
+        (err, res) => {
+          if (err || !res) return reject(err || new Error('Cloudinary upload failed'));
+          resolve(res as { secure_url: string; public_id: string; bytes: number; format: string });
+        }
+      );
+      stream.end(buffer);
+    }
+  );
+  return {
+    key: result.public_id,
+    url: result.secure_url,
+    size: result.bytes,
+    mimeType,
+  };
+}
+
 /** Upload a file buffer; returns key and public URL */
 export async function uploadFile(
   buffer: Buffer,
@@ -82,6 +138,9 @@ export async function uploadFile(
   const safeName = `${Date.now()}-${Math.random().toString(36).slice(2, 10)}${ext}`;
   const key = `${folder}/${safeName}`;
 
+  if (config.driver === 'cloudinary') {
+    return uploadCloudinary(key, buffer, mimeType);
+  }
   if (config.driver === 's3' && config.s3Bucket) {
     return uploadS3(key, buffer, mimeType);
   }
@@ -123,6 +182,10 @@ export async function persistRemoteImage(
   const buffer = Buffer.from(await res.arrayBuffer());
   const filename = `${Date.now()}-${Math.random().toString(36).slice(2, 10)}${ext}`;
   const key = `${folder}/${filename}`;
+  if (config.driver === 'cloudinary') {
+    const result = await uploadCloudinary(key, buffer, mimeType);
+    return result.url;
+  }
   if (config.driver === 's3' && config.s3Bucket) {
     const result = await uploadS3(key, buffer, mimeType);
     return result.url;
