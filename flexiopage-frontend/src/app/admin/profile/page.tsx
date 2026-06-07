@@ -15,13 +15,16 @@ import { usersApi } from '@/lib/api';
 import {
   Mail, Calendar, KeyRound, Loader2, Check, AlertTriangle, Eye, EyeOff,
   Crown, ShieldAlert, ShieldCheck, Eye as EyeIcon, Clock,
+  User as UserIcon, Lock, Settings as SettingsIcon,
 } from 'lucide-react';
+import { cn } from '@/lib/utils';
 
 interface UserDoc {
   _id: string;
   email: string;
   name: string;
   role?: string;
+  avatar?: string;
   emailVerified?: boolean;
   createdAt?: string;
   lastLoginAt?: string;
@@ -41,7 +44,10 @@ export default function AdminProfilePage() {
 
   const [user, setUser] = useState<UserDoc | null>(null);
   const [name, setName] = useState('');
+  const [avatar, setAvatar] = useState('');
+  const [avatarEditing, setAvatarEditing] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [tab, setTab] = useState<'account' | 'security'>('account');
 
   const [savingName, setSavingName] = useState(false);
   const [nameSaved, setNameSaved] = useState(false);
@@ -60,6 +66,7 @@ export default function AdminProfilePage() {
         const u = (res.data as { user: UserDoc }).user;
         setUser(u);
         setName(u.name || '');
+        setAvatar(u.avatar || '');
       })
       .finally(() => setLoading(false));
   }, []);
@@ -77,13 +84,27 @@ export default function AdminProfilePage() {
 
   async function handleSaveName(e: React.FormEvent) {
     e.preventDefault();
-    if (!name.trim() || name.trim() === user?.name) return;
+    const trimmedName = name.trim();
+    const trimmedAvatar = avatar.trim();
+    const nameChanged = trimmedName && trimmedName !== user?.name;
+    const avatarChanged = trimmedAvatar !== (user?.avatar || '');
+    if (!nameChanged && !avatarChanged) return;
     setSavingName(true);
     setNameSaved(false);
     try {
-      await usersApi.updateProfile({ name: name.trim() });
-      if (authUser && token) setAuth({ ...authUser, name: name.trim() }, token);
-      setUser((u) => (u ? { ...u, name: name.trim() } : u));
+      const payload: { name?: string; avatar?: string } = {};
+      if (nameChanged) payload.name = trimmedName;
+      if (avatarChanged) payload.avatar = trimmedAvatar;
+      await usersApi.updateProfile(payload);
+      if (authUser && token) {
+        setAuth({
+          ...authUser,
+          ...(nameChanged ? { name: trimmedName } : {}),
+          ...(avatarChanged ? { avatar: trimmedAvatar } : {}),
+        }, token);
+      }
+      setUser((u) => (u ? { ...u, ...(nameChanged ? { name: trimmedName } : {}), ...(avatarChanged ? { avatar: trimmedAvatar } : {}) } : u));
+      setAvatarEditing(false);
       setNameSaved(true);
       window.setTimeout(() => setNameSaved(false), 2200);
     } finally {
@@ -124,14 +145,35 @@ export default function AdminProfilePage() {
     );
   }
 
+  const TABS = [
+    { id: 'account' as const,  label: 'Compte',   icon: UserIcon },
+    { id: 'security' as const, label: 'Sécurité', icon: Lock },
+  ];
+
   return (
-    <div className="space-y-8">
+    <div className="space-y-6">
       {/* Hero */}
       <section className="relative overflow-hidden rounded-3xl border border-border/60 bg-card p-6 sm:p-8">
         <div className="pointer-events-none absolute -right-20 -top-20 h-64 w-64 rounded-full bg-gradient-to-br from-rose-500/20 via-amber-500/10 to-transparent blur-3xl" aria-hidden />
         <div className="relative flex flex-col items-start gap-6 sm:flex-row sm:items-center">
-          <div className={`grid h-24 w-24 shrink-0 place-items-center rounded-3xl bg-gradient-to-br ${meta.tone} text-3xl font-bold text-white shadow-2xl`}>
-            {initials}
+          <div className="relative shrink-0">
+            <div className={`grid h-24 w-24 place-items-center overflow-hidden rounded-3xl bg-gradient-to-br ${meta.tone} text-3xl font-bold text-white shadow-2xl ring-4 ring-background`}>
+              {user?.avatar ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={user.avatar} alt="" className="h-full w-full object-cover" />
+              ) : (
+                initials
+              )}
+            </div>
+            <button
+              type="button"
+              onClick={() => { setTab('account'); setAvatarEditing(true); }}
+              className="absolute -bottom-1 -right-1 grid h-8 w-8 place-items-center rounded-full border border-border bg-card text-foreground shadow-md transition-transform hover:scale-105"
+              aria-label="Changer la photo"
+              title="Changer la photo"
+            >
+              <SettingsIcon className="h-3.5 w-3.5" />
+            </button>
           </div>
           <div className="min-w-0 flex-1">
             <div className={`inline-flex items-center gap-1.5 rounded-full bg-gradient-to-r ${meta.tone} px-3 py-1 text-[11px] font-bold text-white shadow`}>
@@ -151,7 +193,33 @@ export default function AdminProfilePage() {
         </div>
       </section>
 
-      <div className="grid gap-6 lg:grid-cols-2">
+      {/* Tab nav */}
+      <nav className="sticky top-0 z-10 -mx-1 flex gap-1 overflow-x-auto rounded-2xl border border-border/60 bg-card/80 p-1 backdrop-blur">
+        {TABS.map((t) => {
+          const TabIcon = t.icon;
+          const active = tab === t.id;
+          return (
+            <button
+              key={t.id}
+              type="button"
+              onClick={() => setTab(t.id)}
+              className={cn(
+                'inline-flex shrink-0 items-center gap-2 rounded-xl px-3.5 py-2 text-sm font-medium transition-all',
+                active
+                  ? `bg-gradient-to-r ${meta.tone} text-white shadow-md`
+                  : 'text-foreground/70 hover:bg-muted hover:text-foreground'
+              )}
+              aria-pressed={active}
+            >
+              <TabIcon className="h-4 w-4" />
+              {t.label}
+            </button>
+          );
+        })}
+      </nav>
+
+      {tab === 'account' && (
+      <div className="grid gap-6 lg:grid-cols-1">
         {/* Informations du compte */}
         <Card>
           <CardHeader>
@@ -165,6 +233,39 @@ export default function AdminProfilePage() {
                 <Input id="name" value={name} onChange={(e) => setName(e.target.value)} required />
               </div>
               <div>
+                <div className="flex items-center justify-between">
+                  <Label htmlFor="avatar">Photo de profil</Label>
+                  {!avatarEditing && (
+                    <button
+                      type="button"
+                      onClick={() => setAvatarEditing(true)}
+                      className="text-xs font-medium text-primary hover:underline"
+                    >
+                      {avatar ? 'Modifier' : 'Ajouter une URL'}
+                    </button>
+                  )}
+                </div>
+                {avatarEditing ? (
+                  <>
+                    <Input
+                      id="avatar"
+                      type="url"
+                      value={avatar}
+                      onChange={(e) => setAvatar(e.target.value)}
+                      placeholder="https://… (lien d'une image)"
+                      className="mt-1"
+                    />
+                    <p className="mt-1 text-[11px] text-muted-foreground">
+                      Colle l&apos;URL d&apos;une image publique. L&apos;upload direct arrive bientôt.
+                    </p>
+                  </>
+                ) : (
+                  <p className="mt-1 truncate text-xs text-muted-foreground">
+                    {avatar || 'Pas de photo — les initiales seront affichées.'}
+                  </p>
+                )}
+              </div>
+              <div>
                 <Label htmlFor="email">Email</Label>
                 <Input id="email" value={user?.email || ''} disabled />
                 <p className="mt-1 text-[11px] text-muted-foreground">L&apos;email ne peut pas être modifié.</p>
@@ -175,7 +276,10 @@ export default function AdminProfilePage() {
                     <Check className="h-3.5 w-3.5" /> Enregistré
                   </span>
                 )}
-                <Button type="submit" disabled={savingName || !name.trim() || name.trim() === user?.name}>
+                <Button
+                  type="submit"
+                  disabled={savingName || !name.trim() || (name.trim() === user?.name && avatar === (user?.avatar || ''))}
+                >
                   {savingName && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                   Enregistrer
                 </Button>
@@ -183,7 +287,11 @@ export default function AdminProfilePage() {
             </form>
           </CardContent>
         </Card>
+      </div>
+      )}
 
+      {tab === 'security' && (
+      <div className="grid gap-6 lg:grid-cols-1">
         {/* Sécurité */}
         <Card>
           <CardHeader>
@@ -234,6 +342,7 @@ export default function AdminProfilePage() {
           </CardContent>
         </Card>
       </div>
+      )}
     </div>
   );
 }

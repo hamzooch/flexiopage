@@ -92,11 +92,17 @@ export default function ProfilePage() {
 
   const [user, setUser] = useState<UserDoc | null>(null);
   const [name, setName] = useState('');
+  const [avatar, setAvatar] = useState('');
+  const [avatarEditing, setAvatarEditing] = useState(false);
   const [country, setCountry] = useState('');
   const [currency, setCurrency] = useState('');
   const [stores, setStores] = useState<StoreDoc[]>([]);
   const [loading, setLoading] = useState(true);
   const [autoStartCreate, setAutoStartCreate] = useState(false);
+  // Tab nav — splits a once-overwhelming wall of sections into focused
+  // contexts: Compte / Sécurité / Préférences / Boutiques. State only,
+  // no URL hash, so a refresh keeps the user where they were doing work.
+  const [tab, setTab] = useState<'account' | 'security' | 'preferences' | 'stores'>('account');
 
   // Profile save
   const [savingName, setSavingName] = useState(false);
@@ -137,12 +143,23 @@ export default function ProfilePage() {
         const u = (profileRes.data as { user: UserDoc }).user;
         setUser(u);
         setName(u.name || '');
+        setAvatar(u.avatar || '');
         setCountry(u.country || '');
         setCurrency(u.currency || '');
       })
       .finally(() => setLoading(false));
     refreshWallet();
   }, [refreshWallet]);
+
+  // Auto-open the right tab when arriving via ?create=1 (store wizard) or
+  // ?tab=security|preferences|account|stores from a nav shortcut.
+  useEffect(() => {
+    if (searchParams.get('create') === '1') setTab('stores');
+    const t = searchParams.get('tab');
+    if (t === 'account' || t === 'security' || t === 'preferences' || t === 'stores') {
+      setTab(t);
+    }
+  }, [searchParams]);
 
   // Honour ?create=1 — auto-open the wizard. Used by /select-store and the
   // Header's "Switch store" empty-state CTA.
@@ -219,13 +236,27 @@ export default function ProfilePage() {
 
   async function handleSaveName(e: React.FormEvent) {
     e.preventDefault();
-    if (!name.trim() || name.trim() === user?.name) return;
+    const trimmedName = name.trim();
+    const trimmedAvatar = avatar.trim();
+    const nameChanged = trimmedName && trimmedName !== user?.name;
+    const avatarChanged = trimmedAvatar !== (user?.avatar || '');
+    if (!nameChanged && !avatarChanged) return;
     setSavingName(true);
     setNameSaved(false);
     try {
-      await usersApi.updateProfile({ name: name.trim() });
-      if (authUser && token) setAuth({ ...authUser, name: name.trim() }, token);
-      setUser((u) => (u ? { ...u, name: name.trim() } : u));
+      const payload: { name?: string; avatar?: string } = {};
+      if (nameChanged) payload.name = trimmedName;
+      if (avatarChanged) payload.avatar = trimmedAvatar;
+      await usersApi.updateProfile(payload);
+      if (authUser && token) {
+        setAuth({
+          ...authUser,
+          ...(nameChanged ? { name: trimmedName } : {}),
+          ...(avatarChanged ? { avatar: trimmedAvatar } : {}),
+        }, token);
+      }
+      setUser((u) => (u ? { ...u, ...(nameChanged ? { name: trimmedName } : {}), ...(avatarChanged ? { avatar: trimmedAvatar } : {}) } : u));
+      setAvatarEditing(false);
       setNameSaved(true);
       window.setTimeout(() => setNameSaved(false), 2200);
     } finally {
@@ -298,50 +329,123 @@ export default function ProfilePage() {
 
   const activeStore = stores.find((s) => s._id === currentStoreId);
 
+  const TABS = [
+    { id: 'account' as const,     label: 'Compte',       icon: UserIcon },
+    { id: 'security' as const,    label: 'Sécurité',     icon: Lock },
+    { id: 'preferences' as const, label: 'Préférences',  icon: Globe },
+    { id: 'stores' as const,      label: 'Mes boutiques', icon: StoreIcon },
+  ];
+
   return (
-    <div className="space-y-8">
-      {/* Identity strip — avatar + name on a single tight line. */}
-      <section className="flex items-center gap-3 border-b border-border/60 pb-4">
-        <div className="grid h-12 w-12 shrink-0 place-items-center rounded-xl gradient-brand text-base font-bold text-white shadow-md shadow-primary/25">
-          {initials}
-        </div>
-        <div className="min-w-0 flex-1">
-          <h1 className="truncate text-lg font-semibold tracking-tight sm:text-xl">
-            {user?.name || 'Vendeur'}
-          </h1>
-          <div className="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-muted-foreground">
-            <span className="inline-flex items-center gap-1"><Mail className="h-3 w-3" />{user?.email}</span>
-            <span className="inline-flex items-center gap-1"><Calendar className="h-3 w-3" />Depuis {memberSince}</span>
+    <div className="space-y-6">
+      {/* ────────────────────────── HERO ────────────────────────── */}
+      <section className="relative overflow-hidden rounded-3xl border border-border/60 bg-card p-6 sm:p-8">
+        <div className="pointer-events-none absolute -right-20 -top-20 h-64 w-64 rounded-full bg-gradient-to-br from-amber-500/20 via-orange-500/10 to-transparent blur-3xl" aria-hidden />
+        <div className="pointer-events-none absolute -bottom-20 -left-10 h-48 w-48 rounded-full bg-gradient-to-tr from-fuchsia-500/10 to-transparent blur-3xl" aria-hidden />
+
+        <div className="relative flex flex-col items-start gap-6 sm:flex-row sm:items-center">
+          {/* Avatar — image when set, gradient initials fallback. */}
+          <div className="relative shrink-0">
+            <div className="grid h-24 w-24 place-items-center overflow-hidden rounded-3xl gradient-brand text-3xl font-bold text-white shadow-xl shadow-primary/30 ring-4 ring-background">
+              {user?.avatar ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={user.avatar} alt="" className="h-full w-full object-cover" />
+              ) : (
+                initials
+              )}
+            </div>
+            <button
+              type="button"
+              onClick={() => { setTab('account'); setAvatarEditing(true); }}
+              className="absolute -bottom-1 -right-1 grid h-8 w-8 place-items-center rounded-full border border-border bg-card text-foreground shadow-md transition-transform hover:scale-105"
+              aria-label="Changer la photo"
+              title="Changer la photo"
+            >
+              <SettingsIcon className="h-3.5 w-3.5" />
+            </button>
+          </div>
+
+          <div className="min-w-0 flex-1">
+            <h1 className="truncate text-3xl font-bold tracking-tight sm:text-4xl">
+              {user?.name || 'Vendeur'}
+            </h1>
+            <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-muted-foreground">
+              <span className="inline-flex items-center gap-1.5">
+                <Mail className="h-3.5 w-3.5" />{user?.email}
+                {user?.emailVerified && (
+                  <span className="ml-1 inline-flex items-center gap-1 rounded-full bg-emerald-500/10 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-700">
+                    <CheckCircle2 className="h-2.5 w-2.5" /> Vérifié
+                  </span>
+                )}
+              </span>
+              <span className="inline-flex items-center gap-1.5">
+                <Calendar className="h-3.5 w-3.5" />Membre depuis {memberSince}
+              </span>
+            </div>
+
+            {/* Inline stats — replaces the old standalone stat grid so the
+                hero stays the single visual anchor of the page. */}
+            <div className="mt-5 flex flex-wrap gap-2">
+              <HeroStat
+                icon={<StoreIcon className="h-3.5 w-3.5" />}
+                label="Boutiques"
+                value={String(stores.length)}
+                tone="indigo"
+                onClick={() => setTab('stores')}
+              />
+              <HeroStat
+                icon={<Wallet className="h-3.5 w-3.5" />}
+                label="Solde"
+                value={wallet ? fmtCur(wallet.balance, wallet.currency) : '—'}
+                tone="emerald"
+                href="/dashboard/wallet"
+              />
+              <HeroStat
+                icon={<Sparkles className="h-3.5 w-3.5" />}
+                label="Solde IA"
+                value={wallet ? fmtCur(wallet.aiBalance, wallet.currency) : '—'}
+                tone="fuchsia"
+                href="/dashboard/wallet?bucket=ai"
+              />
+            </div>
           </div>
         </div>
       </section>
 
-      {/* Stats */}
-      <section className="grid gap-3 sm:grid-cols-3">
-        <StatCard
-          icon={<StoreIcon className="h-4 w-4" />}
-          tone="indigo"
-          label="Boutiques"
-          value={String(stores.length)}
-          href="#stores"
-        />
-        <StatCard
-          icon={<Wallet className="h-4 w-4" />}
-          tone="emerald"
-          label="Solde principal"
-          value={wallet ? fmtCur(wallet.balance, wallet.currency) : '—'}
-          href="/dashboard/wallet"
-        />
-        <StatCard
-          icon={<Sparkles className="h-4 w-4" />}
-          tone="fuchsia"
-          label="Solde IA"
-          value={wallet ? fmtCur(wallet.aiBalance, wallet.currency) : '—'}
-          href="/dashboard/wallet?bucket=ai"
-        />
-      </section>
+      {/* ────────────────────────── TABS ────────────────────────── */}
+      <nav className="sticky top-0 z-10 -mx-1 flex gap-1 overflow-x-auto rounded-2xl border border-border/60 bg-card/80 p-1 backdrop-blur">
+        {TABS.map((t) => {
+          const TabIcon = t.icon;
+          const active = tab === t.id;
+          return (
+            <button
+              key={t.id}
+              type="button"
+              onClick={() => setTab(t.id)}
+              className={cn(
+                'inline-flex shrink-0 items-center gap-2 rounded-xl px-3.5 py-2 text-sm font-medium transition-all',
+                active
+                  ? 'gradient-brand text-white shadow-md shadow-primary/20'
+                  : 'text-foreground/70 hover:bg-muted hover:text-foreground'
+              )}
+              aria-pressed={active}
+            >
+              <TabIcon className="h-4 w-4" />
+              {t.label}
+              {t.id === 'stores' && stores.length > 0 && (
+                <span className={cn(
+                  'rounded-full px-1.5 py-0.5 text-[10px] font-bold',
+                  active ? 'bg-white/25 text-white' : 'bg-muted text-foreground/70'
+                )}>
+                  {stores.length}
+                </span>
+              )}
+            </button>
+          );
+        })}
+      </nav>
 
-      {/* ────────────────────────── BOUTIQUES ────────────────────────── */}
+      {tab === 'stores' && (
       <section id="stores" className="scroll-mt-20 space-y-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
@@ -509,8 +613,10 @@ export default function ProfilePage() {
           </div>
         )}
       </section>
+      )}
 
       {/* Pays & devise du solde */}
+      {tab === 'preferences' && (
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
@@ -611,8 +717,10 @@ export default function ProfilePage() {
           </form>
         </CardContent>
       </Card>
+      )}
 
-      <div className="grid gap-6 lg:grid-cols-2">
+      {tab === 'account' && (
+      <div className="grid gap-6 lg:grid-cols-1">
         {/* Profile info */}
         <Card>
           <CardHeader>
@@ -634,8 +742,49 @@ export default function ProfilePage() {
                   required
                 />
               </div>
+
+              {/* Avatar — URL only for now (the user can paste a Cloudinary,
+                  Imgur, or storefront-media URL). A direct upload widget
+                  would need a user-scoped media endpoint we don't have yet. */}
+              <div>
+                <div className="flex items-center justify-between">
+                  <Label htmlFor="avatar">Photo de profil</Label>
+                  {!avatarEditing && (
+                    <button
+                      type="button"
+                      onClick={() => setAvatarEditing(true)}
+                      className="text-xs font-medium text-primary hover:underline"
+                    >
+                      {avatar ? 'Modifier' : 'Ajouter une URL'}
+                    </button>
+                  )}
+                </div>
+                {avatarEditing ? (
+                  <>
+                    <Input
+                      id="avatar"
+                      type="url"
+                      value={avatar}
+                      onChange={(e) => setAvatar(e.target.value)}
+                      placeholder="https://… (lien d'une image)"
+                      className="mt-1"
+                    />
+                    <p className="mt-1 text-[11px] text-muted-foreground">
+                      Colle l&apos;URL d&apos;une image publique. L&apos;upload direct arrive bientôt.
+                    </p>
+                  </>
+                ) : (
+                  <p className="mt-1 truncate text-xs text-muted-foreground">
+                    {avatar || 'Pas de photo — les initiales seront affichées.'}
+                  </p>
+                )}
+              </div>
+
               <div className="flex items-center gap-3 pt-2">
-                <Button type="submit" disabled={savingName || !name.trim() || name === user?.name}>
+                <Button
+                  type="submit"
+                  disabled={savingName || !name.trim() || (name === user?.name && avatar === (user?.avatar || ''))}
+                >
                   {savingName ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Enregistrer'}
                 </Button>
                 {nameSaved && (
@@ -729,7 +878,11 @@ export default function ProfilePage() {
             </div>
           </CardContent>
         </Card>
+      </div>
+      )}
 
+      {tab === 'security' && (
+      <div className="grid gap-6 lg:grid-cols-1">
         {/* Password */}
         <Card>
           <CardHeader>
@@ -807,49 +960,45 @@ export default function ProfilePage() {
           </CardContent>
         </Card>
       </div>
+      )}
     </div>
   );
 }
 
-function StatCard({
-  icon,
-  tone,
-  label,
-  value,
-  href,
+/** Compact stat pill rendered inline in the hero — counts/balance chips
+ * that double as navigation shortcuts. Action can be a tab switch
+ * (onClick) or an external link (href). */
+function HeroStat({
+  icon, label, value, tone, href, onClick,
 }: {
   icon: React.ReactNode;
-  tone: 'indigo' | 'emerald' | 'fuchsia';
   label: string;
   value: string;
-  href: string;
+  tone: 'indigo' | 'emerald' | 'fuchsia';
+  href?: string;
+  onClick?: () => void;
 }) {
-  const toneStyles = {
-    indigo: 'from-indigo-500/15 to-violet-500/10 text-indigo-700 bg-indigo-500/15',
-    emerald: 'from-emerald-500/15 to-teal-500/10 text-emerald-700 bg-emerald-500/15',
-    fuchsia: 'from-fuchsia-500/15 to-pink-500/10 text-fuchsia-700 bg-fuchsia-500/15',
+  const tones = {
+    indigo:  'border-indigo-500/30 bg-indigo-500/10 text-indigo-700 hover:bg-indigo-500/15',
+    emerald: 'border-emerald-500/30 bg-emerald-500/10 text-emerald-700 hover:bg-emerald-500/15',
+    fuchsia: 'border-fuchsia-500/30 bg-fuchsia-500/10 text-fuchsia-700 hover:bg-fuchsia-500/15',
   };
-  const [grad, , textColor, bgColor] = toneStyles[tone].split(/\s+/);
+  const body = (
+    <span className="inline-flex items-center gap-2">
+      {icon}
+      <span className="text-xs font-medium uppercase tracking-wide opacity-80">{label}</span>
+      <span className="text-sm font-bold tabular-nums">{value}</span>
+    </span>
+  );
+  const classes = cn(
+    'inline-flex items-center gap-2 rounded-full border px-3 py-1.5 transition-colors',
+    tones[tone]
+  );
+  if (href) return <Link href={href} className={classes}>{body}</Link>;
   return (
-    <Link
-      href={href}
-      className="group relative overflow-hidden rounded-xl border border-border/60 bg-card p-3 transition-all duration-300 hover:-translate-y-0.5 hover:border-primary/30 hover:shadow-lg"
-    >
-      <div className={`pointer-events-none absolute -right-10 -top-10 h-24 w-24 rounded-full bg-gradient-to-br ${grad} blur-3xl`} aria-hidden />
-      <div className="relative flex items-start justify-between gap-2">
-        <div className="min-w-0">
-          <div className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">{label}</div>
-          <div className="mt-1 truncate text-lg font-bold tracking-tight">{value}</div>
-        </div>
-        <div className={`grid h-8 w-8 shrink-0 place-items-center rounded-lg ${bgColor} ${textColor} transition-transform duration-300 group-hover:scale-110 group-hover:rotate-3`}>
-          {icon}
-        </div>
-      </div>
-      <div className="relative mt-1.5 inline-flex items-center gap-1 text-[10px] text-muted-foreground transition-colors group-hover:text-foreground">
-        Voir
-        <ArrowRight className="h-2.5 w-2.5 transition-transform group-hover:translate-x-0.5" />
-      </div>
-    </Link>
+    <button type="button" onClick={onClick} className={classes}>
+      {body}
+    </button>
   );
 }
 
