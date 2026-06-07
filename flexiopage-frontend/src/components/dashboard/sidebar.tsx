@@ -9,7 +9,7 @@
  */
 
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
+import { usePathname, useSearchParams } from 'next/navigation';
 import { useEffect } from 'react';
 import {
   LayoutDashboard,
@@ -82,7 +82,7 @@ const SECTIONS: { titleKey: TKey; items: NavItem[] }[] = [
     titleKey: 'sidebar.workspace',
     items: [
       { href: '/dashboard', labelKey: 'sidebar.overview', icon: LayoutDashboard },
-      { href: '/dashboard/profile#stores', labelKey: 'sidebar.myStores', icon: Store },
+      { href: '/dashboard/profile?tab=stores', labelKey: 'sidebar.myStores', icon: Store },
       { href: '/dashboard/analytics', labelKey: 'sidebar.analytics', icon: BarChart3 },
     ],
   },
@@ -122,6 +122,8 @@ interface Props {
 
 export function Sidebar({ mobileOpen = false, onMobileClose }: Props) {
   const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const currentTab = searchParams?.get('tab') ?? null;
   const user = useAuthStore((s) => s.user);
   const currentStoreId = useStoreStore((s) => s.currentStoreId);
   const { t } = useT();
@@ -223,9 +225,25 @@ export function Sidebar({ mobileOpen = false, onMobileClose }: Props) {
               </div>
               <ul className="space-y-0.5">
                 {section.items.map((item) => {
-                  const isActive =
-                    pathname === item.href ||
-                    (item.href !== '/dashboard' && pathname.startsWith(item.href));
+                  // Items can carry ?tab=… in their href (e.g. /dashboard/profile?tab=stores).
+                  // Strip it before comparing to the pathname, then check the
+                  // tab separately so the right sub-link lights up.
+                  const [itemPath, itemQuery = ''] = item.href.split('?');
+                  const itemTab = itemQuery ? new URLSearchParams(itemQuery).get('tab') : null;
+                  const pathMatches =
+                    pathname === itemPath ||
+                    (itemPath !== '/dashboard' && pathname.startsWith(itemPath));
+                  const isActive = itemTab
+                    ? pathMatches && currentTab === itemTab
+                    : pathMatches && !(
+                        // Don't mark the bare /dashboard/profile entry active
+                        // while a sibling tab-specific entry is the real target.
+                        section.items.some((other) => {
+                          const [otherPath, otherQuery = ''] = other.href.split('?');
+                          const otherTab = otherQuery ? new URLSearchParams(otherQuery).get('tab') : null;
+                          return otherPath === itemPath && otherTab && otherTab === currentTab;
+                        })
+                      );
                   // L'entrée "Applications" déploie ses apps installées en
                   // sous-items quand il y en a — accès direct depuis la
                   // sidebar avec leur logo gradient.
