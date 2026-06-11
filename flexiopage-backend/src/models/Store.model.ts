@@ -2,6 +2,42 @@ import mongoose, { Document, Schema } from 'mongoose';
 
 export type StoreType = 'physical' | 'digital';
 
+/**
+ * Un marché = un pays activé par la boutique. Chaque marché porte sa propre
+ * devise et son propre couple `(storeIdMD, webhookSecret)` côté MogaDelivery
+ * (modèle MD : 1 Boutique = 1 pays = 1 store_id). Voir
+ * memory/mogadelivery-multi-pays-architecture.md.
+ *
+ * Le buyer est routé vers un marché à l'arrivée sur la storefront (géoloc IP
+ * ou sélecteur), et l'outbound `order.created` part avec le `storeIdMD` du
+ * marché → la commande arrive sur le bon dashboard MD.
+ */
+export interface IStoreMarket {
+  /** ISO 3166-1 alpha-2 (ex. 'CI', 'SN', 'BF'). */
+  country: string;
+  /** ISO 4217 (ex. 'XOF', 'XAF', 'MAD'). */
+  currency: string;
+  /** Marché par défaut — sert de fallback quand le pays buyer est inconnu. */
+  isDefault?: boolean;
+  /** Quand false, le market est invisible côté storefront. */
+  enabled?: boolean;
+  /** Intégration livraison spécifique à ce pays. */
+  delivery?: {
+    provider: 'mogadelivery' | 'yalidine' | 'noest' | 'aramex' | 'manual' | 'other';
+    /** `store_id` côté MogaDelivery — distinct par Boutique/pays. */
+    storeIdMD?: string;
+    /** Secret HMAC partagé avec MD pour ce store (signature outbound + verify inbound). */
+    webhookSecret?: string;
+    /** `boutiqueId` retourné par `POST /boutiques` côté MD. */
+    boutiqueIdMD?: string;
+    /** Override de l'URL outbound (sinon URL globale MD). */
+    baseUrl?: string;
+    enabled?: boolean;
+  };
+  /** Frais de livraison fixes ajoutés au sous-total dans ce pays. */
+  shippingFee?: number;
+}
+
 export interface IStore extends Document {
   ownerId: mongoose.Types.ObjectId;
   name: string;
@@ -16,6 +52,13 @@ export interface IStore extends Document {
   customDomainTarget?: string;
   subdomain: string;
   theme?: Record<string, unknown>;
+  /**
+   * Liste des pays activés par le seller. Quand `markets` est non vide, c'est
+   * la source de vérité pour la devise, les frais de livraison et le routage
+   * MogaDelivery — `settings.country/currency` et `integrations.delivery`
+   * restent en place comme fallback pour les boutiques pré-migration.
+   */
+  markets?: IStoreMarket[];
   settings: {
     currency: string;
     timezone: string;
@@ -407,6 +450,27 @@ const StoreSchema = new Schema<IStore>(
     customDomainTarget: { type: String, trim: true, lowercase: true },
     subdomain: { type: String, required: true, unique: true, lowercase: true, trim: true },
     theme: { type: Schema.Types.Mixed },
+    markets: [
+      {
+        _id: false,
+        country: { type: String, required: true, trim: true, uppercase: true },
+        currency: { type: String, required: true, trim: true, uppercase: true },
+        isDefault: { type: Boolean, default: false },
+        enabled: { type: Boolean, default: true },
+        delivery: {
+          provider: {
+            type: String,
+            enum: ['mogadelivery', 'yalidine', 'noest', 'aramex', 'manual', 'other'],
+          },
+          storeIdMD: { type: String, trim: true },
+          webhookSecret: { type: String, trim: true },
+          boutiqueIdMD: { type: String, trim: true },
+          baseUrl: { type: String, trim: true },
+          enabled: { type: Boolean, default: true },
+        },
+        shippingFee: { type: Number, default: 0, min: 0 },
+      },
+    ],
     settings: {
       currency: { type: String, default: 'USD' },
       timezone: { type: String, default: 'UTC' },

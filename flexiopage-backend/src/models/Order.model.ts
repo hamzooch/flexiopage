@@ -65,6 +65,14 @@ export interface IOrder extends Document {
   discount: number;
   total: number;
   currency: string;
+  /**
+   * Pays du market résolu au moment de la commande (ISO 3166-1 alpha-2).
+   * Sert au routage outbound vers le bon dashboard MogaDelivery (1 store_id
+   * par pays côté MD — cf. memory/mogadelivery-multi-pays-architecture.md).
+   * Snapshot figé : si le seller désactive ou supprime le market plus tard,
+   * la commande reste rattachée au pays où elle a été placée.
+   */
+  marketCountry?: string;
   paymentStatus: PaymentStatus;
   paymentMethod: 'stripe' | 'manual' | 'other' | 'mobile_money' | 'card' | 'cod';
   /** Specific provider (when paymentMethod = 'mobile_money' / 'card' / etc.). */
@@ -181,6 +189,7 @@ const OrderSchema = new Schema<IOrder>(
     discount: { type: Number, default: 0 },
     total: { type: Number, required: true },
     currency: { type: String, default: 'USD' },
+    marketCountry: { type: String, trim: true, uppercase: true },
     paymentStatus: { type: String, enum: ['pending', 'paid', 'failed', 'refunded', 'manual'], default: 'pending' },
     paymentMethod: { type: String, enum: ['stripe', 'manual', 'other', 'mobile_money', 'card', 'cod'], default: 'manual' },
     paymentProvider: {

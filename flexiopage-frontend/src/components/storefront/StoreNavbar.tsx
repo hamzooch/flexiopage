@@ -15,6 +15,7 @@ import { Menu, X } from 'lucide-react';
 import type { ThemeTokens, NavStyle } from '@/data/store-themes';
 import { mediaUrl } from '@/lib/utils';
 import { LanguageSwitcher } from '@/components/storefront/language-switcher';
+import { MarketSwitcher, type PublicMarket } from '@/components/storefront/market-switcher';
 import { CartIcon } from '@/components/storefront/cart-icon';
 
 export interface NavMenuLink {
@@ -62,6 +63,10 @@ interface Props {
   bgOverride?: string;
   /** Paired text/icon color when bgOverride is used — keeps contrast right. */
   fgOverride?: string;
+  /** Marchés publiquement activés — déclenche le sélecteur pays quand ≥ 2. */
+  markets?: PublicMarket[];
+  /** Pays actuellement résolu côté backend (pré-coche le switcher). */
+  currentMarketCountry?: string;
 }
 
 /**
@@ -93,7 +98,7 @@ function resolveHref(url: string, storeSlug: string): string {
   return `/${storeSlug}/${url.replace(/^\/+/, '')}`;
 }
 
-export function StoreNavbar({ storeName, storeSlug, storeLogo, theme, config, defaultLocale, trailing, bgOverride, fgOverride }: Props) {
+export function StoreNavbar({ storeName, storeSlug, storeLogo, theme, config, defaultLocale, trailing, bgOverride, fgOverride, markets, currentMarketCountry }: Props) {
   // Effective colors — per-page override (e.g. product page palette) wins
   // over the theme tokens. Header bg becomes opaque when overridden so the
   // chosen color stays true instead of being softened by the backdrop blur.
@@ -230,6 +235,9 @@ export function StoreNavbar({ storeName, storeSlug, storeLogo, theme, config, de
             <div className="flex w-24 items-center">{mobileToggle}</div>
             <div className="flex flex-1 justify-center">{brand}</div>
             <div className="flex w-24 items-center justify-end gap-2">
+              {markets && markets.length > 1 && (
+                <MarketSwitcher markets={markets} currentCountry={currentMarketCountry} />
+              )}
               {trailing}
               {cartIcon}
             </div>
@@ -270,6 +278,9 @@ export function StoreNavbar({ storeName, storeSlug, storeLogo, theme, config, de
           {brand}
           {desktopLinks}
           <div className="flex items-center gap-2">
+            {markets && markets.length > 1 && (
+              <MarketSwitcher markets={markets} currentCountry={currentMarketCountry} />
+            )}
             {config?.showLanguageSwitcher && (
               <LanguageSwitcher storeSlug={storeSlug} defaultLocale={defaultLocale} />
             )}

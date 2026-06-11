@@ -55,6 +55,11 @@ export interface CreateOrderInput {
   paymentMethod?: 'stripe' | 'manual' | 'other' | 'mobile_money' | 'card' | 'cod';
   /** Optional currency override (defaults to 'USD' from the order schema). */
   currency?: string;
+  /**
+   * Pays du market résolu au moment du checkout. Sert au routage outbound
+   * MogaDelivery (un dashboard MD par pays). Snapshot — pas recalculé.
+   */
+  marketCountry?: string;
   notes?: string;
 }
 
@@ -159,6 +164,7 @@ export async function createOrder(input: CreateOrderInput): Promise<IOrder> {
     discount: input.discount ?? 0,
     total,
     currency: input.currency || 'USD',
+    marketCountry: input.marketCountry,
     paymentStatus: 'pending',
     paymentMethod: input.paymentMethod ?? 'manual',
     fulfillmentStatus: 'unfulfilled',

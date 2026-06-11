@@ -22,6 +22,8 @@ import { MarketingPixels, type MarketingConfig } from '@/components/storefront/M
 import { TrackEvent } from '@/components/storefront/TrackEvent';
 import { StoreTracker } from '@/components/storefront/StoreTracker';
 import { StoreNavbar, type NavbarConfig } from '@/components/storefront/StoreNavbar';
+import type { PublicMarket } from '@/components/storefront/market-switcher';
+import { cookies } from 'next/headers';
 import { StorefrontTestimonials } from '@/components/storefront/Testimonials';
 import { MobileStickyCta } from '@/components/storefront/mobile-sticky-cta';
 import { CrossSells, type CrossSellItem } from '@/components/storefront/cross-sells';
@@ -81,6 +83,7 @@ interface StoreDoc {
   storeType?: 'physical' | 'digital';
   logo?: string;
   theme?: { templateId?: string };
+  markets?: PublicMarket[];
   settings?: {
     currency?: string;
     language?: string;
@@ -90,6 +93,12 @@ interface StoreDoc {
     storefront?: { navbar?: NavbarConfig; productPage?: ProductPageSettings };
   };
   integrations?: { marketing?: MarketingConfig };
+}
+
+interface ResolvedMarketHint {
+  country: string;
+  currency: string;
+  source?: string;
 }
 
 const FALLBACK_THEME = STORE_THEME_TEMPLATES[0].theme;
@@ -131,22 +140,42 @@ export default async function PublicProductPage({ params }: Props) {
   let product: ProductDoc | null = null;
   let store: StoreDoc | null = null;
   let crossSells: CrossSellItem[] = [];
+  let market: ResolvedMarketHint | null = null;
+
+  // Forward le cookie pour que le backend résolve le market par buyer.
+  // ISR désactivée : la réponse dépend du cookie + de CF-IPCountry.
+  const cookieStore = await cookies();
+  const fwdCookie = cookieStore
+    .getAll()
+    .map((c) => `${c.name}=${c.value}`)
+    .join('; ');
 
   try {
     const [pRes, sRes] = await Promise.all([
       fetch(`${apiUrl}/api/public/stores/${storeSlug}/products/${productSlug}`, {
-        next: { revalidate: 60, tags: [`store:${storeSlug}`, `product:${storeSlug}:${productSlug}`] },
+        cache: 'no-store',
+        headers: fwdCookie ? { Cookie: fwdCookie } : undefined,
       }),
       fetch(`${apiUrl}/api/public/store-by-slug/${storeSlug}`, {
-        next: { revalidate: 60, tags: [`store:${storeSlug}`] },
+        cache: 'no-store',
+        headers: fwdCookie ? { Cookie: fwdCookie } : undefined,
       }),
     ]);
     if (pRes.ok) {
-      const body = await pRes.json();
-      product = body.product;
+      const body = (await pRes.json()) as {
+        product?: ProductDoc;
+        crossSells?: CrossSellItem[];
+        market?: ResolvedMarketHint;
+      };
+      product = body.product ?? null;
       crossSells = Array.isArray(body.crossSells) ? body.crossSells : [];
+      market = body.market ?? null;
     }
-    if (sRes.ok) store = (await sRes.json()).store;
+    if (sRes.ok) {
+      const body = (await sRes.json()) as { store?: StoreDoc; market?: ResolvedMarketHint };
+      store = body.store ?? null;
+      if (!market && body.market) market = body.market;
+    }
   } catch {
     // fallback
   }
@@ -167,7 +196,9 @@ export default async function PublicProductPage({ params }: Props) {
   const theme = resolveTheme(store);
   const direction = store?.settings?.direction || 'ltr';
   const language = store?.settings?.language;
-  const currency = store?.settings?.currency || 'USD';
+  // Devise du market résolu — settings.currency reste fallback.
+  const currency = market?.currency || store?.settings?.currency || 'USD';
+  const enabledMarkets = (store?.markets || []).filter((m) => m.enabled !== false);
   const fontsUrl = googleFontsHref(theme);
   const radius = RADIUS_PX[theme.borderRadius];
 
@@ -249,6 +280,8 @@ export default async function PublicProductPage({ params }: Props) {
           config={store?.settings?.storefront?.navbar}
           bgOverride={ppStyle.navbarColor}
           fgOverride={ppStyle.navbarTextColor}
+          markets={enabledMarkets}
+          currentMarketCountry={market?.country}
         />
 
         {/* Main split — tight padding on mobile so the gallery + form fit in

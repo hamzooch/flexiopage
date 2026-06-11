@@ -52,6 +52,30 @@ export interface IProductVariant {
 }
 
 /**
+ * Prix + stock par pays. Quand `pricing[]` est non vide pour un produit,
+ * c'est la source de vérité pour l'affichage storefront et l'order capture
+ * (sélection via le market du buyer). Les champs racine `price`,
+ * `compareAtPrice`, `stock`, `available` restent en place comme défaut /
+ * fallback pour les produits pré-migration et les marchés non couverts.
+ *
+ * Voir memory/mogadelivery-multi-pays-architecture.md.
+ */
+export interface IProductPricing {
+  /** ISO 3166-1 alpha-2 — doit correspondre à un market actif du Store. */
+  country: string;
+  /** Prix de vente dans la devise du market. */
+  price: number;
+  /** Prix barré optionnel ("compare at"). */
+  compareAtPrice?: number;
+  /** Devise du market (redondante mais évite un lookup au storefront). */
+  currency: string;
+  /** Stock indépendant par pays (chaque dashboard MD = un entrepôt distinct). */
+  stock?: number;
+  /** Désactivable sans supprimer (ex. rupture temporaire). */
+  available?: boolean;
+}
+
+/**
  * Lien produit ↔ fournisseur. Un même produit peut être sourcé chez plusieurs
  * fournisseurs (prix différents, délais différents). Le drapeau `isPrimary`
  * désigne celui utilisé par défaut quand on crée une importation.
@@ -99,6 +123,12 @@ export interface IProduct extends Document {
   stock: number;
   trackInventory: boolean;
   allowBackorder: boolean;
+  /**
+   * Prix + stock par pays activé sur la boutique. Optionnel — si vide ou
+   * absent, le storefront/checkout retombent sur `price`/`compareAtPrice`/
+   * `stock` racine. Voir IProductPricing.
+   */
+  pricing?: IProductPricing[];
   variants: IProductVariant[];
   /** Sourcing : liste des fournisseurs qui fournissent ce produit, avec
    *  leurs conditions (prix d'achat, délai, MOQ). Optionnel — utilisé par
@@ -318,6 +348,17 @@ const ProductSchema = new Schema<IProduct>(
     stock: { type: Number, default: 0 },
     trackInventory: { type: Boolean, default: true },
     allowBackorder: { type: Boolean, default: false },
+    pricing: [
+      {
+        _id: false,
+        country: { type: String, required: true, trim: true, uppercase: true },
+        price: { type: Number, required: true, min: 0 },
+        compareAtPrice: { type: Number, min: 0 },
+        currency: { type: String, required: true, trim: true, uppercase: true },
+        stock: { type: Number, default: 0, min: 0 },
+        available: { type: Boolean, default: true },
+      },
+    ],
     variants: [ProductVariantSchema],
     suppliers: [ProductSupplierSchema],
     images: [{ type: String }],

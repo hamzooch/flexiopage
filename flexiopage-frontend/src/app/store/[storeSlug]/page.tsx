@@ -20,6 +20,8 @@ import { MarketingPixels, type MarketingConfig } from '@/components/storefront/M
 import { StoreTracker } from '@/components/storefront/StoreTracker';
 import { StorefrontSlider, type SliderConfig } from '@/components/storefront/Slider';
 import { StoreNavbar, type NavbarConfig } from '@/components/storefront/StoreNavbar';
+import type { PublicMarket } from '@/components/storefront/market-switcher';
+import { cookies } from 'next/headers';
 import { StoreFooter, type FooterConfig } from '@/components/storefront/StoreFooter';
 import { StorefrontTestimonials, type TestimonialsConfig } from '@/components/storefront/Testimonials';
 import { AnnouncementBar, type AnnouncementBarConfig } from '@/components/storefront/AnnouncementBar';
@@ -65,6 +67,7 @@ interface StoreDoc {
   logo?: string;
   favicon?: string;
   theme?: { templateId?: string } & Record<string, unknown>;
+  markets?: PublicMarket[];
   settings?: {
     currency?: string;
     language?: string;
@@ -75,6 +78,12 @@ interface StoreDoc {
   integrations?: {
     marketing?: MarketingConfig;
   };
+}
+
+interface ResolvedMarketHint {
+  country: string;
+  currency: string;
+  source?: string;
 }
 
 interface ProductDoc {
@@ -179,23 +188,39 @@ export default async function PublicStorePage({ params }: Props) {
   const apiBase = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
   let store: StoreDoc | null = null;
   let products: ProductDoc[] = [];
+  let market: ResolvedMarketHint | null = null;
+
+  // Forward the cookie pays + cf-ipcountry au backend pour qu'il résolve le
+  // bon market. Sans ça, le SSR perd la préférence buyer (cookie posé client).
+  // ISR désactivée sur ces deux routes : la réponse dépend de la requête.
+  const cookieStore = await cookies();
+  const fwdCookie = cookieStore
+    .getAll()
+    .map((c) => `${c.name}=${c.value}`)
+    .join('; ');
 
   try {
     const [storeRes, productsRes] = await Promise.all([
       fetch(`${apiBase}/api/public/store-by-slug/${storeSlug}`, {
-        next: { revalidate: 60, tags: [`store:${storeSlug}`] },
+        cache: 'no-store',
+        headers: fwdCookie ? { Cookie: fwdCookie } : undefined,
       }),
       fetch(`${apiBase}/api/public/stores/${storeSlug}/products`, {
-        next: { revalidate: 60, tags: [`store:${storeSlug}`, `store:${storeSlug}:products`] },
+        cache: 'no-store',
+        headers: fwdCookie ? { Cookie: fwdCookie } : undefined,
       }),
     ]);
     if (storeRes.ok) {
-      const d = await storeRes.json();
-      store = d.store;
+      const d = (await storeRes.json()) as { store?: StoreDoc; market?: ResolvedMarketHint };
+      store = d.store ?? null;
+      market = d.market ?? null;
     }
     if (productsRes.ok && store) {
-      const d = await productsRes.json();
+      const d = (await productsRes.json()) as { products?: ProductDoc[]; market?: ResolvedMarketHint };
       products = d.products || [];
+      // Le payload products contient aussi un market — on prend celui-là en
+      // priorité car il vient avec la résolution la plus fraîche.
+      if (d.market) market = d.market;
     }
   } catch {
     // fallback
@@ -217,7 +242,10 @@ export default async function PublicStorePage({ params }: Props) {
   const theme = resolveTheme(store);
   const direction = store.settings?.direction || 'ltr';
   const language = store.settings?.language;
-  const currency = store.settings?.currency || 'USD';
+  // Devise pilotée par le market résolu (cookie ou géoloc) — settings.currency
+  // ne sert plus que de fallback ultime pour les boutiques pré-migration.
+  const currency = market?.currency || store.settings?.currency || 'USD';
+  const enabledMarkets = (store.markets || []).filter((m) => m.enabled !== false);
   const fontsUrl = googleFontsHref(theme);
   const radius = RADIUS_PX[theme.borderRadius];
 
@@ -246,6 +274,8 @@ export default async function PublicStorePage({ params }: Props) {
           storeLogo={store.logo}
           theme={theme}
           config={sf.navbar}
+          markets={enabledMarkets}
+          currentMarketCountry={market?.country}
         />
         {/* The 4 body sections (hero / slider / products / testimonials) are
             rendered in the order the seller picked in the dashboard, with

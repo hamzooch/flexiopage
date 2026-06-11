@@ -21,35 +21,112 @@ import { dispatchOrder } from '../services/delivery.service';
 import { notifyOrderCreated } from '../services/notification.service';
 import { pushOrderToSheets } from '../services/sheets.service';
 import { resolveBundlePricing } from '../lib/bundle';
+import { resolveMarketForRequest, resolveProductPricing } from '../lib/market';
 import { recordEvent } from '../services/tracking.service';
 import mongoose from 'mongoose';
+
+/**
+ * Applique le pricing du market résolu sur un produit lean/serialisable.
+ * Override `price`/`compareAtPrice`/`stock` racine avec la valeur du pays
+ * pour que la storefront affiche directement le bon prix sans changer ses
+ * lectures. `_pricingFallback` reste à true quand le produit n'a pas de
+ * pricing[country] (utile au debug + à un éventuel badge "prix par défaut").
+ */
+interface PricingApplicable {
+  price: number;
+  compareAtPrice?: number;
+  stock?: number;
+  pricing?: Array<{
+    country?: string;
+    price?: number;
+    compareAtPrice?: number;
+    currency?: string;
+    available?: boolean;
+    stock?: number;
+  }>;
+  trackInventory?: boolean;
+  allowBackorder?: boolean;
+}
+
+function applyMarketPricing<P extends PricingApplicable>(
+  product: P,
+  country: string,
+  currency: string,
+): P & { currency: string; _pricingFallback: boolean; _pricingAvailable: boolean } {
+  const resolved = resolveProductPricing(
+    product as unknown as Parameters<typeof resolveProductPricing>[0],
+    country,
+    currency,
+  );
+  return {
+    ...product,
+    price: resolved.price,
+    compareAtPrice: resolved.compareAtPrice,
+    stock: resolved.stock,
+    currency: resolved.currency,
+    _pricingFallback: resolved.fallbackUsed,
+    _pricingAvailable: resolved.available,
+  };
+}
 
 const router = Router();
 
 /** Strip server-only secrets from the integrations object before exposing it. */
-function publicSafeStore<T extends { integrations?: Record<string, unknown> }>(store: T): T {
-  if (!store?.integrations) return store;
-  const raw = store.integrations as {
-    marketing?: Record<string, unknown>;
-    delivery?: Record<string, unknown>;
-    googleSheets?: Record<string, unknown>;
-  };
-  const safe: Record<string, unknown> = {};
-  // Marketing — only public pixel IDs leave the server. Access tokens / test
-  // event codes are server-side (Conversions API).
-  if (raw.marketing) {
-    const m = raw.marketing;
-    safe.marketing = {
-      facebookPixelId: m.facebookPixelId,
-      googleAnalyticsId: m.googleAnalyticsId,
-      tiktokPixelId: m.tiktokPixelId,
-      snapchatPixelId: m.snapchatPixelId,
-      googleAdsConversionId: m.googleAdsConversionId,
-      googleAdsConversionLabel: m.googleAdsConversionLabel,
-      customHeadCode: m.customHeadCode,
+function publicSafeStore<T extends { integrations?: unknown; markets?: unknown }>(store: T): T {
+  if (!store) return store;
+  const out: Record<string, unknown> = { ...store };
+
+  if (store.integrations) {
+    const raw = store.integrations as {
+      marketing?: Record<string, unknown>;
+      delivery?: Record<string, unknown>;
+      googleSheets?: Record<string, unknown>;
     };
+    const safe: Record<string, unknown> = {};
+    // Marketing — only public pixel IDs leave the server. Access tokens / test
+    // event codes are server-side (Conversions API).
+    if (raw.marketing) {
+      const m = raw.marketing;
+      safe.marketing = {
+        facebookPixelId: m.facebookPixelId,
+        googleAnalyticsId: m.googleAnalyticsId,
+        tiktokPixelId: m.tiktokPixelId,
+        snapchatPixelId: m.snapchatPixelId,
+        googleAdsConversionId: m.googleAdsConversionId,
+        googleAdsConversionLabel: m.googleAdsConversionLabel,
+        customHeadCode: m.customHeadCode,
+      };
+    }
+    out.integrations = safe;
   }
-  return { ...store, integrations: safe } as T;
+
+  // Markets — strip per-market delivery credentials (storeIdMD, webhookSecret,
+  // boutiqueIdMD, baseUrl) before exposing. The storefront only needs the
+  // country/currency/availability shape to render the country switcher.
+  if (Array.isArray(store.markets)) {
+    out.markets = store.markets.map((m) => {
+      const market = m as {
+        country?: string;
+        currency?: string;
+        isDefault?: boolean;
+        enabled?: boolean;
+        shippingFee?: number;
+        delivery?: { provider?: string; enabled?: boolean };
+      };
+      return {
+        country: market.country,
+        currency: market.currency,
+        isDefault: market.isDefault,
+        enabled: market.enabled,
+        shippingFee: market.shippingFee,
+        delivery: market.delivery
+          ? { provider: market.delivery.provider, enabled: market.delivery.enabled }
+          : undefined,
+      };
+    });
+  }
+
+  return out as T;
 }
 
 /**
@@ -125,7 +202,11 @@ router.get('/store-by-slug/:slug', async (req: Request, res: Response): Promise<
     res.status(404).json({ error: 'Store not found' });
     return;
   }
-  res.json({ store: publicSafeStore(store) });
+  const market = resolveMarketForRequest(req, store);
+  res.json({
+    store: publicSafeStore(store),
+    market: { country: market.country, currency: market.currency, source: market.source },
+  });
 });
 
 router.get('/store-by-subdomain/:subdomain', async (req: Request, res: Response): Promise<void> => {
@@ -134,7 +215,11 @@ router.get('/store-by-subdomain/:subdomain', async (req: Request, res: Response)
     res.status(404).json({ error: 'Store not found' });
     return;
   }
-  res.json({ store: publicSafeStore(store) });
+  const market = resolveMarketForRequest(req, store);
+  res.json({
+    store: publicSafeStore(store),
+    market: { country: market.country, currency: market.currency, source: market.source },
+  });
 });
 
 /** Resolve store by custom domain (used by middleware when Host !== app domain). */
@@ -149,7 +234,11 @@ router.get('/store-by-domain', async (req: Request, res: Response): Promise<void
     res.status(404).json({ error: 'Store not found' });
     return;
   }
-  res.json({ store: publicSafeStore(store) });
+  const market = resolveMarketForRequest(req, store);
+  res.json({
+    store: publicSafeStore(store),
+    market: { country: market.country, currency: market.currency, source: market.source },
+  });
 });
 
 /** Public products for a store (published only) */
@@ -159,8 +248,13 @@ router.get('/stores/:storeSlug/products', async (req: Request, res: Response): P
     res.status(404).json({ error: 'Store not found' });
     return;
   }
+  const market = resolveMarketForRequest(req, store);
   const { products } = await productService.getProductsByStore(store._id.toString(), { publishedOnly: true });
-  res.json({ products });
+  const priced = products.map((p) => applyMarketPricing(p, market.country, market.currency));
+  res.json({
+    products: priced,
+    market: { country: market.country, currency: market.currency, source: market.source },
+  });
 });
 
 /** Public single product by store slug + product slug.
@@ -177,6 +271,8 @@ router.get('/stores/:storeSlug/products/:productSlug', async (req: Request, res:
     res.status(404).json({ error: 'Product not found' });
     return;
   }
+  const market = resolveMarketForRequest(req, store);
+  const pricedProduct = applyMarketPricing(product, market.country, market.currency);
 
   // ── Cross-sells — return a trimmed shape (just enough to render small cards).
   // Filter out unpublished + missing targets so the seller can wire dead links
@@ -200,19 +296,31 @@ router.get('/stores/:storeSlug/products/:productSlug', async (req: Request, res:
       storeId: store._id,
       isPublished: true,
     })
-      .select('_id name slug price compareAtPrice images')
-      .lean<Array<{ _id: unknown; name: string; slug: string; price: number; compareAtPrice?: number; images?: string[] }>>();
+      .select('_id name slug price compareAtPrice images pricing stock')
+      .lean<
+        Array<{
+          _id: unknown;
+          name: string;
+          slug: string;
+          price: number;
+          compareAtPrice?: number;
+          images?: string[];
+          pricing?: Array<{ country?: string; price?: number; compareAtPrice?: number; currency?: string; available?: boolean; stock?: number }>;
+          stock?: number;
+        }>
+      >();
     const byId = new Map(docs.map((d) => [String(d._id), d]));
     crossSells = offers
       .map((o) => {
         const d = byId.get(String(o.productId));
         if (!d) return null;
+        const priced = applyMarketPricing(d, market.country, market.currency);
         return {
           _id: String(d._id),
           name: d.name,
           slug: d.slug,
-          price: d.price,
-          compareAtPrice: d.compareAtPrice,
+          price: priced.price,
+          compareAtPrice: priced.compareAtPrice,
           image: d.images?.[0],
           label: o.label,
           discountPct: o.discountPct,
@@ -224,7 +332,11 @@ router.get('/stores/:storeSlug/products/:productSlug', async (req: Request, res:
       .map(({ order: _o, ...rest }) => { void _o; return rest; });
   }
 
-  res.json({ product, crossSells });
+  res.json({
+    product: pricedProduct,
+    crossSells,
+    market: { country: market.country, currency: market.currency, source: market.source },
+  });
 });
 
 /**
@@ -713,6 +825,22 @@ router.post('/checkout/cod', async (req: Request, res: Response): Promise<void> 
     return;
   }
 
+  // ── Resolve buyer market (cookie → CF-IPCountry → default market). The
+  // shipping address country is the buyer's declared country ; on l'utilise
+  // en priorité car c'est ce que le seller va voir et ce qui pilote la
+  // livraison. Si le shipping.country matche un market activé, on bascule.
+  const codMarket = (() => {
+    const declared = (ship.country || '').trim().toUpperCase();
+    if (declared) {
+      const m = (store.markets || []).find(
+        (x) => x.enabled !== false && (x.country || '').toUpperCase() === declared,
+      );
+      if (m) return { country: declared, currency: (m.currency || '').toUpperCase(), market: m };
+    }
+    const fallback = resolveMarketForRequest(req, store);
+    return { country: fallback.country, currency: fallback.currency, market: fallback.market };
+  })();
+
   // ── Resolve products + check stock ────────────────────────────────
   type ResolvedItem = {
     productId: string;
@@ -758,9 +886,23 @@ router.post('/checkout/cod', async (req: Request, res: Response): Promise<void> 
       }
     }
 
-    // Effective stock + price — variant wins when present.
-    const effectiveStock = variant ? (variant.stock ?? 0) : product.stock;
-    const effectiveBasePrice = (variant?.price !== undefined ? variant.price : product.price) as number;
+    // Per-country pricing : si product.pricing[market.country] existe, c'est
+    // lui qui pilote (prix + stock + disponibilité). Sinon on retombe sur les
+    // champs racine (compat boutiques mono-pays). Le variant garde sa
+    // priorité finale s'il est sélectionné.
+    const countryPricing = resolveProductPricing(product, codMarket.country, codMarket.currency);
+    if (!countryPricing.available) {
+      res.status(409).json({
+        error: `Product not available in ${codMarket.country}: ${product.name}`,
+        productSlug: it.productSlug,
+        code: 'market_unavailable',
+      });
+      return;
+    }
+
+    // Effective stock + price — variant wins when present, sinon country pricing.
+    const effectiveStock = variant ? (variant.stock ?? 0) : countryPricing.stock;
+    const effectiveBasePrice = (variant?.price !== undefined ? variant.price : countryPricing.price) as number;
 
     // Stock check (only when trackInventory and no backorder)
     if (product.trackInventory && !product.allowBackorder && effectiveStock < qty) {
@@ -795,10 +937,13 @@ router.post('/checkout/cod', async (req: Request, res: Response): Promise<void> 
   }
 
   const subtotal = resolved.reduce((s, it) => s + it.price * it.quantity, 0);
-  // Flat per-store shipping fee configured by the seller in /dashboard/stores/[id]/checkout.
-  // Always trusted from the store doc — the client never sets this. orderService
-  // adds it on top of `subtotal` to produce the final `total`.
-  const shippingCost = Math.max(0, Number(store.settings?.codForm?.shippingFee) || 0);
+  // Shipping fee : market.shippingFee (per-country) gagne sur le legacy
+  // codForm.shippingFee global. Toujours côté serveur — jamais le client.
+  const marketShippingFee = codMarket.market?.shippingFee;
+  const shippingCost = Math.max(
+    0,
+    Number(marketShippingFee ?? store.settings?.codForm?.shippingFee) || 0,
+  );
 
   // ── Coupon (optional) — server-side re-validation, never trust the client.
   // If a code is passed but fails any gate we return 422 instead of silently
@@ -851,7 +996,8 @@ router.post('/checkout/cod', async (req: Request, res: Response): Promise<void> 
       tax: 0,
       discount,
       couponCode: appliedCouponCode,
-      currency: store.settings?.currency || 'USD',
+      currency: codMarket.currency || store.settings?.currency || 'USD',
+      marketCountry: codMarket.country || undefined,
       paymentMethod: 'cod',
       notes: body.notes?.trim(),
     });
