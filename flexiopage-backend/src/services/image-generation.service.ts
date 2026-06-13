@@ -106,7 +106,7 @@ function isIdeogram(model: string): boolean {
 
 /**
  * fal.ai can only fetch image URLs from the public internet. In dev, product
- * images live at `http://localhost:5050/uploads/...` which fal cannot reach
+ * images live at `http://localhost:5051/uploads/...` which fal cannot reach
  * → request fails with HTTP 422 "Could not generate images with the given
  * prompts and images".
  *

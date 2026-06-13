@@ -632,7 +632,7 @@ function WasenderConnectForm({ storeId, onConnected, mode = 'connect', onCancel 
             inutile à afficher — le backend pré-check de toute façon. */}
         {typeof window !== 'undefined' && /^(localhost|127\.0\.0\.1|lvh\.me)$/.test(window.location.hostname) && (
           <p className="text-center text-[11px] text-muted-foreground">
-            ⚠️ En dev local : lance <code>ngrok http 5050</code> et mets <code>API_PUBLIC_URL=https://xxxx.ngrok.app</code> dans <code>flexiopage-backend/.env</code> avant de créer la session.
+            ⚠️ En dev local : lance <code>ngrok http 5051</code> et mets <code>API_PUBLIC_URL=https://xxxx.ngrok.app</code> dans <code>flexiopage-backend/.env</code> avant de créer la session.
           </p>
         )}
       </div>

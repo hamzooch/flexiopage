@@ -6,7 +6,7 @@ import { NextResponse, type NextRequest } from 'next/server';
 const INTERNAL_API_URL =
   process.env.INTERNAL_API_URL ||
   process.env.NEXT_PUBLIC_API_URL ||
-  'http://localhost:5050';
+  'http://localhost:5051';
 
 /**
  * Two URL shapes resolve to the same internal /store/[storeSlug] route:

@@ -74,7 +74,7 @@ export async function connectWasender(req: AuthRequest, res: Response): Promise<
     res.status(400).json({
       error:
         'API_PUBLIC_URL doit pointer vers une URL HTTPS publique (Wasender refuse localhost). ' +
-        'En dev : `ngrok http 5050` puis API_PUBLIC_URL=https://xxxx.ngrok.app dans flexiopage-backend/.env',
+        'En dev : `ngrok http 5051` puis API_PUBLIC_URL=https://xxxx.ngrok.app dans flexiopage-backend/.env',
     });
     return;
   }

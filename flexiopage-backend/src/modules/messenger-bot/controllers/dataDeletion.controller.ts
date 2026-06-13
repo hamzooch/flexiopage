@@ -50,7 +50,7 @@ function genCode(): string {
 }
 
 function apiBase(): string {
-  return (process.env.API_PUBLIC_URL || 'http://localhost:5050').replace(/\/$/, '');
+  return (process.env.API_PUBLIC_URL || 'http://localhost:5051').replace(/\/$/, '');
 }
 
 export async function receiveDeletion(req: Request, res: Response): Promise<void> {

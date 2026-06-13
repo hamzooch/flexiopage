@@ -50,7 +50,7 @@ export class CinetPayProvider implements PaymentProviderImpl {
   async initPayment(args: InitPaymentArgs): Promise<InitPaymentResult> {
     const apikey = process.env.CINETPAY_API_KEY!;
     const siteId = process.env.CINETPAY_SITE_ID!;
-    const apiBase = (process.env.API_PUBLIC_URL || 'http://localhost:5050').replace(/\/$/, '');
+    const apiBase = (process.env.API_PUBLIC_URL || 'http://localhost:5051').replace(/\/$/, '');
     const frontBase = firstUrl(process.env.FRONTEND_URL) || 'http://localhost:3000';
     const notifyUrl = process.env.CINETPAY_NOTIFY_URL || `${apiBase}/api/webhooks/cinetpay`;
     const orderId = String(args.order._id);

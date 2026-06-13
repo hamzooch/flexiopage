@@ -7,7 +7,7 @@ const nextConfig = {
     // fetch + optimize it. In prod, set NEXT_PUBLIC_API_URL to the public
     // API origin and the matching remotePattern below is hit.
     remotePatterns: [
-      { protocol: 'http', hostname: 'localhost', port: '5050', pathname: '/uploads/**' },
+      { protocol: 'http', hostname: 'localhost', port: '5051', pathname: '/uploads/**' },
       { protocol: 'http', hostname: 'localhost', port: '5000', pathname: '/uploads/**' },
       { protocol: 'https', hostname: 'api.flexiopage.com', pathname: '/uploads/**' },
       { protocol: 'https', hostname: '**.flexiopage.com', pathname: '/uploads/**' },
