@@ -481,7 +481,7 @@ export default function DashboardOverviewPage() {
               <h2 className="text-sm font-bold">Mes boutiques</h2>
               <p className="text-[11px] text-muted-foreground">{stores.length} boutique{stores.length > 1 ? 's' : ''} au total · clique pour basculer</p>
             </div>
-            <Link href="/dashboard/profile#stores">
+            <Link href="/dashboard/stores">
               <Button variant="ghost" size="sm" className="gap-1 rounded-lg text-xs">
                 Voir tout
                 <ChevronRight className="h-3.5 w-3.5" />

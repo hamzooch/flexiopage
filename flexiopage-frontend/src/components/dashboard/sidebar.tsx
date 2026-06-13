@@ -82,7 +82,7 @@ const SECTIONS: { titleKey: TKey; items: NavItem[] }[] = [
     titleKey: 'sidebar.workspace',
     items: [
       { href: '/dashboard', labelKey: 'sidebar.overview', icon: LayoutDashboard },
-      { href: '/dashboard/profile?tab=stores', labelKey: 'sidebar.myStores', icon: Store },
+      { href: '/dashboard/stores', labelKey: 'sidebar.myStores', icon: Store },
       { href: '/dashboard/analytics', labelKey: 'sidebar.analytics', icon: BarChart3 },
     ],
   },
