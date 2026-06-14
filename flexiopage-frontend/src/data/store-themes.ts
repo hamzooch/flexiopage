@@ -588,9 +588,56 @@ const prism: StoreThemeTemplate = {
   }),
 };
 
+// ─────────────────────────────────────────────────────────────────────
+// 10. CARTHAGO — Brand-builder premium · Méditerranée · COD-friendly
+// Marine de minuit (mer punique de nuit) + or de Carthage + sable
+// limestone tunisien. Cormorant Garamond pour des titres éditoriaux qui
+// posent la marque comme un éditorial mode, Inter pour le copy/UX. Hero
+// scindé narratif (image lifestyle d'un côté, manifeste de marque de
+// l'autre), cartes classiques généreuses, nav centrée brand-first.
+// Pensé pour le COD-heavy Maghreb : sur un marché cash-à-livraison, la
+// confiance se joue dès la home — d'où le ton premium, la respiration
+// éditoriale et l'absence totale de pattern (rien ne distrait du brand).
+// Idéal pour mode, déco, beauté, lifestyle, alimentaire premium.
+// ─────────────────────────────────────────────────────────────────────
+const carthago: StoreThemeTemplate = {
+  id: 'carthago',
+  name: 'Carthago',
+  tagline: 'Brand-first · Méditerranée · luxe contemporain',
+  description:
+    'Marine de minuit, or de Carthage, sable limestone. Cormorant Garamond éditorial sur Inter moderne. Hero narratif scindé, cartes classiques généreuses, grille 3 colonnes, navigation brand-first. Pensé pour construire une vraie identité de marque sur un marché cash-à-livraison où la confiance se joue dès la home. Mode, déco, beauté, lifestyle, alimentaire premium.',
+  niche: 'general',
+  nicheLabel: 'Branding premium',
+  forStoreTypes: ['physical'],
+  theme: makeTheme({
+    templateId: 'carthago',
+    primary: '#0f2540',          // marine de minuit méditerranéen
+    primaryFg: '#f7f0e2',        // sable sur marine
+    accent: '#c79a3c',           // or punique
+    background: '#f7f0e2',       // limestone tunisien chaud
+    surface: '#ffffff',
+    surfaceMuted: '#efe6d2',
+    foreground: '#1a1a26',       // encre avec un soupçon de minuit
+    muted: '#6b6657',
+    border: '#dbd0b5',
+    gradientFrom: '#0f2540',
+    gradientTo: '#c79a3c',
+    fontHeading: '"Cormorant Garamond", "Playfair Display", Georgia, serif',
+    fontBody: '"Inter", system-ui, -apple-system, sans-serif',
+    fontDisplaySize: 'xlarge',
+    borderRadius: 'medium',
+    spacing: 'relaxed',
+    style: 'editorial',
+    layout: { hero: 'split', productCard: 'classic', gridColumns: 3, nav: 'centered' },
+    pattern: 'none',
+    shadow: 'soft',
+    dark: false,
+  }),
+};
+
 export const STORE_THEME_TEMPLATES: StoreThemeTemplate[] = [
   // Physical stores
-  nova, volt, atelier, bloom,
+  nova, carthago, volt, atelier, bloom,
   // Digital stores
   pulse, sage, studio, lumen,
   // Universal / multi-type
