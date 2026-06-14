@@ -18,6 +18,7 @@
  */
 
 import { useEffect, useRef, useState } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { Mail, BadgePercent, X, Loader2, CheckCircle2, Copy, Check } from 'lucide-react';
 import { mediaUrl } from '@/lib/utils';
 
@@ -45,7 +46,12 @@ const DISMISS_KEY = (slug: string) => `flexio.newsletter.dismissed:${slug}`;
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
 
 export function NewsletterPopup({ storeSlug, storeName, config }: Props) {
-  const enabled = !!config?.enabled;
+  // Pas de popup dans l'iframe d'aperçu vendeur — éviterait de masquer le
+  // rendu et d'écrire dans le `localStorage` du dashboard.
+  const searchParams = useSearchParams();
+  const isPreview = searchParams?.get('preview') === '1';
+
+  const enabled = !!config?.enabled && !isPreview;
   const delayMs = Math.max(0, (config?.delaySeconds ?? 5) * 1000);
   const exitIntent = config?.exitIntent !== false;
   const dismissalDays = Math.max(0, config?.dismissalDays ?? 7);

@@ -1,5 +1,7 @@
 'use client';
 
+import { useSearchParams } from 'next/navigation';
+
 /**
  * Floating WhatsApp button — rendered on every storefront page when the
  * seller turns it on in /dashboard/stores/[id]/sections. Replaces the
@@ -40,6 +42,12 @@ function normalizePhone(raw: string): string {
 }
 
 export function WhatsappButton({ config }: { config?: WhatsappConfig }) {
+  // Aperçu vendeur (`?preview=1`) → on masque le bouton pour ne pas couvrir
+  // le rendu du storefront dans l'iframe du dashboard. Le vendeur veut voir
+  // ses modifs visuelles, pas son propre bouton de chat.
+  const searchParams = useSearchParams();
+  if (searchParams?.get('preview') === '1') return null;
+
   if (!config?.enabled || !config.phoneNumber?.trim()) return null;
 
   const phone = normalizePhone(config.phoneNumber);

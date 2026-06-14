@@ -448,7 +448,11 @@ export default function StoreHubPage() {
           <CardContent>
             <ViewportPreview
               device={effectiveDevice}
-              src={`/${store.slug}`}
+              // `?preview=1` signale au storefront qu'il est rendu dans
+              // l'iframe d'aperçu du dashboard — les overlays flottants
+              // (bouton WhatsApp, popup newsletter) se masquent pour ne pas
+              // chevaucher la prévisualisation du vendeur.
+              src={`/${store.slug}?preview=1`}
               previewBust={previewBust}
             />
             <div className="mt-3 flex items-center justify-between gap-2">
