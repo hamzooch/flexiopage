@@ -74,6 +74,12 @@ services:
       FLW_SECRET_HASH: ${FLW_SECRET_HASH:-}
       # Public base URL of the API (used for webhook notify_url + data-deletion status URL)
       API_PUBLIC_URL: ${API_PUBLIC_URL}
+      # Custom domain verification — utilisés par /api/stores/:id/verify-domain
+      # pour résoudre la cible attendue (CNAME ou IP apex). Doivent matcher la
+      # config Caddy + l'IP réelle du VPS, sinon la vérif domain custom échoue
+      # avec "dns_not_matching".
+      STOREFRONT_HOST: ${STOREFRONT_HOST:-}
+      STOREFRONT_IPS: ${STOREFRONT_IPS:-}
       FLEXIOPAGE_WEBHOOK_SECRET: ${FLEXIOPAGE_WEBHOOK_SECRET:-}
       MOGADELIVERY_WEBHOOK_URL: ${MOGADELIVERY_WEBHOOK_URL:-}
       # ── Messenger Bot ──
