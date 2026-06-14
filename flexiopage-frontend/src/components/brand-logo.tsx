@@ -7,9 +7,12 @@
  *                 (best for landing hero / login card where space allows)
  *   - "icon"    → square F. on solid orange (favicon, app icon, OG image)
  *
- * Width is required; height auto-derives to keep aspect ratio per variant.
+ * Implémentation : <img> natif plutôt que next/image. Le logo est un asset
+ * statique, déjà petit (~10-30 Ko) et servi en PNG depuis /public/brand —
+ * aucun bénéfice de l'optimization next/image, et son audit de ratio rentre
+ * en conflit avec Tailwind preflight (`max-width: 100%; height: auto`) à
+ * cause de l'arrondi int de la prop height. Bascule conscient sur <img>.
  */
-import Image from 'next/image';
 import { cn } from '@/lib/utils';
 
 type Variant = 'color' | 'primary' | 'icon';
@@ -21,7 +24,7 @@ interface Props {
   /** Optional height override (mostly for the square icon variant). */
   height?: number;
   className?: string;
-  /** Use `priority` on above-the-fold logos (landing hero, login card). */
+  /** Préchargement above-the-fold (landing hero, login card). */
   priority?: boolean;
 }
 
@@ -50,16 +53,15 @@ export function BrandLogo({
   const h = height ?? Math.round(w / cfg.ratio);
 
   return (
-    <Image
+    // eslint-disable-next-line @next/next/no-img-element
+    <img
       src={`/brand/${cfg.file}`}
       alt="FlexioPage"
       width={w}
       height={h}
-      priority={priority}
-      // Next.js v14 grogne quand une seule dimension est modifiée par CSS.
-      // On ne touche qu'à `height: auto` — la largeur reste celle de la prop,
-      // et le ratio est préservé sans risque d'arrondi mismatch.
-      style={{ height: 'auto' }}
+      fetchPriority={priority ? 'high' : undefined}
+      decoding="async"
+      style={{ width: w, maxWidth: '100%', height: 'auto' }}
       className={cn('select-none', className)}
     />
   );
