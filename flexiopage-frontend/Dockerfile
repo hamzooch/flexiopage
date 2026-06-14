@@ -29,7 +29,10 @@ ENV NEXT_TELEMETRY_DISABLED=1
 RUN addgroup --system --gid 1001 nodejs
 RUN adduser --system --uid 1001 nextjs
 
-COPY --from=builder /app/public ./public
+# `--chown=nextjs:nodejs` indispensable sur public/ aussi : sans ça, les
+# fichiers étaient copiés en owner root et tout asset au mode strict (600)
+# devenait illisible au runtime → 403 sur /favicon.ico, /brand/icon.png, etc.
+COPY --from=builder --chown=nextjs:nodejs /app/public ./public
 COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
 COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
 
