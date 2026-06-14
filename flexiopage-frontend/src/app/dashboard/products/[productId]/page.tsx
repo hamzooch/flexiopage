@@ -17,7 +17,7 @@
  *   8. SEO                — title + description for search engines
  */
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import {
@@ -43,11 +43,13 @@ import { TimerPresetPicker } from '@/components/dashboard/timer-presets';
 import { FieldToggle } from '@/components/dashboard/store-editor';
 import {
   FeaturesEditor, FaqEditor, SpecsEditor, ShippingInfoEditor,
-  VideoEditor, ComparisonEditor, ConversionScoreBar,
+  VideoEditor, ComparisonEditor, ConversionScoreBar, CodFormPanel,
+  missingByTab,
   type ProductFeature, type ProductFaqItem, type ProductSpecItem, type ProductShippingInfo,
-  type ProductVideo, type ProductComparison,
+  type ProductVideo, type ProductComparison, type ScoreTab,
 } from '@/components/dashboard/product-conversion-editors';
-import { Sparkles, HelpCircle, ListChecks, Truck as TruckLine, Video as VideoIcon, Scale } from 'lucide-react';
+import type { CodFormSettings } from '@/components/dashboard/store-editor';
+import { Sparkles, HelpCircle, ListChecks, Truck as TruckLine, Video as VideoIcon, Scale, ShoppingCart } from 'lucide-react';
 
 const BADGE_ICONS = {
   truck: Truck, shield: ShieldCheck, refresh: RefreshCcw, lock: Lock,
@@ -125,6 +127,17 @@ export default function EditProductPage() {
   const [storeCustomDomain, setStoreCustomDomain] = useState<string | undefined>(undefined);
   const [storeCustomDomainVerified, setStoreCustomDomainVerified] = useState(false);
   const [storeCodSubmit, setStoreCodSubmit] = useState('Commander');
+  // Rating strip config — vit côté store (un seul réglage pour toute la
+  // boutique), on récupère ici juste pour alimenter l'aperçu live.
+  const [storeRatingStars, setStoreRatingStars] = useState<number | undefined>(undefined);
+  const [storeRatingReviews, setStoreRatingReviews] = useState<number | undefined>(undefined);
+  // COD form — store-wide config exposée inline pour édition simultanée.
+  // Sauvegarde batchée avec le produit (un seul clic Enregistrer).
+  // `storeSettings` garde une copie complète des settings du store pour qu'on
+  // puisse merger codForm dedans au PATCH sans écraser currency/language/etc.
+  const [codForm, setCodForm] = useState<CodFormSettings>({});
+  const [codFormDirty, setCodFormDirty] = useState(false);
+  const [storeSettings, setStoreSettings] = useState<Record<string, unknown>>({});
 
   const [loading, setLoading] = useState(true);
   const [status, setStatus] = useState<SaveStatus>('idle');
@@ -133,6 +146,10 @@ export default function EditProductPage() {
   // Navigation interne — 3 tabs pour clarifier l'éditeur et déstresser
   // le scroll. Le contenu des cards existantes est juste regroupé.
   const [tab, setTab] = useState<EditTab>('essentiel');
+  // Dirty tracking : snapshot JSON de l'état au load/save. Le bouton sticky
+  // n'apparaît que quand l'état diverge — `beforeunload` empêche la perte
+  // de travail si le vendeur ferme l'onglet sans sauver.
+  const pristineRef = useRef<string>('');
 
   // ── Load product + store ──────────────────────────────────────────
   useEffect(() => {
@@ -188,12 +205,27 @@ export default function EditProductPage() {
           paymentFeeFixed: Number(p.paymentFeeFixed) || 0,
         });
 
-        const s = (storeRes.data as { store: { slug?: string; customDomain?: string; customDomainVerified?: boolean; settings?: { currency?: string; codForm?: { submitLabel?: string } } } }).store;
+        const s = (storeRes.data as { store: {
+          slug?: string;
+          customDomain?: string;
+          customDomainVerified?: boolean;
+          settings?: {
+            currency?: string;
+            codForm?: CodFormSettings;
+            storefront?: { productPage?: { style?: { ratingStripStars?: number; ratingStripReviews?: number } } };
+          };
+        } }).store;
         if (s?.settings?.currency) setCurrency(s.settings.currency);
         if (s?.slug) setStoreSlug(s.slug);
         setStoreCustomDomain(s?.customDomain || undefined);
         setStoreCustomDomainVerified(!!s?.customDomainVerified);
         if (s?.settings?.codForm?.submitLabel) setStoreCodSubmit(s.settings.codForm.submitLabel);
+        if (s?.settings?.codForm) setCodForm(s.settings.codForm);
+        if (s?.settings) setStoreSettings(s.settings as Record<string, unknown>);
+        setCodFormDirty(false);
+        const rs = s?.settings?.storefront?.productPage?.style;
+        setStoreRatingStars(rs?.ratingStripStars);
+        setStoreRatingReviews(rs?.ratingStripReviews);
       })
       .catch(() => setError('Produit introuvable'))
       .finally(() => alive && setLoading(false));
@@ -211,7 +243,11 @@ export default function EditProductPage() {
     setStatus('saving');
     setError('');
     try {
-      await storesApi.updateProduct(storeId, productId, {
+      // Save batché : produit + (si dirty) store.settings.codForm en parallèle.
+      // Le COD form est store-wide mais édité ici pour cohérence — on patch
+      // le store uniquement si le vendeur a touché à un de ses knobs.
+      const tasks: Promise<unknown>[] = [];
+      tasks.push(storesApi.updateProduct(storeId, productId, {
         name: name.trim(),
         description: description.trim() || undefined,
         price: parseFloat(price) || 0,
@@ -249,7 +285,18 @@ export default function EditProductPage() {
           video: pageSettings.video,
           comparison: pageSettings.comparison,
         },
-      });
+      }));
+      if (codFormDirty) {
+        // Merger codForm dans les settings complets — le backend $set replace
+        // tout l'objet `settings`, donc ne pas envoyer que { codForm } sinon
+        // currency/language/storefront/etc. disparaissent.
+        tasks.push(storesApi.update(storeId, { settings: { ...storeSettings, codForm } }));
+      }
+      await Promise.all(tasks);
+      setCodFormDirty(false);
+      if (codForm.submitLabel) setStoreCodSubmit(codForm.submitLabel);
+      // Reset pristine snapshot — on n'est plus "dirty" tant que rien ne change.
+      pristineRef.current = snapshot;
       setStatus('saved');
       window.setTimeout(() => setStatus('idle'), 2200);
     } catch {
@@ -279,6 +326,38 @@ export default function EditProductPage() {
     () => !!compareAtPrice && parseFloat(compareAtPrice) > (parseFloat(price) || 0),
     [compareAtPrice, price]
   );
+
+  // Sérialise un snapshot représentatif de l'état pour la détection dirty.
+  // On exclut les états transitoires (loading, status) et on inclut tout ce
+  // que `handleSave` envoie effectivement au backend.
+  const snapshot = useMemo(() => JSON.stringify({
+    name, slug, description, price, compareAtPrice, type, stock, sku, barcode,
+    isPublished, tags, variants, images, seoTitle, seoDescription, pageSettings,
+    profit, codForm: codFormDirty ? codForm : null,
+  }), [
+    name, slug, description, price, compareAtPrice, type, stock, sku, barcode,
+    isPublished, tags, variants, images, seoTitle, seoDescription, pageSettings,
+    profit, codForm, codFormDirty,
+  ]);
+  const dirty = !loading && pristineRef.current !== '' && snapshot !== pristineRef.current;
+
+  // Seed du pristine snapshot après le premier chargement réussi. On le fait
+  // dans un useEffect séparé pour que `snapshot` (memo) soit déjà calculé.
+  useEffect(() => {
+    if (loading) return;
+    if (pristineRef.current === '') pristineRef.current = snapshot;
+  }, [loading, snapshot]);
+
+  // Garde-fou : prévient la perte de travail si on ferme l'onglet sans save.
+  useEffect(() => {
+    if (!dirty) return;
+    const onBeforeUnload = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      e.returnValue = '';
+    };
+    window.addEventListener('beforeunload', onBeforeUnload);
+    return () => window.removeEventListener('beforeunload', onBeforeUnload);
+  }, [dirty]);
 
   if (!storeId) {
     return (
@@ -398,9 +477,8 @@ export default function EditProductPage() {
         </div>
       </header>
 
-      {/* ── Score conversion — calculé client-side à partir de pageSettings ── */}
-      <ConversionScoreBar
-        inputs={{
+      {(() => {
+        const scoreInputs = {
           images,
           description,
           features: pageSettings.features,
@@ -409,45 +487,77 @@ export default function EditProductPage() {
           shippingInfo: pageSettings.shippingInfo,
           video: pageSettings.video,
           comparison: pageSettings.comparison,
-        }}
-      />
+        };
+        const missCount = missingByTab(scoreInputs);
+        // Bascule l'onglet adéquat puis scroll vers la card. Le delay laisse
+        // React render le nouveau tab avant de chercher le DOM target.
+        const jumpToAnchor = (targetTab: ScoreTab, anchor: string) => {
+          if (tab !== targetTab) setTab(targetTab as EditTab);
+          window.setTimeout(() => {
+            const el = document.getElementById(anchor);
+            if (el) {
+              el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+              el.classList.add('ring-2', 'ring-primary/50');
+              window.setTimeout(() => el.classList.remove('ring-2', 'ring-primary/50'), 1800);
+            }
+          }, 80);
+        };
 
-      {/* ── Tabs internes — 3 contextes pour ne plus avoir une page-fleuve ── */}
-      <nav className="-mx-1 flex gap-1 overflow-x-auto rounded-2xl border border-border/60 bg-card/80 p-1 backdrop-blur">
-        {([
-          { id: 'essentiel',  label: 'Essentiel',     icon: Package,    hint: 'Nom, médias, prix, variantes' },
-          { id: 'conversion', label: 'Page de vente', icon: Sparkles,   hint: 'Sections qui convertissent' },
-          { id: 'seo',        label: 'SEO & marge',   icon: SearchIcon, hint: 'Référencement + profit' },
-        ] as const).map((t) => {
-          const TabIcon = t.icon;
-          const active = tab === t.id;
-          return (
-            <button
-              key={t.id}
-              type="button"
-              onClick={() => setTab(t.id)}
-              className={cn(
-                'group inline-flex shrink-0 items-center gap-2 rounded-xl px-3.5 py-2 text-sm font-medium transition-all',
-                active
-                  ? 'gradient-brand text-white shadow-md shadow-primary/20'
-                  : 'text-foreground/70 hover:bg-muted hover:text-foreground'
-              )}
-              aria-pressed={active}
-              title={t.hint}
-            >
-              <TabIcon className="h-4 w-4" />
-              {t.label}
-            </button>
-          );
-        })}
-      </nav>
+        return (
+          <>
+            {/* ── Score conversion cliquable ─────────────────────── */}
+            <ConversionScoreBar inputs={scoreInputs} onJump={jumpToAnchor} />
+
+            {/* ── Tabs internes avec badges « N section vides » ──── */}
+            <nav className="-mx-1 flex gap-1 overflow-x-auto rounded-2xl border border-border/60 bg-card/80 p-1 backdrop-blur">
+              {([
+                { id: 'essentiel',  label: 'Essentiel',     icon: Package,    hint: 'Nom, médias, prix, variantes',     miss: missCount.essentiel },
+                { id: 'conversion', label: 'Page de vente', icon: Sparkles,   hint: 'Sections qui convertissent',        miss: missCount.conversion },
+                { id: 'seo',        label: 'SEO & marge',   icon: SearchIcon, hint: 'Référencement + profit',             miss: 0 },
+              ] as const).map((t) => {
+                const TabIcon = t.icon;
+                const active = tab === t.id;
+                return (
+                  <button
+                    key={t.id}
+                    type="button"
+                    onClick={() => setTab(t.id)}
+                    className={cn(
+                      'group inline-flex shrink-0 items-center gap-2 rounded-xl px-3.5 py-2 text-sm font-medium transition-all',
+                      active
+                        ? 'gradient-brand text-white shadow-md shadow-primary/20'
+                        : 'text-foreground/70 hover:bg-muted hover:text-foreground'
+                    )}
+                    aria-pressed={active}
+                    title={t.hint}
+                  >
+                    <TabIcon className="h-4 w-4" />
+                    {t.label}
+                    {t.miss > 0 && (
+                      <span
+                        className={cn(
+                          'rounded-full px-1.5 py-0.5 text-[10px] font-bold leading-none',
+                          active ? 'bg-white/25 text-white' : 'bg-amber-500/15 text-amber-700'
+                        )}
+                        title={`${t.miss} section${t.miss > 1 ? 's' : ''} non remplie${t.miss > 1 ? 's' : ''}`}
+                      >
+                        {t.miss}
+                      </span>
+                    )}
+                  </button>
+                );
+              })}
+            </nav>
+          </>
+        );
+      })()}
 
       {/* ── Body — 2 columns ──────────────────────────────────── */}
       <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_360px]">
         <div className="space-y-5">
           {tab === 'essentiel' && (<>
           {/* ── 1. Identité ─────────────────────────────────── */}
-          <Card>
+          <Card id="section-description" className="scroll-mt-24 transition-shadow duration-200">
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <Package className="h-4 w-4 text-primary" />
@@ -522,7 +632,7 @@ export default function EditProductPage() {
           </Card>
 
           {/* ── 2. Médias ───────────────────────────────────── */}
-          <Card>
+          <Card id="section-images" className="scroll-mt-24 transition-shadow duration-200">
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <ImageIcon className="h-4 w-4 text-primary" />
@@ -920,7 +1030,7 @@ export default function EditProductPage() {
           </Card>
 
           {/* ── 5b. Points forts (USPs) ─────────────────────── */}
-          <Card>
+          <Card id="section-features" className="scroll-mt-24 transition-shadow duration-200">
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <Sparkles className="h-4 w-4 text-primary" />
@@ -939,7 +1049,7 @@ export default function EditProductPage() {
           </Card>
 
           {/* ── 5c. Spécifications ──────────────────────────── */}
-          <Card>
+          <Card id="section-specs" className="scroll-mt-24 transition-shadow duration-200">
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <ListChecks className="h-4 w-4 text-primary" />
@@ -958,7 +1068,7 @@ export default function EditProductPage() {
           </Card>
 
           {/* ── 5d. FAQ produit ─────────────────────────────── */}
-          <Card>
+          <Card id="section-faq" className="scroll-mt-24 transition-shadow duration-200">
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <HelpCircle className="h-4 w-4 text-primary" />
@@ -977,7 +1087,7 @@ export default function EditProductPage() {
           </Card>
 
           {/* ── 5e. Livraison & retours ─────────────────────── */}
-          <Card>
+          <Card id="section-shipping" className="scroll-mt-24 transition-shadow duration-200">
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <TruckLine className="h-4 w-4 text-primary" />
@@ -996,7 +1106,7 @@ export default function EditProductPage() {
           </Card>
 
           {/* ── 5f. Vidéo produit ───────────────────────────── */}
-          <Card>
+          <Card id="section-video" className="scroll-mt-24 transition-shadow duration-200">
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <VideoIcon className="h-4 w-4 text-primary" />
@@ -1015,7 +1125,7 @@ export default function EditProductPage() {
           </Card>
 
           {/* ── 5g. Comparatif ──────────────────────────────── */}
-          <Card>
+          <Card id="section-comparison" className="scroll-mt-24 transition-shadow duration-200">
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <Scale className="h-4 w-4 text-primary" />
@@ -1029,6 +1139,27 @@ export default function EditProductPage() {
               <ComparisonEditor
                 value={pageSettings.comparison}
                 onChange={(comparison) => setPageSettings((s) => ({ ...s, comparison }))}
+              />
+            </CardContent>
+          </Card>
+
+          {/* ── 5h. Formulaire COD ──────────────────────────── */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <ShoppingCart className="h-4 w-4 text-primary" />
+                Formulaire de commande (COD)
+              </CardTitle>
+              <CardDescription>
+                Réglages partagés avec toute la boutique — édités ici pour rester cohérents avec la fiche produit.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <CodFormPanel
+                value={codForm}
+                onChange={(next) => { setCodForm(next); setCodFormDirty(true); }}
+                advancedHref={`/dashboard/stores/${storeId}/product-page#cod-form`}
+                currency={currency}
               />
             </CardContent>
           </Card>
@@ -1127,6 +1258,8 @@ export default function EditProductPage() {
             showDescription={pageSettings.showDescription}
             showTrustBadges={pageSettings.showTrustBadges}
             showRatingStrip={pageSettings.showRatingStrip}
+            ratingStripStars={storeRatingStars}
+            ratingStripReviews={storeRatingReviews}
             badges={pageSettings.badges}
             timerEndsAt={pageSettings.timer?.endsAt}
             timerHeadline={pageSettings.timer?.headline}
@@ -1135,9 +1268,50 @@ export default function EditProductPage() {
             codSubmitLabel={storeCodSubmit}
             stock={parseInt(stock, 10) || 0}
             trackInventory={type === 'physical'}
+            features={pageSettings.features}
+            specs={pageSettings.specs}
+            faq={pageSettings.faq}
+            shippingInfo={pageSettings.shippingInfo}
+            video={pageSettings.video}
+            comparison={pageSettings.comparison}
           />
         </aside>
       </div>
+
+      {/* ── Sticky save bar — apparaît dès qu'un champ change. Évite au
+            vendeur de scroller jusqu'en haut pour cliquer Enregistrer après
+            une édition en fin de page. Le z-30 reste en dessous des modals
+            (z-50) mais au-dessus du contenu normal. */}
+      {dirty && (
+        <div className="fixed inset-x-0 bottom-0 z-30 border-t border-amber-500/30 bg-gradient-to-r from-amber-500/95 via-orange-500/95 to-amber-500/95 backdrop-blur-sm shadow-2xl">
+          <div className="mx-auto flex max-w-7xl items-center justify-between gap-3 px-4 py-2.5 sm:px-6">
+            <div className="flex items-center gap-2 text-xs font-semibold text-white sm:text-sm">
+              <span className="inline-block h-2 w-2 animate-pulse rounded-full bg-white" />
+              <span className="hidden sm:inline">Modifications non enregistrées</span>
+              <span className="sm:hidden">Non enregistré</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <Button
+                type="submit"
+                disabled={status === 'saving'}
+                className="h-9 gap-1.5 rounded-lg bg-white text-amber-700 shadow-md hover:bg-white/95"
+              >
+                {status === 'saving' ? (
+                  <>
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    Enregistrement…
+                  </>
+                ) : (
+                  <>
+                    <Save className="h-3.5 w-3.5" />
+                    Enregistrer
+                  </>
+                )}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </form>
   );
 }

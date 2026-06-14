@@ -52,6 +52,10 @@ interface Props {
   showDescription: boolean;
   showTrustBadges: boolean;
   showRatingStrip?: boolean;
+  /** Note affichée (1-5, fractions OK). */
+  ratingStripStars?: number;
+  /** Nombre d'avis (entier ≥ 0). */
+  ratingStripReviews?: number;
   badges?: Badge[];
   timerEndsAt?: string;
   timerHeadline?: string;
@@ -62,6 +66,13 @@ interface Props {
   /** Stock count (for the "X en stock" line). */
   stock?: number;
   trackInventory?: boolean;
+  // ── Sections "conversion" (compactes pour l'aperçu) ──
+  features?: Array<{ icon: string; title: string; subtitle?: string }>;
+  specs?: Array<{ key: string; value: string }>;
+  faq?: Array<{ question: string; answer: string }>;
+  shippingInfo?: { deliveryTime?: string; deliveryNote?: string; returnDays?: number; returnNote?: string };
+  video?: { url: string; title?: string };
+  comparison?: { title?: string; usLabel?: string; themLabel?: string; rows: Array<{ criterion: string; us: string; them: string }> };
 }
 
 export function ProductLivePreview(props: Props) {
@@ -185,14 +196,28 @@ export function ProductLivePreview(props: Props) {
             {/* ── Info column ───────────────────────────────── */}
             <div className="space-y-2">
               <h3 className="text-sm font-bold leading-tight">{props.name || 'Nom du produit'}</h3>
-              {props.showRatingStrip && (
-                <div className="flex items-center gap-0.5">
-                  {[0, 1, 2, 3, 4].map((i) => (
-                    <Star key={i} className="h-2.5 w-2.5" style={{ color: accent, fill: accent }} />
-                  ))}
-                  <span className="ml-1 text-[8px] text-muted-foreground">(127)</span>
-                </div>
-              )}
+              {props.showRatingStrip && (() => {
+                const stars = Math.max(0, Math.min(5, props.ratingStripStars ?? 5));
+                const reviews = Math.max(0, props.ratingStripReviews ?? 127);
+                return (
+                  <div className="flex items-center gap-0.5">
+                    {[0, 1, 2, 3, 4].map((i) => {
+                      const fill = Math.max(0, Math.min(1, stars - i));
+                      return (
+                        <span key={i} className="relative inline-flex h-2.5 w-2.5">
+                          <Star className="h-2.5 w-2.5" style={{ color: 'rgb(212, 212, 216)' }} />
+                          {fill > 0 && (
+                            <span className="absolute inset-0 overflow-hidden" style={{ width: `${fill * 100}%` }}>
+                              <Star className="h-2.5 w-2.5" style={{ color: accent, fill: accent }} />
+                            </span>
+                          )}
+                        </span>
+                      );
+                    })}
+                    <span className="ml-1 text-[8px] text-muted-foreground">({reviews.toLocaleString('fr-FR')})</span>
+                  </div>
+                );
+              })()}
               <div className="flex items-baseline gap-1.5">
                 <span className="text-base font-extrabold leading-none" style={{ color: accent }}>
                   {fmt(props.price)}
@@ -297,6 +322,16 @@ export function ProductLivePreview(props: Props) {
                 )}
               </div>
             )}
+
+            {/* ── Sections "conversion" en mode compact ──────────
+                Chaque bloc ne s'affiche que si renseigné côté édition.
+                Le vendeur scrolle l'aperçu et voit tout. */}
+            <PreviewFeatures items={props.features} accent={accent} />
+            <PreviewSpecs items={props.specs} />
+            <PreviewFaq items={props.faq} />
+            <PreviewShipping info={props.shippingInfo} />
+            <PreviewVideo video={props.video} />
+            <PreviewComparison comparison={props.comparison} accent={accent} />
           </div>
         </div>
         <p className="mt-2 text-center text-[9px] text-muted-foreground">
@@ -309,4 +344,165 @@ export function ProductLivePreview(props: Props) {
 
 function slugify(s: string): string {
   return s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'produit';
+}
+
+// ────────────────────────────────────────────────────────────────────
+// Mini-previews des sections "conversion"
+//
+// Chaque composant renvoie `null` si la donnée est vide → l'aperçu reste
+// court tant que le vendeur n'a rien rempli, et grandit au fur et à
+// mesure qu'il complète. Tout est styled mini-format pour rester compact.
+// ────────────────────────────────────────────────────────────────────
+
+function PreviewSectionTitle({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="mb-1 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+      {children}
+    </div>
+  );
+}
+
+function PreviewFeatures({
+  items,
+  accent,
+}: {
+  items?: Array<{ icon: string; title: string; subtitle?: string }>;
+  accent: string;
+}) {
+  if (!items || items.length === 0) return null;
+  return (
+    <div>
+      <PreviewSectionTitle>Points forts</PreviewSectionTitle>
+      <ul className="grid grid-cols-2 gap-1">
+        {items.slice(0, 6).map((f, i) => (
+          <li key={i} className="flex items-start gap-1 rounded border border-border/60 bg-card/40 p-1.5">
+            <span
+              className="grid h-4 w-4 shrink-0 place-items-center rounded text-[8px] font-bold"
+              style={{ backgroundColor: `${accent}1a`, color: accent }}
+              aria-hidden
+            >
+              ✦
+            </span>
+            <div className="min-w-0">
+              <p className="truncate text-[9px] font-semibold leading-tight">{f.title || '—'}</p>
+              {f.subtitle && <p className="truncate text-[8px] text-muted-foreground">{f.subtitle}</p>}
+            </div>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+function PreviewSpecs({ items }: { items?: Array<{ key: string; value: string }> }) {
+  if (!items || items.length === 0) return null;
+  return (
+    <div>
+      <PreviewSectionTitle>Spécifications</PreviewSectionTitle>
+      <dl className="overflow-hidden rounded border border-border/60 bg-card/40">
+        {items.slice(0, 5).map((s, i) => (
+          <div
+            key={i}
+            className="grid grid-cols-[40%_60%] gap-2 px-2 py-1 text-[9px]"
+            style={{ borderTop: i === 0 ? 'none' : '1px solid hsl(var(--border) / 0.5)' }}
+          >
+            <dt className="truncate font-semibold uppercase tracking-wider text-muted-foreground">{s.key || '—'}</dt>
+            <dd className="truncate text-foreground">{s.value || '—'}</dd>
+          </div>
+        ))}
+      </dl>
+    </div>
+  );
+}
+
+function PreviewFaq({ items }: { items?: Array<{ question: string; answer: string }> }) {
+  if (!items || items.length === 0) return null;
+  return (
+    <div>
+      <PreviewSectionTitle>FAQ</PreviewSectionTitle>
+      <ul className="space-y-1">
+        {items.slice(0, 4).map((q, i) => (
+          <li key={i} className="rounded border border-border/60 bg-card/40 px-2 py-1.5">
+            <p className="text-[10px] font-semibold leading-tight">{q.question || '—'}</p>
+            {q.answer && <p className="mt-0.5 line-clamp-2 text-[9px] leading-snug text-muted-foreground">{q.answer}</p>}
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+function PreviewShipping({
+  info,
+}: {
+  info?: { deliveryTime?: string; deliveryNote?: string; returnDays?: number; returnNote?: string };
+}) {
+  if (!info) return null;
+  const hasDelivery = info.deliveryTime || info.deliveryNote;
+  const hasReturn = info.returnDays != null || info.returnNote;
+  if (!hasDelivery && !hasReturn) return null;
+  return (
+    <div>
+      <PreviewSectionTitle>Livraison & retours</PreviewSectionTitle>
+      <div className="grid grid-cols-2 gap-1">
+        {hasDelivery && (
+          <div className="rounded border border-border/60 bg-card/40 p-1.5">
+            <p className="text-[9px] font-semibold">📦 Livraison</p>
+            {info.deliveryTime && <p className="mt-0.5 text-[9px] text-foreground">{info.deliveryTime}</p>}
+            {info.deliveryNote && <p className="text-[8px] text-muted-foreground">{info.deliveryNote}</p>}
+          </div>
+        )}
+        {hasReturn && (
+          <div className="rounded border border-border/60 bg-card/40 p-1.5">
+            <p className="text-[9px] font-semibold">↩️ Retours</p>
+            {info.returnDays != null && (
+              <p className="mt-0.5 text-[9px] text-foreground">{info.returnDays} jour{info.returnDays > 1 ? 's' : ''}</p>
+            )}
+            {info.returnNote && <p className="text-[8px] text-muted-foreground">{info.returnNote}</p>}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function PreviewVideo({ video }: { video?: { url: string; title?: string } }) {
+  if (!video?.url) return null;
+  return (
+    <div>
+      <PreviewSectionTitle>{video.title || 'En vidéo'}</PreviewSectionTitle>
+      <div className="flex aspect-video items-center justify-center rounded border border-border/60 bg-muted/40">
+        <span className="text-[10px] text-muted-foreground">▶ Vidéo intégrée</span>
+      </div>
+    </div>
+  );
+}
+
+function PreviewComparison({
+  comparison,
+  accent,
+}: {
+  comparison?: { title?: string; usLabel?: string; themLabel?: string; rows: Array<{ criterion: string; us: string; them: string }> };
+  accent: string;
+}) {
+  if (!comparison?.rows || comparison.rows.length === 0) return null;
+  return (
+    <div>
+      <PreviewSectionTitle>{comparison.title || 'Pourquoi nous'}</PreviewSectionTitle>
+      <div className="overflow-hidden rounded border border-border/60 bg-card/40">
+        <div className="grid grid-cols-[1fr_1fr_1fr] gap-1 bg-muted/40 px-1.5 py-1 text-[8px] font-semibold uppercase tracking-wider text-muted-foreground">
+          <span>Critère</span>
+          <span className="text-center" style={{ color: accent }}>{comparison.usLabel || 'Nous'}</span>
+          <span className="text-center">{comparison.themLabel || 'Autres'}</span>
+        </div>
+        {comparison.rows.slice(0, 4).map((r, i) => (
+          <div key={i} className="grid grid-cols-[1fr_1fr_1fr] gap-1 border-t border-border/60 px-1.5 py-1 text-[9px]">
+            <span className="truncate font-medium">{r.criterion || '—'}</span>
+            <span className="truncate text-center font-medium" style={{ color: accent }}>✓ {r.us || '—'}</span>
+            <span className="truncate text-center text-muted-foreground">{r.them || '—'}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
 }

@@ -10,17 +10,22 @@
  *   - FAQ : question / réponse
  *   - Specs : tableau clé / valeur
  *   - Shipping & retours : délai, frais, fenêtre de retour
+ *   - Vidéo produit + comparatif
+ *   - Score conversion (calcul pondéré + nudge)
+ *   - Formulaire COD inline (store-wide, exposé ici pour édition simultanée)
  */
 
+import Link from 'next/link';
 import { useState } from 'react';
 import {
-  Plus, Trash2, GripVertical, Wand2, ChevronDown,
+  Plus, Trash2, GripVertical, Wand2, ChevronDown, ArrowRight, Globe,
   Sparkles, Shield, Leaf, Zap, Heart, Award, Gift, Truck, Clock, Check, Star, Recycle,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { cn } from '@/lib/utils';
+import type { CodFormSettings } from '@/components/dashboard/store-editor';
 
 // ─── Types (mirrors backend IProductPageSettings) ───────────────────
 export type FeatureIcon =
@@ -804,36 +809,67 @@ export interface ConversionScoreInputs {
   comparison?: ProductComparison;
 }
 
+/** Onglet d'origine pour chaque critère — utilisé pour switcher avant de scroller. */
+export type ScoreTab = 'essentiel' | 'conversion';
+
+export interface ScoreCheck {
+  id: string;
+  label: string;
+  ok: boolean;
+  weight: number;
+  /** Onglet où vit la section (pour switcher avant de scroller). */
+  tab: ScoreTab;
+  /** Id du conteneur à scroller. Mappe à `id="section-<id>"` sur la card. */
+  anchor: string;
+}
+
 interface ScoreBreakdown {
   score: number;            // 0-100
-  filled: string[];
-  missing: string[];
+  filled: ScoreCheck[];
+  missing: ScoreCheck[];
+  checks: ScoreCheck[];
 }
 
 export function computeConversionScore(i: ConversionScoreInputs): ScoreBreakdown {
-  // Chaque critère vaut un poids — j'ai pondéré selon l'impact mesuré
-  // typique sur le funnel COD (3+ images & description sont les vraies
-  // briques; les autres sont des amplificateurs).
-  const checks: Array<{ id: string; label: string; ok: boolean; weight: number }> = [
-    { id: 'images',     label: '3 images ou plus',           ok: (i.images?.length || 0) >= 3,       weight: 18 },
-    { id: 'description', label: 'Description longue',         ok: (i.description?.trim().length || 0) >= 80, weight: 15 },
-    { id: 'features',   label: 'Au moins 3 points forts',    ok: (i.features?.length || 0) >= 3,     weight: 14 },
-    { id: 'specs',      label: 'Au moins 3 spécifications',  ok: (i.specs?.length || 0) >= 3,        weight: 12 },
-    { id: 'faq',        label: 'Au moins 2 questions FAQ',   ok: (i.faq?.length || 0) >= 2,          weight: 14 },
-    { id: 'shipping',   label: 'Bloc livraison / retours',   ok: !!(i.shippingInfo && (i.shippingInfo.deliveryTime || i.shippingInfo.returnNote || i.shippingInfo.returnDays)), weight: 12 },
-    { id: 'video',      label: 'Vidéo produit',              ok: !!(i.video?.url && i.video.url.trim()), weight: 10 },
-    { id: 'comparison', label: 'Comparatif',                 ok: !!(i.comparison?.rows && i.comparison.rows.length >= 2), weight: 5 },
+  // Chaque critère vaut un poids — pondéré selon l'impact mesuré typique
+  // sur le funnel COD (3+ images & description sont les vraies briques;
+  // les autres sont des amplificateurs). `tab` + `anchor` rendent le
+  // bilan navigable depuis le score.
+  const checks: ScoreCheck[] = [
+    { id: 'images',      label: '3 images ou plus',          ok: (i.images?.length || 0) >= 3,                                  weight: 18, tab: 'essentiel',  anchor: 'section-images' },
+    { id: 'description', label: 'Description longue',         ok: (i.description?.trim().length || 0) >= 80,                     weight: 15, tab: 'essentiel',  anchor: 'section-description' },
+    { id: 'features',    label: '3 points forts',             ok: (i.features?.length || 0) >= 3,                                weight: 14, tab: 'conversion', anchor: 'section-features' },
+    { id: 'specs',       label: '3 spécifications',           ok: (i.specs?.length || 0) >= 3,                                   weight: 12, tab: 'conversion', anchor: 'section-specs' },
+    { id: 'faq',         label: '2 questions FAQ',            ok: (i.faq?.length || 0) >= 2,                                     weight: 14, tab: 'conversion', anchor: 'section-faq' },
+    { id: 'shipping',    label: 'Livraison / retours',        ok: !!(i.shippingInfo && (i.shippingInfo.deliveryTime || i.shippingInfo.returnNote || i.shippingInfo.returnDays)), weight: 12, tab: 'conversion', anchor: 'section-shipping' },
+    { id: 'video',       label: 'Vidéo produit',              ok: !!(i.video?.url && i.video.url.trim()),                        weight: 10, tab: 'conversion', anchor: 'section-video' },
+    { id: 'comparison',  label: 'Comparatif',                 ok: !!(i.comparison?.rows && i.comparison.rows.length >= 2),       weight: 5,  tab: 'conversion', anchor: 'section-comparison' },
   ];
   const total = checks.reduce((s, c) => s + c.weight, 0);
   const gained = checks.filter((c) => c.ok).reduce((s, c) => s + c.weight, 0);
   return {
     score: Math.round((gained / total) * 100),
-    filled: checks.filter((c) => c.ok).map((c) => c.label),
-    missing: checks.filter((c) => !c.ok).map((c) => c.label),
+    filled: checks.filter((c) => c.ok),
+    missing: checks.filter((c) => !c.ok),
+    checks,
   };
 }
 
-export function ConversionScoreBar({ inputs }: { inputs: ConversionScoreInputs }) {
+/** Compte les sections manquantes par onglet — alimente les badges sur les tabs. */
+export function missingByTab(inputs: ConversionScoreInputs): Record<ScoreTab, number> {
+  const out: Record<ScoreTab, number> = { essentiel: 0, conversion: 0 };
+  for (const c of computeConversionScore(inputs).missing) out[c.tab]++;
+  return out;
+}
+
+export function ConversionScoreBar({
+  inputs,
+  onJump,
+}: {
+  inputs: ConversionScoreInputs;
+  /** Callback : reçoit l'onglet où vit la section + l'id du conteneur à scroller. */
+  onJump?: (tab: ScoreTab, anchor: string) => void;
+}) {
   const { score, missing } = computeConversionScore(inputs);
   const tier = score >= 85 ? 'high' : score >= 55 ? 'mid' : 'low';
   const tierStyle = {
@@ -861,14 +897,287 @@ export function ConversionScoreBar({ inputs }: { inputs: ConversionScoreInputs }
           </div>
           <p className={cn('mt-1.5 text-[11px] font-medium', tierStyle.text)}>{tierStyle.label}</p>
           {missing.length > 0 && (
-            <p className="mt-1 text-[11px] text-muted-foreground">
-              <span className="font-semibold">Reste à faire :</span> {missing.slice(0, 4).join(' · ')}
-              {missing.length > 4 && '…'}
-            </p>
+            <div className="mt-2 flex flex-wrap items-center gap-1.5">
+              <span className="text-[11px] font-semibold text-muted-foreground">Reste à faire :</span>
+              {missing.map((c) => (
+                <button
+                  key={c.id}
+                  type="button"
+                  onClick={() => onJump?.(c.tab, c.anchor)}
+                  className="inline-flex items-center gap-1 rounded-full border border-border/60 bg-muted/40 px-2 py-0.5 text-[11px] font-medium text-foreground/70 transition-colors hover:border-primary/50 hover:bg-primary/5 hover:text-foreground"
+                >
+                  {c.label}
+                  <ArrowRight className="h-3 w-3 opacity-60" />
+                </button>
+              ))}
+            </div>
           )}
         </div>
       </div>
     </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// FORMULAIRE COD — embed direct dans l'éditeur produit (knobs essentiels).
+//
+// Le COD form est store-wide : la config s'applique à TOUTES les fiches
+// produit de la boutique. Le badge "Partagé avec toute la boutique" est
+// non-négociable côté UX pour que le vendeur ne croie pas modifier que
+// ce produit. Pour les knobs avancés (intégrations, payment gateways,
+// HTML custom) on linke vers /dashboard/stores/<id>/product-page.
+// ═══════════════════════════════════════════════════════════════════
+export interface CodFormPanelProps {
+  value: CodFormSettings;
+  onChange: (next: CodFormSettings) => void;
+  /** URL du lien "Config avancée" — usually `/dashboard/stores/<id>/product-page#cod-form`. */
+  advancedHref?: string;
+  /** Devise — affichée à côté du prix de livraison. */
+  currency?: string;
+}
+
+export function CodFormPanel({ value, onChange, advancedHref, currency = 'TND' }: CodFormPanelProps) {
+  const set = (patch: Partial<CodFormSettings>) => onChange({ ...value, ...patch });
+
+  return (
+    <div className="space-y-4">
+      {/* Badge "store-wide" — non négociable, sinon confusion sur le scope */}
+      <div className="flex items-start gap-2.5 rounded-xl border border-amber-500/30 bg-gradient-to-br from-amber-500/5 to-orange-500/5 p-3">
+        <span className="grid h-7 w-7 shrink-0 place-items-center rounded-lg bg-amber-500/15 text-amber-700">
+          <Globe className="h-3.5 w-3.5" />
+        </span>
+        <div className="min-w-0 flex-1">
+          <p className="text-xs font-semibold text-amber-900">Partagé avec toute la boutique</p>
+          <p className="mt-0.5 text-[11px] text-amber-800/80">
+            Ces réglages s&apos;appliquent au formulaire COD de <strong>toutes</strong> les fiches produit.
+            Modifier ici, c&apos;est modifier partout.
+          </p>
+        </div>
+      </div>
+
+      {/* ── Textes affichés ─────────────────────────────────────────── */}
+      <div className="grid gap-3 sm:grid-cols-2">
+        <div className="space-y-1.5">
+          <Label htmlFor="cod-headline" className="text-[11px] uppercase tracking-wider text-muted-foreground">
+            Titre du formulaire
+          </Label>
+          <Input
+            id="cod-headline"
+            value={value.headline || ''}
+            onChange={(e) => set({ headline: e.target.value || undefined })}
+            placeholder="Commander — paiement à la livraison"
+            className="h-9 text-sm"
+          />
+        </div>
+        <div className="space-y-1.5">
+          <Label htmlFor="cod-submit" className="text-[11px] uppercase tracking-wider text-muted-foreground">
+            Label du bouton
+          </Label>
+          <Input
+            id="cod-submit"
+            value={value.submitLabel || ''}
+            onChange={(e) => set({ submitLabel: e.target.value || undefined })}
+            placeholder="Commander"
+            className="h-9 text-sm"
+          />
+        </div>
+        <div className="space-y-1.5 sm:col-span-2">
+          <Label htmlFor="cod-reassurance" className="text-[11px] uppercase tracking-wider text-muted-foreground">
+            Ligne de réassurance
+          </Label>
+          <Input
+            id="cod-reassurance"
+            value={value.reassurance || ''}
+            onChange={(e) => set({ reassurance: e.target.value || undefined })}
+            placeholder="Aucun prépaiement · livraison 48h"
+            className="h-9 text-sm"
+          />
+        </div>
+      </div>
+
+      {/* ── Apparence du bouton ─────────────────────────────────────── */}
+      <div className="space-y-3 rounded-xl border border-border/60 bg-muted/20 p-3">
+        <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+          Bouton « Commander »
+        </h4>
+        <div className="grid gap-3 sm:grid-cols-[1fr_1fr_auto_auto]">
+          {/* Couleurs */}
+          <div className="space-y-1.5">
+            <Label className="text-[10px] uppercase tracking-wider text-muted-foreground">Couleur</Label>
+            <div className="flex items-center gap-2">
+              <input
+                type="color"
+                value={value.buttonColor || '#7c3aed'}
+                onChange={(e) => set({ buttonColor: e.target.value })}
+                className="h-9 w-11 cursor-pointer rounded-md border border-border/60 bg-background p-0"
+              />
+              <Input
+                value={value.buttonColor || ''}
+                onChange={(e) => set({ buttonColor: e.target.value || undefined })}
+                placeholder="#7c3aed"
+                className="h-9 max-w-[110px] font-mono text-xs"
+              />
+            </div>
+          </div>
+          <div className="space-y-1.5">
+            <Label className="text-[10px] uppercase tracking-wider text-muted-foreground">Texte du bouton</Label>
+            <div className="flex items-center gap-2">
+              <input
+                type="color"
+                value={value.buttonTextColor || '#ffffff'}
+                onChange={(e) => set({ buttonTextColor: e.target.value })}
+                className="h-9 w-11 cursor-pointer rounded-md border border-border/60 bg-background p-0"
+              />
+              <Input
+                value={value.buttonTextColor || ''}
+                onChange={(e) => set({ buttonTextColor: e.target.value || undefined })}
+                placeholder="#ffffff"
+                className="h-9 max-w-[110px] font-mono text-xs"
+              />
+            </div>
+          </div>
+          {/* Forme */}
+          <div className="space-y-1.5">
+            <Label className="text-[10px] uppercase tracking-wider text-muted-foreground">Forme</Label>
+            <select
+              value={value.buttonShape || 'pill'}
+              onChange={(e) => set({ buttonShape: e.target.value as CodFormSettings['buttonShape'] })}
+              className="h-9 rounded-md border border-input bg-background px-2 text-xs"
+            >
+              <option value="pill">Pill</option>
+              <option value="rounded">Rounded</option>
+              <option value="square">Carré</option>
+            </select>
+          </div>
+          {/* Animation */}
+          <div className="space-y-1.5">
+            <Label className="text-[10px] uppercase tracking-wider text-muted-foreground">Animation</Label>
+            <select
+              value={value.buttonAnimated ? (value.buttonAnimation || 'pulse') : 'none'}
+              onChange={(e) => {
+                const v = e.target.value;
+                if (v === 'none') set({ buttonAnimated: false });
+                else set({ buttonAnimated: true, buttonAnimation: v as CodFormSettings['buttonAnimation'] });
+              }}
+              className="h-9 rounded-md border border-input bg-background px-2 text-xs"
+            >
+              <option value="none">Aucune</option>
+              <option value="pulse">Pulse</option>
+              <option value="shimmer">Shimmer</option>
+              <option value="bounce">Bounce</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
+      {/* ── Champs visibles (top 3) ─────────────────────────────────── */}
+      <div className="space-y-2 rounded-xl border border-border/60 bg-muted/20 p-3">
+        <div className="flex items-center justify-between gap-2">
+          <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+            Champs affichés
+          </h4>
+          <span className="rounded-full bg-muted px-2 py-0.5 text-[10px] text-muted-foreground">
+            Nom + tél + adresse toujours visibles
+          </span>
+        </div>
+        <ul className="grid gap-1.5 sm:grid-cols-3">
+          <li>
+            <CodFieldToggle
+              label="Email"
+              checked={!!value.showEmail}
+              onChange={(v) => set({ showEmail: v })}
+            />
+          </li>
+          <li>
+            <CodFieldToggle
+              label="Ville"
+              checked={!!value.showCity}
+              onChange={(v) => set({ showCity: v })}
+            />
+          </li>
+          <li>
+            <CodFieldToggle
+              label="Notes / commentaire"
+              checked={!!value.showNotes}
+              onChange={(v) => set({ showNotes: v })}
+            />
+          </li>
+        </ul>
+      </div>
+
+      {/* ── Frais de livraison ──────────────────────────────────────── */}
+      <div className="grid gap-3 sm:grid-cols-[200px_1fr] sm:items-center">
+        <Label htmlFor="cod-shipping" className="text-[11px] uppercase tracking-wider text-muted-foreground">
+          Frais de livraison
+        </Label>
+        <div className="relative max-w-[180px]">
+          <Input
+            id="cod-shipping"
+            type="number"
+            min={0}
+            step="0.01"
+            value={value.shippingFee ?? ''}
+            onChange={(e) => {
+              const n = parseFloat(e.target.value);
+              set({ shippingFee: Number.isFinite(n) && n >= 0 ? n : undefined });
+            }}
+            placeholder="0"
+            className="h-9 pr-12 text-sm"
+          />
+          <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[11px] font-medium text-muted-foreground">
+            {currency}
+          </span>
+        </div>
+      </div>
+
+      {/* Lien vers config avancée */}
+      {advancedHref && (
+        <Link
+          href={advancedHref}
+          className="flex items-center gap-3 rounded-xl border border-fuchsia-500/30 bg-gradient-to-br from-fuchsia-500/5 to-card p-3 transition-all hover:-translate-y-0.5 hover:border-fuchsia-500/50 hover:shadow-md"
+        >
+          <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-gradient-to-br from-primary to-fuchsia-600 text-white shadow-sm">
+            <Sparkles className="h-4 w-4" />
+          </span>
+          <div className="min-w-0 flex-1">
+            <div className="text-sm font-bold">Configuration avancée du formulaire</div>
+            <p className="mt-0.5 text-[11px] text-muted-foreground">
+              Tous les champs, intégrations paiement, HTML custom — sur la page dédiée.
+            </p>
+          </div>
+          <ArrowRight className="h-4 w-4 shrink-0 text-fuchsia-600" />
+        </Link>
+      )}
+    </div>
+  );
+}
+
+function CodFieldToggle({
+  label,
+  checked,
+  onChange,
+}: {
+  label: string;
+  checked: boolean;
+  onChange: (next: boolean) => void;
+}) {
+  return (
+    <label
+      className={cn(
+        'flex cursor-pointer items-center gap-2 rounded-lg border bg-card px-3 py-2 text-xs font-medium transition-colors',
+        checked
+          ? 'border-primary/40 bg-primary/5 text-foreground'
+          : 'border-border/60 text-muted-foreground hover:border-primary/30 hover:text-foreground',
+      )}
+    >
+      <input
+        type="checkbox"
+        checked={checked}
+        onChange={(e) => onChange(e.target.checked)}
+        className="h-3.5 w-3.5 accent-primary"
+      />
+      {label}
+    </label>
   );
 }
 

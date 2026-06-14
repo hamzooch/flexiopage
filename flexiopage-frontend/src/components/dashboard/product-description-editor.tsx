@@ -13,7 +13,7 @@
  */
 
 import { useEffect, useRef, useState } from 'react';
-import { Bold, Eye, List, Image as ImageIcon, Link as LinkIcon, Link2, Loader2, Pencil, Smile, X } from 'lucide-react';
+import { Bold, Italic, Eye, List, Image as ImageIcon, Link as LinkIcon, Link2, Loader2, Pencil, Smile, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { storesApi, extractApiError } from '@/lib/api';
@@ -48,12 +48,21 @@ export function ProductDescriptionEditor({ storeId, value, onChange, placeholder
   // que de passer par la modal MediaPicker (qui avalait les erreurs en silence).
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
-  /** Ajuste la hauteur du textarea à son contenu (le vendeur voit tout sans scroll). */
+  /**
+   * Ajuste la hauteur du textarea à son contenu, mais cape à ~60 % du viewport.
+   * Au-delà, le scroll interne prend le relais : le vendeur n'a plus à
+   * scroller toute la page pour passer en bas d'une description longue.
+   */
   function autosize() {
     const ta = ref.current;
     if (!ta) return;
     ta.style.height = 'auto';
-    ta.style.height = `${ta.scrollHeight}px`;
+    const maxHeight = typeof window === 'undefined' ? 600 : Math.round(window.innerHeight * 0.6);
+    const desired = Math.min(ta.scrollHeight, maxHeight);
+    ta.style.height = `${desired}px`;
+    // Quand on dépasse le cap, on doit autoriser le scroll interne ;
+    // sinon on garde overflow-hidden (le textarea s'auto-ajuste).
+    ta.style.overflowY = ta.scrollHeight > maxHeight ? 'auto' : 'hidden';
   }
   // Recalcule quand la valeur change de l'extérieur (chargement, génération IA, insertions).
   useEffect(autosize, [value]);
@@ -337,6 +346,9 @@ export function ProductDescriptionEditor({ storeId, value, onChange, placeholder
         <ToolbarBtn onClick={() => insert('**TEXT**', { wrap: true })} title="Gras (Ctrl+B)">
           <Bold className="h-3.5 w-3.5" />
         </ToolbarBtn>
+        <ToolbarBtn onClick={() => insert('*TEXT*', { wrap: true })} title="Italique (Ctrl+I)">
+          <Italic className="h-3.5 w-3.5" />
+        </ToolbarBtn>
         <ToolbarBtn onClick={() => insert('\n- ')} title="Liste à puces">
           <List className="h-3.5 w-3.5" />
         </ToolbarBtn>
@@ -407,9 +419,16 @@ export function ProductDescriptionEditor({ storeId, value, onChange, placeholder
           if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'b') {
             e.preventDefault();
             insert('**TEXT**', { wrap: true });
+            return;
+          }
+          // Ctrl/Cmd + I → wrap with *italic*
+          if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'i') {
+            e.preventDefault();
+            insert('*TEXT*', { wrap: true });
+            return;
           }
         }}
-        className="min-h-[14rem] w-full resize-y overflow-hidden rounded-md border border-input bg-background px-3 py-2 text-sm leading-relaxed focus:border-primary/40 focus:outline-none focus:ring-4 focus:ring-primary/10 lg:min-h-[26rem]"
+        className="min-h-[14rem] w-full max-h-[60vh] resize-y rounded-md border border-input bg-background px-3 py-2 text-sm leading-relaxed focus:border-primary/40 focus:outline-none focus:ring-4 focus:ring-primary/10 lg:min-h-[26rem]"
       />
 
       {uploading && (
@@ -503,6 +522,12 @@ function ToolbarBtn({
   return (
     <button
       type="button"
+      // `onMouseDown` preventDefault empêche le textarea de perdre le focus
+      // au clic — sinon, sur certains navigateurs, la sélection en cours
+      // (le texte que le vendeur veut mettre en gras) se collapse avant
+      // que `insert()` lise selectionStart/selectionEnd, et le wrap se fait
+      // sur une sélection vide → `****` au lieu de `**texte**`.
+      onMouseDown={(e) => e.preventDefault()}
       onClick={onClick}
       title={title}
       aria-label={title}
