@@ -714,6 +714,41 @@ function OrderCard({
     Array.from(o._id).reduce((acc, c) => acc + c.charCodeAt(0), 0) % avatarHues.length
   ];
 
+  // ── Dispatch manuel ──────────────────────────────────────────────
+  // L'auto-dispatch fait du best-effort à la création/paiement, mais peut
+  // échouer silencieusement (SKU manquant, MogaDelivery 4xx, timeout réseau).
+  // Le bouton ci-dessous expose le endpoint backend `/dispatch` pour
+  // permettre au vendeur de pousser ou de retenter manuellement.
+  const [dispatching, setDispatching] = useState(false);
+  const [dispatchMessage, setDispatchMessage] = useState<{ kind: 'success' | 'error'; text: string } | null>(null);
+  const isDispatched = !!o.delivery?.externalId;
+  const hasDispatchError = !!o.delivery?.error;
+  // On ne propose le bouton que pour les commandes qui n'ont pas été dispatch
+  // OU qui ont échoué — pas pour celles déjà acceptées par le transporteur.
+  const canDispatch = !isDispatched;
+
+  async function handleDispatch() {
+    setDispatching(true);
+    setDispatchMessage(null);
+    try {
+      // `retry: true` quand on a déjà tenté ET échoué — le backend efface
+      // l'externalId avant de relancer pour ne pas tomber dans l'idempotence.
+      const res = await storesApi.dispatchOrder(storeId, o._id, hasDispatchError ? { retry: true } : {});
+      if (res.data.ok) {
+        setDispatchMessage({ kind: 'success', text: res.data.alreadyDispatched ? 'Déjà envoyée au transporteur.' : 'Envoyée au transporteur ✓' });
+        await onChanged();
+      } else {
+        setDispatchMessage({ kind: 'error', text: 'Échec du dispatch.' });
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Erreur réseau.';
+      const apiMsg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error;
+      setDispatchMessage({ kind: 'error', text: apiMsg || msg });
+    } finally {
+      setDispatching(false);
+    }
+  }
+
   return (
     <li
       className={cn(
@@ -903,10 +938,58 @@ function OrderCard({
               ) : o.delivery?.error ? (
                 <div className="space-y-2">
                   <p className="text-sm text-rose-700">⚠ {o.delivery.error}</p>
-                  <p className="text-xs text-muted-foreground">Tu peux retenter depuis le détail de la commande.</p>
+                  <p className="text-xs text-muted-foreground">
+                    Vérifie que la commande a bien tous ses champs requis (SKU, téléphone, adresse) puis retente.
+                  </p>
                 </div>
               ) : (
                 <p className="text-sm text-muted-foreground">Pas encore dispatchée.</p>
+              )}
+
+              {/* Bouton manuel — visible quand la commande n'a pas encore
+                 d'externalId (que ce soit après un échec ou jamais tenté). */}
+              {canDispatch && (
+                <div className="mt-3 space-y-2">
+                  <button
+                    type="button"
+                    onClick={handleDispatch}
+                    disabled={dispatching}
+                    className={cn(
+                      'inline-flex h-9 items-center gap-1.5 rounded-lg px-3 text-xs font-semibold transition-colors',
+                      hasDispatchError
+                        ? 'bg-rose-500/10 text-rose-700 hover:bg-rose-500/20'
+                        : 'bg-primary/10 text-primary hover:bg-primary/20',
+                      dispatching && 'cursor-wait opacity-60',
+                    )}
+                  >
+                    {dispatching ? (
+                      <>
+                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                        Envoi…
+                      </>
+                    ) : hasDispatchError ? (
+                      <>
+                        <RotateCcw className="h-3.5 w-3.5" />
+                        Réessayer le dispatch
+                      </>
+                    ) : (
+                      <>
+                        <Truck className="h-3.5 w-3.5" />
+                        Envoyer au transporteur
+                      </>
+                    )}
+                  </button>
+                  {dispatchMessage && (
+                    <p
+                      className={cn(
+                        'text-xs font-medium',
+                        dispatchMessage.kind === 'success' ? 'text-emerald-700' : 'text-rose-700',
+                      )}
+                    >
+                      {dispatchMessage.text}
+                    </p>
+                  )}
+                </div>
               )}
             </DetailSection>
           </div>

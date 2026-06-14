@@ -778,6 +778,17 @@ export const storesApi = {
     api.patch<{ order: unknown }>(`/stores/${storeId}/orders/${orderId}/payment`, data),
   updateOrderFulfillment: (storeId: string, orderId: string, data: { fulfillmentStatus: string; trackingNumber?: string; trackingUrl?: string }) =>
     api.patch<{ order: unknown }>(`/stores/${storeId}/orders/${orderId}/fulfillment`, data),
+  /**
+   * Dispatch manuel (ou retry) d'une commande vers le transporteur configuré.
+   * Utile quand l'auto-dispatch a échoué (SKU manquant, MogaDelivery 4xx, etc.)
+   * ou quand le vendeur veut forcer un envoi. `retry: true` efface l'externalId
+   * pour que dispatchOrder côté backend ne tombe pas dans l'idempotence.
+   */
+  dispatchOrder: (storeId: string, orderId: string, opts?: { retry?: boolean }) =>
+    api.post<{ ok: boolean; alreadyDispatched?: boolean; order: unknown }>(
+      `/stores/${storeId}/orders/${orderId}/dispatch`,
+      opts || {},
+    ),
   /** Seller-facing manual override — guards against orders already moving at the courier. */
   manualOrderStatus: (storeId: string, orderId: string, data: {
     paymentStatus?: 'pending' | 'paid' | 'failed' | 'refunded' | 'manual';
