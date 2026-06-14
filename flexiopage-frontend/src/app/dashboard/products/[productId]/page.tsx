@@ -41,6 +41,11 @@ import { ProductLivePreview } from '@/components/dashboard/product-live-preview'
 import { ProductDescriptionEditor } from '@/components/dashboard/product-description-editor';
 import { TimerPresetPicker } from '@/components/dashboard/timer-presets';
 import { FieldToggle } from '@/components/dashboard/store-editor';
+import {
+  FeaturesEditor, FaqEditor, SpecsEditor, ShippingInfoEditor,
+  type ProductFeature, type ProductFaqItem, type ProductSpecItem, type ProductShippingInfo,
+} from '@/components/dashboard/product-conversion-editors';
+import { Sparkles, HelpCircle, ListChecks, Truck as TruckLine } from 'lucide-react';
 
 const BADGE_ICONS = {
   truck: Truck, shield: ShieldCheck, refresh: RefreshCcw, lock: Lock,
@@ -65,7 +70,14 @@ interface PageSettings {
   accentColor?: string;
   timer?: { endsAt?: string; headline?: string; accentColor?: string };
   badges?: TrustBadge[];
+  // ── Sections "conversion" (phase 1) ──
+  features?: ProductFeature[];
+  faq?: ProductFaqItem[];
+  specs?: ProductSpecItem[];
+  shippingInfo?: ProductShippingInfo;
 }
+
+type EditTab = 'essentiel' | 'conversion' | 'seo';
 
 type SaveStatus = 'idle' | 'saving' | 'saved' | 'error';
 
@@ -113,6 +125,9 @@ export default function EditProductPage() {
   const [status, setStatus] = useState<SaveStatus>('idle');
   const [error, setError] = useState('');
   const [deleting, setDeleting] = useState(false);
+  // Navigation interne — 3 tabs pour clarifier l'éditeur et déstresser
+  // le scroll. Le contenu des cards existantes est juste regroupé.
+  const [tab, setTab] = useState<EditTab>('essentiel');
 
   // ── Load product + store ──────────────────────────────────────────
   useEffect(() => {
@@ -151,6 +166,10 @@ export default function EditProductPage() {
           accentColor: (ps.accentColor as string) || undefined,
           timer: (ps.timer as PageSettings['timer']) || undefined,
           badges: Array.isArray(ps.badges) ? (ps.badges as TrustBadge[]) : undefined,
+          features: Array.isArray(ps.features) ? (ps.features as ProductFeature[]) : undefined,
+          faq: Array.isArray(ps.faq) ? (ps.faq as ProductFaqItem[]) : undefined,
+          specs: Array.isArray(ps.specs) ? (ps.specs as ProductSpecItem[]) : undefined,
+          shippingInfo: (ps.shippingInfo as ProductShippingInfo) || undefined,
         });
         setProfit({
           price: Number(p.price) || 0,
@@ -216,6 +235,10 @@ export default function EditProductPage() {
           accentColor: pageSettings.accentColor || undefined,
           timer: pageSettings.timer,
           badges: pageSettings.badges,
+          features: pageSettings.features,
+          faq: pageSettings.faq,
+          specs: pageSettings.specs,
+          shippingInfo: pageSettings.shippingInfo,
         },
       });
       setStatus('saved');
@@ -366,9 +389,40 @@ export default function EditProductPage() {
         </div>
       </header>
 
+      {/* ── Tabs internes — 3 contextes pour ne plus avoir une page-fleuve ── */}
+      <nav className="-mx-1 flex gap-1 overflow-x-auto rounded-2xl border border-border/60 bg-card/80 p-1 backdrop-blur">
+        {([
+          { id: 'essentiel',  label: 'Essentiel',     icon: Package,    hint: 'Nom, médias, prix, variantes' },
+          { id: 'conversion', label: 'Page de vente', icon: Sparkles,   hint: 'Sections qui convertissent' },
+          { id: 'seo',        label: 'SEO & marge',   icon: SearchIcon, hint: 'Référencement + profit' },
+        ] as const).map((t) => {
+          const TabIcon = t.icon;
+          const active = tab === t.id;
+          return (
+            <button
+              key={t.id}
+              type="button"
+              onClick={() => setTab(t.id)}
+              className={cn(
+                'group inline-flex shrink-0 items-center gap-2 rounded-xl px-3.5 py-2 text-sm font-medium transition-all',
+                active
+                  ? 'gradient-brand text-white shadow-md shadow-primary/20'
+                  : 'text-foreground/70 hover:bg-muted hover:text-foreground'
+              )}
+              aria-pressed={active}
+              title={t.hint}
+            >
+              <TabIcon className="h-4 w-4" />
+              {t.label}
+            </button>
+          );
+        })}
+      </nav>
+
       {/* ── Body — 2 columns ──────────────────────────────────── */}
       <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_360px]">
         <div className="space-y-5">
+          {tab === 'essentiel' && (<>
           {/* ── 1. Identité ─────────────────────────────────── */}
           <Card>
             <CardHeader>
@@ -572,7 +626,9 @@ export default function EditProductPage() {
               />
             </CardContent>
           </Card>
+          </>)}
 
+          {tab === 'conversion' && (<>
           {/* ── 5. Page produit (toggles + overrides) ──────── */}
           <Card>
             <CardHeader>
@@ -840,6 +896,84 @@ export default function EditProductPage() {
             </CardContent>
           </Card>
 
+          {/* ── 5b. Points forts (USPs) ─────────────────────── */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Sparkles className="h-4 w-4 text-primary" />
+                Points forts
+              </CardTitle>
+              <CardDescription>
+                Les bénéfices que le client scanne avant de lire. Affichés en haut de la fiche.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <FeaturesEditor
+                value={pageSettings.features}
+                onChange={(features) => setPageSettings((s) => ({ ...s, features }))}
+              />
+            </CardContent>
+          </Card>
+
+          {/* ── 5c. Spécifications ──────────────────────────── */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <ListChecks className="h-4 w-4 text-primary" />
+                Spécifications
+              </CardTitle>
+              <CardDescription>
+                Table clé/valeur affichée sous la description. Matière, dimensions, garantie…
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <SpecsEditor
+                value={pageSettings.specs}
+                onChange={(specs) => setPageSettings((s) => ({ ...s, specs }))}
+              />
+            </CardContent>
+          </Card>
+
+          {/* ── 5d. FAQ produit ─────────────────────────────── */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <HelpCircle className="h-4 w-4 text-primary" />
+                FAQ produit
+              </CardTitle>
+              <CardDescription>
+                Lève les objections avant le formulaire de commande. Massivement efficace en COD.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <FaqEditor
+                value={pageSettings.faq}
+                onChange={(faq) => setPageSettings((s) => ({ ...s, faq }))}
+              />
+            </CardContent>
+          </Card>
+
+          {/* ── 5e. Livraison & retours ─────────────────────── */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <TruckLine className="h-4 w-4 text-primary" />
+                Livraison & retours
+              </CardTitle>
+              <CardDescription>
+                Réponds aux 3 questions COD : délai, frais, retour. Boost confiance.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <ShippingInfoEditor
+                value={pageSettings.shippingInfo}
+                onChange={(shippingInfo) => setPageSettings((s) => ({ ...s, shippingInfo }))}
+              />
+            </CardContent>
+          </Card>
+          </>)}
+
+          {tab === 'seo' && (<>
           {/* ── 6. Tags ──────────────────────────────────────── */}
           <Card>
             <CardHeader>
@@ -912,6 +1046,7 @@ export default function EditProductPage() {
               </div>
             </CardContent>
           </Card>
+          </>)}
         </div>
 
         {/* ── Right — sticky live preview ───────────────────── */}

@@ -32,6 +32,9 @@ import { ProductGallery } from '@/components/storefront/product-gallery';
 import { AddToCartButton } from '@/components/storefront/add-to-cart-button';
 import { ProductReviews } from '@/components/storefront/product-reviews';
 import type { ThemeTokens as ThemeTokensType } from '@/data/store-themes';
+import {
+  Sparkles, Shield, Leaf, Zap, Heart, Award, Gift, Truck, Clock, Check, Star, Recycle,
+} from 'lucide-react';
 
 interface Props {
   params: Promise<{ storeSlug: string; productSlug: string }>;
@@ -71,6 +74,20 @@ interface ProductDoc {
     showTrustBadges?: boolean;
     codFormTitle?: string;
     reassuranceText?: string;
+    // ── Sections "conversion" (phase 1) ──
+    features?: Array<{
+      icon: 'sparkles' | 'shield' | 'leaf' | 'zap' | 'heart' | 'award' | 'gift' | 'truck' | 'clock' | 'check' | 'star' | 'recycle';
+      title: string;
+      subtitle?: string;
+    }>;
+    faq?: Array<{ question: string; answer: string }>;
+    specs?: Array<{ key: string; value: string }>;
+    shippingInfo?: {
+      deliveryTime?: string;
+      deliveryNote?: string;
+      returnDays?: number;
+      returnNote?: string;
+    };
   };
   bundle?: ProductBundle;
   variants?: CodVariant[];
@@ -580,6 +597,23 @@ export default async function PublicProductPage({ params }: Props) {
             return <>{order.map((id) => blocks[id])}</>;
           })()}
 
+          {/* ── Sections "conversion" par-produit (phase 1) ───────────
+              Chaque bloc ne s'affiche que si le vendeur l'a renseigné.
+              Tous lisent les tokens du thème actif → cohérence visuelle
+              quel que soit le template choisi (Nova, Carthago, Volt…). */}
+          {ps.features && ps.features.length > 0 && (
+            <ProductFeaturesSection features={ps.features} theme={theme} />
+          )}
+          {ps.specs && ps.specs.length > 0 && (
+            <ProductSpecsSection specs={ps.specs} theme={theme} />
+          )}
+          {ps.faq && ps.faq.length > 0 && (
+            <ProductFaqSection items={ps.faq} theme={theme} />
+          )}
+          {ps.shippingInfo && (
+            <ProductShippingSection info={ps.shippingInfo} theme={theme} />
+          )}
+
           {/* Cross-sells — "Tu aimeras aussi". Hidden on digital products
               since the buyer already left the funnel after the instant
               purchase CTA — extra grid would feel like noise. */}
@@ -661,6 +695,271 @@ function ProductDescriptionSection({
         style={{ color }}
         dangerouslySetInnerHTML={{ __html: renderMarkdown(description) }}
       />
+    </section>
+  );
+}
+
+// ════════════════════════════════════════════════════════════════════
+// Sections « conversion » par-produit (phase 1)
+//
+// Toutes lisent les tokens du thème actif (fontHeading, foreground, muted,
+// primary, surfaceMuted, border, borderRadius) — un thème qui change =
+// les sections se restylent automatiquement, aucun fork par thème.
+// ════════════════════════════════════════════════════════════════════
+
+type FeatureIconId =
+  | 'sparkles' | 'shield' | 'leaf' | 'zap' | 'heart' | 'award'
+  | 'gift' | 'truck' | 'clock' | 'check' | 'star' | 'recycle';
+
+const FEATURE_ICON_MAP: Record<FeatureIconId, React.ComponentType<{ className?: string; style?: React.CSSProperties }>> = {
+  sparkles: Sparkles, shield: Shield, leaf: Leaf, zap: Zap, heart: Heart,
+  award: Award, gift: Gift, truck: Truck, clock: Clock, check: Check,
+  star: Star, recycle: Recycle,
+};
+
+function sectionRadius(theme: ThemeTokensType): string {
+  return RADIUS_PX[theme.borderRadius] || '12px';
+}
+
+function SectionHeading({ title, theme }: { title: string; theme: ThemeTokensType }) {
+  return (
+    <div className="mb-5 flex items-center gap-3">
+      <span className="inline-block h-px flex-1" style={{ backgroundColor: theme.border }} aria-hidden />
+      <h2
+        className="text-2xl font-bold tracking-tight sm:text-3xl"
+        style={{ fontFamily: theme.fontHeading, color: theme.foreground }}
+      >
+        {title}
+      </h2>
+      <span className="inline-block h-px flex-1" style={{ backgroundColor: theme.border }} aria-hidden />
+    </div>
+  );
+}
+
+function ProductFeaturesSection({
+  features,
+  theme,
+}: {
+  features: Array<{ icon: FeatureIconId; title: string; subtitle?: string }>;
+  theme: ThemeTokensType;
+}) {
+  const radius = sectionRadius(theme);
+  return (
+    <section className="mt-8 max-w-5xl sm:mt-14">
+      <SectionHeading title="Points forts" theme={theme} />
+      <ul className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        {features.map((f, i) => {
+          const Icon = FEATURE_ICON_MAP[f.icon] || Sparkles;
+          return (
+            <li
+              key={i}
+              className="flex items-start gap-3 p-4 transition-transform hover:-translate-y-0.5"
+              style={{
+                backgroundColor: theme.surface,
+                border: `1px solid ${theme.border}`,
+                borderRadius: radius,
+              }}
+            >
+              <span
+                className="grid h-10 w-10 shrink-0 place-items-center"
+                style={{
+                  backgroundColor: hexA(theme.primary, 0.1),
+                  color: theme.primary,
+                  borderRadius: theme.borderRadius === 'none' ? '0' : '999px',
+                }}
+              >
+                <Icon className="h-5 w-5" />
+              </span>
+              <div className="min-w-0">
+                <p className="font-semibold leading-snug" style={{ color: theme.foreground }}>
+                  {f.title}
+                </p>
+                {f.subtitle && (
+                  <p className="mt-0.5 text-sm leading-snug" style={{ color: theme.muted }}>
+                    {f.subtitle}
+                  </p>
+                )}
+              </div>
+            </li>
+          );
+        })}
+      </ul>
+    </section>
+  );
+}
+
+function ProductSpecsSection({
+  specs,
+  theme,
+}: {
+  specs: Array<{ key: string; value: string }>;
+  theme: ThemeTokensType;
+}) {
+  const radius = sectionRadius(theme);
+  return (
+    <section className="mt-8 max-w-3xl sm:mt-14">
+      <SectionHeading title="Spécifications" theme={theme} />
+      <dl
+        className="divide-y overflow-hidden"
+        style={{
+          backgroundColor: theme.surface,
+          border: `1px solid ${theme.border}`,
+          borderRadius: radius,
+          ['--divide-color' as string]: theme.border,
+        }}
+      >
+        {specs.map((s, i) => (
+          <div
+            key={i}
+            className="grid grid-cols-[40%_60%] items-baseline gap-4 px-4 py-3 sm:px-6"
+            style={{ borderTop: i === 0 ? 'none' : `1px solid ${theme.border}` }}
+          >
+            <dt className="text-sm font-semibold uppercase tracking-wider" style={{ color: theme.muted }}>
+              {s.key}
+            </dt>
+            <dd className="text-sm sm:text-base" style={{ color: theme.foreground }}>
+              {s.value}
+            </dd>
+          </div>
+        ))}
+      </dl>
+    </section>
+  );
+}
+
+function ProductFaqSection({
+  items,
+  theme,
+}: {
+  items: Array<{ question: string; answer: string }>;
+  theme: ThemeTokensType;
+}) {
+  const radius = sectionRadius(theme);
+  return (
+    <section className="mt-8 max-w-3xl sm:mt-14">
+      <SectionHeading title="Questions fréquentes" theme={theme} />
+      <div className="space-y-2">
+        {items.map((q, i) => (
+          <details
+            key={i}
+            className="group overflow-hidden p-4 sm:p-5"
+            style={{
+              backgroundColor: theme.surface,
+              border: `1px solid ${theme.border}`,
+              borderRadius: radius,
+            }}
+          >
+            <summary
+              className="flex cursor-pointer list-none items-start justify-between gap-4 text-base font-semibold sm:text-lg"
+              style={{ color: theme.foreground, fontFamily: theme.fontHeading }}
+            >
+              <span>{q.question}</span>
+              <span
+                className="grid h-7 w-7 shrink-0 place-items-center text-xl leading-none transition-transform group-open:rotate-45"
+                style={{ color: theme.primary }}
+                aria-hidden
+              >
+                +
+              </span>
+            </summary>
+            <p className="mt-3 whitespace-pre-line text-sm leading-relaxed sm:text-base" style={{ color: theme.muted }}>
+              {q.answer}
+            </p>
+          </details>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function ProductShippingSection({
+  info,
+  theme,
+}: {
+  info: { deliveryTime?: string; deliveryNote?: string; returnDays?: number; returnNote?: string };
+  theme: ThemeTokensType;
+}) {
+  const radius = sectionRadius(theme);
+  const hasDelivery = info.deliveryTime || info.deliveryNote;
+  const hasReturn = info.returnDays != null || info.returnNote;
+  if (!hasDelivery && !hasReturn) return null;
+  return (
+    <section className="mt-8 max-w-4xl sm:mt-14">
+      <SectionHeading title="Livraison & retours" theme={theme} />
+      <div className="grid gap-3 sm:grid-cols-2">
+        {hasDelivery && (
+          <div
+            className="p-5"
+            style={{
+              backgroundColor: theme.surface,
+              border: `1px solid ${theme.border}`,
+              borderRadius: radius,
+            }}
+          >
+            <div className="mb-2 flex items-center gap-2">
+              <span
+                className="grid h-9 w-9 place-items-center"
+                style={{
+                  backgroundColor: hexA(theme.primary, 0.1),
+                  color: theme.primary,
+                  borderRadius: theme.borderRadius === 'none' ? '0' : '999px',
+                }}
+              >
+                <Truck className="h-4 w-4" />
+              </span>
+              <h3 className="text-base font-semibold" style={{ color: theme.foreground, fontFamily: theme.fontHeading }}>
+                Livraison
+              </h3>
+            </div>
+            {info.deliveryTime && (
+              <p className="text-sm" style={{ color: theme.foreground }}>
+                <span className="font-medium">Délai :</span> {info.deliveryTime}
+              </p>
+            )}
+            {info.deliveryNote && (
+              <p className="mt-1 text-sm" style={{ color: theme.muted }}>
+                {info.deliveryNote}
+              </p>
+            )}
+          </div>
+        )}
+        {hasReturn && (
+          <div
+            className="p-5"
+            style={{
+              backgroundColor: theme.surface,
+              border: `1px solid ${theme.border}`,
+              borderRadius: radius,
+            }}
+          >
+            <div className="mb-2 flex items-center gap-2">
+              <span
+                className="grid h-9 w-9 place-items-center"
+                style={{
+                  backgroundColor: hexA(theme.primary, 0.1),
+                  color: theme.primary,
+                  borderRadius: theme.borderRadius === 'none' ? '0' : '999px',
+                }}
+              >
+                <Shield className="h-4 w-4" />
+              </span>
+              <h3 className="text-base font-semibold" style={{ color: theme.foreground, fontFamily: theme.fontHeading }}>
+                Retours
+              </h3>
+            </div>
+            {info.returnDays != null && (
+              <p className="text-sm" style={{ color: theme.foreground }}>
+                <span className="font-medium">Fenêtre :</span> {info.returnDays} jour{info.returnDays > 1 ? 's' : ''}
+              </p>
+            )}
+            {info.returnNote && (
+              <p className="mt-1 text-sm" style={{ color: theme.muted }}>
+                {info.returnNote}
+              </p>
+            )}
+          </div>
+        )}
+      </div>
     </section>
   );
 }

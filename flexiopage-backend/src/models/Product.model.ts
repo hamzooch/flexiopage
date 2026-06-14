@@ -214,6 +214,52 @@ export interface IProductPageSettings {
   showRatingStrip?: boolean;
   /** Per-product accent color used by badges/timer/strip (hex). */
   accentColor?: string;
+
+  // ── Sections "conversion" (phase 1) ─────────────────────────────────
+  // Toutes les sections suivantes sont optionnelles. Si non définies →
+  // la section ne s'affiche pas. Le rendu côté storefront respecte les
+  // tokens du thème actif (couleurs, typo, radius) pour ne pas casser
+  // la cohérence visuelle quel que soit le template choisi.
+
+  /**
+   * USPs (Unique Selling Points) — bullets avec icône + titre + sous-titre.
+   * 3 à 6 entries idéalement. Sert à scanner les bénéfices avant lecture.
+   */
+  features?: Array<{
+    icon: 'sparkles' | 'shield' | 'leaf' | 'zap' | 'heart' | 'award' | 'gift' | 'truck' | 'clock' | 'check' | 'star' | 'recycle';
+    title: string;
+    subtitle?: string;
+  }>;
+
+  /**
+   * Foire aux questions produit. Levier de conversion massif en COD :
+   * lève les objections AVANT le formulaire de commande.
+   */
+  faq?: Array<{
+    question: string;
+    answer: string;
+  }>;
+
+  /**
+   * Spécifications techniques. Table clé/valeur (matière, dimensions,
+   * poids, contenu de la boîte, garantie…). Indispensable cosmétique/déco.
+   */
+  specs?: Array<{
+    key: string;
+    value: string;
+  }>;
+
+  /**
+   * Bloc livraison & retours détaillé (vs juste les badges). En COD-heavy
+   * les 3 questions vitales : combien de temps, quels frais, possibilité
+   * de retour. Réponses claires → +confiance → +conversion.
+   */
+  shippingInfo?: {
+    deliveryTime?: string;       // ex: "2 à 5 jours ouvrés"
+    deliveryNote?: string;        // ex: "Livraison gratuite à partir de 200 TND"
+    returnDays?: number;          // ex: 14
+    returnNote?: string;          // ex: "Sans question, sans frais"
+  };
 }
 
 /**
@@ -404,6 +450,39 @@ const ProductSchema = new Schema<IProduct>(
       ],
       showRatingStrip: { type: Boolean },
       accentColor: { type: String, trim: true },
+      // ── Phase 1 conversion sections ────────────────────────────────
+      features: [
+        {
+          _id: false,
+          icon: {
+            type: String,
+            enum: ['sparkles', 'shield', 'leaf', 'zap', 'heart', 'award', 'gift', 'truck', 'clock', 'check', 'star', 'recycle'],
+            required: true,
+          },
+          title: { type: String, required: true, trim: true },
+          subtitle: { type: String, trim: true },
+        },
+      ],
+      faq: [
+        {
+          _id: false,
+          question: { type: String, required: true, trim: true },
+          answer: { type: String, required: true, trim: true },
+        },
+      ],
+      specs: [
+        {
+          _id: false,
+          key: { type: String, required: true, trim: true },
+          value: { type: String, required: true, trim: true },
+        },
+      ],
+      shippingInfo: {
+        deliveryTime: { type: String, trim: true },
+        deliveryNote: { type: String, trim: true },
+        returnDays: { type: Number },
+        returnNote: { type: String, trim: true },
+      },
     },
     bundle: {
       enabled: { type: Boolean, default: false },
