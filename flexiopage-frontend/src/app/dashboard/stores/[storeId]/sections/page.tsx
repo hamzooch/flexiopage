@@ -7,7 +7,7 @@
  */
 
 import { useEffect, useState } from 'react';
-import { useParams, useSearchParams } from 'next/navigation';
+import { useParams } from 'next/navigation';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -28,9 +28,7 @@ import {
   type MovableSectionId,
   resolveSectionOrder,
 } from '@/components/dashboard/store-editor';
-import { ProductPageEditor } from '@/components/dashboard/product-page-editor';
 import { StoreHomepageLivePreview } from '@/components/dashboard/store-homepage-live-preview';
-import type { ProductPageSettings } from '@/lib/product-page-order';
 import type { ThemeTokens } from '@/data/store-themes';
 import { getRecommendedSectionsForTheme, type SectionId as ThemeSectionId } from '@/lib/theme-sections';
 import {
@@ -165,12 +163,6 @@ export default function StoreSectionsPage() {
   // Tracks which section card is currently in the user's viewport so the
   // sticky left nav can highlight the matching nav item.
   const [activeSection, setActiveSection] = useState<string>('announcement');
-  // Top-level scope: homepage sections vs product-page sections.
-  // Seeded from ?scope=product so the per-product editor can deep-link
-  // straight to the product-page tab + a named anchor (e.g. #product-page-style).
-  const searchParams = useSearchParams();
-  const initialScope = searchParams?.get('scope') === 'product' ? 'product' : 'home';
-  const [scope, setScope] = useState<'home' | 'product'>(initialScope);
   // Quand `false`, l'éditeur ne montre que les sections recommandées par le
   // thème actif. Quand `true`, on affiche tout (utile pour réactiver une
   // section masquée par le thème mais que le vendeur veut quand même).
@@ -310,58 +302,16 @@ export default function StoreSectionsPage() {
   const totalSections = SECTIONS.length + 1; // + Whatsapp
   const activeCount = storefrontActiveCount + (WHATSAPP_SECTION.isActive(whatsapp) ? 1 : 0);
 
-  // Helpers for the product-page sub-config — kept on storefront.productPage
-  // so save batches both at once.
-  const productPage: ProductPageSettings = storefront.productPage || {};
-  const setProductPage = (next: ProductPageSettings) =>
-    setStorefront({ ...storefront, productPage: next });
-
   return (
     <StoreSubPageShell
       storeId={storeId}
       storeName={store.name}
-      title="Sections de la vitrine"
-      description="Active, désactive et personnalise chaque bloc — page d'accueil ET page produit."
+      title="Header & sections vitrine"
+      description="Active, désactive et personnalise chaque bloc de la page d'accueil. Les réglages spécifiques à la fiche produit vivent désormais dans Modifier page produit."
       status={status}
       errorMessage={errorMessage}
       onSave={handleSave}
     >
-      {/* Scope switcher — pick which page's sections you're editing. */}
-      <div className="mb-2 inline-flex items-center gap-1 rounded-xl border border-border/60 bg-card p-1 shadow-sm">
-        {([
-          { id: 'home',    label: "Page d'accueil",   help: 'Bandeau, hero, slider, produits, footer…' },
-          { id: 'product', label: 'Page produit',     help: 'Badges, timer, témoignages, description…' },
-        ] as const).map((opt) => {
-          const active = scope === opt.id;
-          return (
-            <button
-              key={opt.id}
-              type="button"
-              onClick={() => setScope(opt.id)}
-              title={opt.help}
-              className={cn(
-                'rounded-lg px-4 py-2 text-sm font-medium transition-all',
-                active
-                  ? 'bg-gradient-to-br from-primary to-fuchsia-600 text-white shadow-md'
-                  : 'text-muted-foreground hover:bg-muted/60 hover:text-foreground'
-              )}
-            >
-              {opt.label}
-            </button>
-          );
-        })}
-      </div>
-
-      {scope === 'product' ? (
-        <ProductPageEditor
-          cfg={productPage}
-          onChange={setProductPage}
-          codForm={codForm}
-          onCodFormChange={setCodForm}
-          currency={store.settings?.currency || 'TND'}
-          storeType={store.storeType}
-        />
-      ) : (
       <div className="grid gap-4 md:gap-5 md:grid-cols-[180px_minmax(0,1fr)] lg:grid-cols-[220px_minmax(0,1fr)_320px] lg:gap-6">
         {/* ── STICKY LEFT NAV — quick-jump to any section ──────────
             md+ : sticky pour rester accessible pendant qu'on scrolle les cards
@@ -935,7 +885,6 @@ export default function StoreSectionsPage() {
           />
         </aside>
       </div>
-      )}
     </StoreSubPageShell>
   );
 }

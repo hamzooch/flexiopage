@@ -81,6 +81,13 @@ const HUB_CARDS: HubCard[] = [
     tone: 'amber',
   },
   {
+    href: 'product-page',
+    icon: Package,
+    title: 'Modifier page produit',
+    description: 'Sections de la fiche produit (badges, timer, témoignages), style visuel + formulaire COD inline.',
+    tone: 'rose',
+  },
+  {
     href: 'info-pages',
     icon: FileText,
     title: 'Pages d\'information',

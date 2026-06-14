@@ -669,7 +669,7 @@ export default function EditProductPage() {
                   of the store, so it lives in Sections > Page produit > Style
                   visuel rather than per-product. Linking here makes that obvious. */}
               <Link
-                href={`/dashboard/stores/${storeId}/sections?scope=product#product-page-style`}
+                href={`/dashboard/stores/${storeId}/product-page#product-page-style`}
                 className="flex items-center gap-3 rounded-xl border border-fuchsia-500/30 bg-gradient-to-br from-fuchsia-500/5 to-card p-3 transition-all hover:-translate-y-0.5 hover:border-fuchsia-500/50 hover:shadow-md"
               >
                 <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-gradient-to-br from-primary to-fuchsia-600 text-white shadow-sm">
@@ -1110,8 +1110,12 @@ export default function EditProductPage() {
           </>)}
         </div>
 
-        {/* ── Right — sticky live preview ───────────────────── */}
-        <aside className="lg:sticky lg:top-4 lg:self-start">
+        {/* ── Right — sticky live preview, scrollable in son propre conteneur
+              pour que le vendeur puisse parcourir TOUTE la description (et
+              demain les sections conversion) sans quitter le formulaire à
+              gauche. La hauteur est calée sur viewport-2rem pour rester
+              sticky correctement sur les écrans hauts. */}
+        <aside className="lg:sticky lg:top-4 lg:self-start lg:max-h-[calc(100vh-2rem)] lg:overflow-y-auto lg:pr-1">
           <ProductLivePreview
             name={name}
             description={description}
