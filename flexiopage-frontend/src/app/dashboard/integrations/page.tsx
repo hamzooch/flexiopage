@@ -572,8 +572,11 @@ function PixelRow({ icon, label, help, children }: { icon: React.ReactNode; labe
 // ─────────────────────────────────────────────────────────────────────
 // SHIPPING — sub-tabs: carrier (livraison) + logistics (3PL)
 // ─────────────────────────────────────────────────────────────────────
+// MogaDelivery vit dans la liste 3PL ci-dessous — c'est notre partenaire
+// logistique end-to-end (stockage + dispatch + transporteurs), pas un simple
+// transporteur last-mile. On ne le propose donc plus comme « société de
+// livraison » pour ne pas brouiller le positionnement.
 const CARRIER_PROVIDERS = [
-  { id: 'mogadelivery', label: 'MogaDelivery',              description: 'Last-mile scooter Afrique. Auto-dispatch + SKU matching.', logoUrl: '/integrations/mogadelivery.png' },
   { id: 'yalidine',     label: 'Yalidine (Algérie)',       description: 'Livraison nationale Algérie' },
   { id: 'noest',        label: 'Noest Express (Algérie)',  description: 'Livraison express Algérie' },
   { id: 'aramex',       label: 'Aramex (MENA)',            description: 'International MENA + Asie' },
