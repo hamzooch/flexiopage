@@ -33,6 +33,7 @@ const RESERVED_TOP_LEVEL = new Set([
   'thanks',
   'store',     // keep legacy /store/* URLs working so old links / GSC index entries still resolve
   'select-store', // post-login store picker — without this it gets rewritten to /store/select-store
+  'select-space', // post-login space picker (seller ↔ admin) — same raison d'être
   'd',         // private download tokens
   // Legal / policy pages at the app apex — without these, the path-based
   // storefront fallback rewrites flexiopage.com/terms-of-service →
