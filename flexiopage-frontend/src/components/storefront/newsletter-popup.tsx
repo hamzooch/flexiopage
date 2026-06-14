@@ -18,7 +18,6 @@
  */
 
 import { useEffect, useRef, useState } from 'react';
-import { useSearchParams } from 'next/navigation';
 import { Mail, BadgePercent, X, Loader2, CheckCircle2, Copy, Check } from 'lucide-react';
 import { mediaUrl } from '@/lib/utils';
 
@@ -47,9 +46,15 @@ const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
 
 export function NewsletterPopup({ storeSlug, storeName, config }: Props) {
   // Pas de popup dans l'iframe d'aperçu vendeur — éviterait de masquer le
-  // rendu et d'écrire dans le `localStorage` du dashboard.
-  const searchParams = useSearchParams();
-  const isPreview = searchParams?.get('preview') === '1';
+  // rendu et d'écrire dans le `localStorage` du dashboard. Lecture via
+  // window.location plutôt que useSearchParams() pour ne pas casser le build
+  // prod (CSR-bailout sur les pages prerenderées).
+  const [isPreview, setIsPreview] = useState(false);
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      setIsPreview(new URLSearchParams(window.location.search).get('preview') === '1');
+    }
+  }, []);
 
   const enabled = !!config?.enabled && !isPreview;
   const delayMs = Math.max(0, (config?.delaySeconds ?? 5) * 1000);

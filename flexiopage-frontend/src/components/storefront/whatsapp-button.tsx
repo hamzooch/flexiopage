@@ -1,6 +1,6 @@
 'use client';
 
-import { useSearchParams } from 'next/navigation';
+import { useEffect, useState } from 'react';
 
 /**
  * Floating WhatsApp button — rendered on every storefront page when the
@@ -43,10 +43,16 @@ function normalizePhone(raw: string): string {
 
 export function WhatsappButton({ config }: { config?: WhatsappConfig }) {
   // Aperçu vendeur (`?preview=1`) → on masque le bouton pour ne pas couvrir
-  // le rendu du storefront dans l'iframe du dashboard. Le vendeur veut voir
-  // ses modifs visuelles, pas son propre bouton de chat.
-  const searchParams = useSearchParams();
-  if (searchParams?.get('preview') === '1') return null;
+  // le rendu du storefront dans l'iframe du dashboard. On lit la query via
+  // window.location plutôt que useSearchParams() pour ne pas forcer un
+  // CSR-bailout sur les pages prerenderées qui embarquent ce composant.
+  const [isPreviewIframe, setIsPreviewIframe] = useState(false);
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      setIsPreviewIframe(new URLSearchParams(window.location.search).get('preview') === '1');
+    }
+  }, []);
+  if (isPreviewIframe) return null;
 
   if (!config?.enabled || !config.phoneNumber?.trim()) return null;
 

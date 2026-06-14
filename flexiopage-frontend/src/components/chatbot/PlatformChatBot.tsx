@@ -9,7 +9,7 @@
  * Lives in the root layout so route changes (dashboard ↔ admin ↔ login)
  * keep the same conversation thanks to the shared localStorage key.
  */
-import { usePathname, useSearchParams } from 'next/navigation';
+import { usePathname } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { ChatBot } from './ChatBot';
 import { flexiopageScript } from './scripts';
@@ -77,16 +77,21 @@ function hostIsPlatform(host: string): boolean {
 
 export function PlatformChatBot() {
   const pathname = usePathname() || '';
-  const searchParams = useSearchParams();
   // Defer the host check to after mount: SSR doesn't know the host,
   // and rendering the bot before we've confirmed we're on the platform
   // would briefly flash it on custom-domain storefronts.
+  // `isPreviewIframe` est lu depuis window.location.search (et non via
+  // useSearchParams) — ce dernier déclencherait un opt-out de prerendering
+  // sur CHAQUE page du site (le bot est dans le root layout), cassant le
+  // build prod.
   const [mounted, setMounted] = useState(false);
   const [onPlatform, setOnPlatform] = useState(false);
+  const [isPreviewIframe, setIsPreviewIframe] = useState(false);
   useEffect(() => {
     setMounted(true);
     if (typeof window !== 'undefined') {
       setOnPlatform(hostIsPlatform(window.location.host));
+      setIsPreviewIframe(new URLSearchParams(window.location.search).get('preview') === '1');
     }
   }, []);
 
@@ -94,7 +99,7 @@ export function PlatformChatBot() {
   // Sans cette garde, le bot flotterait DANS l'iframe et masquerait le rendu
   // que le vendeur veut voir (l'URL rewritten /<slug> n'est pas détectée par
   // pathIsStorefront, qui ne connaît que les paths canoniques /store/...).
-  if (searchParams?.get('preview') === '1') return null;
+  if (isPreviewIframe) return null;
   if (pathIsStorefront(pathname)) return null;
   // Hide the bot on dashboard pages that render a live storefront preview —
   // only the seller's WhatsApp button (if enabled) should appear there.
