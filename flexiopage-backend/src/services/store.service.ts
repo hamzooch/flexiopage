@@ -247,8 +247,24 @@ export async function getStoreBySlug(slug: string): Promise<IStore | null> {
   return Store.findOne({ slug, isPublished: true }).lean<IStore | null>();
 }
 
+/**
+ * Variante qui ignore `isPublished` — utilisée par les routes publiques pour
+ * différencier "boutique inexistante" (404 réel) de "boutique en brouillon"
+ * (on peut afficher au visiteur un message d'attente, et au propriétaire un
+ * CTA "Activer ma boutique"). Ne JAMAIS exposer le payload complet d'un draft
+ * via une route publique — n'utiliser que les champs sûrs (name, logo, slug).
+ */
+export async function getStoreBySlugIncludingDraft(slug: string): Promise<IStore | null> {
+  return Store.findOne({ slug }).lean<IStore | null>();
+}
+
 export async function getStoreBySubdomain(subdomain: string): Promise<IStore | null> {
   return Store.findOne({ subdomain, isPublished: true }).lean<IStore | null>();
+}
+
+/** Pareil que getStoreBySubdomain mais sans le filtre `isPublished`. */
+export async function getStoreBySubdomainIncludingDraft(subdomain: string): Promise<IStore | null> {
+  return Store.findOne({ subdomain }).lean<IStore | null>();
 }
 
 export async function getStoreByCustomDomain(domain: string): Promise<IStore | null> {

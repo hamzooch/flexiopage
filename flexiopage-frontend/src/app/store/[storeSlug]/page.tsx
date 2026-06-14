@@ -183,12 +183,21 @@ function resolveTheme(store: StoreDoc): ThemeTokens {
   return found?.theme || FALLBACK_THEME;
 }
 
+interface DraftStoreInfo {
+  _id: string;
+  name: string;
+  slug: string;
+  logo?: string;
+  storeType?: 'physical' | 'digital';
+}
+
 export default async function PublicStorePage({ params }: Props) {
   const { storeSlug } = await params;
   const apiBase = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
   let store: StoreDoc | null = null;
   let products: ProductDoc[] = [];
   let market: ResolvedMarketHint | null = null;
+  let draftStore: DraftStoreInfo | null = null;
 
   // Forward the cookie pays + cf-ipcountry au backend pour qu'il résolve le
   // bon market. Sans ça, le SSR perd la préférence buyer (cookie posé client).
@@ -211,9 +220,19 @@ export default async function PublicStorePage({ params }: Props) {
       }),
     ]);
     if (storeRes.ok) {
-      const d = (await storeRes.json()) as { store?: StoreDoc; market?: ResolvedMarketHint };
-      store = d.store ?? null;
-      market = d.market ?? null;
+      const d = (await storeRes.json()) as {
+        store?: StoreDoc | DraftStoreInfo;
+        market?: ResolvedMarketHint;
+        unpublished?: boolean;
+      };
+      if (d.unpublished && d.store) {
+        // Backend a explicitement signalé une boutique en brouillon — on
+        // n'a reçu qu'un payload minimal sûr (pas de settings, pas de theme).
+        draftStore = d.store as DraftStoreInfo;
+      } else {
+        store = (d.store as StoreDoc) ?? null;
+        market = d.market ?? null;
+      }
     }
     if (productsRes.ok && store) {
       const d = (await productsRes.json()) as { products?: ProductDoc[]; market?: ResolvedMarketHint };
@@ -226,13 +245,26 @@ export default async function PublicStorePage({ params }: Props) {
     // fallback
   }
 
+  if (draftStore) {
+    return <UnpublishedStoreView store={draftStore} />;
+  }
+
   if (!store) {
     return (
-      <div className="flex min-h-screen items-center justify-center">
-        <div className="text-center">
-          <h1 className="text-2xl font-bold">Store not found</h1>
-          <Link href="/" className="mt-4 inline-block text-primary hover:underline">
-            Back to FlexioPage
+      <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-slate-50 via-white to-rose-50 px-4">
+        <div className="max-w-md rounded-3xl border border-border/60 bg-card p-10 text-center shadow-xl">
+          <div className="mx-auto grid h-14 w-14 place-items-center rounded-2xl bg-gradient-to-br from-rose-500 to-pink-600 text-white shadow-lg shadow-rose-500/30">
+            <span className="text-2xl">?</span>
+          </div>
+          <h1 className="mt-4 text-2xl font-bold tracking-tight">Boutique introuvable</h1>
+          <p className="mt-2 text-sm text-muted-foreground">
+            Aucune boutique ne porte ce nom — l&apos;adresse est peut-être incorrecte ou la boutique a été supprimée.
+          </p>
+          <Link
+            href="/"
+            className="mt-6 inline-flex items-center gap-1.5 rounded-xl bg-gradient-to-br from-amber-500 to-orange-600 px-5 py-2.5 text-sm font-semibold text-white shadow-md shadow-orange-500/30 transition-transform hover:scale-105"
+          >
+            Retour à FlexioPage
           </Link>
         </div>
       </div>
@@ -1229,5 +1261,82 @@ function DigitalGuarantee({ theme }: { theme: ThemeTokens }) {
         </p>
       </div>
     </section>
+  );
+}
+
+/**
+ * Affichage spécial quand la boutique existe en DB mais n'est pas encore
+ * publiée. Évite le faux "Store not found" qui faisait penser que la
+ * boutique avait été supprimée. Le viewer voit un message clair, et un CTA
+ * "Ouvrir mon dashboard" est mis en avant pour le propriétaire.
+ */
+function UnpublishedStoreView({ store }: { store: DraftStoreInfo }) {
+  const logoSrc = mediaUrl(store.logo);
+  const isDigital = store.storeType === 'digital';
+  return (
+    <div className="relative min-h-screen overflow-hidden bg-gradient-to-br from-slate-50 via-white to-amber-50">
+      <div className="pointer-events-none absolute -right-32 -top-32 h-[500px] w-[500px] rounded-full bg-gradient-to-br from-amber-500/20 via-orange-500/10 to-transparent blur-3xl" aria-hidden />
+      <div className="pointer-events-none absolute -bottom-32 -left-32 h-[500px] w-[500px] rounded-full bg-gradient-to-tr from-rose-500/10 to-transparent blur-3xl" aria-hidden />
+
+      <div className="relative mx-auto flex min-h-screen max-w-2xl flex-col items-center justify-center px-4 py-12 text-center">
+        <div className="grid h-20 w-20 place-items-center overflow-hidden rounded-3xl border border-border/60 bg-card shadow-xl">
+          {logoSrc ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={logoSrc} alt={store.name} className="h-full w-full object-cover" />
+          ) : (
+            <div className={`grid h-full w-full place-items-center bg-gradient-to-br text-white ${
+              isDigital ? 'from-fuchsia-500 to-pink-600' : 'from-indigo-500 to-violet-600'
+            }`}>
+              <span className="text-3xl font-bold">{store.name.charAt(0).toUpperCase()}</span>
+            </div>
+          )}
+        </div>
+
+        <div className="mt-6 inline-flex items-center gap-2 rounded-full border border-amber-500/30 bg-amber-500/10 px-3 py-1 text-xs font-semibold text-amber-800">
+          <span className="relative flex h-2 w-2">
+            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-amber-500 opacity-75" />
+            <span className="relative inline-flex h-2 w-2 rounded-full bg-amber-500" />
+          </span>
+          En préparation
+        </div>
+
+        <h1 className="mt-4 text-3xl font-bold tracking-tight sm:text-4xl">
+          <span className="bg-gradient-to-r from-amber-600 to-orange-600 bg-clip-text text-transparent">
+            {store.name}
+          </span>
+        </h1>
+        <p className="mt-3 max-w-md text-base text-muted-foreground">
+          Cette boutique n&apos;est pas encore en ligne. Le propriétaire termine sa mise en place — reviens bientôt pour découvrir ses produits.
+        </p>
+
+        <div className="mt-10 w-full max-w-md rounded-2xl border border-border/60 bg-card p-6 text-left shadow-lg">
+          <div className="flex items-start gap-3">
+            <div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-gradient-to-br from-amber-500 to-orange-600 text-white shadow-md shadow-orange-500/30">
+              <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m15 14 5-5-5-5"/><path d="M4 20v-7a4 4 0 0 1 4-4h12"/></svg>
+            </div>
+            <div className="min-w-0 flex-1">
+              <h2 className="text-sm font-semibold tracking-tight">C&apos;est ta boutique&nbsp;?</h2>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Active la publication depuis ton dashboard pour la rendre visible à tes clients.
+              </p>
+              <Link
+                href={`/dashboard/stores/${store._id}`}
+                className="mt-3 inline-flex items-center gap-1.5 rounded-xl bg-gradient-to-br from-amber-500 to-orange-600 px-4 py-2 text-xs font-semibold text-white shadow-md shadow-orange-500/30 transition-transform hover:scale-105"
+              >
+                Ouvrir mon dashboard
+                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
+              </Link>
+            </div>
+          </div>
+        </div>
+
+        <Link
+          href="/"
+          className="mt-8 text-xs text-muted-foreground transition-colors hover:text-foreground"
+        >
+          ← Retour à FlexioPage
+        </Link>
+      </div>
+    </div>
   );
 }

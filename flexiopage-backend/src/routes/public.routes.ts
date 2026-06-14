@@ -195,11 +195,41 @@ router.get('/stores', async (_req: Request, res: Response): Promise<void> => {
   });
 });
 
-/** Resolve store by slug (e.g. myshop) or custom domain - caller can use Host header */
+/**
+ * Public store resolution by slug.
+ *
+ * Réponses :
+ *   - 200 { store, market }       boutique publiée → payload complet
+ *   - 200 { unpublished: true,    boutique existe mais en brouillon →
+ *           store: minimal }      payload réduit (name, slug, logo, ownerId)
+ *                                 pour permettre au frontend d'afficher un
+ *                                 message "boutique en préparation" + un CTA
+ *                                 vers le dashboard si le viewer est l'owner.
+ *   - 404 { error }               aucune boutique avec ce slug.
+ *
+ * Sécurité : on N'INCLUT JAMAIS settings/integrations/theme dans le payload
+ * brouillon — seul le minimum d'infos visuelles passe (le owner peut tout
+ * voir via /api/stores/:id derrière son auth).
+ */
+function draftStorePayload(store: { _id: unknown; name: string; slug: string; logo?: string; storeType?: string; ownerId: unknown }) {
+  return {
+    _id: String(store._id),
+    name: store.name,
+    slug: store.slug,
+    logo: store.logo,
+    storeType: store.storeType,
+    ownerId: String(store.ownerId),
+  };
+}
+
 router.get('/store-by-slug/:slug', async (req: Request, res: Response): Promise<void> => {
-  const store = await storeService.getStoreBySlug(req.params.slug);
+  const store = await storeService.getStoreBySlugIncludingDraft(req.params.slug);
   if (!store) {
     res.status(404).json({ error: 'Store not found' });
+    return;
+  }
+  if (!store.isPublished) {
+    res.json({ unpublished: true, store: draftStorePayload(store) });
     return;
   }
   const market = resolveMarketForRequest(req, store);
@@ -210,9 +240,13 @@ router.get('/store-by-slug/:slug', async (req: Request, res: Response): Promise<
 });
 
 router.get('/store-by-subdomain/:subdomain', async (req: Request, res: Response): Promise<void> => {
-  const store = await storeService.getStoreBySubdomain(req.params.subdomain);
+  const store = await storeService.getStoreBySubdomainIncludingDraft(req.params.subdomain);
   if (!store) {
     res.status(404).json({ error: 'Store not found' });
+    return;
+  }
+  if (!store.isPublished) {
+    res.json({ unpublished: true, store: draftStorePayload(store) });
     return;
   }
   const market = resolveMarketForRequest(req, store);
