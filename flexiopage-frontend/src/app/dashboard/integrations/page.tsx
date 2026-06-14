@@ -677,7 +677,6 @@ function CarrierPanel({ store, onSaved, saving, setSaving }: PanelProps) {
                 name={p.label}
                 description={p.description}
                 icon={<Truck className="h-5 w-5" />}
-                logoUrl={'logoUrl' in p ? p.logoUrl : undefined}
                 selected={provider === p.id}
                 onSelect={() => setProvider(p.id)}
               />
