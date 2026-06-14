@@ -88,6 +88,13 @@ interface ProductDoc {
       returnDays?: number;
       returnNote?: string;
     };
+    video?: { url: string; title?: string };
+    comparison?: {
+      title?: string;
+      usLabel?: string;
+      themLabel?: string;
+      rows: Array<{ criterion: string; us: string; them: string }>;
+    };
   };
   bundle?: ProductBundle;
   variants?: CodVariant[];
@@ -613,6 +620,12 @@ export default async function PublicProductPage({ params }: Props) {
           {ps.shippingInfo && (
             <ProductShippingSection info={ps.shippingInfo} theme={theme} />
           )}
+          {ps.video?.url && (
+            <ProductVideoSection video={ps.video} theme={theme} />
+          )}
+          {ps.comparison?.rows && ps.comparison.rows.length > 0 && (
+            <ProductComparisonSection comparison={ps.comparison} theme={theme} />
+          )}
 
           {/* Cross-sells — "Tu aimeras aussi". Hidden on digital products
               since the buyer already left the funnel after the instant
@@ -959,6 +972,130 @@ function ProductShippingSection({
             )}
           </div>
         )}
+      </div>
+    </section>
+  );
+}
+
+// ─── Vidéo produit — YouTube/Vimeo embed ou MP4 direct ─────────────
+function parseVideoEmbed(url: string): { kind: 'youtube' | 'vimeo' | 'mp4' | 'iframe'; src: string } | null {
+  if (!url) return null;
+  const u = url.trim();
+  // YouTube — formats supportés : watch?v=, youtu.be/, shorts/, embed/
+  const yt = u.match(/(?:youtube\.com\/(?:watch\?v=|shorts\/|embed\/)|youtu\.be\/)([A-Za-z0-9_-]{6,})/);
+  if (yt) return { kind: 'youtube', src: `https://www.youtube.com/embed/${yt[1]}?rel=0` };
+  // Vimeo
+  const vm = u.match(/vimeo\.com\/(?:video\/)?(\d+)/);
+  if (vm) return { kind: 'vimeo', src: `https://player.vimeo.com/video/${vm[1]}` };
+  // MP4 direct
+  if (/\.(mp4|webm|ogg)(\?.*)?$/i.test(u)) return { kind: 'mp4', src: u };
+  // Fallback : on tente un iframe brut (laisse au vendeur la responsabilité)
+  return { kind: 'iframe', src: u };
+}
+
+function ProductVideoSection({
+  video,
+  theme,
+}: {
+  video: { url: string; title?: string };
+  theme: ThemeTokensType;
+}) {
+  const embed = parseVideoEmbed(video.url);
+  if (!embed) return null;
+  const radius = sectionRadius(theme);
+  return (
+    <section className="mt-8 max-w-4xl sm:mt-14">
+      <SectionHeading title={video.title || 'En vidéo'} theme={theme} />
+      <div
+        className="relative w-full overflow-hidden"
+        style={{
+          aspectRatio: '16 / 9',
+          backgroundColor: theme.surfaceMuted,
+          border: `1px solid ${theme.border}`,
+          borderRadius: radius,
+        }}
+      >
+        {embed.kind === 'mp4' ? (
+          <video
+            controls
+            preload="metadata"
+            playsInline
+            className="absolute inset-0 h-full w-full"
+            src={embed.src}
+          />
+        ) : (
+          <iframe
+            src={embed.src}
+            title={video.title || 'Vidéo produit'}
+            loading="lazy"
+            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+            allowFullScreen
+            className="absolute inset-0 h-full w-full"
+          />
+        )}
+      </div>
+    </section>
+  );
+}
+
+// ─── Comparatif — table 3 colonnes (critère / nous / autres) ──────
+function ProductComparisonSection({
+  comparison,
+  theme,
+}: {
+  comparison: {
+    title?: string;
+    usLabel?: string;
+    themLabel?: string;
+    rows: Array<{ criterion: string; us: string; them: string }>;
+  };
+  theme: ThemeTokensType;
+}) {
+  const radius = sectionRadius(theme);
+  const us = comparison.usLabel || 'Nous';
+  const them = comparison.themLabel || 'Autres';
+  return (
+    <section className="mt-8 max-w-4xl sm:mt-14">
+      <SectionHeading title={comparison.title || 'Pourquoi nous choisir'} theme={theme} />
+      <div
+        className="overflow-hidden"
+        style={{
+          backgroundColor: theme.surface,
+          border: `1px solid ${theme.border}`,
+          borderRadius: radius,
+        }}
+      >
+        {/* Header */}
+        <div
+          className="grid grid-cols-[1fr_1fr_1fr] gap-2 px-3 py-3 text-xs font-semibold uppercase tracking-wider sm:gap-4 sm:px-5 sm:text-sm"
+          style={{ backgroundColor: theme.surfaceMuted, color: theme.muted }}
+        >
+          <span>Critère</span>
+          <span className="text-center" style={{ color: theme.primary }}>{us}</span>
+          <span className="text-center">{them}</span>
+        </div>
+        {/* Rows */}
+        {comparison.rows.map((r, i) => (
+          <div
+            key={i}
+            className="grid grid-cols-[1fr_1fr_1fr] gap-2 px-3 py-3 sm:gap-4 sm:px-5 sm:py-4"
+            style={{ borderTop: `1px solid ${theme.border}` }}
+          >
+            <div className="text-sm font-medium" style={{ color: theme.foreground }}>
+              {r.criterion}
+            </div>
+            <div
+              className="flex items-center justify-center gap-1.5 text-center text-sm font-medium"
+              style={{ color: theme.primary }}
+            >
+              <Check className="h-4 w-4 shrink-0" />
+              <span>{r.us}</span>
+            </div>
+            <div className="text-center text-sm" style={{ color: theme.muted }}>
+              {r.them}
+            </div>
+          </div>
+        ))}
       </div>
     </section>
   );

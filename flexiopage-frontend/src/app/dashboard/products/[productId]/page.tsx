@@ -43,9 +43,11 @@ import { TimerPresetPicker } from '@/components/dashboard/timer-presets';
 import { FieldToggle } from '@/components/dashboard/store-editor';
 import {
   FeaturesEditor, FaqEditor, SpecsEditor, ShippingInfoEditor,
+  VideoEditor, ComparisonEditor, ConversionScoreBar,
   type ProductFeature, type ProductFaqItem, type ProductSpecItem, type ProductShippingInfo,
+  type ProductVideo, type ProductComparison,
 } from '@/components/dashboard/product-conversion-editors';
-import { Sparkles, HelpCircle, ListChecks, Truck as TruckLine } from 'lucide-react';
+import { Sparkles, HelpCircle, ListChecks, Truck as TruckLine, Video as VideoIcon, Scale } from 'lucide-react';
 
 const BADGE_ICONS = {
   truck: Truck, shield: ShieldCheck, refresh: RefreshCcw, lock: Lock,
@@ -75,6 +77,9 @@ interface PageSettings {
   faq?: ProductFaqItem[];
   specs?: ProductSpecItem[];
   shippingInfo?: ProductShippingInfo;
+  // ── Sections "conversion" (phase 2) ──
+  video?: ProductVideo;
+  comparison?: ProductComparison;
 }
 
 type EditTab = 'essentiel' | 'conversion' | 'seo';
@@ -170,6 +175,8 @@ export default function EditProductPage() {
           faq: Array.isArray(ps.faq) ? (ps.faq as ProductFaqItem[]) : undefined,
           specs: Array.isArray(ps.specs) ? (ps.specs as ProductSpecItem[]) : undefined,
           shippingInfo: (ps.shippingInfo as ProductShippingInfo) || undefined,
+          video: (ps.video as ProductVideo) || undefined,
+          comparison: (ps.comparison as ProductComparison) || undefined,
         });
         setProfit({
           price: Number(p.price) || 0,
@@ -239,6 +246,8 @@ export default function EditProductPage() {
           faq: pageSettings.faq,
           specs: pageSettings.specs,
           shippingInfo: pageSettings.shippingInfo,
+          video: pageSettings.video,
+          comparison: pageSettings.comparison,
         },
       });
       setStatus('saved');
@@ -388,6 +397,20 @@ export default function EditProductPage() {
           </Button>
         </div>
       </header>
+
+      {/* ── Score conversion — calculé client-side à partir de pageSettings ── */}
+      <ConversionScoreBar
+        inputs={{
+          images,
+          description,
+          features: pageSettings.features,
+          specs: pageSettings.specs,
+          faq: pageSettings.faq,
+          shippingInfo: pageSettings.shippingInfo,
+          video: pageSettings.video,
+          comparison: pageSettings.comparison,
+        }}
+      />
 
       {/* ── Tabs internes — 3 contextes pour ne plus avoir une page-fleuve ── */}
       <nav className="-mx-1 flex gap-1 overflow-x-auto rounded-2xl border border-border/60 bg-card/80 p-1 backdrop-blur">
@@ -968,6 +991,44 @@ export default function EditProductPage() {
               <ShippingInfoEditor
                 value={pageSettings.shippingInfo}
                 onChange={(shippingInfo) => setPageSettings((s) => ({ ...s, shippingInfo }))}
+              />
+            </CardContent>
+          </Card>
+
+          {/* ── 5f. Vidéo produit ───────────────────────────── */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <VideoIcon className="h-4 w-4 text-primary" />
+                Vidéo produit
+              </CardTitle>
+              <CardDescription>
+                YouTube, Vimeo ou MP4. La vidéo prouve mieux que mille mots — surtout en COD.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <VideoEditor
+                value={pageSettings.video}
+                onChange={(video) => setPageSettings((s) => ({ ...s, video }))}
+              />
+            </CardContent>
+          </Card>
+
+          {/* ── 5g. Comparatif ──────────────────────────────── */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Scale className="h-4 w-4 text-primary" />
+                Comparatif
+              </CardTitle>
+              <CardDescription>
+                Mets en lumière ce qui te différencie. Format « nous vs autres » sur 3-5 critères.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <ComparisonEditor
+                value={pageSettings.comparison}
+                onChange={(comparison) => setPageSettings((s) => ({ ...s, comparison }))}
               />
             </CardContent>
           </Card>

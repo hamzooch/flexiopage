@@ -260,6 +260,37 @@ export interface IProductPageSettings {
     returnDays?: number;          // ex: 14
     returnNote?: string;          // ex: "Sans question, sans frais"
   };
+
+  /**
+   * Vidéo produit. Boost conversion +30-80% sur lifestyle/mode/cosmétique.
+   * On accepte n'importe quelle URL YouTube/Vimeo (le storefront parse l'id
+   * et embed) OU un MP4 direct. `title` est optionnel — affiché au-dessus
+   * de la vidéo si renseigné.
+   */
+  video?: {
+    url: string;
+    title?: string;
+  };
+
+  /**
+   * Bloc comparatif. Sert à montrer "nous vs alternatives" ou "avant/après"
+   * en 3 colonnes (critère, nous, autres). Les vendeurs cosmétique / sport /
+   * complément y gagnent fort en convoction perçue.
+   */
+  comparison?: {
+    /** Titre affiché au-dessus du tableau, ex: "Nous vs autres marques". */
+    title?: string;
+    /** Libellé colonne "nous", ex: "FlexioBio". Défaut: "Nous". */
+    usLabel?: string;
+    /** Libellé colonne "autres", ex: "Concurrents". Défaut: "Autres". */
+    themLabel?: string;
+    /** Lignes de comparaison. */
+    rows: Array<{
+      criterion: string;   // ex: "Composition"
+      us: string;          // ex: "100% naturel certifié bio"
+      them: string;        // ex: "Parabens, sulfates, parfum"
+    }>;
+  };
 }
 
 /**
@@ -482,6 +513,23 @@ const ProductSchema = new Schema<IProduct>(
         deliveryNote: { type: String, trim: true },
         returnDays: { type: Number },
         returnNote: { type: String, trim: true },
+      },
+      video: {
+        url: { type: String, trim: true },
+        title: { type: String, trim: true },
+      },
+      comparison: {
+        title: { type: String, trim: true },
+        usLabel: { type: String, trim: true },
+        themLabel: { type: String, trim: true },
+        rows: [
+          {
+            _id: false,
+            criterion: { type: String, required: true, trim: true },
+            us: { type: String, required: true, trim: true },
+            them: { type: String, required: true, trim: true },
+          },
+        ],
       },
     },
     bundle: {
