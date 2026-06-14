@@ -93,7 +93,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const data = await fetchPage(storeSlug, pageSlug);
   if (!data) {
     return {
-      title: 'Page introuvable',
+      title: { absolute: 'Page introuvable' },
       robots: { index: false, follow: false },
     };
   }
@@ -105,7 +105,9 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const ogImage = data.store.logo || '/opengraph-image';
 
   return {
-    title,
+    // `absolute` court-circuite le template `%s · FlexioPage` du root layout
+    // pour ne pas leak la marque sur les pages info des vendeurs.
+    title: { absolute: title },
     description,
     alternates: { canonical },
     openGraph: {

@@ -113,7 +113,9 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
     || data.collection.description
     || `Découvre la collection ${data.collection.name} de ${data.store.name}.`;
   return {
-    title,
+    // `absolute` court-circuite le template `%s · FlexioPage` du root layout
+    // pour ne pas leak la marque sur les pages collection des vendeurs.
+    title: { absolute: title },
     description,
     openGraph: data.collection.image
       ? { images: [{ url: mediaUrl(data.collection.image) || data.collection.image }] }

@@ -162,7 +162,9 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
     if (!store) return {};
     const icon = mediaUrl(store.favicon || store.logo);
     return {
-      title: store.name,
+      // `absolute` court-circuite le template `%s · FlexioPage` racine —
+      // sinon l'onglet affiche "boutique · FlexioPage" au lieu du nom seul.
+      title: { absolute: store.name },
       description: store.description,
       ...(icon ? { icons: { icon } } : {}),
     };

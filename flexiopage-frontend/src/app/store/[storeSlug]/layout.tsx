@@ -102,7 +102,10 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   }
 
   return {
-    title,
+    // `absolute` court-circuite le template `%s · FlexioPage` défini en
+    // app/layout.tsx — sinon l'onglet navigateur affichait par exemple
+    // "dylando · FlexioPage" alors qu'on veut juste "dylando".
+    title: { absolute: title || name },
     description,
     icons: { icon, shortcut: icon, apple: icon },
     openGraph: {
