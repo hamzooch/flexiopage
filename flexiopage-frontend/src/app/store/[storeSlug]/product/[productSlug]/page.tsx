@@ -346,23 +346,42 @@ export default async function PublicProductPage({ params }: Props) {
                 >
                   {product.name}
                 </h1>
-                {store?.settings?.storefront?.productPage?.style?.showRatingStrip && (
-                  <div className="mt-1.5 flex items-center gap-1">
-                    {[0, 1, 2, 3, 4].map((i) => (
-                      <span
-                        key={i}
-                        aria-hidden
-                        className="text-sm"
-                        style={{ color: store?.settings?.storefront?.productPage?.style?.accentColor || theme.primary }}
-                      >
-                        ★
+                {store?.settings?.storefront?.productPage?.style?.showRatingStrip && (() => {
+                  const ppStyle2 = store.settings!.storefront!.productPage!.style!;
+                  const stars = Math.max(0, Math.min(5, ppStyle2.ratingStripStars ?? 5));
+                  const reviews = Math.max(0, ppStyle2.ratingStripReviews ?? 127);
+                  const accent = ppStyle2.accentColor || theme.primary;
+                  return (
+                    <div className="mt-1.5 flex items-center gap-1">
+                      {[0, 1, 2, 3, 4].map((i) => {
+                        const fill = Math.max(0, Math.min(1, stars - i));
+                        return (
+                          <span
+                            key={i}
+                            aria-hidden
+                            className="relative text-sm leading-none"
+                            style={{ color: theme.border }}
+                          >
+                            ★
+                            {/* Etoile pleine (clip-path adapté à la fraction)
+                               pour gérer les demi/quart d'étoile proprement. */}
+                            {fill > 0 && (
+                              <span
+                                className="absolute inset-0 overflow-hidden"
+                                style={{ color: accent, width: `${fill * 100}%` }}
+                              >
+                                ★
+                              </span>
+                            )}
+                          </span>
+                        );
+                      })}
+                      <span className="ml-1 text-xs" style={{ color: theme.muted }}>
+                        ({reviews.toLocaleString('fr-FR')} avis)
                       </span>
-                    ))}
-                    <span className="ml-1 text-xs" style={{ color: theme.muted }}>
-                      (127 avis)
-                    </span>
-                  </div>
-                )}
+                    </div>
+                  );
+                })()}
               </div>
 
               {/* Pricing block — compact prices on mobile so the CTA stays above the fold. */}

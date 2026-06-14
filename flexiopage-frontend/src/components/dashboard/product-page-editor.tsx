@@ -323,13 +323,57 @@ export function ProductPageEditor({ cfg, onChange, codForm, onCodFormChange, cur
           </div>
         </div>
 
-        <div className="mt-3">
+        <div className="mt-3 space-y-3">
           <FieldToggle
             label="Bande d'avis (5 étoiles)"
             sublabel="Petite ligne décorative ★★★★★ sous le titre"
             checked={!!style.showRatingStrip}
             onChange={(v) => setStyle({ showRatingStrip: v })}
           />
+
+          {style.showRatingStrip && (
+            <div className="grid gap-3 rounded-lg border border-border/60 bg-muted/30 p-3 sm:grid-cols-2">
+              <div className="space-y-1.5">
+                <label className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                  Note (étoiles pleines)
+                </label>
+                <input
+                  type="number"
+                  min={0}
+                  max={5}
+                  step={0.1}
+                  value={style.ratingStripStars ?? 5}
+                  onChange={(e) => {
+                    const n = parseFloat(e.target.value);
+                    setStyle({ ratingStripStars: Number.isFinite(n) ? Math.max(0, Math.min(5, n)) : undefined });
+                  }}
+                  className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
+                />
+                <p className="text-[10px] text-muted-foreground">
+                  De 0 à 5 — accepte les demi-étoiles (ex. 4.5).
+                </p>
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                  Nombre d&apos;avis
+                </label>
+                <input
+                  type="number"
+                  min={0}
+                  step={1}
+                  value={style.ratingStripReviews ?? 127}
+                  onChange={(e) => {
+                    const n = parseInt(e.target.value, 10);
+                    setStyle({ ratingStripReviews: Number.isFinite(n) ? Math.max(0, n) : undefined });
+                  }}
+                  className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
+                />
+                <p className="text-[10px] text-muted-foreground">
+                  Affiché entre parenthèses : « ({(style.ratingStripReviews ?? 127).toLocaleString('fr-FR')} avis) ».
+                </p>
+              </div>
+            </div>
+          )}
         </div>
       </section>
 
@@ -981,14 +1025,28 @@ function ProductPageLivePreview({
                 >
                   Mon Produit
                 </h3>
-                {style.showRatingStrip && (
-                  <div className="flex items-center gap-0.5">
-                    {[0, 1, 2, 3, 4].map((i) => (
-                      <Star key={i} className="h-2.5 w-2.5" style={{ color: accent, fill: accent }} />
-                    ))}
-                    <span className="ml-1 text-[8px] text-muted-foreground">(127)</span>
-                  </div>
-                )}
+                {style.showRatingStrip && (() => {
+                  const stars = Math.max(0, Math.min(5, style.ratingStripStars ?? 5));
+                  const reviews = Math.max(0, style.ratingStripReviews ?? 127);
+                  return (
+                    <div className="flex items-center gap-0.5">
+                      {[0, 1, 2, 3, 4].map((i) => {
+                        const fill = Math.max(0, Math.min(1, stars - i));
+                        return (
+                          <span key={i} className="relative inline-flex h-2.5 w-2.5">
+                            <Star className="h-2.5 w-2.5" style={{ color: 'rgb(212, 212, 216)' }} />
+                            {fill > 0 && (
+                              <span className="absolute inset-0 overflow-hidden" style={{ width: `${fill * 100}%` }}>
+                                <Star className="h-2.5 w-2.5" style={{ color: accent, fill: accent }} />
+                              </span>
+                            )}
+                          </span>
+                        );
+                      })}
+                      <span className="ml-1 text-[8px] text-muted-foreground">({reviews.toLocaleString('fr-FR')})</span>
+                    </div>
+                  );
+                })()}
                 <div className="text-base font-extrabold leading-none" style={{ color: priceColor }}>
                   {fakePrice} {currency}
                 </div>

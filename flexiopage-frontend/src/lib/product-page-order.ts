@@ -94,8 +94,13 @@ export interface ProductPageStyle {
   buttonAnimation?: 'pulse' | 'shimmer' | 'bounce' | 'none';
   /** Layout of the image gallery on the left column. */
   galleryLayout?: 'single' | 'thumbnails' | 'grid';
-  /** Show a 5-star rating row under the title (decorative — no real reviews wired). */
+  /** Show a 5-star rating row under the title (décoratif — pas de vrais avis branchés). */
   showRatingStrip?: boolean;
+  /** Note affichée (étoiles pleines) — de 1 à 5, accepte les demi-étoiles
+   *  (4.5). Défaut : 5. */
+  ratingStripStars?: number;
+  /** Nombre d'avis affiché en parenthèses, ex. "(247 avis)". Défaut : 127. */
+  ratingStripReviews?: number;
   /** Id of the active preset palette — drives the picker highlight. */
   paletteId?: string;
 }
