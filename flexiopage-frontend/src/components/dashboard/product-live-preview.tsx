@@ -11,6 +11,7 @@
  */
 
 import { useEffect, useState } from 'react';
+import { renderMarkdown } from '@/lib/markdown';
 import {
   Eye, ShoppingBag, Clock, Star,
   Truck, ShieldCheck, RefreshCcw, Lock, Headphones, Gift, Leaf, Banknote,
@@ -279,7 +280,14 @@ export function ProductLivePreview(props: Props) {
                   Description
                 </div>
                 {props.description ? (
-                  <p className="line-clamp-3 text-[10px] leading-snug text-foreground">{props.description}</p>
+                  // Render markdown comme sur le storefront — l'aperçu droit
+                  // étant désormais scrollable côté <aside>, on affiche toute
+                  // la description (texte + images inline). Cap max-h sur les
+                  // images pour qu'une photo géante ne mange pas tout l'aperçu.
+                  <div
+                    className="prose-storefront text-[10px] leading-snug text-foreground [&_img]:my-1.5 [&_img]:max-h-40 [&_img]:rounded [&_p]:my-1 [&_h1]:text-xs [&_h2]:text-[11px] [&_h3]:text-[11px]"
+                    dangerouslySetInnerHTML={{ __html: renderMarkdown(props.description) }}
+                  />
                 ) : (
                   <div className="space-y-1">
                     <div className="h-1.5 w-full rounded bg-muted/80" />

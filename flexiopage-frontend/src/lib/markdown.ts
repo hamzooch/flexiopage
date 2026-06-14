@@ -35,11 +35,27 @@ function renderInline(line: string): string {
   out = out.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
   // Italic *x* (skip **)
   out = out.replace(/(^|[^*])\*([^*\n]+)\*(?!\*)/g, '$1<em>$2</em>');
+  // Filet de sécurité : les descriptions sauvegardées avant le fix server-side
+  // contiennent des URLs avec entities HTML (`https:&#x2F;&#x2F;…`) parce que
+  // le sanitizeMiddleware backend a escape les `/`. On dé-escape les entities
+  // critiques uniquement (slash, esperluette, apostrophe, guillemet) avant les
+  // checks d'URL et le passage à mediaUrl() — sinon `mediaUrl()` ne détecte
+  // pas le `http://` préfixe et préfixe l'API base, cassant l'URL.
+  const decodeUrlEntities = (u: string): string =>
+    u
+      .replace(/&#x2F;/gi, '/')
+      .replace(/&#39;/g, "'")
+      .replace(/&quot;/g, '"')
+      .replace(/&amp;/g, '&');
+
   // Helpers partagés entre la règle image et la règle lien.
-  const isImageUrl = (u: string): boolean =>
-    /\.(jpe?g|png|gif|webp|avif|svg)(\?.*)?$/i.test(u) || u.includes('/uploads/');
+  const isImageUrl = (u: string): boolean => {
+    const d = decodeUrlEntities(u);
+    return /\.(jpe?g|png|gif|webp|avif|svg)(\?.*)?$/i.test(d) || d.includes('/uploads/');
+  };
   const renderImage = (alt: string, url: string): string => {
-    const safe = url.startsWith('http://') || url.startsWith('https://') || url.startsWith('/') ? url : '';
+    const decoded = decodeUrlEntities(url);
+    const safe = decoded.startsWith('http://') || decoded.startsWith('https://') || decoded.startsWith('/') ? decoded : '';
     if (!safe) return '';
     // Les uploads sont stockés en chemin relatif "/uploads/..." qui pointe vers
     // le serveur API, PAS le domaine du storefront → on les résout via mediaUrl()

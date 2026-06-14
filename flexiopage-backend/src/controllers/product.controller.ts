@@ -11,6 +11,19 @@ import { notifyRevalidate } from '../lib/revalidate';
 
 const MAX_IMPORT_IMAGES = 8;
 
+/**
+ * Dé-escape les champs markdown du body. Le sanitizeMiddleware global
+ * applique `validator.escape` qui transforme `/`, `&`, `<`, `>`, `"`, `'`
+ * en entities HTML — fatal pour des URLs Markdown stockées dans la
+ * description, qui deviennent `![](https:&#x2F;&#x2F;…)` et cassent le
+ * renderer côté storefront. On défait ici, à la frontière controller →
+ * service, pour les champs explicitement riches.
+ */
+function unescapeMarkdown(value: unknown): string | undefined {
+  if (typeof value !== 'string') return undefined;
+  return validator.unescape(value);
+}
+
 export async function createProduct(req: AuthRequest, res: Response): Promise<void> {
   const store = req.store!;
   const storeId = store._id.toString();
@@ -26,7 +39,7 @@ export async function createProduct(req: AuthRequest, res: Response): Promise<vo
   const product = await productService.createProduct({
     storeId,
     name: body.name.trim(),
-    description: body.description,
+    description: unescapeMarkdown(body.description),
     type: body.type || 'physical',
     price: body.price,
     compareAtPrice: body.compareAtPrice,
@@ -116,7 +129,7 @@ export async function importCreateProduct(req: AuthRequest, res: Response): Prom
   const product = await productService.createProduct({
     storeId,
     name: body.name.trim(),
-    description: body.description,
+    description: unescapeMarkdown(body.description),
     type: body.type === 'digital' ? 'digital' : 'physical',
     price: body.price,
     compareAtPrice: body.compareAtPrice,
@@ -163,7 +176,7 @@ export async function updateProduct(req: AuthRequest, res: Response): Promise<vo
   const body = req.body;
   const updated = await productService.updateProduct(productId, store._id.toString(), {
     name: body.name,
-    description: body.description,
+    description: unescapeMarkdown(body.description),
     type: body.type,
     price: body.price,
     compareAtPrice: body.compareAtPrice,

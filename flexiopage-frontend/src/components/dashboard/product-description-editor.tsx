@@ -111,6 +111,11 @@ export function ProductDescriptionEditor({ storeId, value, onChange, placeholder
     // so the image sits on its own block, not glued to the previous text.
     insert(`\n\n![](${url})\n\n`);
     closeImageModal();
+    // Le vendeur non-technique ne reconnait pas le markdown `![](...)` dans
+    // le textarea — il croit que rien ne s'est passé. Bascule auto sur
+    // l'Aperçu pour qu'il voie son image rendue immédiatement et comprenne
+    // qu'elle est bien intégrée. Il peut repasser sur Édition pour continuer.
+    setView('preview');
   }
 
   /** Téléverse des fichiers image/GIF puis les insère au curseur (collage / drop). */
