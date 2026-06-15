@@ -939,7 +939,26 @@ function OrderCard({
                 <div className="space-y-2">
                   <p className="text-sm text-rose-700">⚠ {o.delivery.error}</p>
                   <p className="text-xs text-muted-foreground">
-                    Vérifie que la commande a bien tous ses champs requis (SKU, téléphone, adresse) puis retente.
+                    {/* Indice contextuel selon le message renvoyé par le provider.
+                        Le hint générique "SKU/téléphone/adresse" était trompeur sur
+                        des erreurs structurelles côté provider (store inconnu,
+                        signature HMAC invalide, etc.). */}
+                    {(() => {
+                      const err = (o.delivery.error || '').toLowerCase();
+                      if (err.includes('unknown store') || err.includes('store not found') || err.includes('404')) {
+                        return 'Ta boutique n\'est pas encore enregistrée côté MogaDelivery. Donne-leur ton Store ID + secret HMAC pour l\'onboarding (visible dans Intégrations → Société de logistique).';
+                      }
+                      if (err.includes('signature') || err.includes('hmac') || err.includes('401')) {
+                        return 'La clé secrète HMAC ne correspond pas entre FlexioPage et MogaDelivery. Régénère-la et donne-leur la même.';
+                      }
+                      if (err.includes('duplicate') || err.includes('e11000')) {
+                        return 'Bug connu côté MogaDelivery (E11000). Contacte-les pour qu\'ils corrigent leur upsert sur la collection `stores`.';
+                      }
+                      if (err.includes('sku') || err.includes('product')) {
+                        return 'Au moins un produit n\'a pas de SKU côté FlexioPage, ou son SKU ne matche pas le catalogue MogaDelivery. Vérifie la fiche produit.';
+                      }
+                      return 'Vérifie que la commande a tous ses champs (SKU, téléphone, adresse) puis retente.';
+                    })()}
                   </p>
                 </div>
               ) : (
