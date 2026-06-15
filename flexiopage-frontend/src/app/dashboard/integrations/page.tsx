@@ -14,7 +14,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { useSearchParams } from 'next/navigation';
+import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { storesApi } from '@/lib/api';
 import { useStoreStore } from '@/stores/store-store';
 import { Button } from '@/components/ui/button';
@@ -110,6 +110,8 @@ const TABS: { id: TabId; label: string; icon: React.ComponentType<{ className?: 
 export default function IntegrationsPage() {
   const { currentStoreId, setCurrentStore } = useStoreStore();
   const searchParams = useSearchParams();
+  const router = useRouter();
+  const pathname = usePathname();
   const initialTab: TabId = (() => {
     const t = searchParams.get('tab');
     return t === 'shipping' || t === 'pixels' || t === 'domain' ? t : 'domain';
@@ -118,6 +120,16 @@ export default function IntegrationsPage() {
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState<TabId>(initialTab);
   const [savingTab, setSavingTab] = useState<TabId | null>(null);
+
+  // Sync l'onglet courant à l'URL pour que refresh / partage de lien
+  // garde le contexte. Wrap dans useEffect pour ne pas spam le router à
+  // chaque render et pour préserver `storeId` + `sub` (sous-onglet livraison).
+  useEffect(() => {
+    const next = new URLSearchParams(searchParams?.toString() || '');
+    if (next.get('tab') === tab) return; // pas de churn
+    next.set('tab', tab);
+    router.replace(`${pathname}?${next.toString()}`, { scroll: false });
+  }, [tab, router, pathname, searchParams]);
 
   // Allow ?storeId=… to override the currently selected store (used by the
   // onboarding checklist links that pass the store id explicitly).
@@ -591,7 +603,20 @@ const LOGISTICS_PROVIDERS = [
 ] as const;
 
 function ShippingPanel({ store, onSaved, saving, setSaving }: PanelProps) {
-  const [subTab, setSubTab] = useState<ShippingTab>('carrier');
+  // Sous-onglet persisté via `?sub=carrier|logistics` — comme le tab parent,
+  // on garde l'état au refresh pour ne pas renvoyer le vendeur sur Carrier
+  // alors qu'il était sur Logistique.
+  const searchParams = useSearchParams();
+  const router = useRouter();
+  const pathname = usePathname();
+  const initialSub: ShippingTab = searchParams?.get('sub') === 'logistics' ? 'logistics' : 'carrier';
+  const [subTab, setSubTab] = useState<ShippingTab>(initialSub);
+  useEffect(() => {
+    const next = new URLSearchParams(searchParams?.toString() || '');
+    if (next.get('sub') === subTab) return;
+    next.set('sub', subTab);
+    router.replace(`${pathname}?${next.toString()}`, { scroll: false });
+  }, [subTab, router, pathname, searchParams]);
 
   return (
     <div className="space-y-5">
@@ -641,6 +666,11 @@ function CarrierPanel({ store, onSaved, saving, setSaving }: PanelProps) {
   const [autoDispatch, setAutoDispatch] = useState(d.autoDispatch ?? true);
   const [pickup, setPickup] = useState<PickupAddress>(d.pickupAddress || {});
 
+  // Une intégration est considérée "active" dès qu'un provider non-manual est
+  // choisi OU qu'une clé API est saisie. Le bouton Déconnecter ne sort que
+  // dans ce cas — pas d'intérêt à proposer de déconnecter le défaut "manual".
+  const isConnected = (d.provider && d.provider !== 'manual') || !!d.apiKey || !!d.enabled;
+
   async function handleSave() {
     setSaving(true);
     try {
@@ -657,6 +687,30 @@ function CarrierPanel({ store, onSaved, saving, setSaving }: PanelProps) {
           },
         },
       });
+      await onSaved();
+    } finally { setSaving(false); }
+  }
+
+  async function handleDisconnect() {
+    const ok = window.confirm(
+      `Déconnecter ${d.provider || 'le transporteur'} ?\n\nLa clé API, l'URL et l'adresse de pickup seront effacées. Les commandes resteront en attente de dispatch manuel.`
+    );
+    if (!ok) return;
+    setSaving(true);
+    try {
+      await storesApi.update(store._id, {
+        integrations: {
+          ...store.integrations,
+          delivery: { provider: 'manual', enabled: false },
+        },
+      });
+      // Reset state local pour refléter la déconnexion sans attendre le refetch
+      setProvider('manual');
+      setEnabled(false);
+      setApiKey('');
+      setBaseUrl('');
+      setAutoDispatch(true);
+      setPickup({});
       await onSaved();
     } finally { setSaving(false); }
   }
@@ -724,10 +778,23 @@ function CarrierPanel({ store, onSaved, saving, setSaving }: PanelProps) {
           </div>
         </div>
 
-        <Button onClick={handleSave} disabled={saving} className="gap-2">
-          {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-          Enregistrer
-        </Button>
+        <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border/60 pt-4">
+          <Button onClick={handleSave} disabled={saving} className="gap-2">
+            {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+            Enregistrer
+          </Button>
+          {isConnected && (
+            <Button
+              variant="outline"
+              onClick={handleDisconnect}
+              disabled={saving}
+              className="gap-2 border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive"
+            >
+              <Plug className="h-4 w-4" />
+              Déconnecter l&apos;intégration
+            </Button>
+          )}
+        </div>
       </div>
     </Card>
   );
@@ -748,6 +815,11 @@ function LogisticsPanel({ store, onSaved, saving, setSaving }: PanelProps) {
   const [copied, setCopied] = useState<string | null>(null);
 
   const isMoga = provider === 'mogadelivery';
+
+  // Une intégration 3PL est considérée "active" dès qu'un provider non-manual
+  // est configuré ou qu'une clé API est saisie. Le bouton Déconnecter
+  // n'apparaît que dans ce cas (pas d'intérêt sinon).
+  const isConnected = (l.provider && l.provider !== 'manual') || !!l.apiKey || !!l.enabled;
 
   // Detect unsaved changes so we can nudge the user to click "Enregistrer".
   // Without this banner sellers routinely select a provider then leave the
@@ -810,6 +882,30 @@ function LogisticsPanel({ store, onSaved, saving, setSaving }: PanelProps) {
           },
         },
       });
+      await onSaved();
+    } finally { setSaving(false); }
+  }
+
+  async function handleDisconnect() {
+    const ok = window.confirm(
+      `Déconnecter ${l.provider || 'le 3PL'} ?\n\nLa clé API, l'URL, le secret webhook et le warehouse ID seront effacés. Les commandes ne seront plus forwardées au prestataire.`
+    );
+    if (!ok) return;
+    setSaving(true);
+    try {
+      await storesApi.update(store._id, {
+        integrations: {
+          ...store.integrations,
+          logistics: { provider: 'manual', enabled: false },
+        },
+      });
+      setProvider('manual');
+      setEnabled(false);
+      setApiKey('');
+      setBaseUrl('');
+      setWebhookSecret('');
+      setWarehouseId('');
+      setAutoForward(true);
       await onSaved();
     } finally { setSaving(false); }
   }
@@ -999,14 +1095,27 @@ function LogisticsPanel({ store, onSaved, saving, setSaving }: PanelProps) {
               <span className="text-muted-foreground">Aucune intégration active.</span>
             )}
           </div>
-          <Button
-            onClick={handleSave}
-            disabled={saving || !dirty}
-            className={cn('gap-2', dirty && 'gradient-brand text-white shadow-lg')}
-          >
-            {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-            Enregistrer
-          </Button>
+          <div className="flex flex-wrap items-center gap-2">
+            {isConnected && (
+              <Button
+                variant="outline"
+                onClick={handleDisconnect}
+                disabled={saving}
+                className="gap-2 border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive"
+              >
+                <Plug className="h-4 w-4" />
+                Déconnecter
+              </Button>
+            )}
+            <Button
+              onClick={handleSave}
+              disabled={saving || !dirty}
+              className={cn('gap-2', dirty && 'gradient-brand text-white shadow-lg')}
+            >
+              {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+              Enregistrer
+            </Button>
+          </div>
         </div>
       </div>
     </Card>

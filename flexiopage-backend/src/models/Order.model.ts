@@ -110,6 +110,13 @@ export interface IOrder extends Document {
     trackingUrl?: string;
     /** Last raw response from the provider (debug). */
     providerResponse?: Record<string, unknown>;
+    /**
+     * Payload exact qu'on a envoyé au provider lors du dernier dispatch.
+     * Critique pour démêler les mismatches "le vendeur dit X, le provider
+     * affiche Y" : on peut prouver ce qu'on a transmis vs ce qu'il a fait
+     * de la donnée côté lui. Inclut sku, name, product_id, quantity, price.
+     */
+    providerRequest?: Record<string, unknown>;
     /** Last raw webhook payload received from the provider. */
     lastWebhook?: Record<string, unknown>;
     /** When we first dispatched. */
@@ -214,6 +221,7 @@ const OrderSchema = new Schema<IOrder>(
       externalStatus: { type: String },
       trackingUrl: { type: String },
       providerResponse: { type: Schema.Types.Mixed },
+      providerRequest: { type: Schema.Types.Mixed },
       lastWebhook: { type: Schema.Types.Mixed },
       dispatchedAt: { type: Date },
       lastSyncedAt: { type: Date },

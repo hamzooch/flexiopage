@@ -32,7 +32,7 @@ import { Input } from '@/components/ui/input';
 import { useStoreStore } from '@/stores/store-store';
 import { storesApi } from '@/lib/api';
 import { CreateStoreWizard } from '@/components/dashboard/create-store-wizard';
-import { cn, publicStoreUrl } from '@/lib/utils';
+import { cn, mediaUrl, publicStoreUrl } from '@/lib/utils';
 
 interface StoreDoc {
   _id: string;
@@ -391,7 +391,7 @@ function StoreCard({
           {store.logo ? (
             <div className="grid h-12 w-12 shrink-0 place-items-center overflow-hidden rounded-xl border border-border/60 bg-background">
               {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={store.logo} alt="" className="h-full w-full object-cover" />
+              <img src={mediaUrl(store.logo) || store.logo} alt="" className="h-full w-full object-cover" />
             </div>
           ) : (
             <div

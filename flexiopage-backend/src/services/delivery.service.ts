@@ -142,8 +142,19 @@ class MogaDeliveryProvider implements DeliveryProviderImpl {
 
   async dispatch({ order, store }: { order: IOrder; store: IStore }): Promise<DispatchResult> {
     const { secret, url } = this.getConfig(store);
-    const rawBody = JSON.stringify(this.buildBody(order, store));
+    const requestBody = this.buildBody(order, store);
+    const rawBody = JSON.stringify(requestBody);
     const signature = crypto.createHmac('sha256', secret).update(rawBody).digest('hex');
+    // Garde-trace : on stocke le payload exact qu'on transmet AVANT l'appel.
+    // En cas de mismatch côté provider (nom de produit, SKU, etc.), on peut
+    // prouver ce qu'on a envoyé. Sauvegarde silencieuse — un échec d'écriture
+    // ici ne doit pas bloquer le dispatch.
+    order.delivery = {
+      ...(order.delivery || {}),
+      provider: 'mogadelivery',
+      providerRequest: requestBody as unknown as Record<string, unknown>,
+    };
+    try { await order.save(); } catch { /* silencieux — info debug uniquement */ }
 
     // TEMP DEBUG — remove after MogaDelivery 401 is resolved
     console.log('[mogadelivery dispatch DEBUG]', {
@@ -371,7 +382,15 @@ export async function dispatchOrder(args: {
       message: `${args.order.orderNumber} envoyé à ${providerId} (${result.externalId})`,
       storeId: args.order.storeId,
       orderId: args.order._id,
-      metadata: { provider: providerId, externalId: result.externalId },
+      metadata: {
+        provider: providerId,
+        externalId: result.externalId,
+        // Snapshot des items pour repérer un mismatch d'un coup d'œil dans
+        // l'historique admin (sans avoir à dépiler le payload complet).
+        itemsSent: args.order.items.map((it) => ({ name: it.name, sku: it.sku, quantity: it.quantity })),
+        requestBody: args.order.delivery?.providerRequest,
+        responseBody: result.raw,
+      },
     });
     return { ok: true, result };
   } catch (err) {
@@ -388,7 +407,12 @@ export async function dispatchOrder(args: {
       message: `Échec dispatch ${args.order.orderNumber} vers ${providerId} : ${msg}`,
       storeId: args.order.storeId,
       orderId: args.order._id,
-      metadata: { provider: providerId, error: msg },
+      metadata: {
+        provider: providerId,
+        error: msg,
+        itemsSent: args.order.items.map((it) => ({ name: it.name, sku: it.sku, quantity: it.quantity })),
+        requestBody: args.order.delivery?.providerRequest,
+      },
     });
     return { ok: false, error: msg };
   }
