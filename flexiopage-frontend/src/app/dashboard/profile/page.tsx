@@ -491,7 +491,7 @@ export default function ProfilePage() {
             store-creation cap; backend enforces the same limit as a hard guard. */}
         <div className="rounded-2xl border border-border/60 bg-card p-5">
           {(() => {
-            const MAX_STORES = 3;
+            const MAX_STORES = 4;
             const reached = stores.length >= MAX_STORES;
             return reached ? (
               <div className="flex flex-wrap items-start gap-3 rounded-xl border border-amber-500/30 bg-amber-500/5 p-4">

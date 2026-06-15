@@ -50,7 +50,7 @@ interface StoreDoc {
 type StatusFilter = 'all' | 'live' | 'draft';
 type TypeFilter = 'all' | 'physical' | 'digital';
 
-const MAX_STORES = 3;
+const MAX_STORES = 4;
 
 export default function MyStoresPage() {
   const router = useRouter();

@@ -33,7 +33,7 @@ function deepUnescape(value: unknown): unknown {
  * for a specific seller, bump their User.role or set
  * `STORE_LIMIT_PER_USER` higher via env.
  */
-const STORE_LIMIT_PER_USER = Number(process.env.STORE_LIMIT_PER_USER) || 3;
+const STORE_LIMIT_PER_USER = Number(process.env.STORE_LIMIT_PER_USER) || 4;
 const STAFF_ROLES = new Set(['admin', 'superadmin', 'owner', 'supervisor']);
 
 export async function createStore(req: AuthRequest, res: Response): Promise<void> {
