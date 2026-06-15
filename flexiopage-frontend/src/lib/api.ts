@@ -12,13 +12,36 @@ export const api: AxiosInstance = axios.create({
   withCredentials: true,
 });
 
-// Attach the auth token to every request. The Zustand auth store (persisted
-// under `flexiopage-auth`) is the single source of truth — it rehydrates
-// synchronously from localStorage on load, so the token is available before
-// any request fires, even right after a page refresh.
+// Attach the auth token to every request.
+//
+// CONTRE-INTUITIF : Zustand persist v4 rehydrate de manière ASYNCHRONE (un
+// microtask chain interne), pas synchrone. Au tout premier render après un
+// refresh — y compris avec `next dev` — `useAuthStore.getState().token`
+// peut donc renvoyer `null` pendant quelques ms, alors que la donnée est
+// déjà présente dans localStorage. Les `useEffect` qui fire `storesApi.list()`
+// au mount d'une page dashboard tombent dans ce trou : requête sans
+// Authorization → 401 silencieux → catch handler met `setStores([])` → le
+// vendeur voit son dashboard vide alors qu'il est bien connecté.
+//
+// Fix : si la store Zustand est encore vide, on lit directement le blob
+// persisté dans localStorage (lecture sync, pas de race). Une fois la
+// rehydration finie, la branche `getState().token` reprend la main.
+function readAuthToken(): string | null {
+  const live = useAuthStore.getState().token;
+  if (live) return live;
+  try {
+    const raw = window.localStorage.getItem('flexiopage-auth');
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as { state?: { token?: string | null } };
+    return parsed?.state?.token || null;
+  } catch {
+    return null;
+  }
+}
+
 api.interceptors.request.use((config) => {
   if (typeof window !== 'undefined') {
-    const token = useAuthStore.getState().token;
+    const token = readAuthToken();
     if (token) config.headers.Authorization = `Bearer ${token}`;
   }
   return config;
