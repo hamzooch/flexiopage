@@ -1040,6 +1040,39 @@ function Card({ icon, title, subtitle, children }: { icon: React.ReactNode; titl
   );
 }
 
+/** Tuile logo tolérante : si `logoUrl` est défini, on tente de charger l'image,
+ *  et on retombe sur l'icône gradient en cas de 404 (logo absent du repo
+ *  public/integrations). Évite l'image cassée affichée dans le navigateur. */
+function ProviderLogo({
+  logoUrl,
+  name,
+  fallback,
+}: {
+  logoUrl?: string;
+  name: string;
+  fallback: React.ReactNode;
+}) {
+  const [broken, setBroken] = useState(false);
+  if (logoUrl && !broken) {
+    return (
+      <span className="grid h-10 w-10 place-items-center overflow-hidden rounded-xl bg-white shadow-md ring-1 ring-border/60">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src={logoUrl}
+          alt={name}
+          className="h-9 w-9 object-contain"
+          onError={() => setBroken(true)}
+        />
+      </span>
+    );
+  }
+  return (
+    <span className="grid h-10 w-10 place-items-center rounded-xl bg-gradient-to-br from-fuchsia-500 to-indigo-600 text-white shadow-md">
+      {fallback}
+    </span>
+  );
+}
+
 /** A pickable provider card — "Disponible" badge + "Intégrer" button.
  * If `logoUrl` is provided, it replaces the default gradient/icon tile. The
  * image is rendered with `object-contain` on a white tile so partner logos
@@ -1069,16 +1102,7 @@ function ProviderCard({
       )}
     >
       <div className="flex items-start justify-between gap-2">
-        {logoUrl ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <span className="grid h-10 w-10 place-items-center overflow-hidden rounded-xl bg-white shadow-md ring-1 ring-border/60">
-            <img src={logoUrl} alt={name} className="h-9 w-9 object-contain" />
-          </span>
-        ) : (
-          <span className="grid h-10 w-10 place-items-center rounded-xl bg-gradient-to-br from-fuchsia-500 to-indigo-600 text-white shadow-md">
-            {icon}
-          </span>
-        )}
+        <ProviderLogo logoUrl={logoUrl} name={name} fallback={icon} />
         {selected ? (
           <span className="inline-flex items-center gap-1 rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-semibold text-primary">
             <CheckCircle2 className="h-3 w-3" /> Sélectionné
