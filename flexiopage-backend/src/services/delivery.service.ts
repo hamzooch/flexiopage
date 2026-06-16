@@ -140,11 +140,24 @@ class MogaDeliveryProvider implements DeliveryProviderImpl {
     };
   }
 
+  /**
+   * Dérive la clé HMAC depuis le secret partagé. Convention standard :
+   * si le secret est un blob hex (64 chars [0-9a-f]), on le décode en
+   * Buffer (32 bytes binaires) — c'est ce que MogaDelivery valide en
+   * premier dans leur middleware HMAC. Sinon on garde la string telle
+   * quelle (Node encode en UTF-8). Évite les mismatches subtils où une
+   * partie utilise « 9b0b… » comme 64 bytes ASCII et l'autre comme
+   * 32 bytes binaires : deux HMAC totalement différents pour le même body.
+   */
+  private hmacKey(secret: string): string | Buffer {
+    return /^[a-f0-9]{64}$/i.test(secret) ? Buffer.from(secret, 'hex') : secret;
+  }
+
   async dispatch({ order, store }: { order: IOrder; store: IStore }): Promise<DispatchResult> {
     const { secret, url } = this.getConfig(store);
     const requestBody = this.buildBody(order, store);
     const rawBody = JSON.stringify(requestBody);
-    const signature = crypto.createHmac('sha256', secret).update(rawBody).digest('hex');
+    const signature = crypto.createHmac('sha256', this.hmacKey(secret)).update(rawBody).digest('hex');
     // Garde-trace : on stocke le payload exact qu'on transmet AVANT l'appel.
     // En cas de mismatch côté provider (nom de produit, SKU, etc.), on peut
     // prouver ce qu'on a envoyé. Sauvegarde silencieuse — un échec d'écriture
@@ -225,13 +238,20 @@ class MogaDeliveryProvider implements DeliveryProviderImpl {
       '';
     if (secret && signatureHeader) {
       const provided = signatureHeader.replace(/^sha256=/i, '');
-      const computed = crypto
-        .createHmac('sha256', secret)
-        .update(JSON.stringify(payload))
-        .digest('hex');
-      const ok = provided.length === computed.length &&
-        crypto.timingSafeEqual(Buffer.from(provided, 'hex'), Buffer.from(computed, 'hex'));
-      if (!ok) {
+      const rawForHash = JSON.stringify(payload);
+      // Tolérant aux deux conventions HMAC (cf. hmacKey côté dispatch) :
+      // standard hex-decoded EN PREMIER, puis fallback ASCII si le premier
+      // ne matche pas. Symétrique au fix MogaDelivery — accepte les senders
+      // legacy le temps qu'ils migrent, sans rejeter les bons.
+      const candidates: Array<string | Buffer> = [];
+      if (/^[a-f0-9]{64}$/i.test(secret)) candidates.push(Buffer.from(secret, 'hex'));
+      candidates.push(secret);
+      const matched = candidates.some((key) => {
+        const computed = crypto.createHmac('sha256', key).update(rawForHash).digest('hex');
+        return provided.length === computed.length
+          && crypto.timingSafeEqual(Buffer.from(provided, 'hex'), Buffer.from(computed, 'hex'));
+      });
+      if (!matched) {
         throw new Error('Invalid mogadelivery webhook signature');
       }
     }

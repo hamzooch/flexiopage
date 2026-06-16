@@ -875,10 +875,26 @@ function OrderCard({
         />
       </button>
 
+      {/* Quick-confirm strip — visible UNIQUEMENT pour les commandes en
+          attente de confirmation (pending). Permet à l'agent de cliquer
+          Confirmé / Pas de réponse / À rappeler directement depuis la
+          liste, sans déplier. Mode COD-heavy : c'est l'action #1 du
+          quotidien — chaque clic économisé = 50× par jour. Caché dès que
+          la commande passe à un autre statut pour ne pas polluer. */}
+      {(!o.confirmationStatus || o.confirmationStatus === 'pending') && !expanded && (
+        <QuickConfirmBar order={o} storeId={storeId} onChanged={onChanged} />
+      )}
+
       {/* Expanded details */}
       {expanded && (
         <div className="border-t border-border/60 bg-muted/20 p-4 sm:p-6">
-          <div className="grid gap-5 lg:grid-cols-3">
+          {/* Confirmation client (appel) — promue tout en haut.
+              Pour un funnel COD c'est l'action #1 que l'agent fait quand
+              il ouvre une commande : confirmer / rappel / refus. Avoir les
+              boutons au-dessus de tout évite de scroller. */}
+          <OrderConfirmationActions order={o} storeId={storeId} onChanged={onChanged} />
+
+          <div className="mt-5 grid gap-5 lg:grid-cols-3">
             {/* Customer */}
             <DetailSection icon={<UserIcon className="h-4 w-4" />} title="Client">
               <DetailRow label="Nom" value={o.customerName || '—'} />
@@ -1096,9 +1112,9 @@ function OrderCard({
             </div>
           )}
 
-          {/* COD call-confirmation — fast actions for the tele-confirm
-              workflow (confirmer / ne décroche pas / à rappeler / refusé) */}
-          <OrderConfirmationActions order={o} storeId={storeId} onChanged={onChanged} />
+          {/* OrderConfirmationActions est désormais en HAUT de la vue
+              dépliée (cf. début de l'expanded panel) — l'agent ne scrolle
+              plus pour confirmer. */}
 
           {/* Manual status override — seller can fix a stuck order without
               touching the courier. The component disables irrelevant actions
@@ -1536,6 +1552,82 @@ function OrderConfirmationActions({
             </Button>
           </div>
         </div>
+      )}
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// QuickConfirmBar — barre d'actions rapide affichée DANS la card
+// collapsée, juste sous le toggle expand. Tirée hors du bouton toggle
+// pour éviter les nested-buttons (HTML invalide). Cible : agents COD qui
+// font 50+ confirmations par jour — économise 1 clic + un scroll par
+// commande, soit l'expand/scroll/click cycle complet.
+// ─────────────────────────────────────────────────────────────────────
+function QuickConfirmBar({
+  order,
+  storeId,
+  onChanged,
+}: {
+  order: OrderType;
+  storeId: string;
+  onChanged: () => void | Promise<void>;
+}) {
+  const [busy, setBusy] = useState<ConfirmationStatus | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  async function apply(status: ConfirmationStatus) {
+    setBusy(status);
+    setError(null);
+    try {
+      await storesApi.setOrderConfirmation(storeId, order._id, { confirmationStatus: status });
+      await onChanged();
+    } catch (err) {
+      const ax = err as { response?: { data?: { error?: string; message?: string } } };
+      setError(ax?.response?.data?.error || 'Action impossible.');
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  return (
+    <div className="border-t border-border/60 bg-gradient-to-r from-sky-500/5 via-card to-card px-4 py-2.5 sm:px-5">
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="inline-flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-sky-700">
+          <PhoneCall className="h-3.5 w-3.5" />
+          Confirmer l&apos;appel
+        </span>
+        <button
+          type="button"
+          onClick={() => apply('confirmed')}
+          disabled={busy !== null}
+          className="inline-flex h-8 items-center gap-1.5 rounded-md border border-emerald-500/30 bg-emerald-500/5 px-2.5 text-xs font-semibold text-emerald-700 transition-colors hover:bg-emerald-500/15 disabled:opacity-60"
+        >
+          {busy === 'confirmed' ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
+          Confirmé
+        </button>
+        <button
+          type="button"
+          onClick={() => apply('no_answer')}
+          disabled={busy !== null}
+          className="inline-flex h-8 items-center gap-1.5 rounded-md border border-amber-500/30 bg-amber-500/5 px-2.5 text-xs font-semibold text-amber-700 transition-colors hover:bg-amber-500/15 disabled:opacity-60"
+        >
+          {busy === 'no_answer' ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <PhoneMissed className="h-3.5 w-3.5" />}
+          Pas de réponse
+        </button>
+        {order.customerPhone && (
+          <a
+            href={`tel:${order.customerPhone}`}
+            onClick={(e) => e.stopPropagation()}
+            className="ml-auto inline-flex h-8 items-center gap-1.5 rounded-md bg-primary/10 px-2.5 text-xs font-semibold text-primary hover:bg-primary/20"
+          >
+            <Phone className="h-3.5 w-3.5" />
+            Appeler
+          </a>
+        )}
+      </div>
+      {error && (
+        <p className="mt-1.5 text-[11px] font-medium text-rose-700">{error}</p>
       )}
     </div>
   );
