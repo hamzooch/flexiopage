@@ -25,7 +25,13 @@ import { randomBytes } from 'crypto';
  */
 export function slugify(text: string, fallbackPrefix: string = 'item', opts: { ascii?: boolean } = {}): string {
   const pattern = opts.ascii ? /[^a-z0-9]+/g : /[^\p{L}\p{N}]+/gu;
-  const base = (text || '')
+  // Translittération des accents latins (NFD décompose la lettre + le
+  // diacritique → on strip le diacritique). « café » → « cafe », « ñ » → « n ».
+  // Garde intactes les écritures non-Latin (Arabic, Chinese…) car NFD ne les
+  // décompose pas en marques séparées. Résultat : les URLs partagées sur
+  // Facebook / WhatsApp ne montrent plus `caf%C3%A9` mais `cafe`.
+  const flattened = (text || '').normalize('NFD').replace(/\p{Diacritic}/gu, '');
+  const base = flattened
     .toLowerCase()
     .replace(pattern, '-')
     .replace(/^-+|-+$/g, '');
