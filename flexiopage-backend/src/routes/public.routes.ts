@@ -1191,7 +1191,19 @@ router.get('/orders/:orderId/cod-summary', async (req: Request, res: Response): 
           }
         : undefined,
     },
-    store: store ? { name: store.name, slug: store.slug } : null,
+    store: store
+      ? {
+          name: store.name,
+          slug: store.slug,
+          logo: store.logo,
+          favicon: store.favicon,
+          customDomain: store.customDomain,
+          customDomainVerified: store.customDomainVerified,
+          // On expose la config thanksPage pour que le frontend applique
+          // les overrides de texte (titre, sous-titre, message, CTA).
+          thanksPage: store.settings?.thanksPage,
+        }
+      : null,
   });
 });
 

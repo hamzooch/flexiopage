@@ -108,6 +108,23 @@ export interface IStore extends Document {
       buttonAnimation?: 'pulse' | 'shimmer' | 'bounce' | 'none';
     };
     /**
+     * Page de remerciement affichée après confirmation de commande COD.
+     * Permet au vendeur de personnaliser le message merci sans modifier
+     * le code. Les valeurs vides (`undefined`) → defaults UI génériques.
+     * Le branding (logo, nom, favicon) vient toujours de la fiche store,
+     * pas d'ici — ce bloc ne porte que les TEXTES customisables.
+     */
+    thanksPage?: {
+      /** Titre principal, défaut "Commande confirmée 🎉". */
+      title?: string;
+      /** Sous-titre / message court sous le titre. */
+      subtitle?: string;
+      /** Texte long en bas avant le CTA — peut tenir lieu de "mot du vendeur". */
+      message?: string;
+      /** Label du bouton retour boutique. Défaut "Continuer sur <nom boutique>". */
+      ctaLabel?: string;
+    };
+    /**
      * Welcome popup that collects an email lead on first visit. When a
      * coupon code is configured, the buyer receives it on success (we
      * just echo it back — no email send yet, the seller is expected to
@@ -499,6 +516,12 @@ const StoreSchema = new Schema<IStore>(
         buttonShape: { type: String, enum: ['pill', 'rounded', 'square'], default: 'pill' },
         buttonAnimated: { type: Boolean, default: false },
         buttonAnimation: { type: String, enum: ['pulse', 'shimmer', 'bounce', 'none'], default: 'pulse' },
+      },
+      thanksPage: {
+        title: { type: String, trim: true },
+        subtitle: { type: String, trim: true },
+        message: { type: String, trim: true },
+        ctaLabel: { type: String, trim: true },
       },
       newsletter: {
         enabled: { type: Boolean, default: false },

@@ -62,6 +62,18 @@ export interface WhatsappSettings {
   pulse?: boolean;
 }
 
+/**
+ * Réglages de la page de remerciement post-commande COD. Tous les champs
+ * sont optionnels — `undefined` = on retombe sur les textes par défaut
+ * définis dans la page storefront `/thanks/cod/[orderId]`.
+ */
+export interface ThanksPageSettings {
+  title?: string;
+  subtitle?: string;
+  message?: string;
+  ctaLabel?: string;
+}
+
 export interface CodFormSettings {
   headline?: string;
   submitLabel?: string;
@@ -244,6 +256,7 @@ export interface StoreType {
     codForm?: CodFormSettings;
     storefront?: StorefrontSettings;
     whatsapp?: WhatsappSettings;
+    thanksPage?: ThanksPageSettings;
   };
   integrations?: {
     delivery?: DeliveryIntegration;

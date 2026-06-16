@@ -3,13 +3,18 @@
 /**
  * COD thank-you page. No polling — the order is final the moment it's
  * created. We fetch a summary (items, address, total) and display it.
+ *
+ * Brandée vendeur : logo, nom et favicon de la boutique remplacent
+ * FlexioPage dans l'onglet navigateur et en tête de page. Le vendeur
+ * peut customiser titre / sous-titre / message / CTA via
+ * `store.settings.thanksPage` édité depuis le dashboard.
  */
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { CheckCircle2, Home, Loader2, Phone, Truck, Wallet } from 'lucide-react';
-import { formatCurrency } from '@/lib/utils';
+import { formatCurrency, mediaUrl } from '@/lib/utils';
 import { MarketingPixels, type MarketingConfig } from '@/components/storefront/MarketingPixels';
 import { TrackEvent } from '@/components/storefront/TrackEvent';
 
@@ -40,12 +45,26 @@ interface CodOrder {
   delivery?: { provider?: string; externalStatus?: string; trackingUrl?: string };
 }
 
+interface StoreBrand {
+  name?: string;
+  slug?: string;
+  logo?: string;
+  favicon?: string;
+  customDomain?: string;
+  customDomainVerified?: boolean;
+  thanksPage?: {
+    title?: string;
+    subtitle?: string;
+    message?: string;
+    ctaLabel?: string;
+  };
+}
+
 export default function CodThanksPage() {
   const params = useParams();
   const orderId = params.orderId as string;
   const [order, setOrder] = useState<CodOrder | null>(null);
-  const [storeName, setStoreName] = useState('');
-  const [storeSlug, setStoreSlug] = useState('');
+  const [store, setStore] = useState<StoreBrand | null>(null);
   const [marketing, setMarketing] = useState<MarketingConfig | undefined>(undefined);
   const [error, setError] = useState('');
 
@@ -61,8 +80,7 @@ export default function CodThanksPage() {
           return;
         }
         setOrder(data.order);
-        setStoreName(data.store?.name || '');
-        setStoreSlug(data.store?.slug || '');
+        setStore(data.store || null);
         // Load the store's pixel config so we can fire the Purchase event.
         if (data.store?.slug) {
           try {
@@ -79,6 +97,24 @@ export default function CodThanksPage() {
     })();
     return () => { cancelled = true; };
   }, [orderId]);
+
+  // Branding onglet navigateur : titre + favicon de la boutique remplacent
+  // FlexioPage. Le composant étant 'use client', on passe par document.* —
+  // les Metadata Next.js ne s'appliquent pas aux pages client.
+  useEffect(() => {
+    if (!store?.name) return;
+    document.title = store.thanksPage?.title || `Merci · ${store.name}`;
+    const faviconUrl = mediaUrl(store.favicon || store.logo);
+    if (faviconUrl) {
+      let link = document.querySelector<HTMLLinkElement>('link[rel="icon"]');
+      if (!link) {
+        link = document.createElement('link');
+        link.rel = 'icon';
+        document.head.appendChild(link);
+      }
+      link.href = faviconUrl;
+    }
+  }, [store]);
 
   if (error) {
     return (
@@ -116,16 +152,48 @@ export default function CodThanksPage() {
         }}
       />
       <main className="mx-auto max-w-3xl px-3 py-8 sm:px-6 sm:py-16">
+        {/* Branding boutique — logo + nom à la place du favicon FlexioPage.
+            Le vendeur garde son identité dans le moment-clé du funnel. */}
+        {store && (
+          <header className="mb-8 flex items-center justify-center gap-3 sm:mb-10">
+            {(() => {
+              const logoSrc = mediaUrl(store.logo);
+              return logoSrc ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={logoSrc}
+                  alt={store.name || ''}
+                  className="h-10 w-10 shrink-0 rounded-xl border border-border/60 bg-card object-cover shadow-sm sm:h-12 sm:w-12"
+                />
+              ) : null;
+            })()}
+            {store.name && (
+              <span className="text-base font-bold tracking-tight sm:text-lg">{store.name}</span>
+            )}
+          </header>
+        )}
+
         {/* Hero */}
         <div className="text-center">
           <div className="mx-auto grid h-14 w-14 place-items-center rounded-full bg-emerald-500/10 sm:h-16 sm:w-16">
             <CheckCircle2 className="h-7 w-7 text-emerald-600 sm:h-9 sm:w-9" />
           </div>
-          <h1 className="mt-4 text-2xl font-bold tracking-tight sm:text-3xl lg:text-4xl">Commande confirmée 🎉</h1>
+          <h1 className="mt-4 text-2xl font-bold tracking-tight sm:text-3xl lg:text-4xl">
+            {store?.thanksPage?.title || 'Commande confirmée 🎉'}
+          </h1>
           <p className="mt-2 text-xs text-muted-foreground sm:text-sm">
-            Merci {order.customerName || ''} ! Ta commande{' '}
-            <span className="font-mono font-semibold">{order.orderNumber}</span> est enregistrée.
+            {store?.thanksPage?.subtitle || (
+              <>
+                Merci {order.customerName || ''} ! Ta commande{' '}
+                <span className="font-mono font-semibold">{order.orderNumber}</span> est enregistrée.
+              </>
+            )}
           </p>
+          {store?.thanksPage?.message && (
+            <p className="mx-auto mt-4 max-w-xl whitespace-pre-line text-sm leading-relaxed text-foreground/80">
+              {store.thanksPage.message}
+            </p>
+          )}
         </div>
 
         {/* COD payment notice */}
@@ -225,12 +293,13 @@ export default function CodThanksPage() {
         </div>
 
         <div className="mt-8 flex flex-col items-center gap-3 sm:flex-row sm:justify-center">
-          {storeSlug && (
+          {store?.slug && (
             <Link
-              href={`/${storeSlug}`}
+              href={`/${store.slug}`}
               className="inline-flex h-11 items-center gap-2 rounded-full border border-border bg-card px-5 text-sm font-semibold hover:bg-muted"
             >
-              <Home className="h-4 w-4" /> Continuer sur {storeName}
+              <Home className="h-4 w-4" />
+              {store.thanksPage?.ctaLabel || `Continuer sur ${store.name || 'la boutique'}`}
             </Link>
           )}
         </div>
