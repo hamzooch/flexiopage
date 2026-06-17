@@ -28,8 +28,11 @@ import {
   getSettings,
   invalidateSettingsCache,
   DEFAULT_AI_PRICING,
+  DEFAULT_AUTH_SETTINGS,
   type IAiPricing,
+  type IAuthSettings,
 } from '../models/Settings.model';
+import { resendVerification } from '../services/auth.service';
 
 const DEFAULT_LIMIT = 50;
 
@@ -956,6 +959,60 @@ export async function updateAiPricing(req: AuthRequest, res: Response): Promise<
   invalidateSettingsCache();
   const fresh = await getSettings(true);
   res.json({ aiPricing: fresh.aiPricing, updatedAt: fresh.updatedAt });
+}
+
+/**
+ * GET /api/admin/settings/auth — read the auth-related toggles
+ * (kill-switch vérification email pour l'instant, extensible).
+ */
+export async function getAuthSettings(_req: AuthRequest, res: Response): Promise<void> {
+  const s = await getSettings();
+  res.json({
+    auth: s.auth || DEFAULT_AUTH_SETTINGS,
+    defaults: DEFAULT_AUTH_SETTINGS,
+    updatedAt: s.updatedAt,
+    updatedBy: s.updatedBy,
+  });
+}
+
+/**
+ * PATCH /api/admin/settings/auth — superadmin only. Merge partiel des
+ * toggles auth. Invalide le cache pour que la modif prenne effet immédiatement
+ * sur les prochains signups.
+ */
+export async function updateAuthSettings(req: AuthRequest, res: Response): Promise<void> {
+  const body = (req.body || {}) as Partial<IAuthSettings>;
+  const update: Record<string, unknown> = { updatedBy: req.user?._id };
+  if (typeof body.emailVerificationEnabled === 'boolean') {
+    update['auth.emailVerificationEnabled'] = body.emailVerificationEnabled;
+  }
+  await Settings.updateOne({ key: 'global' }, { $set: update }, { upsert: true });
+  invalidateSettingsCache();
+  const fresh = await getSettings(true);
+  res.json({ auth: fresh.auth, updatedAt: fresh.updatedAt });
+}
+
+/**
+ * POST /api/admin/users/:userId/resend-verification — admin renvoie le mail
+ * de vérification au nom de l'utilisateur cible. Cas typique : Resend a raté,
+ * le seller appelle le support, l'admin clique « Renvoyer » depuis le panel.
+ *
+ * Réutilise `resendVerification` du service auth (même throttle 1/min).
+ */
+export async function adminResendVerification(req: AuthRequest, res: Response): Promise<void> {
+  const { userId } = req.params;
+  try {
+    const result = await resendVerification(userId);
+    res.json(result);
+  } catch (err) {
+    const e = err as Error & { statusCode?: number; code?: string; retryAfter?: number };
+    if (e.retryAfter) res.setHeader('Retry-After', String(e.retryAfter));
+    res.status(e.statusCode || 500).json({
+      error: e.message || 'Renvoi échoué.',
+      code: e.code,
+      retryAfter: e.retryAfter,
+    });
+  }
 }
 
 /** GET /api/admin/activity — platform-wide event feed (cursor-paginated). */

@@ -101,7 +101,8 @@ export const authApi = {
   google: (data: { credential: string }) =>
     api.post<{ user: unknown; token: string }>('/auth/google', data),
   logout: () => api.post('/auth/logout'),
-  me: () => api.get<{ user: unknown }>('/auth/me'),
+  me: () =>
+    api.get<{ user: unknown; platform: { emailVerificationEnabled: boolean } }>('/auth/me'),
   /** Confirme l'email depuis le lien reçu par mail. Idempotent côté backend. */
   verifyEmail: (data: { token: string }) =>
     api.post<{ ok: true; alreadyVerified: boolean }>('/auth/verify-email', data),
@@ -581,6 +582,23 @@ export const adminApi = {
       };
       updatedAt: string;
     }>('/admin/settings/ai-pricing', data),
+
+  // ── Auth toggles (admin reads, superadmin writes) ──
+  getAuthSettings: () =>
+    api.get<{
+      auth: { emailVerificationEnabled: boolean };
+      defaults: { emailVerificationEnabled: boolean };
+      updatedAt: string;
+    }>('/admin/settings/auth'),
+  updateAuthSettings: (data: { emailVerificationEnabled?: boolean }) =>
+    api.patch<{
+      auth: { emailVerificationEnabled: boolean };
+      updatedAt: string;
+    }>('/admin/settings/auth', data),
+
+  /** Renvoie le mail de vérification au nom d'un user cible (support manuel). */
+  adminResendVerification: (userId: string) =>
+    api.post<{ ok: true }>(`/admin/users/${userId}/resend-verification`),
 };
 
 // Stores (and nested resources)

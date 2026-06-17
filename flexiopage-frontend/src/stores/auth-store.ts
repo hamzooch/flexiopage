@@ -18,9 +18,24 @@ export interface User {
   emailVerified?: boolean;
 }
 
+/**
+ * Toggles plateforme exposés par /auth/me. Permettent au frontend de savoir
+ * si certains comportements globaux sont actifs (ex: bannière vérification
+ * email cachée si admin a désactivé le système).
+ */
+export interface PlatformToggles {
+  emailVerificationEnabled: boolean;
+}
+
 interface AuthState {
   user: User | null;
   token: string | null;
+  /**
+   * Toggles plateforme. `null` tant que /auth/me n'a pas répondu — dans ce
+   * cas on assume le défaut « activé » pour éviter de masquer la bannière
+   * pendant l'hydratation.
+   */
+  platform: PlatformToggles | null;
   setAuth: (user: User | null, token: string | null) => void;
   /** Merge partiel — pratique pour patcher emailVerified après /verify-email. */
   updateUser: (patch: Partial<User>) => void;
@@ -34,6 +49,7 @@ export const useAuthStore = create<AuthState>()(
     (set, get) => ({
       user: null,
       token: null,
+      platform: null,
       get isAuthenticated() {
         return !!get().token && !!get().user;
       },
@@ -49,20 +65,29 @@ export const useAuthStore = create<AuthState>()(
         try {
           await authApi.logout();
         } catch {}
-        set({ user: null, token: null, isAuthenticated: false });
+        set({ user: null, token: null, platform: null, isAuthenticated: false });
       },
       fetchUser: async () => {
         const { token } = get();
         if (!token) return;
         try {
           const { data } = await authApi.me();
-          const user = (data as { user: User }).user;
-          set({ user, isAuthenticated: true });
+          const payload = data as { user: User; platform?: PlatformToggles };
+          set({
+            user: payload.user,
+            platform: payload.platform || null,
+            isAuthenticated: true,
+          });
         } catch {
-          set({ user: null, token: null, isAuthenticated: false });
+          set({ user: null, token: null, platform: null, isAuthenticated: false });
         }
       },
     }),
-    { name: 'flexiopage-auth', partialize: (s) => ({ token: s.token, user: s.user }) }
+    {
+      name: 'flexiopage-auth',
+      // `platform` n'est volontairement pas persisté — c'est un état serveur
+      // qu'on re-fetche à chaque session pour pas servir un toggle obsolète.
+      partialize: (s) => ({ token: s.token, user: s.user }),
+    }
   )
 );

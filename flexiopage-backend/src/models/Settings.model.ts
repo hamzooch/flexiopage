@@ -20,13 +20,33 @@ export interface IAiPricing {
   rates: Record<string, number>;
 }
 
+/**
+ * Auth-related platform toggles. Tunable depuis /admin/settings.
+ */
+export interface IAuthSettings {
+  /**
+   * Kill-switch global pour la vérification d'email au signup.
+   *  - true  (défaut)  : signup email/password envoie un mail Resend, le
+   *    user reste `emailVerified: false` jusqu'au clic sur le lien.
+   *  - false           : signup auto-marque `emailVerified: true` et n'envoie
+   *    rien. Pratique si Resend rate, si tu testes en local sans clé API,
+   *    ou pour une période de promo où tu veux pas friction à l'inscription.
+   */
+  emailVerificationEnabled: boolean;
+}
+
 export interface ISettings extends Document {
   key: 'global';
   aiPricing: IAiPricing;
+  auth: IAuthSettings;
   updatedBy?: mongoose.Types.ObjectId;
   createdAt: Date;
   updatedAt: Date;
 }
+
+export const DEFAULT_AUTH_SETTINGS: IAuthSettings = {
+  emailVerificationEnabled: true,
+};
 
 /**
  * Defaults baked in if no row exists yet. Admin can override every value
@@ -72,6 +92,9 @@ const SettingsSchema = new Schema<ISettings>(
       },
       rates: { type: Schema.Types.Mixed, default: () => ({ ...DEFAULT_AI_PRICING.rates }) },
     },
+    auth: {
+      emailVerificationEnabled: { type: Boolean, default: DEFAULT_AUTH_SETTINGS.emailVerificationEnabled },
+    },
     updatedBy: { type: Schema.Types.ObjectId, ref: 'User' },
   },
   { timestamps: true },
@@ -90,7 +113,16 @@ export async function getSettings(force = false): Promise<ISettings> {
   if (!force && cache && cache.expiresAt > Date.now()) return cache.value;
   let doc = await Settings.findOne({ key: 'global' });
   if (!doc) {
-    doc = await Settings.create({ key: 'global', aiPricing: DEFAULT_AI_PRICING });
+    doc = await Settings.create({
+      key: 'global',
+      aiPricing: DEFAULT_AI_PRICING,
+      auth: DEFAULT_AUTH_SETTINGS,
+    });
+  } else if (!doc.auth) {
+    // Migration douce : le doc existe (créé avant qu'on ajoute auth),
+    // on remplit avec les défauts sans écraser le reste.
+    doc.auth = { ...DEFAULT_AUTH_SETTINGS };
+    await doc.save();
   }
   cache = { value: doc, expiresAt: Date.now() + CACHE_MS };
   return doc;

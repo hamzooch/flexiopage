@@ -4,6 +4,7 @@ import jwt, { type SignOptions } from 'jsonwebtoken';
 import { OAuth2Client } from 'google-auth-library';
 import { User, IUser } from '../models/User.model';
 import { Subscription } from '../models/Subscription.model';
+import { getSettings } from '../models/Settings.model';
 import { logActivity } from './activity-log.service';
 import { sendVerificationEmail } from './email.service';
 
@@ -88,10 +89,17 @@ export async function register(input: RegisterInput): Promise<AuthResult> {
     throw err;
   }
   const hashed = await bcrypt.hash(input.password, SALT_ROUNDS);
+  // Kill-switch global : si l'admin a désactivé la vérification email
+  // depuis /admin/settings (ou si Resend est en panne et qu'on veut éviter
+  // de bloquer les nouveaux signups), on auto-marque comme vérifié et on
+  // n'envoie rien. Lecture du singleton settings — cached 30s en mémoire.
+  const settings = await getSettings();
+  const verificationEnabled = settings.auth.emailVerificationEnabled;
   const user = await User.create({
     email: input.email.toLowerCase().trim(),
     password: hashed,
     name: input.name.trim(),
+    emailVerified: !verificationEnabled,
   });
   await Subscription.create({
     userId: user._id,
@@ -102,7 +110,9 @@ export async function register(input: RegisterInput): Promise<AuthResult> {
   });
   // Envoie le mail de vérification — best-effort, le compte est créé même
   // si Resend rate (le seller pourra renvoyer depuis la bannière dashboard).
-  await issueVerificationToken(user);
+  if (verificationEnabled) {
+    await issueVerificationToken(user);
+  }
   void logActivity({
     type: 'user.signup',
     message: `Nouveau seller : ${user.email}`,
@@ -376,6 +386,18 @@ export async function verifyEmail(
  * 1 mail par minute pour éviter qu'un script bourrine Resend.
  */
 export async function resendVerification(userId: string): Promise<{ ok: true }> {
+  // Respect du kill-switch : si l'admin a coupé la vérification, ré-envoi
+  // refusé proprement (le seller ne devrait même pas voir le bouton mais
+  // ceinture+bretelles si quelqu'un curl directement l'endpoint).
+  const settings = await getSettings();
+  if (!settings.auth.emailVerificationEnabled) {
+    const err = new Error(
+      'La vérification email est désactivée par l\'administrateur.',
+    ) as Error & { statusCode?: number; code?: string };
+    err.statusCode = 400;
+    err.code = 'verification_disabled';
+    throw err;
+  }
   const user = await User.findById(userId)
     .select('+emailVerificationTokenHash +emailVerificationTokenExpiresAt +emailVerificationLastSentAt');
   if (!user) {

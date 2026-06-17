@@ -3,6 +3,7 @@ import * as authController from '../controllers/auth.controller';
 import { authMiddleware } from '../middleware/auth.middleware';
 import { sanitizeMiddleware } from '../middleware/validate';
 import { authRateLimiter } from '../middleware/rateLimiter';
+import { getSettings } from '../models/Settings.model';
 
 const router = Router();
 
@@ -19,8 +20,18 @@ router.post('/verify-email', authRateLimiter, authController.verifyEmail);
 // Renvoyer le mail de vérification. Auth required pour éviter qu'un
 // inconnu spam Resend en envoyant des mails à toutes nos adresses.
 router.post('/resend-verification', authMiddleware, authController.resendVerification);
-router.get('/me', authMiddleware, (req, res) => {
-  res.json({ user: (req as import('../middleware/auth.middleware').AuthRequest).user });
+router.get('/me', authMiddleware, async (req, res) => {
+  const user = (req as import('../middleware/auth.middleware').AuthRequest).user;
+  // Pousse les toggles plateforme avec le user pour que le frontend dashboard
+  // sache notamment si la bannière « confirme ton email » doit s'afficher
+  // (kill-switch admin). Cache 30 s côté Settings → coût négligeable.
+  const settings = await getSettings();
+  res.json({
+    user,
+    platform: {
+      emailVerificationEnabled: settings.auth.emailVerificationEnabled,
+    },
+  });
 });
 
 export default router;

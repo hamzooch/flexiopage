@@ -25,6 +25,7 @@ import { useAuthStore } from '@/stores/auth-store';
 
 export function EmailVerificationBanner() {
   const user = useAuthStore((s) => s.user);
+  const platform = useAuthStore((s) => s.platform);
   const [sending, setSending] = useState(false);
   const [sent, setSent] = useState(false);
   const [error, setError] = useState('');
@@ -35,6 +36,12 @@ export function EmailVerificationBanner() {
   // `user` avant emailVerified).
   if (!user) return null;
   if (user.emailVerified !== false) return null;
+  // Respect du kill-switch admin : si la plateforme a désactivé la
+  // vérification email, on cache la bannière pour les comptes existants
+  // qui n'ont pas encore confirmé. Note : `platform === null` (premier
+  // paint avant /auth/me) → on assume « activé » par défaut pour ne pas
+  // faire disparaître la bannière à tort.
+  if (platform && !platform.emailVerificationEnabled) return null;
 
   async function handleResend() {
     setSending(true);

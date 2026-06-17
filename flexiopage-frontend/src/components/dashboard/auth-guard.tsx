@@ -49,6 +49,7 @@ function resolveCurrentStoreId(): string | null {
 export function AuthGuard({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
+  const fetchUser = useAuthStore((s) => s.fetchUser);
   const [mounted, setMounted] = useState(false);
   const [redirecting, setRedirecting] = useState(false);
 
@@ -71,7 +72,12 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
       return;
     }
     setRedirecting(false);
-  }, [mounted, pathname, router]);
+    // Best-effort refresh des données serveur (emailVerified à jour si l'admin
+    // a vérifié manuellement, toggles plateforme pour la bannière). Pas await
+    // pour ne pas bloquer le render — les composants se mettront à jour quand
+    // le store change.
+    void fetchUser();
+  }, [mounted, pathname, router, fetchUser]);
 
   if (!mounted || redirecting) {
     return (

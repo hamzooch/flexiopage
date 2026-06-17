@@ -50,6 +50,15 @@ router.delete('/users/:userId', requireSuperAdmin, admin.deleteUser);
 router.get('/settings/ai-pricing', admin.getAiPricing);
 router.put('/settings/ai-pricing', requireSuperAdmin, admin.updateAiPricing);
 
+// Auth toggles — kill-switch vérification email. Lecture admin, mutation
+// superadmin parce que ça touche à un mécanisme de sécurité du signup.
+router.get('/settings/auth', admin.getAuthSettings);
+router.patch('/settings/auth', requireSuperAdmin, admin.updateAuthSettings);
+
+// Renvoi manuel du mail de vérification depuis le panel admin (cas support
+// quand Resend a raté ou que le mail est tombé en spam et a été supprimé).
+router.post('/users/:userId/resend-verification', requireAdminWrite, admin.adminResendVerification);
+
 // Réclamations — admin tier (read + reply + state)
 router.get('/complaints', complaint.listComplaintsAdmin);
 router.get('/complaints/:id', complaint.getComplaintAdmin);

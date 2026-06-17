@@ -30,6 +30,7 @@ import {
   Briefcase,
   DollarSign,
   Activity,
+  Sliders,
 } from 'lucide-react';
 import { useAuthStore } from '@/stores/auth-store';
 import { cn } from '@/lib/utils';
@@ -58,8 +59,9 @@ const SECTIONS: { title: string; items: NavItem[] }[] = [
   {
     title: 'Système',
     items: [
-      { href: '/admin/pricing', label: 'Tarifs AI', icon: DollarSign },
-      { href: '/admin/profile', label: 'Profil',    icon: UserIcon },
+      { href: '/admin/pricing',  label: 'Tarifs AI',  icon: DollarSign },
+      { href: '/admin/settings', label: 'Réglages',   icon: Sliders },
+      { href: '/admin/profile',  label: 'Profil',     icon: UserIcon },
     ],
   },
 ];

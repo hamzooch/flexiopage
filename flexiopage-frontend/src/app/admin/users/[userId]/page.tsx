@@ -37,6 +37,7 @@ import {
   ExternalLink,
   Crown,
   BadgeCheck,
+  MailCheck,
   Wallet,
   Sparkles,
   Store as StoreIcon,
@@ -125,8 +126,36 @@ export default function AdminUserDetailPage() {
 
   async function toggleEmailVerified() {
     if (!data) return;
-    await adminApi.patchUser(userId, { emailVerified: !data.user.emailVerified });
+    const verifying = !data.user.emailVerified;
+    const ok = await confirm({
+      title: verifying
+        ? 'Marquer l\'email comme vérifié ?'
+        : 'Annuler la vérification de l\'email ?',
+      description: verifying
+        ? `Bypass manuel utile si Resend a raté ou si le seller t'a contacté en support. ${data.user.email} sera traité comme ayant confirmé son adresse.`
+        : `${data.user.email} repassera en "non vérifié" et reverra la bannière de confirmation. Utiliser uniquement en cas d'erreur de saisie.`,
+      confirmLabel: verifying ? 'Marquer comme vérifié' : 'Repasser en non vérifié',
+      tone: verifying ? 'success' : 'warning',
+    });
+    if (!ok) return;
+    await adminApi.patchUser(userId, { emailVerified: verifying });
     await load();
+  }
+
+  async function handleAdminResendVerification() {
+    if (!data) return;
+    const ok = await confirm({
+      title: 'Renvoyer le mail de vérification ?',
+      description: `Un nouveau lien de confirmation sera envoyé à ${data.user.email} (valide 24 h). Throttle 1/min côté backend.`,
+      confirmLabel: 'Envoyer',
+    });
+    if (!ok) return;
+    try {
+      await adminApi.adminResendVerification(userId);
+    } catch (err) {
+      const e = err as { response?: { data?: { error?: string } } };
+      setResetError(e.response?.data?.error || 'Renvoi échoué.');
+    }
   }
 
   async function handleResetPassword() {
@@ -320,6 +349,24 @@ export default function AdminUserDetailPage() {
                 checked={!!u.emailVerified}
                 onChange={toggleEmailVerified}
               />
+              {!u.emailVerified && (
+                <div className="rounded-lg border border-amber-500/30 bg-amber-500/5 p-3">
+                  <div className="text-xs font-semibold text-amber-900">Email non vérifié — actions support</div>
+                  <p className="mt-0.5 text-[11px] text-amber-900/80">
+                    Si le seller dit ne pas avoir reçu le mail (Resend a raté, spam vidé…), tu peux soit lui renvoyer un nouveau lien, soit le marquer manuellement comme vérifié avec le toggle ci-dessus.
+                  </p>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    onClick={handleAdminResendVerification}
+                    className="mt-2 h-8 gap-1.5 border-amber-500/50 text-amber-900 hover:bg-amber-500/10"
+                  >
+                    <MailCheck className="h-3.5 w-3.5" />
+                    Renvoyer le mail de vérification
+                  </Button>
+                </div>
+              )}
             </div>
           </CardContent>
         </Card>
