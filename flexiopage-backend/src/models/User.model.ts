@@ -79,6 +79,16 @@ export interface IUser extends Document {
    * them to change it on next login yet — that's a follow-up.
    */
   passwordResetAt?: Date;
+  /**
+   * Token opaque envoyé dans le mail de vérification au signup. Hashé (sha256)
+   * pour qu'un dump de la collection User ne donne pas accès à un lien encore
+   * vivant. Mis à null une fois le mail confirmé.
+   */
+  emailVerificationTokenHash?: string;
+  /** Expiration du token de vérification (24 h après envoi). */
+  emailVerificationTokenExpiresAt?: Date;
+  /** Anti-spam : timestamp du dernier renvoi, pour throttler à 1 mail/min. */
+  emailVerificationLastSentAt?: Date;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -102,6 +112,9 @@ const UserSchema = new Schema<IUser>(
     lastLoginAt: { type: Date },
     lastLoginIp: { type: String },
     passwordResetAt: { type: Date },
+    emailVerificationTokenHash: { type: String, select: false, index: true },
+    emailVerificationTokenExpiresAt: { type: Date, select: false },
+    emailVerificationLastSentAt: { type: Date, select: false },
   },
   { timestamps: true }
 );

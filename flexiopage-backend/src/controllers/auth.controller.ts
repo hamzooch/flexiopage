@@ -52,6 +52,52 @@ export async function logout(_req: Request, res: Response): Promise<void> {
  * Mirrors the cookie + body behaviour of /login so the frontend can
  * treat the response identically. A failed verification returns 401.
  */
+/**
+ * POST /api/auth/verify-email — public. Body: { token: "<raw token from email link>" }.
+ * Marque l'utilisateur correspondant comme vérifié, idempotent.
+ */
+export async function verifyEmail(req: Request, res: Response): Promise<void> {
+  const { token } = req.body as { token?: string };
+  if (!token || typeof token !== 'string') {
+    res.status(400).json({ error: 'Token manquant.' });
+    return;
+  }
+  try {
+    const result = await authService.verifyEmail(token);
+    res.json(result);
+  } catch (err) {
+    const e = err as Error & { statusCode?: number; code?: string };
+    res.status(e.statusCode || 500).json({
+      error: e.message || 'Vérification échouée.',
+      code: e.code,
+    });
+  }
+}
+
+/**
+ * POST /api/auth/resend-verification — auth required. Re-génère un token et
+ * renvoie un mail. Throttle 1/min côté service.
+ */
+export async function resendVerification(req: Request, res: Response): Promise<void> {
+  const userId = (req as Request & { user?: { _id: string } }).user?._id;
+  if (!userId) {
+    res.status(401).json({ error: 'Non authentifié.' });
+    return;
+  }
+  try {
+    const result = await authService.resendVerification(userId);
+    res.json(result);
+  } catch (err) {
+    const e = err as Error & { statusCode?: number; code?: string; retryAfter?: number };
+    if (e.retryAfter) res.setHeader('Retry-After', String(e.retryAfter));
+    res.status(e.statusCode || 500).json({
+      error: e.message || 'Renvoi échoué.',
+      code: e.code,
+      retryAfter: e.retryAfter,
+    });
+  }
+}
+
 export async function googleSignIn(req: Request, res: Response): Promise<void> {
   const { credential } = req.body as { credential?: string };
   if (!credential || typeof credential !== 'string') {

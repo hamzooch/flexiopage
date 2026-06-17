@@ -200,3 +200,75 @@ function escape(s: string): string {
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;');
 }
+
+// ─────────────────────────────────────────────────────────────────────
+// Verification email — sent at signup, also on "renvoyer" CTA
+// ─────────────────────────────────────────────────────────────────────
+export interface VerificationEmailArgs {
+  to: string;
+  name?: string;
+  /** Raw token (URL-safe). Hashé côté DB, mais envoyé en clair dans le mail. */
+  token: string;
+}
+
+/**
+ * Envoie le mail « confirme ton adresse » au signup email/password.
+ * Le lien contient le token raw — c'est le clic du seller qui valide,
+ * pas le simple fait de recevoir le mail.
+ */
+export async function sendVerificationEmail(args: VerificationEmailArgs): Promise<{ ok: boolean }> {
+  const verifyUrl = `${safeFrontendBase()}/verify-email?token=${encodeURIComponent(args.token)}`;
+  const greeting = args.name ? `Salut ${escape(args.name)},` : 'Salut,';
+
+  const html = `<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8" />
+  <title>Confirme ton adresse email</title>
+</head>
+<body style="margin:0;padding:0;background:#f8fafc;font-family:-apple-system,Segoe UI,sans-serif;">
+  <table cellpadding="0" cellspacing="0" border="0" width="100%" style="background:#f8fafc;padding:32px 16px">
+    <tr><td align="center">
+      <table cellpadding="0" cellspacing="0" border="0" width="560" style="background:#ffffff;border-radius:16px;overflow:hidden;box-shadow:0 4px 16px rgba(0,0,0,.06)">
+        <tr><td style="padding:36px 36px 0 36px;text-align:center">
+          <div style="display:inline-block;width:56px;height:56px;background:linear-gradient(135deg,#f97316,#ec4899);border-radius:14px;line-height:56px;color:#fff;font-size:28px;font-weight:700">✉</div>
+          <h1 style="margin:20px 0 8px 0;font-size:22px;color:#0f172a;letter-spacing:-0.02em">Confirme ton email</h1>
+          <p style="margin:0;font-size:14px;color:#64748b">${greeting}<br />Un dernier clic pour activer ton compte FlexioPage.</p>
+        </td></tr>
+        <tr><td style="padding:28px 36px">
+          <a href="${verifyUrl}" style="display:block;text-align:center;background:linear-gradient(135deg,#f97316,#ec4899);color:#fff;text-decoration:none;padding:16px 24px;border-radius:12px;font-weight:600;font-size:15px;box-shadow:0 8px 24px rgba(236,72,153,.30)">✓ Confirmer mon adresse</a>
+          <p style="margin:14px 0 0 0;font-size:12px;color:#94a3b8;text-align:center;word-break:break-all">Si le bouton ne marche pas, copie-colle ce lien :<br /><span style="color:#475569">${verifyUrl}</span></p>
+        </td></tr>
+        <tr><td style="padding:0 36px 28px 36px">
+          <p style="margin:0;font-size:13px;color:#64748b;line-height:1.55">Ce lien expire dans <strong>24 heures</strong>. Si tu n'es pas à l'origine de cette inscription, ignore simplement cet email — aucun compte n'est activé tant que tu ne cliques pas.</p>
+        </td></tr>
+        <tr><td style="padding:24px 36px 32px 36px;background:#f8fafc;border-top:1px solid #f1f1f3;text-align:center">
+          <p style="margin:0;font-size:11px;color:#94a3b8">© ${new Date().getFullYear()} FlexioPage — créer ta boutique en 60 secondes.</p>
+        </td></tr>
+      </table>
+    </td></tr>
+  </table>
+</body>
+</html>`;
+
+  const text = `${greeting.replace(/<[^>]+>/g, '')}
+
+Confirme ton adresse email pour activer ton compte FlexioPage :
+${verifyUrl}
+
+Ce lien expire dans 24 heures. Si tu n'es pas à l'origine de cette inscription, ignore cet email.
+
+— L'équipe FlexioPage
+`;
+
+  return sendEmail({
+    to: args.to,
+    subject: 'Confirme ton adresse email — FlexioPage',
+    html,
+    text,
+    // L'expéditeur est `noreply@mail.flexiopage.com` (sous-domaine sans MX
+    // entrant), donc les réponses se perdraient. On redirige vers le support
+    // via SUPPORT_EMAIL — overridable au cas où on change d'adresse plus tard.
+    replyTo: process.env.SUPPORT_EMAIL || 'support@flexiopage.com',
+  });
+}

@@ -1,9 +1,42 @@
 import bcrypt from 'bcryptjs';
+import crypto from 'crypto';
 import jwt, { type SignOptions } from 'jsonwebtoken';
 import { OAuth2Client } from 'google-auth-library';
 import { User, IUser } from '../models/User.model';
 import { Subscription } from '../models/Subscription.model';
 import { logActivity } from './activity-log.service';
+import { sendVerificationEmail } from './email.service';
+
+// ─────────────────────────────────────────────────────────────────────
+// Email verification helpers
+// ─────────────────────────────────────────────────────────────────────
+const VERIFICATION_TTL_MS = 24 * 60 * 60 * 1000; // 24 h
+const VERIFICATION_RESEND_COOLDOWN_MS = 60 * 1000; // 1 min anti-spam
+
+/** Tirage 32 bytes URL-safe — assez d'entropie pour qu'un brute-force soit irréaliste. */
+function generateVerificationToken(): { raw: string; hash: string } {
+  const raw = crypto.randomBytes(32).toString('base64url');
+  const hash = crypto.createHash('sha256').update(raw).digest('hex');
+  return { raw, hash };
+}
+
+/**
+ * Best-effort : génère un token, l'enregistre, envoie le mail. N'échoue pas
+ * le signup si l'envoi rate (le seller peut renvoyer plus tard via la
+ * bannière dashboard).
+ */
+async function issueVerificationToken(user: IUser): Promise<void> {
+  const { raw, hash } = generateVerificationToken();
+  user.emailVerificationTokenHash = hash;
+  user.emailVerificationTokenExpiresAt = new Date(Date.now() + VERIFICATION_TTL_MS);
+  user.emailVerificationLastSentAt = new Date();
+  await user.save();
+  try {
+    await sendVerificationEmail({ to: user.email, name: user.name, token: raw });
+  } catch (err) {
+    console.error('[auth] verification email send failed', err);
+  }
+}
 
 const JWT_SECRET = process.env.JWT_SECRET || 'change-me-in-production';
 const JWT_EXPIRES = (process.env.JWT_EXPIRES || '7d') as SignOptions['expiresIn'];
@@ -67,6 +100,9 @@ export async function register(input: RegisterInput): Promise<AuthResult> {
     storeLimit: 3,
     productLimitPerStore: 25,
   });
+  // Envoie le mail de vérification — best-effort, le compte est créé même
+  // si Resend rate (le seller pourra renvoyer depuis la bannière dashboard).
+  await issueVerificationToken(user);
   void logActivity({
     type: 'user.signup',
     message: `Nouveau seller : ${user.email}`,
@@ -277,4 +313,97 @@ export async function signInWithGoogle(input: GoogleSignInInput): Promise<AuthRe
     token,
     subscription: sub ? { plan: sub.plan, storeLimit: sub.storeLimit } : undefined,
   };
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// Email verification — clic sur le lien envoyé par mail
+// ─────────────────────────────────────────────────────────────────────
+
+/**
+ * Valide un token de vérification. Idempotent — un compte déjà vérifié
+ * renvoie `alreadyVerified: true` sans erreur (utile si le seller clique
+ * deux fois sur le lien depuis deux onglets).
+ */
+export async function verifyEmail(
+  rawToken: string,
+): Promise<{ ok: true; alreadyVerified: boolean }> {
+  if (!rawToken || typeof rawToken !== 'string') {
+    const err = new Error('Token manquant.') as Error & { statusCode?: number };
+    err.statusCode = 400;
+    throw err;
+  }
+  const hash = crypto.createHash('sha256').update(rawToken).digest('hex');
+  // `select('+...')` parce que les champs de vérif sont en select: false.
+  const user = await User.findOne({ emailVerificationTokenHash: hash })
+    .select('+emailVerificationTokenHash +emailVerificationTokenExpiresAt');
+
+  if (!user) {
+    // Cas spécial : déjà vérifié → le token a été nettoyé, on ne peut pas
+    // retrouver le user. Pour ne pas confondre le seller, on renvoie une
+    // erreur claire.
+    const err = new Error('Lien invalide ou déjà utilisé.') as Error & { statusCode?: number; code?: string };
+    err.statusCode = 400;
+    err.code = 'invalid_token';
+    throw err;
+  }
+  if (user.emailVerified) {
+    // Le hash matche, on était sur le point de re-vérifier — idempotent.
+    return { ok: true, alreadyVerified: true };
+  }
+  if (
+    user.emailVerificationTokenExpiresAt &&
+    user.emailVerificationTokenExpiresAt.getTime() < Date.now()
+  ) {
+    const err = new Error('Ce lien a expiré. Demande-en un nouveau.') as Error & { statusCode?: number; code?: string };
+    err.statusCode = 400;
+    err.code = 'token_expired';
+    throw err;
+  }
+  user.emailVerified = true;
+  user.emailVerificationTokenHash = undefined;
+  user.emailVerificationTokenExpiresAt = undefined;
+  await user.save();
+  void logActivity({
+    type: 'user.email.verified',
+    message: `Email vérifié : ${user.email}`,
+    userId: user._id,
+  });
+  return { ok: true, alreadyVerified: false };
+}
+
+/**
+ * Renvoie un nouveau lien de vérification au seller connecté. Throttle à
+ * 1 mail par minute pour éviter qu'un script bourrine Resend.
+ */
+export async function resendVerification(userId: string): Promise<{ ok: true }> {
+  const user = await User.findById(userId)
+    .select('+emailVerificationTokenHash +emailVerificationTokenExpiresAt +emailVerificationLastSentAt');
+  if (!user) {
+    const err = new Error('Utilisateur introuvable.') as Error & { statusCode?: number };
+    err.statusCode = 404;
+    throw err;
+  }
+  if (user.emailVerified) {
+    const err = new Error('Ton email est déjà vérifié.') as Error & { statusCode?: number; code?: string };
+    err.statusCode = 400;
+    err.code = 'already_verified';
+    throw err;
+  }
+  if (
+    user.emailVerificationLastSentAt &&
+    Date.now() - user.emailVerificationLastSentAt.getTime() < VERIFICATION_RESEND_COOLDOWN_MS
+  ) {
+    const remaining = Math.ceil(
+      (VERIFICATION_RESEND_COOLDOWN_MS - (Date.now() - user.emailVerificationLastSentAt.getTime())) / 1000,
+    );
+    const err = new Error(
+      `Attends ${remaining} secondes avant de renvoyer un mail.`,
+    ) as Error & { statusCode?: number; code?: string; retryAfter?: number };
+    err.statusCode = 429;
+    err.code = 'rate_limited';
+    err.retryAfter = remaining;
+    throw err;
+  }
+  await issueVerificationToken(user);
+  return { ok: true };
 }
