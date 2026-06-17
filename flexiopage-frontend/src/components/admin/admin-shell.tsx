@@ -200,7 +200,7 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
           </Link>
           <button
             type="button"
-            onClick={async () => { await logout(); router.push('/login'); }}
+            onClick={async () => { await logout(); router.replace('/login'); }}
             className="mt-2 flex w-full items-center justify-center gap-2 rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2 text-sm font-medium text-destructive transition-colors hover:bg-destructive/10"
           >
             <LogOut className="h-4 w-4" />
@@ -243,7 +243,7 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
             </Link>
             <button
               type="button"
-              onClick={async () => { await logout(); router.push('/login'); }}
+              onClick={async () => { await logout(); router.replace('/login'); }}
               className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border bg-card px-2.5 text-xs font-medium text-foreground/80 transition-colors hover:border-destructive/30 hover:bg-destructive/5 hover:text-destructive"
               title="Se déconnecter"
             >

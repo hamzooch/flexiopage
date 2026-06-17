@@ -79,7 +79,9 @@ export default function SelectSpacePage() {
 
   async function handleLogout() {
     await logout();
-    router.push('/login');
+    // `replace` pour que la flèche retour ne renvoie pas sur le dashboard
+    // (qui afficherait un écran vide puis re-redirigerait vers /login).
+    router.replace('/login');
   }
 
   if (!ready) {

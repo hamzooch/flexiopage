@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { Sidebar } from '@/components/dashboard/sidebar';
 import { Header } from '@/components/dashboard/header';
 import { AuthGuard } from '@/components/dashboard/auth-guard';
+import { EmailVerificationBanner } from '@/components/dashboard/email-verification-banner';
 import { isRtl, useLangStore } from '@/lib/i18n';
 
 export default function DashboardLayout({
@@ -32,6 +33,7 @@ export default function DashboardLayout({
         />
         <div className="flex min-w-0 flex-1 flex-col">
           <Header onOpenMobileNav={() => setMobileNavOpen(true)} />
+          <EmailVerificationBanner />
           <main className="flex-1 p-3 sm:p-6 lg:p-8">
             <div className="mx-auto w-full max-w-7xl">{children}</div>
           </main>

@@ -31,9 +31,10 @@ export default function RegisterPage() {
       const { data } = await authApi.register({ email, password, name });
       const d = data as { user: { _id: string; email: string; name: string }; token: string };
       setAuth(d.user, d.token);
-      // Brand-new accounts have zero stores — /select-store nudges them to
-      // /dashboard/profile?create=1 where the wizard lives.
-      router.push('/select-store');
+      // `replace` pour évincer /register de l'historique : sinon la flèche
+      // retour du navigateur ramène le nouveau compte sur le formulaire
+      // d'inscription juste après s'être créé.
+      router.replace('/select-store');
       router.refresh();
     } catch (err: unknown) {
       const msg = err && typeof err === 'object' && 'response' in err
@@ -69,7 +70,7 @@ export default function RegisterPage() {
                 <GoogleSignInButton
                   text="signup_with"
                   onSuccess={() => {
-                    router.push('/select-store');
+                    router.replace('/select-store');
                     router.refresh();
                   }}
                 />

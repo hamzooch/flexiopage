@@ -75,7 +75,7 @@ export default function SettingsPage() {
 
   function handleLogout() {
     logout();
-    router.push('/');
+    router.replace('/');
   }
 
   return (

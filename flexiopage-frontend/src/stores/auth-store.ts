@@ -14,12 +14,16 @@ export interface User {
   parentUserId?: string;
   /** Role within the parent seller's team. */
   teamRole?: TeamRole;
+  /** True quand le seller a cliqué sur le lien Resend de confirmation. */
+  emailVerified?: boolean;
 }
 
 interface AuthState {
   user: User | null;
   token: string | null;
   setAuth: (user: User | null, token: string | null) => void;
+  /** Merge partiel — pratique pour patcher emailVerified après /verify-email. */
+  updateUser: (patch: Partial<User>) => void;
   logout: () => void;
   fetchUser: () => Promise<void>;
   isAuthenticated: boolean;
@@ -35,6 +39,11 @@ export const useAuthStore = create<AuthState>()(
       },
       setAuth: (user, token) => {
         set({ user, token, isAuthenticated: !!(user && token) });
+      },
+      updateUser: (patch) => {
+        const current = get().user;
+        if (!current) return;
+        set({ user: { ...current, ...patch } });
       },
       logout: async () => {
         try {

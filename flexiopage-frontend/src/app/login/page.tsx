@@ -76,10 +76,10 @@ function LoginInner() {
       const { data } = await authApi.login({ email, password });
       const d = data as { user: { _id: string; email: string; name: string }; token: string };
       setAuth(d.user, d.token);
-      // Honor ?next= if present (we came from a protected page). Otherwise
-      // staff land on /select-space so they can pick between admin and the
-      // seller dashboard; regular sellers go straight to the store picker.
-      router.push(next || (isStaff(d.user) ? '/select-space' : '/select-store'));
+      // `replace` (au lieu de `push`) — sans ça, la page de login reste dans
+      // l'historique et un tap sur la flèche retour du navigateur renvoie le
+      // vendeur sur le formulaire de connexion juste après s'être authentifié.
+      router.replace(next || (isStaff(d.user) ? '/select-space' : '/select-store'));
       router.refresh();
     } catch (err: unknown) {
       setError(extractApiError(err, 'Connexion échouée'));
@@ -115,7 +115,7 @@ function LoginInner() {
                   text="signin_with"
                   onSuccess={() => {
                     const u = useAuthStore.getState().user;
-                    router.push(next || (isStaff(u) ? '/select-space' : '/select-store'));
+                    router.replace(next || (isStaff(u) ? '/select-space' : '/select-store'));
                     router.refresh();
                   }}
                 />

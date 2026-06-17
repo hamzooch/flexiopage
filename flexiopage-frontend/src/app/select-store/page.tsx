@@ -109,12 +109,14 @@ export default function SelectStorePage() {
 
   function pick(storeId: string) {
     setCurrentStore(storeId);
-    router.push('/dashboard');
+    // `replace` pour que la flèche retour depuis le dashboard ne ramène pas
+    // sur le store picker (boucle UX bizarre).
+    router.replace('/dashboard');
   }
 
   async function handleLogout() {
     await logout();
-    router.push('/login');
+    router.replace('/login');
   }
 
   // Hold the render until the persist check confirms a session — otherwise

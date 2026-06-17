@@ -102,6 +102,12 @@ export const authApi = {
     api.post<{ user: unknown; token: string }>('/auth/google', data),
   logout: () => api.post('/auth/logout'),
   me: () => api.get<{ user: unknown }>('/auth/me'),
+  /** Confirme l'email depuis le lien reçu par mail. Idempotent côté backend. */
+  verifyEmail: (data: { token: string }) =>
+    api.post<{ ok: true; alreadyVerified: boolean }>('/auth/verify-email', data),
+  /** Renvoie un nouveau mail de vérification au seller connecté (throttle 1/min). */
+  resendVerification: () =>
+    api.post<{ ok: true }>('/auth/resend-verification'),
 };
 
 // Users

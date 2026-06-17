@@ -106,7 +106,9 @@ export function Header({ onOpenMobileNav }: Props = {}) {
     // Clear the persisted store selection so a different user logging in
     // on the same device doesn't enter a store they don't own.
     useStoreStore.getState().clearCurrentStore();
-    router.push('/');
+    // `replace` pour évincer le dashboard de l'historique — sans ça, la flèche
+    // retour ramène sur une page protégée qui re-redirige sur /login.
+    router.replace('/');
     router.refresh();
   }
 
