@@ -18,6 +18,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { useConfirm } from '@/components/ui/confirm-dialog';
 import { storesApi, extractApiError } from '@/lib/api';
 import { cn } from '@/lib/utils';
 import type { Coupon } from '@/types/coupon';
@@ -32,6 +33,7 @@ export default function CouponsListPage() {
   const [error, setError] = useState('');
   const [open, setOpen] = useState(false);
   const [copied, setCopied] = useState<string | null>(null);
+  const confirm = useConfirm();
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -51,7 +53,13 @@ export default function CouponsListPage() {
   useEffect(() => { void load(); }, [load]);
 
   async function handleDelete(c: Coupon) {
-    if (!window.confirm(`Supprimer le code « ${c.code} » ?\n\nLes commandes déjà passées avec ce code restent intactes.`)) return;
+    const ok = await confirm({
+      title: `Supprimer le code « ${c.code} » ?`,
+      description: 'Les commandes déjà passées avec ce code restent intactes.',
+      confirmLabel: 'Supprimer',
+      tone: 'destructive',
+    });
+    if (!ok) return;
     await storesApi.deleteCoupon(storeId, c._id);
     setCoupons((arr) => arr.filter((row) => row._id !== c._id));
   }

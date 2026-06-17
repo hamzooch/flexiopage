@@ -19,6 +19,7 @@ import {
   ShoppingBag, Minus, Plus, Trash2, ArrowRight, ArrowLeft,
 } from 'lucide-react';
 import { formatCurrency, mediaUrl } from '@/lib/utils';
+import { useConfirm } from '@/components/ui/confirm-dialog';
 import {
   clearCart,
   getCart,
@@ -30,6 +31,7 @@ import {
 export default function CartPage() {
   const params = useParams();
   const storeSlug = params.storeSlug as string;
+  const confirm = useConfirm();
   const [items, setItems] = useState<CartItem[]>([]);
   const [mounted, setMounted] = useState(false);
 
@@ -51,8 +53,14 @@ export default function CartPage() {
     removeFromCart(storeSlug, productId, variantName);
     refresh();
   }
-  function emptyCart() {
-    if (!window.confirm('Vider le panier ?')) return;
+  async function emptyCart() {
+    const ok = await confirm({
+      title: 'Vider le panier ?',
+      description: 'Tous les articles seront retirés. Tu pourras toujours les ajouter à nouveau depuis le catalogue.',
+      confirmLabel: 'Vider',
+      tone: 'destructive',
+    });
+    if (!ok) return;
     clearCart(storeSlug);
     refresh();
   }

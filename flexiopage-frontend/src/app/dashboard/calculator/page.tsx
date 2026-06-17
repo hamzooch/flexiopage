@@ -44,6 +44,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { usePrompt } from '@/components/ui/confirm-dialog';
 import { PageHeader } from '@/components/dashboard/page-header';
 import { calculatorApi, type CalculatorSnapshot } from '@/lib/api';
 import {
@@ -56,6 +57,7 @@ import {
 import { cn, formatCurrency } from '@/lib/utils';
 
 export default function CodCalculatorPage() {
+  const prompt = usePrompt();
   const [inputs, setInputs] = useState<CalculatorInputs>(EMPTY_INPUTS);
   const [currency, setCurrency] = useState('USD');
   const [advanced, setAdvanced] = useState(false);
@@ -131,12 +133,16 @@ export default function CodCalculatorPage() {
       flash('Saisis au moins le prix de vente et le budget pub', 'error');
       return;
     }
-    const name = window.prompt(
-      'Nom du scénario',
-      activeCountry
+    const name = await prompt({
+      title: 'Sauvegarder le scénario',
+      description: 'Donne-lui un nom court — tu pourras le retrouver dans l\'historique.',
+      defaultValue: activeCountry
         ? `Scénario ${COUNTRY_PRESETS.find((p) => p.code === activeCountry)?.name} — ${new Date().toLocaleDateString('fr-FR')}`
         : `Scénario ${new Date().toLocaleDateString('fr-FR')}`,
-    );
+      placeholder: 'Ex: Produit X — pub Facebook avril',
+      confirmLabel: 'Sauvegarder',
+      minLength: 2,
+    });
     if (!name) return;
     setSaving(true);
     try {

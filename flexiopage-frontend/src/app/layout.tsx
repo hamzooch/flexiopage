@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from 'next';
 import { Inter } from 'next/font/google';
 import './globals.css';
 import { PlatformChatBot } from '@/components/chatbot/PlatformChatBot';
+import { DialogProvider } from '@/components/ui/confirm-dialog';
 
 const inter = Inter({ subsets: ['latin'] });
 
@@ -142,10 +143,14 @@ export default function RootLayout({
         />
       </head>
       <body className={inter.className} suppressHydrationWarning>
-        {children}
-        {/* Platform-wide chatbot — auto-hides on storefront routes where each
-            store renders its own scoped widget. */}
-        <PlatformChatBot />
+        {/* Remplacement themé des window.confirm / window.prompt natifs.
+            Provider unique, hooks useConfirm/usePrompt disponibles partout. */}
+        <DialogProvider>
+          {children}
+          {/* Platform-wide chatbot — auto-hides on storefront routes where each
+              store renders its own scoped widget. */}
+          <PlatformChatBot />
+        </DialogProvider>
       </body>
     </html>
   );

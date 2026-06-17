@@ -17,6 +17,7 @@ import {
   Trash2, GripVertical, Tag, ListChecks,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { useConfirm, usePrompt } from '@/components/ui/confirm-dialog';
 import { storesApi, extractApiError } from '@/lib/api';
 import { cn, publicStoreUrl } from '@/lib/utils';
 import type { Collection } from '@/types/collection';
@@ -33,6 +34,8 @@ export default function CollectionsListPage() {
   const params = useParams();
   const router = useRouter();
   const storeId = params.storeId as string;
+  const confirm = useConfirm();
+  const prompt = usePrompt();
   const [store, setStore] = useState<StoreLite | null>(null);
   const [collections, setCollections] = useState<Collection[]>([]);
   const [loading, setLoading] = useState(true);
@@ -56,7 +59,13 @@ export default function CollectionsListPage() {
   useEffect(() => { void load(); }, [load]);
 
   async function createCollection() {
-    const name = window.prompt('Nom de la collection (ex: « Bestsellers », « Cosmétiques ») :');
+    const name = await prompt({
+      title: 'Nouvelle collection',
+      description: 'Regroupe plusieurs produits sous un même thème — ils apparaîtront ensemble sur ta vitrine.',
+      placeholder: 'Ex: Bestsellers, Cosmétiques, Été 2026…',
+      confirmLabel: 'Créer',
+      minLength: 2,
+    });
     if (!name?.trim()) return;
     setCreating(true);
     setError('');
@@ -76,7 +85,13 @@ export default function CollectionsListPage() {
   }
 
   async function deleteCollection(c: Collection) {
-    if (!window.confirm(`Supprimer la collection « ${c.name} » ?\n\nLes produits ne sont pas supprimés.`)) return;
+    const ok = await confirm({
+      title: `Supprimer la collection « ${c.name} » ?`,
+      description: 'Les produits qu\'elle contient ne sont pas supprimés — seul le regroupement disparaît.',
+      confirmLabel: 'Supprimer',
+      tone: 'destructive',
+    });
+    if (!ok) return;
     await storesApi.deleteCollection(storeId, c._id);
     setCollections((arr) => arr.filter((row) => row._id !== c._id));
   }

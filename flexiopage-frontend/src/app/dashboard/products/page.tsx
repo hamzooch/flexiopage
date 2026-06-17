@@ -101,13 +101,14 @@ export default function DashboardProductsPage() {
       </div>
 
       {stores.length > 0 && (
-        <div className="flex gap-2">
+        <div className="-mx-4 flex gap-2 overflow-x-auto px-4 pb-1 sm:mx-0 sm:flex-wrap sm:overflow-visible sm:px-0">
           {stores.map((s) => (
             <Button
               key={s._id}
               variant={selectedStoreId === s._id ? 'default' : 'outline'}
               size="sm"
               onClick={() => setSelectedStoreId(s._id)}
+              className="shrink-0"
             >
               {s.name}
             </Button>

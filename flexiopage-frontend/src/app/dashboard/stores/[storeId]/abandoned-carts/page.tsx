@@ -16,6 +16,7 @@ import {
   ArrowLeft, ShoppingCart, MessageCircle, Phone, Mail, Trash2, CheckCircle2, Loader2,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { useConfirm } from '@/components/ui/confirm-dialog';
 import { storesApi } from '@/lib/api';
 import { cn } from '@/lib/utils';
 
@@ -37,6 +38,7 @@ interface Cart {
 export default function AbandonedCartsPage() {
   const params = useParams();
   const storeId = params.storeId as string;
+  const confirm = useConfirm();
   const [carts, setCarts] = useState<Cart[]>([]);
   const [includeRecovered, setIncludeRecovered] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -54,7 +56,15 @@ export default function AbandonedCartsPage() {
   useEffect(() => { void load(); }, [load]);
 
   async function remove(c: Cart) {
-    if (!window.confirm('Supprimer ce lead ?')) return;
+    const ok = await confirm({
+      title: 'Supprimer ce lead ?',
+      description: c.phone || c.email
+        ? `Tu ne pourras plus relancer ${c.name || c.phone || c.email}.`
+        : 'Ce lead disparaîtra de la liste des paniers abandonnés.',
+      confirmLabel: 'Supprimer',
+      tone: 'destructive',
+    });
+    if (!ok) return;
     await storesApi.deleteAbandonedCart(storeId, c._id);
     setCarts((arr) => arr.filter((x) => x._id !== c._id));
   }

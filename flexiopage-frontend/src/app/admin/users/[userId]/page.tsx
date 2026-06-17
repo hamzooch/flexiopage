@@ -18,6 +18,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { useConfirm } from '@/components/ui/confirm-dialog';
 import { adminApi, type AdminUserDetail } from '@/lib/api';
 import { storeAbsoluteUrl } from '@/lib/utils';
 import {
@@ -59,6 +60,7 @@ export default function AdminUserDetailPage() {
   const userId = params.userId as string;
   const me = useAuthStore((s) => s.user);
   const isSelf = me?._id === userId;
+  const confirm = useConfirm();
 
   const [data, setData] = useState<AdminUserDetail | null>(null);
   const [loading, setLoading] = useState(true);
@@ -110,7 +112,13 @@ export default function AdminUserDetailPage() {
   async function toggleRole() {
     if (!data) return;
     const next = data.user.role === 'admin' ? 'user' : 'admin';
-    if (!window.confirm(`Faire passer ${data.user.email} en ${next} ?`)) return;
+    const ok = await confirm({
+      title: `Passer en ${next === 'admin' ? 'admin' : 'utilisateur'} ?`,
+      description: `${data.user.email} aura ${next === 'admin' ? 'tous les droits admin' : 'les droits utilisateur standard'}.`,
+      confirmLabel: 'Changer le rôle',
+      tone: next === 'admin' ? 'warning' : 'default',
+    });
+    if (!ok) return;
     await adminApi.patchUser(userId, { role: next });
     await load();
   }
@@ -122,7 +130,13 @@ export default function AdminUserDetailPage() {
   }
 
   async function handleResetPassword() {
-    if (!window.confirm('Générer un nouveau mot de passe temporaire ?')) return;
+    const ok = await confirm({
+      title: 'Réinitialiser le mot de passe ?',
+      description: 'Un nouveau mot de passe temporaire sera généré. L\'utilisateur devra le changer à la prochaine connexion.',
+      confirmLabel: 'Générer',
+      tone: 'warning',
+    });
+    if (!ok) return;
     setResetting(true);
     setResetError('');
     setTempPwd('');
@@ -153,7 +167,13 @@ export default function AdminUserDetailPage() {
     if (!data) return;
     if (!data.user.suspended) {
       if (!suspendReason.trim()) {
-        if (!window.confirm('Suspendre sans raison ?')) return;
+        const ok = await confirm({
+          title: 'Suspendre sans raison ?',
+          description: 'Mieux vaut documenter la raison pour le suivi. Continuer quand même ?',
+          confirmLabel: 'Suspendre',
+          tone: 'destructive',
+        });
+        if (!ok) return;
       }
       setSuspending(true);
       try {
@@ -164,7 +184,13 @@ export default function AdminUserDetailPage() {
         setSuspending(false);
       }
     } else {
-      if (!window.confirm('Réactiver le compte ?')) return;
+      const ok = await confirm({
+        title: 'Réactiver le compte ?',
+        description: `${data.user.email} pourra à nouveau se connecter et utiliser la plateforme.`,
+        confirmLabel: 'Réactiver',
+        tone: 'success',
+      });
+      if (!ok) return;
       setSuspending(true);
       try {
         await adminApi.patchUser(userId, { suspended: false });

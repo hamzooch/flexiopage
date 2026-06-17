@@ -12,6 +12,7 @@ import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { Heart, ShoppingBag, Trash2 } from 'lucide-react';
 import { formatCurrency, mediaUrl } from '@/lib/utils';
+import { useConfirm } from '@/components/ui/confirm-dialog';
 import {
   clearWishlist,
   getWishlist,
@@ -22,6 +23,7 @@ import {
 export default function WishlistPage() {
   const params = useParams();
   const storeSlug = params.storeSlug as string;
+  const confirm = useConfirm();
   const [items, setItems] = useState<WishlistItem[]>([]);
   const [mounted, setMounted] = useState(false);
 
@@ -43,8 +45,14 @@ export default function WishlistPage() {
     refresh();
   }
 
-  function clearAll() {
-    if (!window.confirm('Vider la liste de favoris ?')) return;
+  async function clearAll() {
+    const ok = await confirm({
+      title: 'Vider la liste de favoris ?',
+      description: 'Tous tes coups de cœur seront retirés. Tu pourras toujours en ajouter de nouveaux.',
+      confirmLabel: 'Vider',
+      tone: 'destructive',
+    });
+    if (!ok) return;
     clearWishlist(storeSlug);
     refresh();
   }

@@ -15,6 +15,7 @@ import {
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
+import { useConfirm } from '@/components/ui/confirm-dialog';
 import { MediaPicker } from '@/components/dashboard/MediaPicker';
 import { FieldToggle } from '@/components/dashboard/store-editor';
 import { StoreSubPageShell, type SaveStatus } from '@/components/dashboard/store-sub-page';
@@ -30,6 +31,7 @@ import type { StoreType } from '@/components/dashboard/store-editor';
 export default function NewsletterPage() {
   const params = useParams();
   const storeId = params.storeId as string;
+  const confirm = useConfirm();
 
   const [store, setStore] = useState<StoreType | null>(null);
   const [cfg, setCfg] = useState<NewsletterSettings>({
@@ -118,7 +120,13 @@ export default function NewsletterPage() {
     setCfg((c) => ({ ...c, [key]: value }));
 
   async function deleteSubscriber(s: Subscriber) {
-    if (!window.confirm(`Supprimer ${s.email} de la liste ?`)) return;
+    const ok = await confirm({
+      title: `Supprimer ${s.email} ?`,
+      description: 'L\'abonné ne recevra plus tes campagnes. L\'historique des envois est conservé.',
+      confirmLabel: 'Supprimer',
+      tone: 'destructive',
+    });
+    if (!ok) return;
     await storesApi.deleteSubscriber(storeId, s._id);
     setSubscribers((arr) => arr.filter((x) => x._id !== s._id));
     setCounts((c) => ({ ...c, total: Math.max(0, c.total - 1) }));

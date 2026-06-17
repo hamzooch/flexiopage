@@ -20,6 +20,7 @@ import { useStoreStore } from '@/stores/store-store';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { useConfirm } from '@/components/ui/confirm-dialog';
 import { cn, storeAbsoluteUrl } from '@/lib/utils';
 import { PageHeader } from '@/components/dashboard/page-header';
 import {
@@ -665,6 +666,7 @@ function CarrierPanel({ store, onSaved, saving, setSaving }: PanelProps) {
   const [baseUrl, setBaseUrl] = useState(d.baseUrl || '');
   const [autoDispatch, setAutoDispatch] = useState(d.autoDispatch ?? true);
   const [pickup, setPickup] = useState<PickupAddress>(d.pickupAddress || {});
+  const confirm = useConfirm();
 
   // Une intégration est considérée "active" dès qu'un provider non-manual est
   // choisi OU qu'une clé API est saisie. Le bouton Déconnecter ne sort que
@@ -692,9 +694,12 @@ function CarrierPanel({ store, onSaved, saving, setSaving }: PanelProps) {
   }
 
   async function handleDisconnect() {
-    const ok = window.confirm(
-      `Déconnecter ${d.provider || 'le transporteur'} ?\n\nLa clé API, l'URL et l'adresse de pickup seront effacées. Les commandes resteront en attente de dispatch manuel.`
-    );
+    const ok = await confirm({
+      title: `Déconnecter ${d.provider || 'le transporteur'} ?`,
+      description: 'La clé API, l\'URL et l\'adresse de pickup seront effacées. Les commandes resteront en attente de dispatch manuel.',
+      confirmLabel: 'Déconnecter',
+      tone: 'destructive',
+    });
     if (!ok) return;
     setSaving(true);
     try {
@@ -813,6 +818,7 @@ function LogisticsPanel({ store, onSaved, saving, setSaving }: PanelProps) {
   const [webhookSecret, setWebhookSecret] = useState(l.webhookSecret || '');
   const [autoForward, setAutoForward] = useState(l.autoForward ?? true);
   const [copied, setCopied] = useState<string | null>(null);
+  const confirm = useConfirm();
 
   const isMoga = provider === 'mogadelivery';
 
@@ -887,9 +893,12 @@ function LogisticsPanel({ store, onSaved, saving, setSaving }: PanelProps) {
   }
 
   async function handleDisconnect() {
-    const ok = window.confirm(
-      `Déconnecter ${l.provider || 'le 3PL'} ?\n\nLa clé API, l'URL, le secret webhook et le warehouse ID seront effacés. Les commandes ne seront plus forwardées au prestataire.`
-    );
+    const ok = await confirm({
+      title: `Déconnecter ${l.provider || 'le 3PL'} ?`,
+      description: 'La clé API, l\'URL, le secret webhook et le warehouse ID seront effacés. Les commandes ne seront plus forwardées au prestataire.',
+      confirmLabel: 'Déconnecter',
+      tone: 'destructive',
+    });
     if (!ok) return;
     setSaving(true);
     try {

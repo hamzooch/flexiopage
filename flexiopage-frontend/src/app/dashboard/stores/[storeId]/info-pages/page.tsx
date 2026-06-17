@@ -17,6 +17,7 @@ import { useParams, useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { useConfirm, usePrompt } from '@/components/ui/confirm-dialog';
 import {
   ArrowLeft,
   FileText,
@@ -54,6 +55,7 @@ export default function InfoPagesEditor() {
   const params = useParams();
   const router = useRouter();
   const storeId = params.storeId as string;
+  const prompt = usePrompt();
 
   const [store, setStore] = useState<StoreDoc | null>(null);
   const [pages, setPages] = useState<PageDoc[]>([]);
@@ -78,7 +80,13 @@ export default function InfoPagesEditor() {
   useEffect(() => { void load(); }, [load]);
 
   async function createInfoPage() {
-    const name = window.prompt('Nom de la page (ex: « Mentions légales ») :');
+    const name = await prompt({
+      title: 'Nouvelle page',
+      description: 'Donne-lui un titre clair — c\'est ce que tes clients verront dans le menu et dans le footer.',
+      placeholder: 'Ex: Mentions légales, CGV, À propos…',
+      confirmLabel: 'Créer',
+      minLength: 2,
+    });
     if (!name?.trim()) return;
     const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
     await storesApi.createPage(storeId, {
@@ -164,6 +172,7 @@ function PageRow({
   const [name, setName] = useState(page.name);
   const [body, setBody] = useState(page.body || '');
   const [isPublished, setIsPublished] = useState(!!page.isPublished);
+  const confirm = useConfirm();
   const [saving, setSaving] = useState(false);
   const [savedAt, setSavedAt] = useState<number | null>(null);
 
@@ -200,7 +209,13 @@ function PageRow({
   }
 
   async function handleDelete() {
-    if (!window.confirm(`Supprimer la page « ${page.name} » ?\n\nElle ne sera plus accessible sur ta vitrine.`)) return;
+    const ok = await confirm({
+      title: `Supprimer « ${page.name} » ?`,
+      description: 'La page ne sera plus accessible sur ta vitrine ni dans le footer. Cette action est irréversible.',
+      confirmLabel: 'Supprimer',
+      tone: 'destructive',
+    });
+    if (!ok) return;
     await storesApi.deletePage(storeId, page._id);
     onDeleted();
   }

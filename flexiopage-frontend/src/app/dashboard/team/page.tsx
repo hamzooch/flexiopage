@@ -12,6 +12,7 @@ import { useAuthStore } from '@/stores/auth-store';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { useConfirm } from '@/components/ui/confirm-dialog';
 import { cn } from '@/lib/utils';
 import { PageHeader } from '@/components/dashboard/page-header';
 import {
@@ -131,6 +132,7 @@ function MemberCard({ member, onChanged }: { member: TeamMember; onChanged: () =
   const meta = ROLE_META[member.teamRole];
   const Icon = meta.icon;
   const [busy, setBusy] = useState(false);
+  const confirm = useConfirm();
 
   async function setRole(teamRole: TeamRole) {
     if (teamRole === member.teamRole) return;
@@ -152,7 +154,13 @@ function MemberCard({ member, onChanged }: { member: TeamMember; onChanged: () =
     }
   }
   async function remove() {
-    if (!window.confirm(`Retirer ${member.name} de l’équipe ? Son accès sera supprimé.`)) return;
+    const ok = await confirm({
+      title: `Retirer ${member.name} de l'équipe ?`,
+      description: 'Son accès au dashboard sera révoqué immédiatement. Ses commandes traitées restent dans l\'historique.',
+      confirmLabel: 'Retirer',
+      tone: 'destructive',
+    });
+    if (!ok) return;
     setBusy(true);
     try {
       await teamApi.remove(member._id);

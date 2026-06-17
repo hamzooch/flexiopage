@@ -20,6 +20,7 @@ import { useScopedStoreId } from '@/lib/use-scoped-store';
 import { formatCurrency, formatDate, cn } from '@/lib/utils';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
+import { usePrompt } from '@/components/ui/confirm-dialog';
 import {
   ShoppingCart,
   Search,
@@ -1035,8 +1036,8 @@ function OrderCard({
               <Package className="h-3.5 w-3.5" />
               Articles ({o.items.length})
             </h3>
-            <div className="overflow-hidden rounded-xl border border-border/60 bg-card">
-              <table className="w-full text-sm">
+            <div className="overflow-x-auto rounded-xl border border-border/60 bg-card">
+              <table className="w-full min-w-[420px] text-sm">
                 <thead className="bg-muted/40">
                   <tr className="text-left text-[11px] uppercase tracking-wider text-muted-foreground">
                     <th className="px-4 py-2 font-semibold">Produit</th>
@@ -1202,6 +1203,7 @@ function OrderStatusActions({
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [showForce, setShowForce] = useState(false);
+  const prompt = usePrompt();
 
   const isMoving = !!order.delivery?.externalId && MOVING_STATES.has((order.delivery?.externalStatus || '').toLowerCase());
   const isCancelled = order.fulfillmentStatus === 'cancelled';
@@ -1231,7 +1233,15 @@ function OrderStatusActions({
   }
 
   async function cancel() {
-    const reason = window.prompt('Raison de l\'annulation (visible dans l\'historique)', isMoving ? 'Annulation manuelle après dispatch' : 'Annulation manuelle');
+    const reason = await prompt({
+      title: 'Annuler la commande',
+      description: 'La raison sera gardée dans l\'historique de la commande.',
+      defaultValue: isMoving ? 'Annulation manuelle après dispatch' : 'Annulation manuelle',
+      placeholder: 'Ex: Client a changé d\'avis, double commande…',
+      multiline: true,
+      confirmLabel: 'Annuler la commande',
+      tone: 'destructive',
+    });
     if (reason === null) return;
     await call('cancel', { fulfillmentStatus: 'cancelled', reason, force: showForce || isMoving });
   }
@@ -1354,6 +1364,7 @@ function OrderConfirmationActions({
   const [busy, setBusy] = useState<ConfirmationStatus | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [showCallbackPicker, setShowCallbackPicker] = useState(false);
+  const prompt = usePrompt();
   const [callbackAt, setCallbackAt] = useState<string>(() => {
     // Default callback = today + 2h, rounded to next half-hour, in the
     // local input format (yyyy-MM-ddThh:mm).
@@ -1394,10 +1405,15 @@ function OrderConfirmationActions({
   }
 
   async function handleDeclined() {
-    const reason = window.prompt(
-      'Raison du refus (optionnel — gardée dans l\'historique)',
-      'Refusé à la confirmation'
-    );
+    const reason = await prompt({
+      title: 'Refus du client',
+      description: 'Note gardée dans l\'historique pour le suivi.',
+      defaultValue: 'Refusé à la confirmation',
+      placeholder: 'Ex: client a dit non, prix trop élevé, double commande…',
+      multiline: true,
+      confirmLabel: 'Marquer comme refusé',
+      tone: 'destructive',
+    });
     if (reason === null) return;
     await apply('declined', { note: reason });
   }

@@ -28,6 +28,7 @@ import {
   Palette, ArrowRight,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { useConfirm } from '@/components/ui/confirm-dialog';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -143,6 +144,7 @@ export default function EditProductPage() {
   const [status, setStatus] = useState<SaveStatus>('idle');
   const [error, setError] = useState('');
   const [deleting, setDeleting] = useState(false);
+  const confirm = useConfirm();
   // Navigation interne — 3 tabs pour clarifier l'éditeur et déstresser
   // le scroll. Le contenu des cards existantes est juste regroupé.
   const [tab, setTab] = useState<EditTab>('essentiel');
@@ -307,9 +309,12 @@ export default function EditProductPage() {
 
   async function handleDelete() {
     if (!storeId) return;
-    const ok = window.confirm(
-      `Supprimer définitivement « ${name || 'ce produit'} » ?\n\nCette action est irréversible. La page produit publique deviendra inaccessible immédiatement.`
-    );
+    const ok = await confirm({
+      title: `Supprimer « ${name || 'ce produit'} » ?`,
+      description: 'Cette action est irréversible. La page produit publique deviendra inaccessible immédiatement.',
+      confirmLabel: 'Supprimer',
+      tone: 'destructive',
+    });
     if (!ok) return;
     setDeleting(true);
     setError('');
