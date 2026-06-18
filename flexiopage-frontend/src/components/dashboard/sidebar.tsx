@@ -10,7 +10,7 @@
 
 import Link from 'next/link';
 import { usePathname, useSearchParams } from 'next/navigation';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import {
   LayoutDashboard,
   Store,
@@ -130,8 +130,32 @@ export function Sidebar({ mobileOpen = false, onMobileClose }: Props) {
   // Apps installées pour la boutique active — affichées comme sous-items
   // sous l'entrée principale "Applications" (logos en mini gradient).
   const installedApps = useInstalledApps(currentStoreId);
-  const initials = (user?.name || user?.email || 'U')
-    .split(/[\s@]/)
+
+  // Zustand persist s'hydrate APRÈS le premier rendu client. Pendant ce
+  // bref instant `user` est null et la carte vendeur en bas du sidebar
+  // affichait un générique « Utilisateur ». On attend l'hydratation pour
+  // afficher la vraie valeur (cf même pattern dans Header).
+  const [hydrated, setHydrated] = useState(false);
+  useEffect(() => {
+    const apply = () => setHydrated(true);
+    if (useAuthStore.persist?.hasHydrated?.()) {
+      apply();
+      return;
+    }
+    const unsub = useAuthStore.persist?.onFinishHydration?.(apply);
+    return () => { if (typeof unsub === 'function') unsub(); };
+  }, []);
+
+  // Nom à afficher — on préfère la partie locale de l'email plutôt que la
+  // chaîne « Utilisateur » quand `name` est vide ou que des espaces (cas
+  // fréquent avec les comptes Google OAuth sans `name` ou les vieux signups
+  // qui n'imposaient pas le champ).
+  const trimmedName = user?.name?.trim();
+  const emailLocal = user?.email?.split('@')[0];
+  const displayName = trimmedName || emailLocal || t('common.user');
+
+  const initials = (trimmedName || emailLocal || 'U')
+    .split(/[\s.\-_@]+/)
     .map((s) => s[0])
     .filter(Boolean)
     .slice(0, 2)
@@ -333,14 +357,14 @@ export function Sidebar({ mobileOpen = false, onMobileClose }: Props) {
             className="flex items-center gap-2.5 rounded-lg p-1.5 transition-colors hover:bg-sidebar-muted"
           >
             <div className="grid h-9 w-9 shrink-0 place-items-center rounded-full gradient-brand text-[11px] font-semibold text-white shadow-sm">
-              {initials}
+              {hydrated ? initials : 'U'}
             </div>
             <div className="min-w-0 flex-1 leading-tight">
               <div className="truncate text-sm font-medium text-foreground">
-                {user?.name || t('common.user')}
+                {hydrated ? displayName : <span className="inline-block h-3 w-20 animate-pulse rounded bg-muted" />}
               </div>
               <div className="truncate text-[11px] text-muted-foreground">
-                {user?.email}
+                {hydrated ? user?.email : <span className="inline-block h-2.5 w-24 animate-pulse rounded bg-muted/70" />}
               </div>
             </div>
           </Link>
