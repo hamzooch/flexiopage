@@ -244,7 +244,7 @@ export default function NewLandingPagePage() {
         setJob(j);
         if (j.status === 'succeeded' && j.result) {
           // Populate editor state from the job result
-          setSections((j.result.sections as PageSection[]) || []);
+          setSections(withDefaultCodForm((j.result.sections as PageSection[]) || []));
           setSeoTitle(j.result.seoTitle || '');
           setSeoDescription(j.result.seoDescription || '');
           if (j.result.language) setLanguage(j.result.language);
@@ -304,6 +304,33 @@ export default function NewLandingPagePage() {
       { id: `sec-${Date.now()}`, type, order: prev.length, props: { title: '', subtitle: '' } },
     ]);
   }
+
+  // Toute nouvelle landing page se termine par un formulaire COD prêt à
+  // l'emploi : un vendeur qui clique « Créer » obtient une page qui sait
+  // déjà encaisser une commande sans avoir à composer manuellement le bloc.
+  // Si l'IA ou le template a déjà inséré un cod-form on n'en ajoute pas.
+  function withDefaultCodForm(input: PageSection[], productSlug?: string): PageSection[] {
+    if (input.some((s) => s.type === 'cod-form')) return input;
+    const codSection: PageSection = {
+      id: `sec-cod-${Date.now()}`,
+      type: 'cod-form',
+      order: input.length,
+      props: {
+        title: 'Commander · Paiement à la livraison',
+        subtitle: 'Remplis le formulaire, on te livre — tu paies à réception.',
+        submitLabel: 'Commander maintenant',
+        reassurance: 'Sans carte. Sans acompte. Livraison 24-72h.',
+        ...(productSlug ? { productSlug } : {}),
+        showEmail: true,
+        requireEmail: false,
+        showQuantity: true,
+        showNotes: true,
+        showPostalCode: false,
+        showState: false,
+      },
+    };
+    return [...input, codSection];
+  }
   function updateSectionProps(index: number, props: Record<string, unknown>) {
     setSections((prev) => {
       const next = [...prev];
@@ -343,7 +370,7 @@ export default function NewLandingPagePage() {
    *  starting point. The seller can then customise/replace as they wish. */
   function applyPreviewedTemplate() {
     if (!previewTemplateId || previewSections.length === 0) return;
-    setSections(previewSections);
+    setSections(withDefaultCodForm(previewSections));
     const t = templates.find((x) => x.id === previewTemplateId);
     if (t) setName(t.name.replace(/\s+/g, '-').toLowerCase());
     setSlug('');
@@ -573,7 +600,7 @@ export default function NewLandingPagePage() {
             accent="from-emerald-500 to-teal-600"
             glow="shadow-emerald-500/30"
             onClick={() => {
-              setSections([]);
+              setSections(withDefaultCodForm([]));
               setStep('editor');
             }}
           />

@@ -31,6 +31,13 @@ interface ProductLite {
   images?: string[];
 }
 
+interface StoreLite {
+  _id: string;
+  slug: string;
+  settings?: { currency?: string; country?: string; language?: string };
+  theme?: { templateId?: string };
+}
+
 export default function PreviewPage() {
   const params = useParams();
   const searchParams = useSearchParams();
@@ -39,23 +46,35 @@ export default function PreviewPage() {
 
   const [page, setPage] = useState<PageDoc | null>(null);
   const [products, setProducts] = useState<ProductLite[]>([]);
+  const [store, setStore] = useState<StoreLite | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
   useEffect(() => {
-    if (!storeId || !pageId) return;
+    if (!storeId || !pageId) {
+      // Cas où l'URL n'a pas le storeId : on évite le spinner infini.
+      setLoading(false);
+      if (!storeId) setError('Paramètre storeId manquant dans l\'URL.');
+      return;
+    }
     setLoading(true);
     Promise.all([
       storesApi.getPage(storeId, pageId),
       storesApi.listProducts(storeId, { published: 'true' }).catch(() => ({ data: { products: [] } })),
+      storesApi.get(storeId).catch(() => ({ data: { store: null } })),
     ])
-      .then(([pageRes, prodRes]) => {
+      .then(([pageRes, prodRes, storeRes]) => {
         const p = (pageRes.data as { page: PageDoc }).page;
         setPage(p);
         const list = (prodRes.data as { products?: ProductLite[] }).products || [];
         setProducts(list);
+        const s = (storeRes.data as { store?: StoreLite | null }).store || null;
+        setStore(s);
       })
-      .catch(() => setError('Page not found'))
+      .catch((err) => {
+        const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error;
+        setError(msg || 'Page introuvable.');
+      })
       .finally(() => setLoading(false));
   }, [storeId, pageId]);
 
@@ -79,8 +98,10 @@ export default function PreviewPage() {
           sections={page.sections || []}
           products={products}
           direction={page.direction}
-          language={page.language}
-          currency={page.currency}
+          language={page.language || store?.settings?.language}
+          currency={page.currency || store?.settings?.currency}
+          country={store?.settings?.country}
+          themeId={store?.theme?.templateId}
           banner={
             <div className="sticky top-0 z-50 flex flex-wrap items-center justify-between gap-3 border-b border-border/60 bg-card/80 px-5 py-2.5 backdrop-blur-xl">
               <div className="flex items-center gap-2 text-xs">

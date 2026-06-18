@@ -17,6 +17,11 @@ import { useStoreStore } from '@/stores/store-store';
  */
 
 const STORELESS_ALLOWED = new Set(['/dashboard/profile']);
+// Les routes qui portent déjà le storeId dans l'URL (ex: /preview/<pageId>?storeId=…)
+// n'ont pas besoin du currentStoreId global. Sans cette exception, ouvrir la
+// preview dans un nouvel onglet renvoie vers /select-store car le store global
+// n'est pas encore hydraté.
+const STORELESS_ALLOWED_PREFIXES = ['/preview/'];
 const AUTH_STORAGE_KEY = 'flexiopage-auth';
 const STORE_STORAGE_KEY = 'flexiopage-current-store';
 
@@ -66,7 +71,10 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
       router.replace(`/login?next=${encodeURIComponent(pathname)}`);
       return;
     }
-    if (!currentStoreId && !STORELESS_ALLOWED.has(pathname)) {
+    const isStorelessAllowed =
+      STORELESS_ALLOWED.has(pathname) ||
+      STORELESS_ALLOWED_PREFIXES.some((p) => pathname.startsWith(p));
+    if (!currentStoreId && !isStorelessAllowed) {
       setRedirecting(true);
       router.replace('/select-store');
       return;
