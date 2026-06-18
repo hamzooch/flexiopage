@@ -30,7 +30,7 @@ import {
   Smartphone,
   Monitor,
 } from 'lucide-react';
-import { cn } from '@/lib/utils';
+import { cn, formatCurrency } from '@/lib/utils';
 
 type Step =
   | 'choice'
@@ -209,6 +209,15 @@ export default function NewLandingPagePage() {
           // Treat store-level language as the user's chosen default
           setLanguage(sl);
           setLanguageTouched(true);
+        } else if (typeof navigator !== 'undefined' && navigator.language) {
+          // Pas de réglage côté store : on tombe sur la langue du navigateur
+          // plutôt que de forcer l'anglais. Ça évite de générer une landing
+          // en anglais pour un vendeur francophone qui n'a jamais touché aux
+          // paramètres de boutique.
+          const browserLang = navigator.language.slice(0, 2).toLowerCase();
+          if (LANGUAGES.some((l) => l.code === browserLang)) {
+            setLanguage(browserLang);
+          }
         }
       })
       .catch(() => {});
@@ -671,7 +680,9 @@ export default function NewLandingPagePage() {
                         </span>
                       )}
                       {p.price !== undefined && (
-                        <span className="rounded-full bg-muted px-2 py-0.5 text-muted-foreground">${p.price}</span>
+                        <span className="rounded-full bg-muted px-2 py-0.5 text-muted-foreground">
+                          {formatCurrency(p.price, currency || 'USD', language)}
+                        </span>
                       )}
                     </div>
                   </div>

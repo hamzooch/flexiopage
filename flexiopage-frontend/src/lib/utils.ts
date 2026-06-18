@@ -5,8 +5,34 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
-export function formatCurrency(amount: number, currency = 'USD'): string {
-  return new Intl.NumberFormat('en-US', { style: 'currency', currency }).format(amount);
+/**
+ * Map ISO language code (fr, ar, en…) to a BCP47 locale string so
+ * Intl.NumberFormat emits the right grouping/decimal/symbol position
+ * (29,99 € vs €29.99, ١٫٢٣٤ ر.س vs SR 1,234). Caller can pass either
+ * a bare lang ('fr') or a full locale ('fr-FR') — both work.
+ */
+function langToLocale(lang?: string): string {
+  if (!lang) return 'en-US';
+  if (lang.includes('-')) return lang;
+  switch (lang.toLowerCase()) {
+    case 'fr': return 'fr-FR';
+    case 'ar': return 'ar';
+    case 'es': return 'es-ES';
+    case 'de': return 'de-DE';
+    case 'it': return 'it-IT';
+    case 'pt': return 'pt-PT';
+    case 'en': return 'en-US';
+    default: return lang;
+  }
+}
+
+export function formatCurrency(amount: number, currency = 'USD', locale?: string): string {
+  try {
+    return new Intl.NumberFormat(langToLocale(locale), { style: 'currency', currency }).format(amount);
+  } catch {
+    // Devise inconnue ou locale corrompue → fallback simple sans crash.
+    return `${amount} ${currency}`;
+  }
 }
 
 export function formatDate(date: string | Date): string {
