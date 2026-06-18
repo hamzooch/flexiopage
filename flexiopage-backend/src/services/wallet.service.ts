@@ -18,13 +18,11 @@ const COMMISSION_RATE = Number(process.env.COMMISSION_RATE || 0.03);
 const COMMISSION_CAP = Number(process.env.COMMISSION_CAP || 1500);
 
 /**
- * AI generation pricing is now stored in MongoDB (Settings singleton)
- * and edited by admins from /admin/pricing. Prices are in USD; each
- * seller's wallet is debited in their local currency using the
- * USD→currency rate table (also in Settings).
- *
- * `AI_COSTS` is kept for backwards-compatibility as a type alias only;
- * the actual values come from `aiCostFor()` / `aiCostInCurrency()`.
+ * AI generation pricing is stored in MongoDB (Settings singleton) and
+ * edited by admins from /admin/settings. Depuis le passage au modèle
+ * token (2026-06-18), les prix sont en **tokens** : le wallet AI ne
+ * porte plus une monnaie mais un compteur de tokens. Le vendeur achète
+ * des tokens via top-up (1 USD = settings.aiPricing.usdToTokens tokens).
  */
 export type AI_COSTS = AiKind;
 
@@ -34,12 +32,8 @@ export function commissionFor(orderTotal: number): number {
   return Math.min(raw, COMMISSION_CAP);
 }
 
-/**
- * Resolve the USD price for one generation kind from the Settings doc.
- * Falls back to the in-code defaults if Settings is missing for any
- * reason (db down on first call, kind not yet in the doc, …).
- */
-export async function aiCostUSD(kind: AiKind): Promise<number> {
+/** Token cost for one AI generation kind (lu depuis Settings, fallback défauts). */
+export async function aiCostTokens(kind: AiKind): Promise<number> {
   const s = await getSettings();
   const price = s.aiPricing?.prices?.[kind];
   return typeof price === 'number' && price >= 0
@@ -47,14 +41,25 @@ export async function aiCostUSD(kind: AiKind): Promise<number> {
     : DEFAULT_AI_PRICING.prices[kind] ?? DEFAULT_AI_PRICING.prices.landing;
 }
 
-/**
- * AI cost is now always charged in USD — wallet balances are pinned to
- * USD platform-wide so there's no per-seller currency conversion to do.
- * Signature keeps the `currency` argument so callers don't break, but
- * the value is ignored on purpose.
- */
+/** Nombre de tokens reçus pour 1 USD versé (lu depuis Settings). */
+export async function usdToTokensRate(): Promise<number> {
+  const s = await getSettings();
+  const r = s.aiPricing?.usdToTokens;
+  return typeof r === 'number' && r > 0 ? r : DEFAULT_AI_PRICING.usdToTokens;
+}
+
+/** Convertit un montant USD en tokens via le ratio courant, arrondi. */
+export async function usdToTokens(amountUsd: number): Promise<number> {
+  const rate = await usdToTokensRate();
+  return Math.round(amountUsd * rate);
+}
+
+// Alias legacy — appelés par d'anciens contrôleurs avant la refonte tokens.
+// Renvoient la même valeur (en tokens) ; on garde les noms le temps que les
+// callers basculent, sans casser le runtime.
+export const aiCostUSD = aiCostTokens;
 export async function aiCostInCurrency(kind: AiKind, _currency?: string): Promise<number> {
-  return Math.round(await aiCostUSD(kind));
+  return aiCostTokens(kind);
 }
 
 function genId(): string {
@@ -219,8 +224,10 @@ export async function debit(args: DebitArgs): Promise<{ wallet: IWallet; transac
 }
 
 /**
- * Charge a fixed-price AI generation. Throws 402 when the AI balance is too
- * low — caller (page controller) returns the error to the UI.
+ * Charge a fixed-price AI generation, en tokens. Throws 402 when the AI
+ * balance (tokens) is too low — caller surfaces it pour proposer un top-up.
+ * Le champ `currency` du retour vaut 'TOKENS' : sert juste de marqueur
+ * d'unité côté front (anciens callers attendent une string).
  */
 export async function chargeAiGeneration(args: {
   userId: string | mongoose.Types.ObjectId;
@@ -229,19 +236,19 @@ export async function chargeAiGeneration(args: {
   note?: string;
 }): Promise<{ amount: number; balanceAfter: number; currency: string }> {
   const wallet = await getOrCreateWallet(args.userId);
-  const amount = await aiCostInCurrency(args.kind, wallet.currency);
+  const amount = await aiCostTokens(args.kind);
   if (amount <= 0) {
-    return { amount: 0, balanceAfter: wallet.aiBalance, currency: wallet.currency };
+    return { amount: 0, balanceAfter: wallet.aiBalance, currency: 'TOKENS' };
   }
-  const { transaction, wallet: w } = await debit({
+  const { transaction } = await debit({
     userId: args.userId,
     amount,
     bucket: 'ai',
     kind: 'ai_generation',
     enforceBalance: true,
-    note: args.note || `Génération AI · ${args.kind}${args.jobId ? ` · ${args.jobId}` : ''}`,
+    note: args.note || `Génération AI · ${args.kind} · ${amount} tokens${args.jobId ? ` · ${args.jobId}` : ''}`,
   });
-  return { amount, balanceAfter: transaction.balanceAfter, currency: w.currency };
+  return { amount, balanceAfter: transaction.balanceAfter, currency: 'TOKENS' };
 }
 
 /**

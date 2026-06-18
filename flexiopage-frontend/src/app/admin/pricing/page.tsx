@@ -3,10 +3,12 @@
 /**
  * Admin → AI pricing.
  *
- * USD prices per generation kind + USD→currency rate table. Both are
- * stored in the platform Settings doc; read is open to any admin tier,
- * but the PUT requires superadmin+ (server enforces — UI lets read-only
- * admins land here, just disables the Save button if 403'd).
+ * Coût (en tokens) par type de génération + ratio USD→tokens (combien
+ * de tokens le vendeur reçoit pour 1 USD versé). Stockés dans le
+ * Settings doc ; lecture ouverte aux admins, écriture superadmin+.
+ *
+ * La table `rates` (USD → devise locale) est legacy : elle ne sert plus
+ * qu'au script `migrate-wallets-to-usd` et n'est pas exposée dans l'UI.
  */
 import { useEffect, useMemo, useState } from 'react';
 import { CheckCircle2, Loader2, RefreshCcw, XCircle } from 'lucide-react';
@@ -33,8 +35,9 @@ export default function AdminPricingPage() {
   const isSuperAdmin = useAuthStore((s) => ['superadmin', 'owner'].includes(String(s.user?.role)));
 
   const [prices, setPrices] = useState<Prices>({ landing: 3, poster: 3, product_page: 3, text_only: 1 });
+  const [usdToTokens, setUsdToTokens] = useState<number>(1.5);
   const [rates, setRates] = useState<Record<string, number>>({});
-  const [defaults, setDefaults] = useState<{ prices: Prices; rates: Record<string, number> } | null>(null);
+  const [defaults, setDefaults] = useState<{ prices: Prices; usdToTokens: number; rates: Record<string, number> } | null>(null);
   const [loading, setLoading] = useState(true);
   const [status, setStatus] = useState<Status>('idle');
   const [errorMessage, setErrorMessage] = useState<string>('');
@@ -46,6 +49,7 @@ export default function AdminPricingPage() {
       .getAiPricing()
       .then((res) => {
         setPrices(res.data.aiPricing.prices);
+        setUsdToTokens(res.data.aiPricing.usdToTokens || 1.5);
         setRates(res.data.aiPricing.rates || {});
         setDefaults(res.data.defaults);
         setUpdatedAt(res.data.updatedAt);
@@ -68,8 +72,9 @@ export default function AdminPricingPage() {
     setStatus('saving');
     setErrorMessage('');
     try {
-      const res = await adminApi.updateAiPricing({ prices, rates });
+      const res = await adminApi.updateAiPricing({ prices, usdToTokens, rates });
       setPrices(res.data.aiPricing.prices);
+      setUsdToTokens(res.data.aiPricing.usdToTokens || 1.5);
       setRates(res.data.aiPricing.rates);
       setUpdatedAt(res.data.updatedAt);
       setStatus('saved');
@@ -88,6 +93,7 @@ export default function AdminPricingPage() {
   function resetToDefaults() {
     if (!defaults) return;
     setPrices({ ...defaults.prices });
+    setUsdToTokens(defaults.usdToTokens);
     setRates({ ...defaults.rates });
   }
 
@@ -111,7 +117,7 @@ export default function AdminPricingPage() {
         <div>
           <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">Tarifs de génération AI</h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            Prix en USD par type de génération + table de conversion vers les devises des wallets vendeurs.
+            Coût en tokens par type de génération + ratio USD → tokens appliqué quand un vendeur recharge son solde IA.
           </p>
           {updatedAt && (
             <p className="mt-1 text-xs text-muted-foreground">
@@ -131,13 +137,51 @@ export default function AdminPricingPage() {
         </div>
       )}
 
-      {/* ── Prices in USD ──────────────────────────────────────── */}
+      {/* ── Ratio USD → tokens ──────────────────────────────────── */}
       <Card>
         <CardHeader>
-          <CardTitle>Prix par génération (en USD)</CardTitle>
+          <CardTitle>Ratio USD → tokens</CardTitle>
           <CardDescription>
-            Le wallet du vendeur sera débité dans <strong>sa devise locale</strong>, calculée
-            automatiquement avec la table de conversion ci-dessous.
+            Combien de tokens un vendeur reçoit pour 1 USD versé au top-up.
+            Exemple : 1.5 → un paiement de 10 USD crédite 15 tokens.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="flex flex-wrap items-end gap-4">
+            <div>
+              <Label htmlFor="usd-to-tokens" className="text-sm font-semibold">1 USD =</Label>
+              <div className="mt-1 flex items-center gap-2">
+                <Input
+                  id="usd-to-tokens"
+                  type="number"
+                  min={0.01}
+                  step={0.1}
+                  value={usdToTokens}
+                  onChange={(e) => {
+                    const n = Number(e.target.value);
+                    setUsdToTokens(Number.isFinite(n) && n > 0 ? n : usdToTokens);
+                  }}
+                  disabled={!isSuperAdmin}
+                  className="w-32"
+                />
+                <span className="text-sm font-medium text-muted-foreground">tokens</span>
+              </div>
+            </div>
+            <p className="max-w-md text-xs text-muted-foreground">
+              Aperçu : un top-up de <strong>10 USD</strong> créditera{' '}
+              <strong>{Math.round(10 * usdToTokens)} tokens</strong> sur le solde IA du vendeur.
+            </p>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* ── Token cost per generation ──────────────────────────── */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Coût par génération (en tokens)</CardTitle>
+          <CardDescription>
+            Nombre de tokens débités du solde IA du vendeur à chaque génération.
+            La valeur peut être décimale (ex : 2.5) si tu veux un coût plus fin.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -148,10 +192,7 @@ export default function AdminPricingPage() {
                   {KIND_LABELS[k].label}
                 </Label>
                 <p className="mb-3 text-xs text-muted-foreground">{KIND_LABELS[k].hint}</p>
-                <div className="relative">
-                  <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm font-medium text-muted-foreground">
-                    $
-                  </span>
+                <div className="flex items-center gap-2">
                   <Input
                     id={`price-${k}`}
                     type="number"
@@ -160,8 +201,8 @@ export default function AdminPricingPage() {
                     value={prices[k]}
                     onChange={(e) => updatePrice(k, e.target.value)}
                     disabled={!isSuperAdmin}
-                    className="pl-7"
                   />
+                  <span className="text-sm font-medium text-muted-foreground">tokens</span>
                 </div>
               </div>
             ))}
@@ -169,12 +210,13 @@ export default function AdminPricingPage() {
         </CardContent>
       </Card>
 
-      {/* ── Conversion table ───────────────────────────────────── */}
+      {/* ── Conversion table (legacy) ──────────────────────────── */}
       <Card>
         <CardHeader>
-          <CardTitle>Taux de change USD → devise locale</CardTitle>
+          <CardTitle>Taux USD → devise locale (legacy)</CardTitle>
           <CardDescription>
-            Pour 1 USD, combien d&apos;unités dans cette devise ? Exemple : 1 USD ≈ 3,1 TND, 1 USD ≈ 10 MAD.
+            Table conservée uniquement pour le script <code>migrate-wallets-to-usd</code>.
+            Plus utilisée au runtime : depuis le passage aux tokens, le wallet IA n&apos;a plus de devise.
             La devise <strong>USD</strong> reste fixée à 1.
           </CardDescription>
         </CardHeader>

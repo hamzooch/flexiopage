@@ -20,6 +20,15 @@ function fmt(amount: number, currency: string): string {
   }
 }
 
+/** Solde IA = compteur de tokens (depuis juin 2026). */
+function fmtTokens(amount: number): string {
+  const n = Math.round(amount);
+  return `${n.toLocaleString()} token${Math.abs(n) === 1 ? '' : 's'}`;
+}
+
+/** Ratio par défaut si le backend ne le renvoie pas (devrait pas arriver). */
+const DEFAULT_USD_TO_TOKENS = 1.5;
+
 export default function AdminWalletsPage() {
   const me = useAuthStore((s) => s.user);
   const isSuperAdmin = (me as { role?: string } | null)?.role === 'superadmin';
@@ -110,8 +119,8 @@ export default function AdminWalletsPage() {
                     <div className="text-xs text-muted-foreground">{w.userId?.email || w._id}</div>
                   </div>
                   <div className="flex items-center gap-2">
-                    <Pill icon={<WalletIcon className="h-3 w-3" />} tone="emerald" amount={w.balance} currency={w.currency} label="Principal" />
-                    <Pill icon={<Sparkles className="h-3 w-3" />} tone="fuchsia" amount={w.aiBalance} currency={w.currency} label="IA" />
+                    <Pill icon={<WalletIcon className="h-3 w-3" />} tone="emerald" amount={w.balance} currency={w.currency} label="Principal" unit="currency" />
+                    <Pill icon={<Sparkles className="h-3 w-3" />} tone="fuchsia" amount={w.aiBalance} currency={w.currency} label="IA" unit="tokens" />
                   </div>
                   <div className="flex items-center gap-1.5">
                     {isSuperAdmin && (
@@ -237,7 +246,7 @@ function CreditModal({
           </div>
           <div className="rounded-lg bg-fuchsia-500/10 p-2.5 text-fuchsia-700">
             <div className="font-bold uppercase tracking-wider">Solde IA actuel</div>
-            <div className="mt-0.5 text-base font-bold">{fmt(wallet.aiBalance, wallet.currency)}</div>
+            <div className="mt-0.5 text-base font-bold">{fmtTokens(wallet.aiBalance)}</div>
           </div>
         </div>
 
@@ -256,21 +265,31 @@ function CreditModal({
             </div>
           </div>
           <div>
-            <Label htmlFor="credit-amount" className="text-xs">Montant à créditer ({wallet.currency})</Label>
+            <Label htmlFor="credit-amount" className="text-xs">
+              {bucket === 'ai' ? 'Montant payé (USD)' : `Montant à créditer (${wallet.currency})`}
+            </Label>
             <Input
               id="credit-amount"
               type="number"
               inputMode="numeric"
-              placeholder="Ex: 10000"
+              placeholder={bucket === 'ai' ? 'Ex: 10' : 'Ex: 10000'}
               value={amount}
               onChange={(e) => setAmount(e.target.value)}
               className="mt-1"
               min={1}
               required
             />
-            <p className="mt-1 text-[11px] text-muted-foreground">
-              Crédit positif uniquement. Pour un débit, utilise « Ajuster ».
-            </p>
+            {bucket === 'ai' ? (
+              <p className="mt-1 text-[11px] text-muted-foreground">
+                {Number(amount) > 0
+                  ? `→ ${fmtTokens(Number(amount) * DEFAULT_USD_TO_TOKENS)} crédités (1 USD = ${DEFAULT_USD_TO_TOKENS} tokens).`
+                  : `1 USD = ${DEFAULT_USD_TO_TOKENS} tokens crédités. Ratio modifiable dans /admin/settings.`}
+              </p>
+            ) : (
+              <p className="mt-1 text-[11px] text-muted-foreground">
+                Crédit positif uniquement. Pour un débit, utilise « Ajuster ».
+              </p>
+            )}
           </div>
           <div>
             <Label htmlFor="payment-ref" className="text-xs">Référence paiement (optionnel)</Label>
@@ -313,12 +332,26 @@ function CreditModal({
   );
 }
 
-function Pill({ icon, tone, amount, currency, label }: { icon: React.ReactNode; tone: 'emerald' | 'fuchsia'; amount: number; currency: string; label: string }) {
+function Pill({
+  icon,
+  tone,
+  amount,
+  currency,
+  label,
+  unit,
+}: {
+  icon: React.ReactNode;
+  tone: 'emerald' | 'fuchsia';
+  amount: number;
+  currency: string;
+  label: string;
+  unit: 'currency' | 'tokens';
+}) {
   const tw = tone === 'emerald' ? 'bg-emerald-500/10 text-emerald-700' : 'bg-fuchsia-500/10 text-fuchsia-700';
   return (
     <div className={`hidden flex-col rounded-lg px-2.5 py-1.5 text-right sm:flex ${tw}`}>
       <span className="inline-flex items-center gap-1 text-[9px] font-bold uppercase tracking-wider opacity-80">{icon} {label}</span>
-      <span className="text-sm font-bold">{fmt(amount, currency)}</span>
+      <span className="text-sm font-bold">{unit === 'tokens' ? fmtTokens(amount) : fmt(amount, currency)}</span>
     </div>
   );
 }
@@ -427,7 +460,7 @@ function AdjustModal({
           </div>
           <div className="rounded-lg bg-fuchsia-500/10 p-2.5 text-fuchsia-700">
             <div className="font-bold uppercase tracking-wider">Solde IA</div>
-            <div className="mt-0.5 text-base font-bold">{fmt(wallet.aiBalance, wallet.currency)}</div>
+            <div className="mt-0.5 text-base font-bold">{fmtTokens(wallet.aiBalance)}</div>
           </div>
         </div>
 
@@ -447,7 +480,7 @@ function AdjustModal({
           </div>
           <div>
             <Label htmlFor="amount" className="text-xs">
-              Montant à {isAdd ? 'ajouter' : 'retirer'} ({wallet.currency})
+              Montant à {isAdd ? 'ajouter' : 'retirer'} ({bucket === 'ai' ? 'tokens' : wallet.currency})
             </Label>
             <Input
               id="amount"
@@ -455,11 +488,16 @@ function AdjustModal({
               inputMode="decimal"
               min="0"
               step="any"
-              placeholder="Ex: 5000"
+              placeholder={bucket === 'ai' ? 'Ex: 5' : 'Ex: 5000'}
               value={amount}
               onChange={(e) => setAmount(e.target.value)}
               className="mt-1"
             />
+            {bucket === 'ai' && (
+              <p className="mt-1 text-[11px] text-muted-foreground">
+                Ajustement direct en tokens, sans conversion (le wallet IA est un compteur).
+              </p>
+            )}
           </div>
           <div>
             <Label htmlFor="reason" className="text-xs">Raison</Label>

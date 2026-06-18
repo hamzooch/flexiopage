@@ -20,7 +20,7 @@ import { Product } from '../models/Product.model';
 import { Order } from '../models/Order.model';
 import { Wallet } from '../models/Wallet.model';
 import { Complaint } from '../models/Complaint.model';
-import { credit, debit } from '../services/wallet.service';
+import { credit, debit, usdToTokens, usdToTokensRate } from '../services/wallet.service';
 import { listActivities } from '../services/activity-log.service';
 import type { ActivityType } from '../models/ActivityLog.model';
 import {
@@ -556,7 +556,12 @@ export async function listWallets(req: AuthRequest, res: Response): Promise<void
   res.json({ wallets });
 }
 
-/** POST /api/admin/wallets/:userId/adjust — body: { amount, bucket?, reason } */
+/** POST /api/admin/wallets/:userId/adjust — body: { amount, bucket?, reason }
+ *
+ *  Pour bucket='main' : amount en USD (positif=crédit, négatif=débit).
+ *  Pour bucket='ai'   : amount en TOKENS directement (pas de conversion).
+ *  C'est volontaire — l'admin ajuste manuellement à la valeur exacte,
+ *  contrairement à /credit qui simule un paiement USD du vendeur. */
 export async function adjustWallet(req: AuthRequest, res: Response): Promise<void> {
   const { userId } = req.params;
   const { amount, bucket, reason } = (req.body || {}) as {
@@ -661,13 +666,21 @@ export async function creditWallet(req: AuthRequest, res: Response): Promise<voi
     return;
   }
   const bucket: 'main' | 'ai' = target === 'ai' ? 'ai' : 'main';
+  // L'admin saisit le montant payé en USD ; pour le bucket AI on crédite
+  // l'équivalent en tokens (1 USD = settings.aiPricing.usdToTokens).
+  const creditAmount = bucket === 'ai' ? await usdToTokens(value) : value;
+  const rate = bucket === 'ai' ? await usdToTokensRate() : 1;
   const result = await credit({
     userId,
-    amount: value,
+    amount: creditAmount,
     bucket,
     kind: bucket === 'ai' ? 'top_up_ai' : 'top_up',
     paymentReference: paymentReference?.trim() || undefined,
-    note: note?.trim() || `[admin] Recharge ${bucket === 'ai' ? 'IA' : 'principal'}`,
+    note:
+      note?.trim() ||
+      (bucket === 'ai'
+        ? `[admin] Recharge IA · ${value} USD → ${creditAmount} tokens`
+        : '[admin] Recharge principal'),
   });
   res.json({
     ok: true,
@@ -675,6 +688,8 @@ export async function creditWallet(req: AuthRequest, res: Response): Promise<voi
     alreadyApplied: result.alreadyApplied,
     balance: result.wallet.balance,
     aiBalance: result.wallet.aiBalance,
+    credited: creditAmount,
+    rate,
     transaction: result.transaction,
   });
 }
@@ -953,6 +968,14 @@ export async function updateAiPricing(req: AuthRequest, res: Response): Promise<
   }
   if (Object.keys(cleanRates).length > 0) {
     update['aiPricing.rates'] = cleanRates;
+  }
+  // Le ratio USD→tokens : modifié séparément des `prices` (qui sont les
+  // coûts par génération), mais stocké au même endroit.
+  if (body.usdToTokens !== undefined) {
+    const r = Number(body.usdToTokens);
+    if (Number.isFinite(r) && r > 0) {
+      update['aiPricing.usdToTokens'] = r;
+    }
   }
 
   await Settings.updateOne({ key: 'global' }, { $set: update }, { upsert: true });

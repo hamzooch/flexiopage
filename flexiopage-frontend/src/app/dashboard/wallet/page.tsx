@@ -36,6 +36,18 @@ function fmt(amount: number, currency: string): string {
   }
 }
 
+/** Affichage solde IA : on n'utilise plus la monnaie, juste un compteur. */
+function fmtTokens(amount: number): string {
+  const n = Math.round(amount);
+  return `${n.toLocaleString()} token${Math.abs(n) === 1 ? '' : 's'}`;
+}
+
+/** Format d'un montant transactionnel selon le bucket (currency pour main,
+ *  tokens pour ai). Évite que l'UI mélange USD et tokens dans le ledger. */
+function fmtForBucket(amount: number, bucket: WalletBucket, currency: string): string {
+  return bucket === 'ai' ? fmtTokens(amount) : fmt(amount, currency);
+}
+
 function txMeta(t: WalletTransaction): { label: string; tone: 'positive' | 'negative' | 'neutral'; Icon: typeof ArrowDownToLine } {
   switch (t.kind) {
     case 'top_up':         return { label: 'Recharge solde',     tone: 'positive', Icon: ArrowDownToLine };
@@ -94,9 +106,13 @@ export default function WalletPage() {
       });
       if (res.data.alreadyApplied) {
         setError('Cette référence de paiement a déjà été utilisée.');
+      } else if (target === 'ai') {
+        const credited = res.data.credited ?? Math.round(value * (wallet?.usdToTokens ?? 1.5));
+        setSuccess(`+${fmtTokens(credited)} crédités (paiement ${fmt(value, 'USD')}). Nouveau solde IA : ${fmtTokens(res.data.aiBalance)}.`);
+        setTopupAmount(''); setTopupRef('');
+        await load();
       } else {
-        const newBal = target === 'ai' ? res.data.aiBalance : res.data.balance;
-        setSuccess(`+${fmt(value, wallet?.currency || 'USD')} crédités sur le solde ${target === 'ai' ? 'IA' : 'principal'}. Nouveau solde : ${fmt(newBal, wallet?.currency || 'USD')}`);
+        setSuccess(`+${fmt(value, wallet?.currency || 'USD')} crédités sur le solde principal. Nouveau solde : ${fmt(res.data.balance, wallet?.currency || 'USD')}`);
         setTopupAmount(''); setTopupRef('');
         await load();
       }
@@ -142,6 +158,7 @@ export default function WalletPage() {
           subline={`Commission ${ratePct}% par commande livrée · plafond ${fmt(wallet.commissionCap, wallet.currency)}`}
           amount={wallet.balance}
           currency={wallet.currency}
+          unit="currency"
           low={lowMain}
           onTopUp={() => setTarget('main')}
           isActive={target === 'main'}
@@ -150,9 +167,10 @@ export default function WalletPage() {
           tone="fuchsia"
           icon={<Sparkles className="h-4 w-4" />}
           label="Solde IA"
-          subline={`Landing/page produit ${fmt(wallet.aiCosts.landing, wallet.currency)} · texte seul ${fmt(wallet.aiCosts.text_only, wallet.currency)}`}
+          subline={`Landing/page produit ${fmtTokens(wallet.aiCosts.landing)} · texte seul ${fmtTokens(wallet.aiCosts.text_only)}`}
           amount={wallet.aiBalance}
           currency={wallet.currency}
+          unit="tokens"
           low={lowAi}
           onTopUp={() => setTarget('ai')}
           isActive={target === 'ai'}
@@ -192,18 +210,28 @@ export default function WalletPage() {
           </div>
           <form onSubmit={handleTopup} className="grid gap-4 sm:grid-cols-[1fr_1fr_auto]">
             <div>
-              <Label htmlFor="amount">Montant à recharger ({wallet.currency})</Label>
+              <Label htmlFor="amount">
+                {target === 'ai' ? 'Montant à payer (USD)' : `Montant à recharger (${wallet.currency})`}
+              </Label>
               <Input
                 id="amount"
                 type="number"
                 inputMode="numeric"
-                placeholder={target === 'ai' ? 'Ex: 5000' : 'Ex: 10000'}
+                placeholder={target === 'ai' ? 'Ex: 10' : 'Ex: 10000'}
                 value={topupAmount}
                 onChange={(e) => setTopupAmount(e.target.value)}
                 className="mt-1"
                 min={1}
               />
-              <p className="mt-1 text-[11px] text-muted-foreground">Montant en {wallet.currency} que tu vas créditer.</p>
+              {target === 'ai' ? (
+                <p className="mt-1 text-[11px] text-muted-foreground">
+                  {Number(topupAmount) > 0
+                    ? `→ ${fmtTokens(Number(topupAmount) * (wallet.usdToTokens ?? 1.5))} crédités (1 USD = ${wallet.usdToTokens ?? 1.5} tokens)`
+                    : `1 USD = ${wallet.usdToTokens ?? 1.5} tokens crédités sur ton solde IA.`}
+                </p>
+              ) : (
+                <p className="mt-1 text-[11px] text-muted-foreground">Montant en {wallet.currency} que tu vas créditer.</p>
+              )}
             </div>
             <div>
               <Label htmlFor="ref">Référence du paiement (optionnel)</Label>
@@ -299,10 +327,10 @@ export default function WalletPage() {
                     </div>
                     <div className="text-right">
                       <div className={`text-sm font-bold ${toneClass}`}>
-                        {sign}{fmt(t.amount, wallet.currency)}
+                        {sign}{fmtForBucket(t.amount, t.bucket, wallet.currency)}
                       </div>
                       <div className="text-[10px] text-muted-foreground">
-                        Solde : {fmt(t.balanceAfter, wallet.currency)}
+                        Solde : {fmtForBucket(t.balanceAfter, t.bucket, wallet.currency)}
                       </div>
                     </div>
                   </li>
@@ -323,6 +351,7 @@ function BalanceCard({
   subline,
   amount,
   currency,
+  unit,
   low,
   onTopUp,
   isActive,
@@ -333,6 +362,8 @@ function BalanceCard({
   subline: string;
   amount: number;
   currency: string;
+  /** 'currency' → format Intl avec la monnaie. 'tokens' → compteur. */
+  unit: 'currency' | 'tokens';
   low: boolean;
   onTopUp: () => void;
   isActive: boolean;
@@ -362,7 +393,7 @@ function BalanceCard({
         </button>
       </div>
       <div className="relative mt-5 text-4xl font-black tracking-tight sm:text-5xl">
-        {fmt(amount, currency)}
+        {unit === 'tokens' ? fmtTokens(amount) : fmt(amount, currency)}
       </div>
       <p className="relative mt-2 text-xs text-muted-foreground">{subline}</p>
       {low && (

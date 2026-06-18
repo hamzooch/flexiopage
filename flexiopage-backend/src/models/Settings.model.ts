@@ -1,22 +1,28 @@
 /**
  * Platform-wide settings — single document keyed by `key='global'`.
  *
- * Currently stores admin-tunable AI generation pricing (in USD) and the
- * USD → seller-wallet-currency conversion table used at debit time.
- * Read via `getSettings()`; write via the admin pricing endpoints.
+ * Stores admin-tunable AI generation pricing. Depuis le passage au modèle
+ * token (2026-06-18, ratio 1 USD = 1.5 token), `prices` est exprimé en
+ * **tokens** consommés par génération, et `usdToTokens` définit combien
+ * de tokens le vendeur reçoit quand il recharge 1 USD.
  *
- * Why a singleton document instead of env vars? Admin can tune prices
- * live from the dashboard, without a redeploy, without losing audit
- * trail (Mongoose timestamps record who last changed what).
+ * `rates` est gardé pour le script de migration historique (legacy local-
+ * currency → USD) mais n'est plus utilisé en runtime — le wallet AI est
+ * en tokens, plus en monnaie locale.
+ *
+ * Read via `getSettings()`; write via the admin pricing endpoints.
  */
 import mongoose, { Schema, Document } from 'mongoose';
 
 export type AiKind = 'landing' | 'poster' | 'product_page' | 'text_only';
 
 export interface IAiPricing {
-  /** Price in USD per generation kind. */
+  /** Tokens consommés par génération (par kind). */
   prices: Record<AiKind, number>;
-  /** USD → currency multiplier (1 USD * rate = price in that currency). */
+  /** Nombre de tokens crédités au vendeur par 1 USD versé. */
+  usdToTokens: number;
+  /** Legacy: USD → currency multiplier, utilisé uniquement par le script
+   *  migrate-wallets-to-usd.ts. Plus consulté au runtime. */
   rates: Record<string, number>;
 }
 
@@ -57,11 +63,14 @@ export const DEFAULT_AUTH_SETTINGS: IAuthSettings = {
  */
 export const DEFAULT_AI_PRICING: IAiPricing = {
   prices: {
-    landing:      3,   // USD per full landing generation
-    poster:       3,   // USD per poster generation
-    product_page: 3,   // USD per product-detail page
-    text_only:    1,   // USD per copy-only landing (no images)
+    landing:      3,   // tokens per full landing generation
+    poster:       3,   // tokens per poster generation
+    product_page: 3,   // tokens per product-detail page
+    text_only:    1,   // tokens per copy-only landing (no images)
   },
+  // 10 USD top-up = 15 tokens (ratio confirmé 2026-06-18). L'admin peut
+  // ajuster depuis /admin/settings sans redéploiement.
+  usdToTokens: 1.5,
   rates: {
     USD: 1,
     EUR: 0.92,
@@ -90,6 +99,7 @@ const SettingsSchema = new Schema<ISettings>(
         product_page: { type: Number, default: DEFAULT_AI_PRICING.prices.product_page },
         text_only:    { type: Number, default: DEFAULT_AI_PRICING.prices.text_only },
       },
+      usdToTokens: { type: Number, default: DEFAULT_AI_PRICING.usdToTokens, min: 0.01 },
       rates: { type: Schema.Types.Mixed, default: () => ({ ...DEFAULT_AI_PRICING.rates }) },
     },
     auth: {
@@ -118,11 +128,21 @@ export async function getSettings(force = false): Promise<ISettings> {
       aiPricing: DEFAULT_AI_PRICING,
       auth: DEFAULT_AUTH_SETTINGS,
     });
-  } else if (!doc.auth) {
-    // Migration douce : le doc existe (créé avant qu'on ajoute auth),
-    // on remplit avec les défauts sans écraser le reste.
-    doc.auth = { ...DEFAULT_AUTH_SETTINGS };
-    await doc.save();
+  } else {
+    // Migrations douces : le doc existe mais peut manquer des champs
+    // ajoutés après sa création. On remplit avec les défauts sans écraser.
+    let dirty = false;
+    if (!doc.auth) {
+      doc.auth = { ...DEFAULT_AUTH_SETTINGS };
+      dirty = true;
+    }
+    if (!doc.aiPricing?.usdToTokens) {
+      // Doc créé avant le passage au modèle token (juin 2026). On met le
+      // ratio par défaut, l'admin pourra l'ajuster.
+      doc.aiPricing.usdToTokens = DEFAULT_AI_PRICING.usdToTokens;
+      dirty = true;
+    }
+    if (dirty) await doc.save();
   }
   cache = { value: doc, expiresAt: Date.now() + CACHE_MS };
   return doc;

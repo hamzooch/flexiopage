@@ -201,11 +201,15 @@ export default function StudioPage() {
       setPoster(res.data.poster);
       refreshWallet();
     } catch (err) {
-      const e = err as { response?: { data?: { error?: string; code?: string } } };
+      const e = err as { response?: { data?: { error?: string; code?: string; cost?: number } } };
       const msg = e.response?.data?.error || 'Erreur lors de la génération';
-      setPosterError(e.response?.data?.code === 'insufficient_ai_balance'
-        ? msg + ' — Recharge ton solde IA dans /dashboard/wallet.'
-        : msg);
+      if (e.response?.data?.code === 'insufficient_ai_balance') {
+        const cost = e.response.data.cost;
+        const costStr = typeof cost === 'number' ? ` (coût : ${cost} token${cost === 1 ? '' : 's'})` : '';
+        setPosterError(`${msg}${costStr} — Recharge ton solde IA dans /dashboard/wallet.`);
+      } else {
+        setPosterError(msg);
+      }
     } finally {
       setPosterGenerating(false);
     }
@@ -227,11 +231,15 @@ export default function StudioPage() {
       setLanding(res.data.result);
       refreshWallet();
     } catch (err) {
-      const e = err as { response?: { data?: { error?: string; code?: string } } };
+      const e = err as { response?: { data?: { error?: string; code?: string; cost?: number } } };
       const msg = e.response?.data?.error || 'Erreur lors de la génération';
-      setLandingError(e.response?.data?.code === 'insufficient_ai_balance'
-        ? msg + ' — Recharge ton solde IA dans /dashboard/wallet.'
-        : msg);
+      if (e.response?.data?.code === 'insufficient_ai_balance') {
+        const cost = e.response.data.cost;
+        const costStr = typeof cost === 'number' ? ` (coût : ${cost} token${cost === 1 ? '' : 's'})` : '';
+        setLandingError(`${msg}${costStr} — Recharge ton solde IA dans /dashboard/wallet.`);
+      } else {
+        setLandingError(msg);
+      }
     } finally {
       setLandingGenerating(false);
     }

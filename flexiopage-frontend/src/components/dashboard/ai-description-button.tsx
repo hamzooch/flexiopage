@@ -103,7 +103,9 @@ export function AiDescriptionButton({
       const e = err as { response?: { data?: { error?: string; code?: string; cost?: number } } };
       const msg = e.response?.data?.error || 'La génération a échoué. Réessaie.';
       if (e.response?.data?.code === 'insufficient_ai_balance') {
-        setError(`${msg} — recharge ton solde IA dans /dashboard/wallet (coût ≈ ${e.response.data.cost ?? '?'}).`);
+        const cost = e.response.data.cost;
+        const costStr = typeof cost === 'number' ? `${cost} token${cost === 1 ? '' : 's'}` : '?';
+        setError(`${msg} — recharge ton solde IA dans /dashboard/wallet (coût ≈ ${costStr}).`);
       } else {
         setError(msg);
       }

@@ -168,11 +168,20 @@ export interface WalletTransaction {
 }
 export interface WalletState {
   balance: number;
+  /**
+   * Solde IA en **tokens** (depuis 2026-06-18). Le wallet n'est plus
+   * exprimé en monnaie côté IA — c'est un compteur entier.
+   */
   aiBalance: number;
   currency: string;
   commissionRate: number;
   commissionCap: number;
-  aiCosts: { landing: number; product_page: number; text_only: number };
+  /** Coût par génération, en tokens. */
+  aiCosts: { landing: number; product_page: number; text_only: number; poster?: number };
+  /** Alias explicite — même contenu que aiCosts. */
+  aiTokenCosts?: { landing: number; product_page: number; text_only: number; poster?: number };
+  /** Tokens crédités pour 1 USD versé (paramètre admin, défaut 1.5). */
+  usdToTokens?: number;
   transactions: WalletTransaction[];
   updatedAt: string;
 }
@@ -184,6 +193,10 @@ export const walletApi = {
       bucket: WalletBucket;
       balance: number;
       aiBalance: number;
+      /** Pour AI : tokens réellement crédités (amount USD × usdToTokens). */
+      credited?: number;
+      /** Ratio appliqué (1 pour main, usdToTokens pour ai). */
+      rate?: number;
       transaction: WalletTransaction;
       alreadyApplied: boolean;
     }>('/wallet/top-up', data),
@@ -559,25 +572,32 @@ export const adminApi = {
     ),
 
   // ── AI pricing (read by any admin tier, write by superadmin+) ──
+  // `prices` est désormais exprimé en **tokens** par génération (depuis
+  // 2026-06-18). `usdToTokens` = combien de tokens crédités par 1 USD
+  // versé. `rates` est legacy (script de migration historique seulement).
   getAiPricing: () =>
     api.get<{
       aiPricing: {
         prices: { landing: number; poster: number; product_page: number; text_only: number };
+        usdToTokens: number;
         rates: Record<string, number>;
       };
       defaults: {
         prices: { landing: number; poster: number; product_page: number; text_only: number };
+        usdToTokens: number;
         rates: Record<string, number>;
       };
       updatedAt: string;
     }>('/admin/settings/ai-pricing'),
   updateAiPricing: (data: {
     prices?: Partial<{ landing: number; poster: number; product_page: number; text_only: number }>;
+    usdToTokens?: number;
     rates?: Record<string, number>;
   }) =>
     api.put<{
       aiPricing: {
         prices: { landing: number; poster: number; product_page: number; text_only: number };
+        usdToTokens: number;
         rates: Record<string, number>;
       };
       updatedAt: string;

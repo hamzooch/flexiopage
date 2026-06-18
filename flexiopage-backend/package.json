@@ -16,6 +16,7 @@
     "seed:messenger-bot": "tsx scripts/seed-messenger-bot.ts",
     "test:messenger-bot": "tsx scripts/test-messenger-bot.ts",
     "migrate:wallets-usd": "tsx scripts/migrate-wallets-to-usd.ts",
+    "migrate:ai-balance-tokens": "tsx scripts/migrate-ai-balance-to-tokens.ts",
     "migrate:to-cloudinary": "tsx scripts/migrate-to-cloudinary.ts",
     "migrate:stores-to-markets": "tsx scripts/migrate-stores-to-markets.ts",
     "migrate:products-to-pricing": "tsx scripts/migrate-products-to-pricing.ts",

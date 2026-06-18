@@ -54,6 +54,17 @@ export interface IWallet extends Document {
   balance: number;
   /** AI balance — debited per AI generation (landing pages, product pages, images). */
   aiBalance: number;
+  /**
+   * Unité du compteur aiBalance.
+   *   - 'tokens'  : modèle actuel (depuis juin 2026). aiBalance = nombre de
+   *                 tokens, 1 USD top-up = settings.aiPricing.usdToTokens.
+   *   - 'usd'     : modèle historique (USD comme la commission). Marquage
+   *                 utilisé par le script migrate-ai-balance-to-tokens pour
+   *                 savoir quels wallets ont déjà été convertis et éviter
+   *                 le double-comptage. Les nouveaux wallets démarrent en
+   *                 'tokens' directement.
+   */
+  aiBalanceUnit: 'usd' | 'tokens';
   /** Embedded ledger (chronological, append-only). */
   transactions: IWalletTransaction[];
   createdAt: Date;
@@ -86,6 +97,7 @@ const WalletSchema = new Schema<IWallet>(
     currency: { type: String, default: 'USD' },
     balance: { type: Number, default: 0, min: 0 },
     aiBalance: { type: Number, default: 0, min: 0 },
+    aiBalanceUnit: { type: String, enum: ['usd', 'tokens'], default: 'tokens' },
     transactions: { type: [WalletTransactionSchema], default: [] },
   },
   { timestamps: true }
