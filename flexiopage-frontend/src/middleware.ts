@@ -27,6 +27,7 @@ const RESERVED_TOP_LEVEL = new Set([
   // App surface
   'login',
   'register',
+  'verify-email',
   'dashboard',
   'admin',
   'preview',
