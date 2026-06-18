@@ -79,6 +79,12 @@ function fmtCur(amount: number, currency: string): string {
   }
 }
 
+/** Solde IA = compteur de tokens (depuis juin 2026). */
+function fmtTokens(amount: number): string {
+  const n = Math.round(amount);
+  return `${n.toLocaleString()} token${Math.abs(n) === 1 ? '' : 's'}`;
+}
+
 export default function ProfilePage() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -434,7 +440,7 @@ export default function ProfilePage() {
               <HeroStat
                 icon={<Sparkles className="h-3.5 w-3.5" />}
                 label="Solde IA"
-                value={wallet ? fmtCur(wallet.aiBalance, wallet.currency) : '—'}
+                value={wallet ? fmtTokens(wallet.aiBalance) : '—'}
                 tone="fuchsia"
                 href="/dashboard/wallet?bucket=ai"
               />
@@ -714,7 +720,7 @@ export default function ProfilePage() {
               {wallet ? (
                 <>
                   Solde principal actuel : <strong className="text-foreground">{fmtCur(wallet.balance, wallet.currency)}</strong> · Solde IA :
-                  {' '}<strong className="text-foreground">{fmtCur(wallet.aiBalance, wallet.currency)}</strong>
+                  {' '}<strong className="text-foreground">{fmtTokens(wallet.aiBalance)}</strong>
                   {wallet.currency !== currency && currency && (
                     <span className="ml-2 inline-flex items-center gap-1 rounded-full bg-amber-500/15 px-2 py-0.5 text-amber-700">
                       → passera à <span className="font-mono">{currency}</span> si le solde est encore vide

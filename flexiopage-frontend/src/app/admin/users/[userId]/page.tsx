@@ -55,6 +55,12 @@ function fmt(amount: number, currency: string): string {
   }
 }
 
+/** Solde IA = compteur de tokens (depuis juin 2026). */
+function fmtTokens(amount: number): string {
+  const n = Math.round(amount);
+  return `${n.toLocaleString()} token${Math.abs(n) === 1 ? '' : 's'}`;
+}
+
 export default function AdminUserDetailPage() {
   const params = useParams();
   const router = useRouter();
@@ -312,7 +318,7 @@ export default function AdminUserDetailPage() {
           icon={<Wallet className="h-4 w-4" />}
           value={data.wallet ? fmt(data.wallet.balance, data.wallet.currency) : '—'}
           tone="rose"
-          sub={data.wallet ? `IA : ${fmt(data.wallet.aiBalance, data.wallet.currency)}` : 'Pas encore créé'}
+          sub={data.wallet ? `IA : ${fmtTokens(data.wallet.aiBalance)}` : 'Pas encore créé'}
         />
       </section>
 

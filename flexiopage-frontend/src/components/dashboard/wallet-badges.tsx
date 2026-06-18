@@ -21,6 +21,12 @@ function fmt(amount: number, currency: string): string {
   }
 }
 
+/** Solde IA = compteur de tokens (depuis juin 2026). */
+function fmtTokens(amount: number): string {
+  const n = Math.round(amount);
+  return `${n.toLocaleString()} token${Math.abs(n) === 1 ? '' : 's'}`;
+}
+
 export function WalletBadges() {
   const wallet = useWalletStore((s) => s.wallet);
   const refresh = useWalletStore((s) => s.refresh);
@@ -42,7 +48,9 @@ export function WalletBadges() {
   }
 
   const lowMain = wallet.balance < 1500;
-  const lowAi = wallet.aiBalance < (wallet.aiCosts?.landing || 500);
+  // Solde IA bas si on n'a plus de quoi payer une landing (compteur de tokens).
+  // Fallback 3 = défaut DEFAULT_AI_PRICING.prices.landing au backend.
+  const lowAi = wallet.aiBalance < (wallet.aiCosts?.landing || 3);
 
   return (
     <div className="hidden items-center gap-1.5 lg:flex">
@@ -74,7 +82,7 @@ export function WalletBadges() {
         </span>
         <span className="flex flex-col leading-none">
           <span className="text-[9px] font-semibold uppercase tracking-wider text-muted-foreground">Solde IA</span>
-          <span className="mt-0.5 text-sm font-bold">{fmt(wallet.aiBalance, wallet.currency)}</span>
+          <span className="mt-0.5 text-sm font-bold">{fmtTokens(wallet.aiBalance)}</span>
         </span>
       </Link>
     </div>

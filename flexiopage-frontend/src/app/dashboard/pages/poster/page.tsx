@@ -293,8 +293,8 @@ export default function StudioPage() {
         description="Génère affiches et landing pages depuis ton produit. Choisis l'audience une fois, switch entre les formats."
         actions={wallet ? (
           <div className="rounded-lg border border-fuchsia-500/30 bg-gradient-to-r from-fuchsia-500/10 to-pink-500/10 px-3 py-1.5 text-[11px]">
-            <span className="font-semibold text-fuchsia-700">Solde IA</span> · {wallet.aiBalance} {wallet.currency}
-            <span className="ml-2 text-muted-foreground">coût ≈ {wallet.aiCosts.landing}/génération</span>
+            <span className="font-semibold text-fuchsia-700">Solde IA</span> · {Math.round(wallet.aiBalance).toLocaleString()} token{Math.round(wallet.aiBalance) === 1 ? '' : 's'}
+            <span className="ml-2 text-muted-foreground">coût ≈ {wallet.aiCosts.landing} token{wallet.aiCosts.landing === 1 ? '' : 's'}/génération</span>
           </div>
         ) : undefined}
       />
