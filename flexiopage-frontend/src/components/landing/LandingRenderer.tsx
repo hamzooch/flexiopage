@@ -1175,7 +1175,10 @@ function CodFormSection({
   // pour rattraper les pages générées avant le fix backend (l'AI synthétisait
   // un slug "magn-tique" alors que la base avait "magnetique"). Sans ça la
   // page se retrouvait à vendre le premier produit du catalogue par défaut.
-  const flat = (s?: string) => (s || '').normalize('NFD').replace(/\p{Diacritic}/gu, '').toLowerCase();
+  // NB : on cible directement le bloc Unicode des marques combinantes (U+0300
+  // à U+036F) au lieu de `\p{Diacritic}` qui exige le flag /u et fait râler
+  // la cible TS ES5 utilisée pour le build prod (next build).
+  const flat = (s?: string) => (s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
   const productSlugFlat = flat(productSlug);
   const product =
     products.find((pr) => pr.slug === productSlug) ||
