@@ -17,7 +17,7 @@ import {
   Crown, ShieldAlert, ShieldCheck, Eye as EyeIcon, Clock,
   User as UserIcon, Lock, Settings as SettingsIcon,
 } from 'lucide-react';
-import { cn } from '@/lib/utils';
+import { cn, mediaUrl } from '@/lib/utils';
 
 interface UserDoc {
   _id: string;
@@ -190,7 +190,7 @@ export default function AdminProfilePage() {
             <div className={`grid h-24 w-24 place-items-center overflow-hidden rounded-3xl bg-gradient-to-br ${meta.tone} text-3xl font-bold text-white shadow-2xl ring-4 ring-background`}>
               {user?.avatar ? (
                 // eslint-disable-next-line @next/next/no-img-element
-                <img src={user.avatar} alt="" className="h-full w-full object-cover" />
+                <img src={mediaUrl(user.avatar)} alt="" className="h-full w-full object-cover" />
               ) : (
                 initials
               )}

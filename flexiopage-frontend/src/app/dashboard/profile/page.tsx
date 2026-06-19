@@ -47,7 +47,7 @@ import {
   Check as CheckIcon,
 } from 'lucide-react';
 import { COUNTRIES, COUNTRY_GROUPS, currencyForCountry } from '@/data/countries';
-import { cn, publicStoreUrl } from '@/lib/utils';
+import { cn, publicStoreUrl, mediaUrl } from '@/lib/utils';
 
 interface UserDoc {
   _id: string;
@@ -386,7 +386,7 @@ export default function ProfilePage() {
             <div className="grid h-24 w-24 place-items-center overflow-hidden rounded-3xl gradient-brand text-3xl font-bold text-white shadow-xl shadow-primary/30 ring-4 ring-background">
               {user?.avatar ? (
                 // eslint-disable-next-line @next/next/no-img-element
-                <img src={user.avatar} alt="" className="h-full w-full object-cover" />
+                <img src={mediaUrl(user.avatar)} alt="" className="h-full w-full object-cover" />
               ) : (
                 initials
               )}
