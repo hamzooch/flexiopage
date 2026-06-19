@@ -1509,8 +1509,11 @@ function PreviewPane({
         </div>
       </div>
 
-      {/* Iframe area */}
-      <div className="flex flex-1 items-start justify-center overflow-auto p-4">
+      {/* Iframe area — block layout (pas flex) : un flex child a un
+          min-width: auto par défaut, et l'iframe interne de 768px (tablet)
+          pousse alors le wrap au-delà de son max-width visuel. Le bloc
+          plain respecte max-width strictement et mx-auto centre. */}
+      <div className="flex-1 overflow-auto p-4">
         {path ? (
           <ViewportPreview
             device={previewDevice}
@@ -1518,7 +1521,7 @@ function PreviewPane({
             previewBust={previewBust}
           />
         ) : (
-          <div className="grid w-full max-w-sm place-items-center rounded-2xl border border-dashed border-border bg-card p-10 text-center">
+          <div className="mx-auto grid w-full max-w-sm place-items-center rounded-2xl border border-dashed border-border bg-card p-10 text-center">
             <p className="text-sm text-muted-foreground">
               Aucun {previewPage === 'product' ? 'produit' : previewPage === 'collection' ? 'collection' : 'page'} à afficher pour cet aperçu.
               {' '}Crée-en un puis recharge.
