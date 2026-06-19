@@ -49,12 +49,29 @@ export type NavStyle =
   | 'centered'    // logo centered, links split below/around
   | 'bold';       // chunky uppercase, thick divider
 export type GridColumns = 2 | 3 | 4;
+/** Variante visuelle du bloc témoignages. Driver de différenciation
+ *  entre thèmes — chaque thème fixe la sienne. */
+export type TestimonialsLayout =
+  | 'grid'        // (défaut) grille 3 colonnes de cartes — neutre, conversion-safe
+  | 'editorial'   // 1 grand quote par ligne, sérif géant, magazine
+  | 'carousel'    // 1 témoignage mis en avant + petits avatars en bas, conversion-driven
+  | 'wall';       // mur de mini-citations 1-2 lignes, dense
+/** Variante visuelle du footer. */
+export type FooterLayout =
+  | 'full'        // (défaut) 3 colonnes brand + contact + links
+  | 'minimal'     // 1 ligne plate, marque + liens inline + social
+  | 'split'       // 2 colonnes + grand bloc newsletter à droite
+  | 'bold';       // énorme nom de marque + tagline, contact compact
 
 export interface ThemeLayout {
   hero: HeroLayout;
   productCard: ProductCardStyle;
   gridColumns: GridColumns;
   nav: NavStyle;
+  /** Optionnel — fallback 'grid' si absent (rétro-compat). */
+  testimonials?: TestimonialsLayout;
+  /** Optionnel — fallback 'full' si absent. */
+  footer?: FooterLayout;
 }
 
 export interface ThemeTokens {
@@ -249,7 +266,7 @@ const volt: StoreThemeTemplate = {
     borderRadius: 'none',
     spacing: 'normal',
     style: 'tech',
-    layout: { hero: 'fullbleed', productCard: 'overlay', gridColumns: 3, nav: 'bold' },
+    layout: { hero: 'fullbleed', productCard: 'overlay', gridColumns: 3, nav: 'bold', testimonials: 'carousel', footer: 'bold' },
     pattern: 'grid',
     shadow: 'glow',
     dark: true,
@@ -290,7 +307,7 @@ const atelier: StoreThemeTemplate = {
     borderRadius: 'none',
     spacing: 'relaxed',
     style: 'editorial',
-    layout: { hero: 'editorial', productCard: 'editorial', gridColumns: 2, nav: 'centered' },
+    layout: { hero: 'editorial', productCard: 'editorial', gridColumns: 2, nav: 'centered', testimonials: 'editorial', footer: 'minimal' },
     pattern: 'none',
     shadow: 'sharp',
     dark: false,
@@ -330,7 +347,7 @@ const bloom: StoreThemeTemplate = {
     borderRadius: 'xl',
     spacing: 'relaxed',
     style: 'soft',
-    layout: { hero: 'centered', productCard: 'classic', gridColumns: 3, nav: 'centered' },
+    layout: { hero: 'centered', productCard: 'classic', gridColumns: 3, nav: 'centered', testimonials: 'wall', footer: 'split' },
     pattern: 'mesh',
     shadow: 'soft',
     dark: false,
@@ -374,7 +391,7 @@ const pulse: StoreThemeTemplate = {
     borderRadius: 'medium',
     spacing: 'normal',
     style: 'tech',
-    layout: { hero: 'split', productCard: 'minimal', gridColumns: 3, nav: 'standard' },
+    layout: { hero: 'split', productCard: 'minimal', gridColumns: 3, nav: 'standard', testimonials: 'carousel', footer: 'bold' },
     pattern: 'mesh',
     shadow: 'glow',
     dark: true,
@@ -414,7 +431,7 @@ const sage: StoreThemeTemplate = {
     borderRadius: 'large',
     spacing: 'relaxed',
     style: 'soft',
-    layout: { hero: 'split', productCard: 'classic', gridColumns: 2, nav: 'standard' },
+    layout: { hero: 'split', productCard: 'classic', gridColumns: 2, nav: 'standard', testimonials: 'grid', footer: 'split' },
     pattern: 'none',
     shadow: 'soft',
     dark: false,
@@ -454,7 +471,7 @@ const studio: StoreThemeTemplate = {
     borderRadius: 'none',
     spacing: 'normal',
     style: 'minimal',
-    layout: { hero: 'minimal', productCard: 'minimal', gridColumns: 4, nav: 'bold' },
+    layout: { hero: 'minimal', productCard: 'minimal', gridColumns: 4, nav: 'bold', testimonials: 'wall', footer: 'minimal' },
     pattern: 'none',
     shadow: 'sharp',
     dark: false,
@@ -495,7 +512,7 @@ const lumen: StoreThemeTemplate = {
     borderRadius: 'large',
     spacing: 'relaxed',
     style: 'glass',
-    layout: { hero: 'centered', productCard: 'classic', gridColumns: 3, nav: 'standard' },
+    layout: { hero: 'centered', productCard: 'classic', gridColumns: 3, nav: 'standard', testimonials: 'editorial', footer: 'full' },
     pattern: 'mesh',
     shadow: 'soft',
     dark: false,
@@ -538,7 +555,7 @@ const nova: StoreThemeTemplate = {
     borderRadius: 'medium',
     spacing: 'relaxed',
     style: 'minimal',
-    layout: { hero: 'centered', productCard: 'classic', gridColumns: 3, nav: 'standard' },
+    layout: { hero: 'centered', productCard: 'classic', gridColumns: 3, nav: 'standard', testimonials: 'grid', footer: 'full' },
     pattern: 'none',
     shadow: 'soft',
     dark: false,
@@ -581,7 +598,7 @@ const prism: StoreThemeTemplate = {
     borderRadius: 'large',
     spacing: 'normal',
     style: 'glass',
-    layout: { hero: 'split', productCard: 'overlay', gridColumns: 3, nav: 'bold' },
+    layout: { hero: 'split', productCard: 'overlay', gridColumns: 3, nav: 'bold', testimonials: 'carousel', footer: 'bold' },
     pattern: 'mesh',
     shadow: 'glow',
     dark: true,
@@ -628,7 +645,7 @@ const carthago: StoreThemeTemplate = {
     borderRadius: 'medium',
     spacing: 'relaxed',
     style: 'editorial',
-    layout: { hero: 'split', productCard: 'classic', gridColumns: 3, nav: 'centered' },
+    layout: { hero: 'split', productCard: 'classic', gridColumns: 3, nav: 'centered', testimonials: 'editorial', footer: 'full' },
     pattern: 'none',
     shadow: 'soft',
     dark: false,
