@@ -72,6 +72,10 @@ import type {
   WhatsappSettings,
   CodFormSettings,
   AnnouncementBarSettings,
+  SliderSettings,
+  SlideItem,
+  TestimonialsSettings,
+  TestimonialItem,
 } from '@/components/dashboard/store-editor';
 import { ThemePreviewGrid } from '@/components/dashboard/theme-preview-card';
 import { MediaPicker } from '@/components/dashboard/MediaPicker';
@@ -114,8 +118,10 @@ const BLOCKS: BlockDef[] = [
   { id: 'navbar',    label: 'Navbar',       icon: PanelTop,     group: 'header', mode: 'link', href: 'sections', hint: 'Menu, logo, recherche.' },
   // Accueil
   { id: 'hero',      label: 'Hero',         icon: GalleryHorizontal, group: 'home', mode: 'inline', hint: 'Titre, sous-titre, image principale.' },
-  { id: 'sections',  label: 'Sections vitrine', icon: Layers,   group: 'home', mode: 'link', href: 'sections', hint: 'Slider, témoignages, ordre des blocs.' },
+  { id: 'slider',    label: 'Slider',       icon: GalleryHorizontal, group: 'home', mode: 'inline', hint: 'Carousel auto-play avec images.' },
   { id: 'products',  label: 'Grille produits', icon: Package,   group: 'home', mode: 'inline', hint: 'Affichage de la grille sur l\'accueil.' },
+  { id: 'testimonials', label: 'Témoignages', icon: Quote,      group: 'home', mode: 'inline', hint: 'Avis clients avec avatar et note.' },
+  { id: 'sections-advanced', label: 'Ordre des sections', icon: Layers, group: 'home', mode: 'link', href: 'sections', hint: 'Réordonner les blocs, options avancées.' },
   // Conversion
   { id: 'cod',       label: 'Formulaire COD', icon: Wallet,     group: 'conversion', mode: 'inline', hint: 'Champs du paiement à la livraison.', physicalOnly: true },
   { id: 'whatsapp',  label: 'Bouton WhatsApp', icon: MessageCircle, group: 'conversion', mode: 'inline', hint: 'Bulle flottante à droite.' },
@@ -471,10 +477,12 @@ function BlockList({
     if (dirtyTopKeys.has('logo') || dirtyTopKeys.has('favicon')) set.add('branding');
     for (const p of Array.from(dirtySettingsPaths)) {
       if (p === 'announcementBar') set.add('announce');
-      else if (p === 'hero')       set.add('hero');
-      else if (p === 'products')   set.add('products');
-      else if (p === 'whatsapp')   set.add('whatsapp');
-      else if (p === 'codForm')    set.add('cod');
+      else if (p === 'hero')         set.add('hero');
+      else if (p === 'slider')       set.add('slider');
+      else if (p === 'products')     set.add('products');
+      else if (p === 'testimonials') set.add('testimonials');
+      else if (p === 'whatsapp')     set.add('whatsapp');
+      else if (p === 'codForm')      set.add('cod');
     }
     return set;
   }, [dirtyTopKeys, dirtySettingsPaths]);
@@ -584,7 +592,9 @@ function BlockEditor(ctx: EditorCtx) {
     case 'branding':  return <BrandingEditor {...ctx} />;
     case 'announce':  return <AnnounceEditor {...ctx} />;
     case 'hero':      return <HeroEditor {...ctx} />;
+    case 'slider':    return <SliderEditor {...ctx} />;
     case 'products':  return <ProductsGridEditor {...ctx} />;
+    case 'testimonials': return <TestimonialsEditor {...ctx} />;
     case 'whatsapp':  return <WhatsappEditor {...ctx} />;
     case 'cod':       return <CodFormEditor {...ctx} />;
     default:
@@ -962,6 +972,312 @@ function ProductsGridEditor({ block, store, setStore, markDirty }: EditorCtx) {
               checked={!!storefront.productsGridHideOutOfStock}
               onChange={(v) => patchGrid({ productsGridHideOutOfStock: v })}
             />
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function SliderEditor({ block, storeId, store, setStore, markDirty }: EditorCtx) {
+  const storefront = (store.settings?.storefront || {}) as StorefrontSettings;
+  const slider: SliderSettings = storefront.slider || {};
+  const slides = slider.slides || [];
+
+  function patchSlider(next: SliderSettings) {
+    const nextStorefront: StorefrontSettings = { ...storefront, slider: next };
+    const nextSettings = { ...(store.settings || {}), storefront: nextStorefront };
+    setStore((s) => (s ? { ...s, settings: nextSettings } : s));
+    markDirty('settings', 'slider');
+  }
+  function patchSlides(nextSlides: SlideItem[]) {
+    patchSlider({ ...slider, slides: nextSlides });
+  }
+  function patchSlide(index: number, partial: Partial<SlideItem>) {
+    const next = [...slides];
+    next[index] = { ...next[index], ...partial };
+    patchSlides(next);
+  }
+
+  return (
+    <div className="flex flex-1 flex-col">
+      <EditorHeader title={block.label} hint={block.hint} />
+      <div className="space-y-5 p-5">
+        <Toggle
+          label="Activer le slider"
+          checked={!!slider.enabled}
+          onChange={(v) => patchSlider({ ...slider, enabled: v })}
+        />
+        {slider.enabled && (
+          <>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <Toggle
+                compact
+                label="Lecture automatique"
+                checked={slider.autoplay !== false}
+                onChange={(v) => patchSlider({ ...slider, autoplay: v })}
+              />
+              <Field label="Durée entre slides (ms)">
+                <Input
+                  type="number"
+                  min={1500}
+                  step={500}
+                  value={slider.autoplayMs ?? 4500}
+                  onChange={(e) => patchSlider({ ...slider, autoplayMs: Number(e.target.value) || 4500 })}
+                />
+              </Field>
+            </div>
+            <Field label="Hauteur">
+              <div className="inline-flex flex-wrap gap-1 rounded-lg bg-muted/40 p-0.5">
+                {(['sm', 'md', 'lg', 'xl'] as const).map((h) => (
+                  <button
+                    key={h}
+                    type="button"
+                    onClick={() => patchSlider({ ...slider, height: h })}
+                    className={cn(
+                      'rounded-md px-3 py-1.5 text-xs font-medium transition-colors',
+                      (slider.height || 'md') === h ? 'bg-card text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground',
+                    )}
+                  >
+                    {h.toUpperCase()}
+                  </button>
+                ))}
+              </div>
+            </Field>
+
+            {/* Liste des slides */}
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <div className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                  Slides ({slides.length})
+                </div>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => patchSlides([...slides, { image: '' }])}
+                >
+                  + Ajouter une slide
+                </Button>
+              </div>
+              {slides.length === 0 && (
+                <p className="rounded-lg border border-dashed border-border bg-muted/20 p-4 text-center text-xs text-muted-foreground">
+                  Aucune slide. Clique « + Ajouter une slide » pour commencer.
+                </p>
+              )}
+              {slides.map((sl, i) => (
+                <div key={i} className="space-y-3 rounded-2xl border border-border/60 bg-card p-4">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold text-muted-foreground">Slide #{i + 1}</span>
+                    <div className="flex items-center gap-1">
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        disabled={i === 0}
+                        onClick={() => {
+                          const next = [...slides];
+                          [next[i - 1], next[i]] = [next[i], next[i - 1]];
+                          patchSlides(next);
+                        }}
+                      >
+                        ↑
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        disabled={i === slides.length - 1}
+                        onClick={() => {
+                          const next = [...slides];
+                          [next[i], next[i + 1]] = [next[i + 1], next[i]];
+                          patchSlides(next);
+                        }}
+                      >
+                        ↓
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => patchSlides(slides.filter((_, j) => j !== i))}
+                      >
+                        Retirer
+                      </Button>
+                    </div>
+                  </div>
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <MediaPicker
+                      storeId={storeId}
+                      value={sl.image}
+                      onChange={(url) => patchSlide(i, { image: url || '' })}
+                      label="Image desktop"
+                      shape="wide"
+                      helper="Format paysage 16:9."
+                    />
+                    <MediaPicker
+                      storeId={storeId}
+                      value={sl.imageMobile}
+                      onChange={(url) => patchSlide(i, { imageMobile: url || '' })}
+                      label="Image mobile (optionnel)"
+                      shape="square"
+                      helper="Vide = image desktop."
+                    />
+                  </div>
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    <Input
+                      placeholder="Titre"
+                      value={sl.title || ''}
+                      onChange={(e) => patchSlide(i, { title: e.target.value })}
+                    />
+                    <Input
+                      placeholder="Sous-titre"
+                      value={sl.subtitle || ''}
+                      onChange={(e) => patchSlide(i, { subtitle: e.target.value })}
+                    />
+                  </div>
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    <Input
+                      placeholder="Texte du bouton (ex: Voir l'offre)"
+                      value={sl.ctaLabel || ''}
+                      onChange={(e) => patchSlide(i, { ctaLabel: e.target.value })}
+                    />
+                    <Input
+                      placeholder="URL du bouton (ex: /collection/promo)"
+                      value={sl.ctaUrl || ''}
+                      onChange={(e) => patchSlide(i, { ctaUrl: e.target.value })}
+                    />
+                  </div>
+                </div>
+              ))}
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function TestimonialsEditor({ block, storeId, store, setStore, markDirty }: EditorCtx) {
+  const storefront = (store.settings?.storefront || {}) as StorefrontSettings;
+  const tt: TestimonialsSettings = storefront.testimonials || {};
+  const items = tt.items || [];
+
+  function patchTt(next: TestimonialsSettings) {
+    const nextStorefront: StorefrontSettings = { ...storefront, testimonials: next };
+    const nextSettings = { ...(store.settings || {}), storefront: nextStorefront };
+    setStore((s) => (s ? { ...s, settings: nextSettings } : s));
+    markDirty('settings', 'testimonials');
+  }
+  function patchItems(next: TestimonialItem[]) {
+    patchTt({ ...tt, items: next });
+  }
+  function patchItem(i: number, partial: Partial<TestimonialItem>) {
+    const next = [...items];
+    next[i] = { ...next[i], ...partial };
+    patchItems(next);
+  }
+
+  return (
+    <div className="flex flex-1 flex-col">
+      <EditorHeader title={block.label} hint={block.hint} />
+      <div className="space-y-5 p-5">
+        <Toggle
+          label="Afficher la section témoignages"
+          checked={!!tt.enabled}
+          onChange={(v) => patchTt({ ...tt, enabled: v })}
+        />
+        {tt.enabled && (
+          <>
+            <Field label="Titre du bloc">
+              <Input
+                value={tt.title || ''}
+                onChange={(e) => patchTt({ ...tt, title: e.target.value })}
+                placeholder="Ex: Ce que disent nos clients"
+              />
+            </Field>
+            <Field label="Sous-titre">
+              <Input
+                value={tt.subtitle || ''}
+                onChange={(e) => patchTt({ ...tt, subtitle: e.target.value })}
+                placeholder="Ex: +1200 avis 5 étoiles"
+              />
+            </Field>
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <div className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                  Témoignages ({items.length})
+                </div>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => patchItems([...items, { author: '', content: '' }])}
+                >
+                  + Ajouter
+                </Button>
+              </div>
+              {items.length === 0 && (
+                <p className="rounded-lg border border-dashed border-border bg-muted/20 p-4 text-center text-xs text-muted-foreground">
+                  Aucun témoignage. Ajoute le premier ci-dessus.
+                </p>
+              )}
+              {items.map((it, i) => (
+                <div key={i} className="space-y-3 rounded-2xl border border-border/60 bg-card p-4">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold text-muted-foreground">Témoignage #{i + 1}</span>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => patchItems(items.filter((_, j) => j !== i))}
+                    >
+                      Retirer
+                    </Button>
+                  </div>
+                  <div className="grid gap-3 sm:grid-cols-[120px_1fr]">
+                    <MediaPicker
+                      storeId={storeId}
+                      value={it.avatar}
+                      onChange={(url) => patchItem(i, { avatar: url || '' })}
+                      label="Avatar"
+                      shape="round"
+                      helper="Photo client (carré)."
+                    />
+                    <div className="space-y-2">
+                      <Input
+                        placeholder="Nom du client"
+                        value={it.author || ''}
+                        onChange={(e) => patchItem(i, { author: e.target.value })}
+                      />
+                      <Input
+                        placeholder="Rôle / ville (optionnel)"
+                        value={it.role || ''}
+                        onChange={(e) => patchItem(i, { role: e.target.value })}
+                      />
+                      <div className="flex items-center gap-2">
+                        <Label className="text-xs">Note</Label>
+                        <select
+                          value={it.rating ?? 5}
+                          onChange={(e) => patchItem(i, { rating: Number(e.target.value) })}
+                          className="h-9 rounded-md border border-input bg-background px-2 text-sm"
+                        >
+                          {[5, 4, 3, 2, 1].map((n) => (
+                            <option key={n} value={n}>{n} ★</option>
+                          ))}
+                        </select>
+                      </div>
+                    </div>
+                  </div>
+                  <textarea
+                    value={it.content || ''}
+                    onChange={(e) => patchItem(i, { content: e.target.value })}
+                    placeholder="Texte du témoignage…"
+                    className="min-h-[70px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                  />
+                </div>
+              ))}
+            </div>
           </>
         )}
       </div>
