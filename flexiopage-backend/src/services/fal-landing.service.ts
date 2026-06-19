@@ -222,6 +222,13 @@ export async function resolveImageForFal(imageUrl: string): Promise<string> {
 
 export interface ProductInput {
   name: string;
+  /**
+   * Slug réel du produit en base. Passé pour que le cod-form auto-injecté
+   * pointe sur le BON produit du catalogue : sans ce slug le renderer
+   * retombait sur `products[0]` (premier produit du catalogue) et la
+   * landing se retrouvait à vendre un autre article que celui ciblé.
+   */
+  slug?: string;
   description?: string;
   price?: number;
   type?: 'physical' | 'digital';
@@ -1262,9 +1269,17 @@ function finalize(
   if (!isDigitalProduct) {
     const hasCodForm = sections.some((s) => s.type === 'cod-form');
     if (!hasCodForm) {
-      const productSlug = fallbackProduct?.name
-        ? fallbackProduct.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40)
-        : undefined;
+      // Priorité au slug RÉEL du catalogue (passé par le contrôleur).
+      // En fallback uniquement, on synthétise depuis le nom — mais ça
+      // peut ne PAS matcher le slug en base (e.g. accents : "magnétique"
+      // → "magn-tique" via [^a-z0-9] vs "magnetique" via slugify NFD).
+      // Sans le slug exact le renderer pioche `products[0]` au lieu du
+      // produit ciblé.
+      const productSlug = fallbackProduct?.slug
+        || (fallbackProduct?.name
+          ? fallbackProduct.name.normalize('NFD').replace(/\p{Diacritic}/gu, '')
+              .toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 60)
+          : undefined);
       const codFormSection = {
         type: 'cod-form',
         props: {
@@ -1294,12 +1309,16 @@ function finalize(
     } else {
       // The LLM did emit a cod-form — strip the optional clutter fields so
       // the rendered form stays focused on nom/téléphone/adresse and
-      // mirrors the seller's expectation.
+      // mirrors the seller's expectation. ON ÉCRASE aussi productSlug avec
+      // le slug réel du catalogue : le LLM hallucine régulièrement un slug
+      // basé sur le nom qui ne matche pas la base (accents mal gérés), et
+      // sans match exact le renderer pioche le mauvais produit.
       for (const sec of sections) {
         if (sec.type === 'cod-form') {
           const p = sec.props as Record<string, unknown>;
           if (p.showEmail === undefined) p.showEmail = false;
           if (p.showNotes === undefined) p.showNotes = false;
+          if (fallbackProduct?.slug) p.productSlug = fallbackProduct.slug;
         }
       }
     }

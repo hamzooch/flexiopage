@@ -120,6 +120,7 @@ export async function generateFromProduct(req: AuthRequest, res: Response): Prom
       store.name,
       {
         name: product.name,
+        slug: product.slug,
         description: product.description,
         price: product.price,
         type: product.type,
@@ -173,6 +174,7 @@ export async function generateFromImage(req: AuthRequest, res: Response): Promis
     if (product) {
       productCtx = {
         name: product.name,
+        slug: product.slug,
         description: product.description,
         price: product.price,
         type: product.type,
@@ -394,7 +396,7 @@ export async function generateFromImageAsync(req: AuthRequest, res: Response): P
   const kindFromImage = body.pageKind === 'product' ? 'product_page' : 'landing';
   const chargeImg = await chargeOrFail(req, res, kindFromImage);
   if (!chargeImg) return;
-  let productCtx: { name: string; description?: string; price?: number; type?: 'physical' | 'digital'; images?: string[] } | undefined;
+  let productCtx: { name: string; slug?: string; description?: string; price?: number; type?: 'physical' | 'digital'; images?: string[] } | undefined;
   let pBefore: number | undefined;
   let pAfter: number | undefined;
   if (body.productId) {
@@ -402,6 +404,7 @@ export async function generateFromImageAsync(req: AuthRequest, res: Response): P
     if (product) {
       productCtx = {
         name: product.name,
+        slug: product.slug,
         description: product.description,
         price: product.price,
         type: product.type,

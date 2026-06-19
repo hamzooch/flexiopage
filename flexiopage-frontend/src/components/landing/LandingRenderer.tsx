@@ -1171,7 +1171,16 @@ function CodFormSection({
   const title = str(p.title, 'Commander · Paiement à la livraison');
   const subtitle = str(p.subtitle);
   const productSlug = str(p.productSlug) || products[0]?.slug || '';
-  const product = products.find((pr) => pr.slug === productSlug) || products[0];
+  // Match exact d'abord ; sinon match « relâché » qui aplatit les diacritiques
+  // pour rattraper les pages générées avant le fix backend (l'AI synthétisait
+  // un slug "magn-tique" alors que la base avait "magnetique"). Sans ça la
+  // page se retrouvait à vendre le premier produit du catalogue par défaut.
+  const flat = (s?: string) => (s || '').normalize('NFD').replace(/\p{Diacritic}/gu, '').toLowerCase();
+  const productSlugFlat = flat(productSlug);
+  const product =
+    products.find((pr) => pr.slug === productSlug) ||
+    products.find((pr) => flat(pr.slug) === productSlugFlat) ||
+    products[0];
 
   const config: CodFormConfig = {
     headline: str(p.headline) || undefined,
