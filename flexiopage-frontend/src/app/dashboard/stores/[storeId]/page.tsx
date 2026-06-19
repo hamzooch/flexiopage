@@ -60,6 +60,7 @@ import {
   Quote,
   Tag,
   Save,
+  GripVertical,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -1301,6 +1302,93 @@ function TestimonialsEditor({ block, storeId, store, setStore, markDirty }: Edit
 }
 
 // ─────────────────────────────────────────────────────────────────────
+// DraggableOrderList — réutilisable pour réordonner par drag-and-drop
+// ─────────────────────────────────────────────────────────────────────
+//
+// API native HTML5 drag-and-drop : pas de dépendance externe, ça marche
+// out-of-the-box au clavier sur les navigateurs modernes. Sur tactile
+// le drag natif est limité — l'utilisateur peut toujours réorganiser
+// via les listes plus haut dans la page (toggles, etc.) ou via la sous-
+// page /sections qui a un éditeur plus riche.
+
+function DraggableOrderList<T>({
+  items,
+  getKey,
+  renderLabel,
+  onReorder,
+}: {
+  items: T[];
+  getKey: (item: T, index: number) => string;
+  renderLabel: (item: T, index: number) => React.ReactNode;
+  onReorder: (next: T[]) => void;
+}) {
+  const [dragIndex, setDragIndex] = useState<number | null>(null);
+  const [overIndex, setOverIndex] = useState<number | null>(null);
+
+  function handleDragStart(e: React.DragEvent<HTMLLIElement>, i: number) {
+    setDragIndex(i);
+    // Effet visuel du curseur + payload neutre (Firefox refuse dragStart
+    // sans setData). On utilise pas la valeur — l'état React suffit.
+    e.dataTransfer.effectAllowed = 'move';
+    try { e.dataTransfer.setData('text/plain', String(i)); } catch { /* old browsers */ }
+  }
+
+  function handleDragOver(e: React.DragEvent<HTMLLIElement>, i: number) {
+    // preventDefault est OBLIGATOIRE pour autoriser le drop sur cette zone.
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    if (i !== overIndex) setOverIndex(i);
+  }
+
+  function handleDrop(e: React.DragEvent<HTMLLIElement>, target: number) {
+    e.preventDefault();
+    setOverIndex(null);
+    const src = dragIndex;
+    setDragIndex(null);
+    if (src === null || src === target) return;
+    const next = [...items];
+    const [moved] = next.splice(src, 1);
+    next.splice(target, 0, moved);
+    onReorder(next);
+  }
+
+  function handleDragEnd() {
+    setDragIndex(null);
+    setOverIndex(null);
+  }
+
+  return (
+    <ul className="space-y-2">
+      {items.map((item, i) => {
+        const isDragging = dragIndex === i;
+        const isOver = overIndex === i && dragIndex !== null && dragIndex !== i;
+        return (
+          <li
+            key={getKey(item, i)}
+            draggable
+            onDragStart={(e) => handleDragStart(e, i)}
+            onDragOver={(e) => handleDragOver(e, i)}
+            onDrop={(e) => handleDrop(e, i)}
+            onDragEnd={handleDragEnd}
+            className={cn(
+              'flex cursor-grab items-center gap-3 rounded-xl border bg-card p-3 transition-all active:cursor-grabbing',
+              isDragging ? 'border-primary/50 opacity-40' : 'border-border/60',
+              isOver && 'border-primary bg-primary/5 ring-2 ring-primary/20',
+            )}
+          >
+            <GripVertical className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
+            <span className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-primary/10 text-xs font-bold text-primary">
+              {i + 1}
+            </span>
+            <span className="flex-1 text-sm font-medium">{renderLabel(item, i)}</span>
+          </li>
+        );
+      })}
+    </ul>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────
 // Section order — réordonne hero/slider/products/testimonials sur l'accueil
 // ─────────────────────────────────────────────────────────────────────
 
@@ -1321,61 +1409,22 @@ function SectionOrderEditor({ block, store, setStore, markDirty }: EditorCtx) {
     setStore((s) => (s ? { ...s, settings: nextSettings } : s));
     markDirty('settings', 'sectionOrder');
   }
-  function move(i: number, dir: -1 | 1) {
-    const j = i + dir;
-    if (j < 0 || j >= order.length) return;
-    const next = [...order];
-    [next[i], next[j]] = [next[j], next[i]];
-    setOrder(next);
-  }
-  function reset() {
-    setOrder([...DEFAULT_SECTION_ORDER]);
-  }
 
   return (
     <div className="flex flex-1 flex-col">
       <EditorHeader title={block.label} hint={block.hint} />
       <div className="space-y-5 p-5">
         <p className="text-xs text-muted-foreground">
-          L&apos;ordre s&apos;applique à la page d&apos;accueil de la boutique.
+          Glisse-déposez les sections pour changer leur ordre sur la page d&apos;accueil.
           Le bandeau, la navbar et le footer restent fixes.
         </p>
-        <div className="space-y-2">
-          {order.map((id, i) => (
-            <div
-              key={id}
-              className="flex items-center gap-3 rounded-xl border border-border/60 bg-card p-3"
-            >
-              <span className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-primary/10 text-xs font-bold text-primary">
-                {i + 1}
-              </span>
-              <span className="flex-1 text-sm font-medium">{SECTION_LABELS[id]}</span>
-              <div className="flex items-center gap-1">
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  disabled={i === 0}
-                  onClick={() => move(i, -1)}
-                  aria-label="Monter"
-                >
-                  ↑
-                </Button>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  disabled={i === order.length - 1}
-                  onClick={() => move(i, 1)}
-                  aria-label="Descendre"
-                >
-                  ↓
-                </Button>
-              </div>
-            </div>
-          ))}
-        </div>
-        <Button type="button" variant="outline" size="sm" onClick={reset}>
+        <DraggableOrderList
+          items={order}
+          getKey={(id) => id}
+          renderLabel={(id) => SECTION_LABELS[id]}
+          onReorder={setOrder}
+        />
+        <Button type="button" variant="outline" size="sm" onClick={() => setOrder([...DEFAULT_SECTION_ORDER])}>
           Réinitialiser à l&apos;ordre par défaut
         </Button>
       </div>
@@ -1407,13 +1456,6 @@ function ProductPageEditor({ block, storeId, store, setStore, markDirty }: Edito
   }
   function setOrder(next: ProductPageSectionId[]) {
     patchPp({ ...pp, sectionOrder: next });
-  }
-  function move(i: number, dir: -1 | 1) {
-    const j = i + dir;
-    if (j < 0 || j >= order.length) return;
-    const next = [...order];
-    [next[i], next[j]] = [next[j], next[i]];
-    setOrder(next);
   }
 
   return (
@@ -1458,41 +1500,14 @@ function ProductPageEditor({ block, storeId, store, setStore, markDirty }: Edito
 
         <div className="space-y-2">
           <div className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-            Ordre des sections
+            Ordre des sections — glisse pour réorganiser
           </div>
-          {order.map((id, i) => (
-            <div
-              key={id}
-              className="flex items-center gap-3 rounded-xl border border-border/60 bg-card p-3"
-            >
-              <span className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-primary/10 text-xs font-bold text-primary">
-                {i + 1}
-              </span>
-              <span className="flex-1 text-sm font-medium">{PP_SECTION_LABELS[id]}</span>
-              <div className="flex items-center gap-1">
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  disabled={i === 0}
-                  onClick={() => move(i, -1)}
-                  aria-label="Monter"
-                >
-                  ↑
-                </Button>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  disabled={i === order.length - 1}
-                  onClick={() => move(i, 1)}
-                  aria-label="Descendre"
-                >
-                  ↓
-                </Button>
-              </div>
-            </div>
-          ))}
+          <DraggableOrderList
+            items={order}
+            getKey={(id) => id}
+            renderLabel={(id) => PP_SECTION_LABELS[id]}
+            onReorder={setOrder}
+          />
           <Button
             type="button"
             variant="outline"
