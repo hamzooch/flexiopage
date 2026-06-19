@@ -1,44 +1,78 @@
 'use client';
 
 /**
- * Store hub — landing page for one store. Replaces the previous 1700-line
- * monolithic settings form with a grid of action cards that link to focused
- * sub-pages (/info, /appearance, /sections, /checkout, /delivery). Keeps
- * only the quick "publish toggle" inline because it's the most-used action.
+ * Store edit page — split-view editor (refonte 2026-06-19).
+ *
+ * Layout :
+ *   ┌──────────────┬──────────────────────┬─────────────────────┐
+ *   │ Block list   │  Form du bloc actif  │  Preview iframe     │
+ *   │ (LEFT)       │  (CENTER)            │  + page switcher    │
+ *   │              │                      │  (RIGHT)            │
+ *   └──────────────┴──────────────────────┴─────────────────────┘
+ *
+ * Les blocs SIMPLES (identité, bandeau, hero, WhatsApp, COD basique, etc.)
+ * sont éditables inline dans le panneau central — modif locale + bouton
+ * « Enregistrer » qui batche un PATCH /api/stores/:id.
+ *
+ * Les blocs LOURDS (sections complètes, marketing pixels, pages info,
+ * collections, coupons, livraison) gardent leurs sous-pages dédiées : le
+ * panneau central propose un raccourci « Ouvrir l'éditeur dédié → ». Ça
+ * évite la duplication de 2000+ lignes d'éditeurs spécialisés.
+ *
+ * Le panneau preview affiche la storefront en iframe. Le dropdown « page »
+ * permet au vendeur de basculer entre Accueil / Produit / Panier /
+ * Checkout / Collection / Wishlist / Info sans quitter l'éditeur.
  */
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import {
   ArrowLeft,
+  Check,
+  ChevronRight,
   Cloud,
-  Eye,
   ExternalLink,
-  FileText,
+  Eye,
   ImageIcon,
   Layers,
+  Loader2,
+  MessageCircle,
+  Monitor,
   Package,
   Palette,
-  Settings as SettingsIcon,
+  RotateCw,
+  ShoppingCart,
+  Smartphone,
+  Tablet,
+  TrendingUp,
   Truck,
   Wallet,
-  Monitor,
-  Tablet,
-  Smartphone,
-  RotateCw,
-  TrendingUp,
+  FileText,
   BadgePercent,
   Mail,
   Sparkles,
-  ShoppingCart,
+  Megaphone,
+  PanelTop,
+  PanelBottom,
+  GalleryHorizontal,
+  Settings as SettingsIcon,
+  Quote,
+  Tag,
+  Save,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { storesApi } from '@/lib/api';
 import { cn, publicStoreUrl } from '@/lib/utils';
-import type { StoreType } from '@/components/dashboard/store-editor';
-import { OnboardingChecklist } from '@/components/dashboard/onboarding-checklist';
+import type {
+  StoreType,
+  StorefrontSettings,
+  WhatsappSettings,
+  CodFormSettings,
+  AnnouncementBarSettings,
+} from '@/components/dashboard/store-editor';
 import { ThemePreviewGrid } from '@/components/dashboard/theme-preview-card';
 import {
   STORE_THEME_TEMPLATES,
@@ -47,439 +81,342 @@ import {
   type ThemeTokens,
 } from '@/data/store-themes';
 
-interface HubCard {
-  href: string;
+// ─────────────────────────────────────────────────────────────────────
+// Block catalog — what shows up in the left panel
+// ─────────────────────────────────────────────────────────────────────
+
+/** Action possible dans le panneau central pour un bloc donné. */
+type BlockMode = 'inline' | 'link';
+
+interface BlockDef {
+  id: string;
+  label: string;
   icon: typeof SettingsIcon;
-  title: string;
-  description: string;
-  /** Color theme of the card chip. */
-  tone: 'indigo' | 'violet' | 'amber' | 'emerald' | 'rose' | 'sky' | 'fuchsia';
-  /** Hide on digital stores. */
+  group: 'identity' | 'header' | 'home' | 'conversion' | 'footer' | 'advanced';
+  /** `inline` = formulaire dans le centre ; `link` = bouton ouvrant la sous-page. */
+  mode: BlockMode;
+  /** Pour `mode='link'` : segment relatif après /dashboard/stores/[storeId]/ */
+  href?: string;
+  /** Texte court affiché en sous-titre dans la liste. */
+  hint: string;
+  /** Caché sur les stores digital quand vrai. */
   physicalOnly?: boolean;
 }
 
-const HUB_CARDS: HubCard[] = [
-  {
-    href: 'info',
-    icon: SettingsIcon,
-    title: 'Informations',
-    description: 'Nom, description, langue, devise, pays, domaine personnalisé.',
-    tone: 'indigo',
-  },
-  {
-    href: 'appearance',
-    icon: Palette,
-    title: 'Apparence',
-    description: 'Thème, logo, favicon — la signature visuelle de la boutique.',
-    tone: 'violet',
-  },
-  {
-    href: 'sections',
-    icon: Layers,
-    title: 'Header & Sections vitrine',
-    description: 'Navbar, hero, slider, témoignages, footer + colonnes de liens — la composition complète.',
-    tone: 'amber',
-  },
-  {
-    href: 'product-page',
-    icon: Package,
-    title: 'Modifier page produit',
-    description: 'Sections de la fiche produit (badges, timer, témoignages), style visuel + formulaire COD inline.',
-    tone: 'rose',
-  },
-  {
-    href: 'info-pages',
-    icon: FileText,
-    title: 'Pages d\'information',
-    description: 'CGV, FAQ, Contact, Confidentialité, Livraison… — créées automatiquement, modifiables.',
-    tone: 'sky',
-  },
-  {
-    href: 'checkout',
-    icon: Wallet,
-    title: 'Formulaire COD',
-    description: 'Champs et textes du formulaire « paiement à la livraison ».',
-    tone: 'emerald',
-    physicalOnly: true,
-  },
-  {
-    href: 'delivery',
-    icon: Truck,
-    title: 'Livraison',
-    description: 'Intégration MogaDelivery, adresse d\'expédition, auto-dispatch.',
-    tone: 'rose',
-    physicalOnly: true,
-  },
-  {
-    href: 'marketing',
-    icon: TrendingUp,
-    title: 'Marketing & Pixels',
-    description: 'Meta, TikTok, Snap, GA4 — events PageView/ViewContent/Purchase automatiques.',
-    tone: 'fuchsia',
-  },
-  {
-    href: 'collections',
-    icon: Layers,
-    title: 'Collections',
-    description: 'Regroupe tes produits par thème — bestsellers, soldes, mode homme… page publique dédiée.',
-    tone: 'sky',
-  },
-  {
-    href: 'coupons',
-    icon: BadgePercent,
-    title: 'Codes promo',
-    description: 'Crée des codes (« PROMO10 ») saisis dans le formulaire COD — % ou montant fixe, expiration, scope.',
-    tone: 'amber',
-  },
-  {
-    href: 'newsletter',
-    icon: Mail,
-    title: 'Newsletter & pop-up',
-    description: 'Pop-up de bienvenue qui capture les emails contre un code promo. Liste exportable.',
-    tone: 'emerald',
-  },
-  {
-    href: 'abandoned-carts',
-    icon: ShoppingCart,
-    title: 'Paniers abandonnés',
-    description: 'Visiteurs qui ont commencé le formulaire COD sans valider — rappelle-les directement via WhatsApp.',
-    tone: 'amber',
-    physicalOnly: true,
-  },
-  {
-    href: 'apps',
-    icon: Sparkles,
-    title: 'Apps & Intégrations',
-    description: 'Vue d\'ensemble de tout ce qui est branché — statut connecté/à configurer pour chaque module.',
-    tone: 'violet',
-  },
+const BLOCKS: BlockDef[] = [
+  // Identité
+  { id: 'identity',  label: 'Identité',     icon: SettingsIcon, group: 'identity', mode: 'inline', hint: 'Nom, description, statut.' },
+  { id: 'theme',     label: 'Thème',        icon: Palette,      group: 'identity', mode: 'inline', hint: 'Palette + structure visuelle.' },
+  { id: 'branding',  label: 'Logo & favicon', icon: ImageIcon,  group: 'identity', mode: 'inline', hint: 'L\'image qui te représente.' },
+  // Header
+  { id: 'announce',  label: 'Bandeau annonce', icon: Megaphone, group: 'header', mode: 'inline', hint: 'Petits messages au-dessus du header.' },
+  { id: 'navbar',    label: 'Navbar',       icon: PanelTop,     group: 'header', mode: 'link', href: 'sections', hint: 'Menu, logo, recherche.' },
+  // Accueil
+  { id: 'hero',      label: 'Hero',         icon: GalleryHorizontal, group: 'home', mode: 'inline', hint: 'Titre, sous-titre, image principale.' },
+  { id: 'sections',  label: 'Sections vitrine', icon: Layers,   group: 'home', mode: 'link', href: 'sections', hint: 'Slider, témoignages, ordre des blocs.' },
+  { id: 'products',  label: 'Grille produits', icon: Package,   group: 'home', mode: 'inline', hint: 'Affichage de la grille sur l\'accueil.' },
+  // Conversion
+  { id: 'cod',       label: 'Formulaire COD', icon: Wallet,     group: 'conversion', mode: 'inline', hint: 'Champs du paiement à la livraison.', physicalOnly: true },
+  { id: 'whatsapp',  label: 'Bouton WhatsApp', icon: MessageCircle, group: 'conversion', mode: 'inline', hint: 'Bulle flottante à droite.' },
+  { id: 'product-page', label: 'Page produit', icon: Tag,       group: 'conversion', mode: 'link', href: 'product-page', hint: 'Badges, timer, témoignages produit.' },
+  // Footer
+  { id: 'footer',    label: 'Footer',       icon: PanelBottom,  group: 'footer', mode: 'link', href: 'sections', hint: 'Contact, colonnes, signature.' },
+  { id: 'info-pages', label: 'Pages d\'information', icon: FileText, group: 'footer', mode: 'link', href: 'info-pages', hint: 'CGV, FAQ, Contact, Confidentialité.' },
+  // Avancé
+  { id: 'collections', label: 'Collections', icon: Layers,      group: 'advanced', mode: 'link', href: 'collections', hint: 'Regroupements de produits.' },
+  { id: 'coupons',   label: 'Codes promo',  icon: BadgePercent, group: 'advanced', mode: 'link', href: 'coupons', hint: 'Réductions saisies au checkout.' },
+  { id: 'marketing', label: 'Marketing & pixels', icon: TrendingUp, group: 'advanced', mode: 'link', href: 'marketing', hint: 'Meta, TikTok, Snap, GA4.' },
+  { id: 'newsletter', label: 'Newsletter & popup', icon: Mail,   group: 'advanced', mode: 'link', href: 'newsletter', hint: 'Popup welcome, liste emails.' },
+  { id: 'delivery',  label: 'Livraison',     icon: Truck,        group: 'advanced', mode: 'link', href: 'delivery', hint: 'MogaDelivery, adresse expéditeur.', physicalOnly: true },
+  { id: 'abandoned', label: 'Paniers abandonnés', icon: ShoppingCart, group: 'advanced', mode: 'link', href: 'abandoned-carts', hint: 'Relances WhatsApp.', physicalOnly: true },
+  { id: 'apps',      label: 'Apps & intégrations', icon: Sparkles, group: 'advanced', mode: 'link', href: 'apps', hint: 'Vue d\'ensemble des modules.' },
 ];
 
-const TONE_CLASSES: Record<HubCard['tone'], { chip: string; iconBg: string; glow: string }> = {
-  indigo:  { chip: 'bg-indigo-500/10 text-indigo-700',   iconBg: 'from-indigo-500 to-violet-600',    glow: 'shadow-indigo-500/30' },
-  violet:  { chip: 'bg-violet-500/10 text-violet-700',   iconBg: 'from-violet-500 to-fuchsia-600',   glow: 'shadow-violet-500/30' },
-  amber:   { chip: 'bg-amber-500/10 text-amber-700',     iconBg: 'from-amber-500 to-orange-600',     glow: 'shadow-amber-500/30' },
-  emerald: { chip: 'bg-emerald-500/10 text-emerald-700', iconBg: 'from-emerald-500 to-teal-600',     glow: 'shadow-emerald-500/30' },
-  rose:    { chip: 'bg-rose-500/10 text-rose-700',       iconBg: 'from-rose-500 to-pink-600',        glow: 'shadow-rose-500/30' },
-  sky:     { chip: 'bg-sky-500/10 text-sky-700',         iconBg: 'from-sky-500 to-blue-600',         glow: 'shadow-sky-500/30' },
-  fuchsia: { chip: 'bg-fuchsia-500/10 text-fuchsia-700', iconBg: 'from-fuchsia-500 to-pink-600',     glow: 'shadow-fuchsia-500/30' },
+const GROUP_LABELS: Record<BlockDef['group'], string> = {
+  identity: 'Identité',
+  header: 'Header',
+  home: 'Page d\'accueil',
+  conversion: 'Conversion',
+  footer: 'Footer & pages',
+  advanced: 'Avancé',
 };
 
-export default function StoreHubPage() {
+// ─────────────────────────────────────────────────────────────────────
+// Preview page switcher
+// ─────────────────────────────────────────────────────────────────────
+
+/** Pages storefront affichables dans l'aperçu (clé interne + URL builder). */
+interface PreviewPageDef {
+  id: string;
+  label: string;
+  icon: typeof SettingsIcon;
+  /** Construit l'URL relative à partir du store + des slugs sample. */
+  buildPath: (ctx: { slug: string; productSlug?: string; collectionSlug?: string; infoSlug?: string }) => string | null;
+}
+
+const PREVIEW_PAGES: PreviewPageDef[] = [
+  { id: 'home',     label: 'Accueil',    icon: ImageIcon,   buildPath: ({ slug }) => `/${slug}` },
+  { id: 'product',  label: 'Produit',    icon: Package,     buildPath: ({ slug, productSlug }) => productSlug ? `/${slug}/product/${productSlug}` : null },
+  { id: 'cart',     label: 'Panier',     icon: ShoppingCart, buildPath: ({ slug }) => `/${slug}/cart` },
+  { id: 'checkout', label: 'Checkout',   icon: Wallet,      buildPath: ({ slug }) => `/${slug}/cart/checkout` },
+  { id: 'collection', label: 'Collection', icon: Layers,    buildPath: ({ slug, collectionSlug }) => collectionSlug ? `/${slug}/c/${collectionSlug}` : null },
+  { id: 'wishlist', label: 'Wishlist',   icon: Quote,       buildPath: ({ slug }) => `/${slug}/wishlist` },
+  { id: 'info',     label: 'Page info',  icon: FileText,    buildPath: ({ slug, infoSlug }) => infoSlug ? `/${slug}/p/${infoSlug}` : null },
+];
+
+// ─────────────────────────────────────────────────────────────────────
+// Local edit state — dirty tracker (jeu de clés top-level modifiées)
+// ─────────────────────────────────────────────────────────────────────
+
+/**
+ * On track UNIQUEMENT quels champs top-level du Store ont été touchés.
+ * Au save on relit la valeur courante depuis le snapshot local `store`,
+ * qui contient déjà le merge complet (on évite le `$set: settings: {...}`
+ * partiel qui écraserait les autres clés de settings côté backend).
+ */
+type DirtyKey = 'name' | 'description' | 'logo' | 'favicon' | 'isPublished' | 'theme' | 'settings';
+
+interface PatchState {
+  /** Clés top-level dirty. */
+  keys: Set<DirtyKey>;
+  /** Sous-blocs précis touchés dans `settings`, juste pour le marqueur
+   *  visuel à côté des blocs de la liste gauche. */
+  settingsPaths: Set<string>;
+}
+
+const emptyPatch: PatchState = { keys: new Set(), settingsPaths: new Set() };
+
+export default function StoreEditPage() {
   const params = useParams();
   const router = useRouter();
   const storeId = params.storeId as string;
+
   const [store, setStore] = useState<StoreType | null>(null);
   const [loading, setLoading] = useState(true);
-  const [togglingPublish, setTogglingPublish] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [savedFlash, setSavedFlash] = useState(false);
+  const [activeBlock, setActiveBlock] = useState<string | null>('identity');
   const [themePickerOpen, setThemePickerOpen] = useState(false);
-  const [savingTheme, setSavingTheme] = useState(false);
-  // Bumped every time the theme changes so the preview iframe reloads
-  // with the new style without a full page refresh.
-  const [previewBust, setPreviewBust] = useState(0);
-  // Viewport device chosen by the seller. Drives the iframe width so the
-  // seller sees how the storefront responds at each breakpoint without
-  // having to resize their actual browser.
+
+  // Dirty tracker — quels top-level keys ont changé localement.
+  // On envoie au save la VALEUR COURANTE depuis `store` (déjà mergée).
+  const [patch, setPatch] = useState<PatchState>(emptyPatch);
+  const dirty = patch.keys.size > 0;
+
+  // Sample slugs pour le page-switcher (chargés une fois)
+  const [firstProductSlug, setFirstProductSlug] = useState<string | null>(null);
+  const [firstCollectionSlug, setFirstCollectionSlug] = useState<string | null>(null);
+  const [firstInfoSlug, setFirstInfoSlug] = useState<string | null>(null);
+
+  // Preview state
+  const [previewPage, setPreviewPage] = useState<string>('home');
   const [previewDevice, setPreviewDevice] = useState<'mobile' | 'tablet' | 'desktop'>('desktop');
+  const [previewBust, setPreviewBust] = useState(0);
 
-  // On phones, a scaled-down desktop/tablet preview is unreadable, so we only
-  // ever show the mobile rendering there and hide the device switcher. The
-  // switcher (and tablet/desktop widths) come back at the `sm` breakpoint.
-  const [isSmallScreen, setIsSmallScreen] = useState(false);
-  useEffect(() => {
-    const mq = window.matchMedia('(max-width: 639px)');
-    const sync = () => setIsSmallScreen(mq.matches);
-    sync();
-    mq.addEventListener('change', sync);
-    return () => mq.removeEventListener('change', sync);
-  }, []);
-  const effectiveDevice = isSmallScreen ? 'mobile' : previewDevice;
-
+  // Fetch store + sample slugs
   useEffect(() => {
     if (!storeId) return;
-    storesApi
-      .get(storeId)
-      .then((res) => setStore((res.data as { store: StoreType }).store))
-      .catch(() => setStore(null))
-      .finally(() => setLoading(false));
+    let cancelled = false;
+    Promise.all([
+      storesApi.get(storeId).catch(() => null),
+      storesApi.listProducts(storeId, { published: 'true', limit: 1 }).catch(() => null),
+      storesApi.listCollections?.(storeId).catch(() => null) ?? null,
+      storesApi.listPages(storeId, { kind: 'info' }).catch(() => null),
+    ]).then(([sRes, pRes, cRes, iRes]) => {
+      if (cancelled) return;
+      const s = (sRes?.data as { store?: StoreType } | undefined)?.store || null;
+      setStore(s);
+      const products = (pRes?.data as { products?: Array<{ slug?: string }> } | undefined)?.products || [];
+      setFirstProductSlug(products[0]?.slug || null);
+      const collections = (cRes?.data as { collections?: Array<{ slug?: string }> } | undefined)?.collections || [];
+      setFirstCollectionSlug(collections[0]?.slug || null);
+      const pages = (iRes?.data as { pages?: Array<{ slug?: string }> } | undefined)?.pages || [];
+      setFirstInfoSlug(pages[0]?.slug || null);
+      setLoading(false);
+    });
+    return () => { cancelled = true; };
   }, [storeId]);
 
-  async function togglePublish() {
-    if (!store) return;
-    setTogglingPublish(true);
+  // Save batched patch — relit la valeur courante du snapshot local
+  // pour chaque clé dirty puis envoie au backend (qui fait `$set` complet).
+  async function handleSave() {
+    if (!store || !dirty || saving) return;
+    setSaving(true);
+    setSaveError(null);
+    const payload: Record<string, unknown> = {};
+    for (const k of Array.from(patch.keys)) {
+      switch (k) {
+        case 'name':        payload.name        = store.name; break;
+        case 'description': payload.description = store.description; break;
+        case 'logo':        payload.logo        = store.logo; break;
+        case 'favicon':     payload.favicon     = store.favicon; break;
+        case 'isPublished': payload.isPublished = !!store.isPublished; break;
+        case 'theme':       payload.theme       = store.theme; break;
+        case 'settings':    payload.settings    = store.settings; break;
+      }
+    }
     try {
-      await storesApi.update(storeId, { isPublished: !store.isPublished });
-      setStore({ ...store, isPublished: !store.isPublished });
+      const res = await storesApi.update(storeId, payload);
+      const fresh = (res.data as { store: StoreType }).store;
+      setStore(fresh);
+      setPatch(emptyPatch);
+      setPreviewBust((n) => n + 1);
+      setSavedFlash(true);
+      window.setTimeout(() => setSavedFlash(false), 1800);
+    } catch (err) {
+      const e = err as { response?: { data?: { error?: string } } };
+      setSaveError(e.response?.data?.error || 'Erreur lors de la sauvegarde.');
     } finally {
-      setTogglingPublish(false);
+      setSaving(false);
     }
   }
 
-  async function selectTheme(tpl: StoreThemeTemplate) {
-    if (!store) return;
-    setSavingTheme(true);
-    try {
-      const res = await storesApi.update(storeId, {
-        theme: tpl.theme as unknown as Record<string, unknown>,
-      });
-      const updated = (res.data as { store: StoreType }).store;
-      setStore(updated);
-      setPreviewBust((n) => n + 1);
-      setThemePickerOpen(false);
-    } catch (err) {
-      console.error('[store/hub] theme save failed', err);
-    } finally {
-      setSavingTheme(false);
-    }
+  /** Marque une clé top-level comme modifiée. Si la clé est `settings`,
+   *  on accepte un sous-chemin (ex: 'whatsapp') pour le marqueur visuel
+   *  à côté du bloc concerné dans la liste gauche. */
+  function markDirty(key: DirtyKey, settingsSubPath?: string) {
+    setPatch((prev) => {
+      const keys = new Set(prev.keys);
+      keys.add(key);
+      const settingsPaths = new Set(prev.settingsPaths);
+      if (key === 'settings' && settingsSubPath) settingsPaths.add(settingsSubPath);
+      return { keys, settingsPaths };
+    });
+  }
+
+  function selectTheme(tpl: StoreThemeTemplate) {
+    setStore((s) => (s ? ({ ...s, theme: tpl.theme as unknown as Record<string, unknown> }) : s));
+    markDirty('theme');
+    setThemePickerOpen(false);
   }
 
   if (loading || !store) {
-    return <p className="text-muted-foreground">Loading...</p>;
+    return (
+      <div className="grid place-items-center py-24">
+        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+      </div>
+    );
   }
 
   const isDigital = store.storeType === 'digital';
-  const visibleCards = HUB_CARDS.filter((c) => !(c.physicalOnly && isDigital));
-  const StoreIcon = isDigital ? Cloud : Package;
+  const visibleBlocks = BLOCKS.filter((b) => !(b.physicalOnly && isDigital));
+  const currentBlock = visibleBlocks.find((b) => b.id === activeBlock) || null;
   const savedTheme = store.theme as Partial<ThemeTokens> | undefined;
   const currentThemeId = savedTheme?.templateId;
   const currentThemeName = currentThemeId
     ? STORE_THEME_TEMPLATES.find((t) => t.id === currentThemeId)?.name
-    : undefined;
+    : 'Personnalisé';
+
+  const previewCtx = {
+    slug: store.slug,
+    productSlug: firstProductSlug || undefined,
+    collectionSlug: firstCollectionSlug || undefined,
+    infoSlug: firstInfoSlug || undefined,
+  };
+  const previewDef = PREVIEW_PAGES.find((p) => p.id === previewPage) || PREVIEW_PAGES[0];
+  const previewPath = previewDef.buildPath(previewCtx);
 
   return (
-    <div className="space-y-8">
-      {/* Header */}
-      <div className="flex flex-wrap items-start justify-between gap-4">
-        <div className="flex items-center gap-4 min-w-0">
-          <Button variant="ghost" size="sm" onClick={() => router.push('/dashboard/stores')} className="gap-1.5">
-            <ArrowLeft className="h-4 w-4" />
-            Boutiques
+    <div className="-mx-4 -my-6 flex h-[calc(100vh-64px)] flex-col bg-muted/30 sm:-mx-6 lg:-mx-8">
+      {/* ── Top bar ───────────────────────────────────────────────── */}
+      <header className="flex shrink-0 items-center justify-between gap-3 border-b border-border/60 bg-card/80 px-4 py-3 backdrop-blur-xl sm:px-6">
+        <div className="flex min-w-0 items-center gap-3">
+          <Button variant="ghost" size="sm" onClick={() => router.push('/dashboard/stores')} className="-ml-2 shrink-0 gap-1.5">
+            <ArrowLeft className="h-4 w-4" /> Boutiques
           </Button>
-          <div className="flex items-center gap-3 min-w-0">
-            <div
+          <div className="flex min-w-0 items-center gap-2">
+            {isDigital ? <Cloud className="h-4 w-4 shrink-0 text-fuchsia-500" /> : <Package className="h-4 w-4 shrink-0 text-indigo-500" />}
+            <h1 className="truncate text-base font-semibold tracking-tight">{store.name}</h1>
+            <span
               className={cn(
-                'grid h-12 w-12 shrink-0 place-items-center rounded-xl bg-gradient-to-br text-white shadow-md',
-                isDigital ? 'from-fuchsia-500 to-pink-600 shadow-fuchsia-500/30' : 'from-indigo-500 to-violet-600 shadow-indigo-500/30'
+                'shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold',
+                store.isPublished ? 'bg-emerald-500/10 text-emerald-700' : 'bg-amber-500/10 text-amber-700',
               )}
             >
-              <StoreIcon className="h-6 w-6" />
-            </div>
-            <div className="min-w-0">
-              <h1 className="truncate text-2xl font-bold tracking-tight sm:text-3xl">{store.name}</h1>
-              <p className="truncate text-sm text-muted-foreground">{publicStoreUrl(store).replace(/^https?:\/\//, '')}</p>
-            </div>
+              {store.isPublished ? 'Publiée' : 'Brouillon'}
+            </span>
           </div>
         </div>
-
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="flex items-center gap-2">
           <Link href={publicStoreUrl(store)} target="_blank" rel="noopener">
-            <Button variant="outline" size="sm" className="gap-1.5">
-              <ExternalLink className="h-3.5 w-3.5" />
-              Voir la boutique
+            <Button variant="outline" size="sm" className="h-9 gap-1.5 rounded-lg">
+              <ExternalLink className="h-3.5 w-3.5" /> Voir la boutique
             </Button>
           </Link>
-          <Link href={`/dashboard/products?storeId=${store._id}`}>
-            <Button size="sm" className="gap-1.5 gradient-brand text-white">
-              <Package className="h-3.5 w-3.5" />
-              Produits
-            </Button>
-          </Link>
-        </div>
-      </div>
-
-      {/* Onboarding checklist — auto-detects 5 setup steps, hides itself when 100% done + dismissed */}
-      <OnboardingChecklist store={store} />
-
-      {/* Publish state */}
-      <div
-        className={cn(
-          'flex flex-wrap items-center justify-between gap-3 rounded-2xl border p-4',
-          store.isPublished
-            ? 'border-emerald-500/30 bg-emerald-500/5'
-            : 'border-amber-500/30 bg-amber-500/5'
-        )}
-      >
-        <div className="flex items-center gap-3">
-          <span
+          <Button
+            type="button"
+            onClick={handleSave}
+            disabled={!dirty || saving}
             className={cn(
-              'inline-flex h-9 w-9 items-center justify-center rounded-full',
-              store.isPublished ? 'bg-emerald-500/15 text-emerald-700' : 'bg-amber-500/15 text-amber-700'
+              'h-9 gap-1.5 rounded-lg gradient-brand text-white shadow-md shadow-primary/25 hover:opacity-95',
+              !dirty && 'opacity-60',
             )}
           >
-            <Eye className="h-4 w-4" />
-          </span>
-          <div>
-            <p className="text-sm font-semibold">{store.isPublished ? 'Boutique en ligne' : 'Boutique en brouillon'}</p>
-            <p className="text-xs text-muted-foreground">
-              {store.isPublished
-                ? 'Visible par tes clients à l\'adresse ci-dessus.'
-                : 'Coche pour mettre la boutique en ligne et la rendre visible publiquement.'}
-            </p>
-          </div>
-        </div>
-        <Button
-          variant={store.isPublished ? 'outline' : 'default'}
-          size="sm"
-          onClick={togglePublish}
-          disabled={togglingPublish}
-          className={cn(
-            'gap-1.5',
-            !store.isPublished && 'gradient-brand text-white'
-          )}
-        >
-          {togglingPublish ? '...' : store.isPublished ? 'Mettre hors ligne' : 'Publier la boutique'}
-        </Button>
-      </div>
-
-      {/* Quick config status — theme name + 3 swatches, at-a-glance */}
-      {savedTheme?.primary && (
-        <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-border/60 bg-gradient-to-r from-muted/40 via-card to-muted/30 p-4">
-          <div className="flex items-center gap-3 min-w-0">
-            <div className="flex -space-x-1.5">
-              <span className="h-7 w-7 rounded-full border-2 border-card" style={{ backgroundColor: savedTheme.primary }} />
-              <span className="h-7 w-7 rounded-full border-2 border-card" style={{ backgroundColor: savedTheme.accent || '#999' }} />
-              <span className="h-7 w-7 rounded-full border-2 border-card" style={{ backgroundColor: savedTheme.background || '#fff' }} />
-            </div>
-            <div className="min-w-0">
-              <div className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Thème actif</div>
-              <div className="truncate text-sm font-semibold">
-                {currentThemeName || 'Personnalisé'}
-                <span className="ml-1.5 text-xs font-normal text-muted-foreground">
-                  · {savedTheme.dark ? 'mode sombre' : 'mode clair'}
-                </span>
-              </div>
-            </div>
-          </div>
-          <Button variant="outline" size="sm" className="gap-1.5" onClick={() => setThemePickerOpen(true)}>
-            <Palette className="h-3.5 w-3.5" />
-            Changer
+            {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : savedFlash ? <Check className="h-3.5 w-3.5" /> : <Save className="h-3.5 w-3.5" />}
+            {saving ? 'Enregistrement…' : savedFlash ? 'Enregistré' : dirty ? `Enregistrer (${Object.keys(patch).length})` : 'Enregistré'}
           </Button>
+        </div>
+      </header>
+
+      {/* Save error banner */}
+      {saveError && (
+        <div className="shrink-0 border-b border-destructive/30 bg-destructive/10 px-4 py-2 text-xs text-destructive sm:px-6">
+          {saveError}
         </div>
       )}
 
-      {/* Two-column on PC: section cards stacked vertically (left) + live preview (right) */}
-      <div className="grid gap-6 lg:grid-cols-[minmax(0,380px)_minmax(0,1fr)]">
-        {/* LEFT — section cards aligned vertically */}
-        <div className="space-y-3">
-          {visibleCards.map((c) => {
-            const Icon = c.icon;
-            const tone = TONE_CLASSES[c.tone];
-            return (
-              <Link
-                key={c.href}
-                href={`/dashboard/stores/${storeId}/${c.href}`}
-                className="group relative block overflow-hidden rounded-2xl border border-border/60 bg-card p-4 transition-all duration-300 hover:-translate-y-0.5 hover:border-primary/30 hover:shadow-lg"
-              >
-                <div
-                  className={cn('pointer-events-none absolute -right-10 -top-10 h-28 w-28 rounded-full bg-gradient-to-br opacity-10 blur-2xl transition-opacity duration-300 group-hover:opacity-25', tone.iconBg)}
-                  aria-hidden
-                />
-                <div className="relative flex items-center gap-3">
-                  <div className={cn('grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-gradient-to-br text-white shadow-md', tone.iconBg, tone.glow)}>
-                    <Icon className="h-4 w-4" />
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <h3 className="text-sm font-semibold tracking-tight">{c.title}</h3>
-                    <p className="mt-0.5 line-clamp-1 text-[11px] text-muted-foreground">{c.description}</p>
-                  </div>
-                  <ArrowLeft className="h-4 w-4 shrink-0 rotate-180 text-muted-foreground opacity-0 transition-all group-hover:opacity-100 group-hover:text-primary" />
-                </div>
-              </Link>
-            );
-          })}
-        </div>
+      {/* ── Body (3 panneaux) ──────────────────────────────────── */}
+      <div className="flex min-h-0 flex-1">
+        {/* LEFT — block list */}
+        <BlockList
+          blocks={visibleBlocks}
+          activeId={activeBlock}
+          onPick={setActiveBlock}
+          dirtyTopKeys={patch.keys}
+          dirtySettingsPaths={patch.settingsPaths}
+        />
 
-        {/* RIGHT — live visual preview with viewport switcher */}
-        <Card className="lg:sticky lg:top-6 lg:self-start">
-          <CardHeader className="pb-3">
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <CardTitle className="text-base">
-                  <span className="inline-flex items-center gap-2">
-                    <ImageIcon className="h-4 w-4" />
-                    Aperçu visuel
-                  </span>
-                </CardTitle>
-                <CardDescription className="text-xs">
-                  Logo, thème et sections — comme tes clients les voient.
-                </CardDescription>
-              </div>
-              {/* Viewport switcher — pick the device width to preview.
-                  Hidden on phones (the mobile rendering is forced there). */}
-              <div className="inline-flex items-center gap-0.5 rounded-lg border border-border/60 bg-muted/40 p-0.5">
-                <div className="hidden items-center gap-0.5 sm:flex">
-                  {([
-                    { id: 'mobile',  icon: Smartphone, label: 'Mobile',   width: 375 },
-                    { id: 'tablet',  icon: Tablet,     label: 'Tablette', width: 768 },
-                    { id: 'desktop', icon: Monitor,    label: 'Desktop',  width: 1280 },
-                  ] as const).map((d) => {
-                    const Icon = d.icon;
-                    const active = previewDevice === d.id;
-                    return (
-                      <button
-                        key={d.id}
-                        type="button"
-                        onClick={() => setPreviewDevice(d.id)}
-                        title={`${d.label} · ${d.width}px`}
-                        aria-label={d.label}
-                        aria-pressed={active}
-                        className={cn(
-                          'grid h-7 w-7 place-items-center rounded-md transition-all',
-                          active
-                            ? 'bg-card text-primary shadow-sm'
-                            : 'text-muted-foreground hover:text-foreground'
-                        )}
-                      >
-                        <Icon className="h-3.5 w-3.5" />
-                      </button>
-                    );
-                  })}
-                </div>
-                {/* Static mobile indicator on phones (switcher is hidden). */}
-                <span className="inline-flex items-center gap-1 px-1.5 text-[11px] font-medium text-muted-foreground sm:hidden">
-                  <Smartphone className="h-3.5 w-3.5" />
-                  Mobile
-                </span>
-                <button
-                  type="button"
-                  onClick={() => setPreviewBust((n) => n + 1)}
-                  title="Recharger l'aperçu"
-                  aria-label="Recharger"
-                  className="ml-0.5 grid h-7 w-7 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-card hover:text-foreground"
-                >
-                  <RotateCw className="h-3.5 w-3.5" />
-                </button>
-              </div>
-            </div>
-          </CardHeader>
-          <CardContent>
-            <ViewportPreview
-              device={effectiveDevice}
-              // `?preview=1` signale au storefront qu'il est rendu dans
-              // l'iframe d'aperçu du dashboard — les overlays flottants
-              // (bouton WhatsApp, popup newsletter) se masquent pour ne pas
-              // chevaucher la prévisualisation du vendeur.
-              src={`/${store.slug}?preview=1`}
-              previewBust={previewBust}
+        {/* CENTER — block editor */}
+        <main className="flex min-w-0 flex-1 flex-col overflow-y-auto border-r border-border/60 bg-card/40">
+          {currentBlock ? (
+            <BlockEditor
+              block={currentBlock}
+              storeId={storeId}
+              store={store}
+              setStore={setStore}
+              markDirty={markDirty}
+              openThemePicker={() => setThemePickerOpen(true)}
+              currentThemeName={currentThemeName || 'Par défaut'}
             />
-            <div className="mt-3 flex items-center justify-between gap-2">
-              <div className="min-w-0 text-xs text-muted-foreground">
-                Thème actuel : <span className="font-medium text-foreground">{currentThemeName || 'Par défaut'}</span>
+          ) : (
+            <div className="grid flex-1 place-items-center p-8 text-center">
+              <div className="max-w-sm space-y-2 text-muted-foreground">
+                <Sparkles className="mx-auto h-8 w-8 opacity-40" />
+                <p className="text-sm">Sélectionne un bloc à gauche pour commencer à l&apos;éditer.</p>
               </div>
-              <Button variant="outline" size="sm" className="gap-1.5" onClick={() => setThemePickerOpen(true)}>
-                <Palette className="h-3.5 w-3.5" />
-                Changer le thème
-              </Button>
             </div>
-          </CardContent>
-        </Card>
+          )}
+        </main>
+
+        {/* RIGHT — live preview */}
+        <PreviewPane
+          previewPages={PREVIEW_PAGES}
+          previewPage={previewPage}
+          setPreviewPage={setPreviewPage}
+          previewDevice={previewDevice}
+          setPreviewDevice={setPreviewDevice}
+          previewBust={previewBust}
+          onReload={() => setPreviewBust((n) => n + 1)}
+          path={previewPath}
+        />
       </div>
 
-      {/* Quick theme picker modal — selecting a theme saves and reloads the preview */}
+      {/* Theme picker modal */}
       {themePickerOpen && (
         <div
           className="fixed inset-0 z-50 grid place-items-center bg-black/60 p-3 sm:p-6"
-          onClick={() => !savingTheme && setThemePickerOpen(false)}
+          onClick={() => setThemePickerOpen(false)}
         >
           <div
             className="relative flex max-h-[92vh] w-full max-w-5xl flex-col overflow-hidden rounded-2xl border border-border bg-card shadow-2xl"
@@ -488,23 +425,13 @@ export default function StoreHubPage() {
             <div className="flex items-center justify-between gap-3 border-b border-border/60 px-5 py-3">
               <div>
                 <h2 className="text-base font-semibold">Choisir un thème</h2>
-                <p className="text-xs text-muted-foreground">Le thème sélectionné est appliqué et sauvegardé immédiatement.</p>
+                <p className="text-xs text-muted-foreground">Le thème sélectionné est mis en attente — clique « Enregistrer » pour l&apos;appliquer.</p>
               </div>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => setThemePickerOpen(false)}
-                disabled={savingTheme}
-              >
+              <Button variant="ghost" size="sm" onClick={() => setThemePickerOpen(false)}>
                 Fermer
               </Button>
             </div>
-            <div className="relative flex-1 overflow-y-auto p-5">
-              {savingTheme && (
-                <div className="absolute inset-0 z-10 grid place-items-center bg-card/70 backdrop-blur-sm">
-                  <p className="text-sm font-medium">Application du thème…</p>
-                </div>
-              )}
+            <div className="flex-1 overflow-y-auto p-5">
               <ThemePreviewGrid
                 templates={themesForStoreType(isDigital ? 'digital' : 'physical')}
                 selectedId={currentThemeId}
@@ -519,16 +446,773 @@ export default function StoreHubPage() {
 }
 
 // ─────────────────────────────────────────────────────────────────────
-// Viewport preview — iframe sized to a device width, scaled-to-fit
+// LEFT — BlockList component
+// ─────────────────────────────────────────────────────────────────────
+
+function BlockList({
+  blocks,
+  activeId,
+  onPick,
+  dirtyTopKeys,
+  dirtySettingsPaths,
+}: {
+  blocks: BlockDef[];
+  activeId: string | null;
+  onPick: (id: string) => void;
+  dirtyTopKeys: Set<DirtyKey>;
+  dirtySettingsPaths: Set<string>;
+}) {
+  // Mapping clé → bloc concerné pour le petit dot « modifié ».
+  const dirtyBlocks = useMemo(() => {
+    const set = new Set<string>();
+    if (dirtyTopKeys.has('name') || dirtyTopKeys.has('description') || dirtyTopKeys.has('isPublished')) set.add('identity');
+    if (dirtyTopKeys.has('theme')) set.add('theme');
+    if (dirtyTopKeys.has('logo') || dirtyTopKeys.has('favicon')) set.add('branding');
+    for (const p of Array.from(dirtySettingsPaths)) {
+      if (p === 'announcementBar') set.add('announce');
+      else if (p === 'hero')       set.add('hero');
+      else if (p === 'products')   set.add('products');
+      else if (p === 'whatsapp')   set.add('whatsapp');
+      else if (p === 'codForm')    set.add('cod');
+    }
+    return set;
+  }, [dirtyTopKeys, dirtySettingsPaths]);
+
+  const groups: Array<BlockDef['group']> = ['identity', 'header', 'home', 'conversion', 'footer', 'advanced'];
+
+  return (
+    <aside className="hidden w-72 shrink-0 flex-col overflow-y-auto border-r border-border/60 bg-card/60 md:flex">
+      <div className="flex-1 px-3 py-4">
+        {groups.map((g) => {
+          const items = blocks.filter((b) => b.group === g);
+          if (items.length === 0) return null;
+          return (
+            <div key={g} className="mb-5 last:mb-0">
+              <div className="mb-1.5 px-2 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+                {GROUP_LABELS[g]}
+              </div>
+              <div className="space-y-0.5">
+                {items.map((b) => {
+                  const Icon = b.icon;
+                  const active = activeId === b.id;
+                  const dirty = dirtyBlocks.has(b.id);
+                  return (
+                    <button
+                      key={b.id}
+                      type="button"
+                      onClick={() => onPick(b.id)}
+                      className={cn(
+                        'group flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left transition-colors',
+                        active
+                          ? 'bg-primary/10 text-primary'
+                          : 'text-foreground/80 hover:bg-muted hover:text-foreground',
+                      )}
+                    >
+                      <Icon className={cn('h-4 w-4 shrink-0', active ? 'text-primary' : 'text-muted-foreground')} />
+                      <span className="min-w-0 flex-1 truncate text-sm font-medium">{b.label}</span>
+                      {dirty && (
+                        <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-amber-500" title="Modifications non enregistrées" />
+                      )}
+                      {b.mode === 'link' ? (
+                        <ChevronRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground/60" />
+                      ) : null}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </aside>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// CENTER — BlockEditor router
+// ─────────────────────────────────────────────────────────────────────
+
+interface EditorCtx {
+  block: BlockDef;
+  storeId: string;
+  store: StoreType;
+  setStore: React.Dispatch<React.SetStateAction<StoreType | null>>;
+  markDirty: (key: DirtyKey, settingsSubPath?: string) => void;
+  openThemePicker: () => void;
+  currentThemeName: string;
+}
+
+function BlockEditor(ctx: EditorCtx) {
+  const { block } = ctx;
+
+  // Editor lourd → on propose juste un lien vers la sous-page dédiée.
+  if (block.mode === 'link' && block.href) {
+    return (
+      <div className="flex flex-1 flex-col">
+        <EditorHeader title={block.label} hint={block.hint} />
+        <div className="flex flex-1 items-center justify-center p-6">
+          <div className="max-w-md space-y-4 text-center">
+            <div className="mx-auto grid h-12 w-12 place-items-center rounded-2xl bg-gradient-to-br from-primary to-violet-600 text-white shadow-lg">
+              <block.icon className="h-5 w-5" />
+            </div>
+            <div>
+              <h3 className="text-base font-semibold">Éditeur complet dédié</h3>
+              <p className="mt-1 text-sm text-muted-foreground">
+                {block.label} a son propre éditeur avec tous les réglages avancés. Ouvre-le pour modifier en détail.
+              </p>
+            </div>
+            <Link href={`/dashboard/stores/${ctx.storeId}/${block.href}`}>
+              <Button className="gap-1.5 gradient-brand text-white">
+                Ouvrir l&apos;éditeur {block.label}
+                <ChevronRight className="h-4 w-4" />
+              </Button>
+            </Link>
+            <p className="text-[11px] text-muted-foreground">
+              Astuce : tu reviens ici via le bouton « Boutiques » → ta boutique.
+            </p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Editor inline — dispatch selon le bloc.
+  switch (block.id) {
+    case 'identity':  return <IdentityEditor {...ctx} />;
+    case 'theme':     return <ThemeEditor {...ctx} />;
+    case 'branding':  return <BrandingEditor {...ctx} />;
+    case 'announce':  return <AnnounceEditor {...ctx} />;
+    case 'hero':      return <HeroEditor {...ctx} />;
+    case 'products':  return <ProductsGridEditor {...ctx} />;
+    case 'whatsapp':  return <WhatsappEditor {...ctx} />;
+    case 'cod':       return <CodFormEditor {...ctx} />;
+    default:
+      return (
+        <div className="grid flex-1 place-items-center p-6 text-sm text-muted-foreground">
+          Éditeur inline à venir.
+        </div>
+      );
+  }
+}
+
+function EditorHeader({ title, hint }: { title: string; hint: string }) {
+  return (
+    <div className="shrink-0 border-b border-border/60 px-5 py-3">
+      <h2 className="text-sm font-semibold">{title}</h2>
+      <p className="text-xs text-muted-foreground">{hint}</p>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// Inline editors — un par bloc simple
+// ─────────────────────────────────────────────────────────────────────
+
+function IdentityEditor({ block, store, setStore, markDirty }: EditorCtx) {
+  return (
+    <div className="flex flex-1 flex-col">
+      <EditorHeader title={block.label} hint={block.hint} />
+      <div className="space-y-5 p-5">
+        <Field
+          label="Nom de la boutique"
+          hint="Affiché en haut du storefront et dans les emails."
+        >
+          <Input
+            value={store.name || ''}
+            onChange={(e) => {
+              setStore((s) => (s ? { ...s, name: e.target.value } : s));
+              markDirty('name');
+            }}
+            placeholder="Ex: Atelier Macaftans"
+          />
+        </Field>
+        <Field label="Description" hint="Une phrase courte (SEO + bannière SI activée).">
+          <textarea
+            value={store.description || ''}
+            onChange={(e) => {
+              setStore((s) => (s ? { ...s, description: e.target.value } : s));
+              markDirty('description');
+            }}
+            placeholder="Ex: Vêtements traditionnels modernes, livraison 48h."
+            className="min-h-[80px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+          />
+        </Field>
+        <Field label="Statut" hint="Une boutique en brouillon n'est pas accessible publiquement.">
+          <label className="flex items-center gap-2.5 rounded-lg border border-border/60 bg-muted/30 px-3 py-2.5">
+            <input
+              type="checkbox"
+              checked={!!store.isPublished}
+              onChange={(e) => {
+                setStore((s) => (s ? { ...s, isPublished: e.target.checked } : s));
+                markDirty('isPublished');
+              }}
+              className="h-4 w-4 rounded border-input"
+            />
+            <span className="text-sm">
+              {store.isPublished ? (
+                <span className="inline-flex items-center gap-1.5 text-emerald-700"><Eye className="h-3.5 w-3.5" /> Boutique en ligne</span>
+              ) : (
+                <span className="inline-flex items-center gap-1.5 text-amber-700"><Eye className="h-3.5 w-3.5" /> Boutique en brouillon</span>
+              )}
+            </span>
+          </label>
+        </Field>
+        <div className="rounded-lg border border-border/60 bg-muted/20 p-3 text-xs text-muted-foreground">
+          Tu veux régler langue, devise, pays, domaine personnalisé ?
+          {' '}
+          <Link href={`/dashboard/stores/${store._id}/info`} className="font-semibold text-primary hover:underline">
+            Ouvrir les infos détaillées →
+          </Link>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ThemeEditor({ block, store, openThemePicker, currentThemeName }: EditorCtx) {
+  const theme = (store.theme as Partial<ThemeTokens> | undefined) || {};
+  return (
+    <div className="flex flex-1 flex-col">
+      <EditorHeader title={block.label} hint={block.hint} />
+      <div className="space-y-5 p-5">
+        <div className="rounded-2xl border border-border/60 bg-gradient-to-br from-muted/30 to-card p-5">
+          <div className="flex items-center gap-4">
+            <div className="flex -space-x-2">
+              <span className="h-10 w-10 rounded-full border-2 border-card shadow-sm" style={{ backgroundColor: theme.primary || '#999' }} />
+              <span className="h-10 w-10 rounded-full border-2 border-card shadow-sm" style={{ backgroundColor: theme.accent || '#666' }} />
+              <span className="h-10 w-10 rounded-full border-2 border-card shadow-sm" style={{ backgroundColor: theme.background || '#fff' }} />
+            </div>
+            <div className="min-w-0 flex-1">
+              <div className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Thème actif</div>
+              <div className="truncate text-base font-bold">{currentThemeName}</div>
+              <div className="text-xs text-muted-foreground">{theme.dark ? 'Mode sombre' : 'Mode clair'}</div>
+            </div>
+          </div>
+          <Button onClick={openThemePicker} className="mt-4 w-full gap-1.5 gradient-brand text-white">
+            <Palette className="h-4 w-4" /> Choisir un autre thème
+          </Button>
+        </div>
+        <div className="rounded-lg border border-border/60 bg-muted/20 p-3 text-xs text-muted-foreground">
+          Pour ajuster les couleurs précisément (palette personnalisée) :
+          {' '}
+          <Link href={`/dashboard/stores/${store._id}/appearance`} className="font-semibold text-primary hover:underline">
+            Ouvrir l&apos;éditeur d&apos;apparence →
+          </Link>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function BrandingEditor({ block, store, setStore, markDirty }: EditorCtx) {
+  return (
+    <div className="flex flex-1 flex-col">
+      <EditorHeader title={block.label} hint={block.hint} />
+      <div className="space-y-5 p-5">
+        <Field label="URL du logo" hint="PNG/SVG avec fond transparent recommandé.">
+          <Input
+            value={store.logo || ''}
+            onChange={(e) => {
+              setStore((s) => (s ? { ...s, logo: e.target.value } : s));
+              markDirty('logo');
+            }}
+            placeholder="https://…/logo.png"
+          />
+          {store.logo && (
+            <div className="mt-2 inline-block rounded-lg border border-border/60 bg-muted/30 p-2">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={store.logo} alt="Logo" className="h-12 max-w-[180px] object-contain" />
+            </div>
+          )}
+        </Field>
+        <Field label="URL du favicon" hint="Petite icône onglet navigateur (32×32 idéal).">
+          <Input
+            value={store.favicon || ''}
+            onChange={(e) => {
+              setStore((s) => (s ? { ...s, favicon: e.target.value } : s));
+              markDirty('favicon');
+            }}
+            placeholder="https://…/favicon.png"
+          />
+        </Field>
+        <div className="rounded-lg border border-border/60 bg-muted/20 p-3 text-xs text-muted-foreground">
+          Pour uploader directement un fichier (au lieu d&apos;une URL) :
+          {' '}
+          <Link href={`/dashboard/stores/${store._id}/appearance`} className="font-semibold text-primary hover:underline">
+            Ouvrir l&apos;éditeur d&apos;apparence →
+          </Link>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function AnnounceEditor({ block, store, setStore, markDirty }: EditorCtx) {
+  const storefront = (store.settings?.storefront || {}) as StorefrontSettings;
+  const bar: AnnouncementBarSettings = storefront.announcementBar || {};
+
+  function patchBar(next: AnnouncementBarSettings) {
+    const nextStorefront: StorefrontSettings = { ...storefront, announcementBar: next };
+    const nextSettings = { ...(store.settings || {}), storefront: nextStorefront };
+    setStore((s) => (s ? { ...s, settings: nextSettings } : s));
+    markDirty('settings', 'announcementBar');
+  }
+
+  const messages = bar.messages || [];
+
+  return (
+    <div className="flex flex-1 flex-col">
+      <EditorHeader title={block.label} hint={block.hint} />
+      <div className="space-y-5 p-5">
+        <Toggle
+          label="Activer le bandeau d'annonce"
+          checked={!!bar.enabled}
+          onChange={(v) => patchBar({ ...bar, enabled: v })}
+        />
+        {bar.enabled && (
+          <>
+            <Field label="Mode" hint="Texte centré statique ou ticker animé.">
+              <div className="inline-flex rounded-lg bg-muted/40 p-0.5">
+                {(['fixed', 'animated'] as const).map((m) => (
+                  <button
+                    key={m}
+                    type="button"
+                    onClick={() => patchBar({ ...bar, mode: m })}
+                    className={cn(
+                      'rounded-md px-3 py-1.5 text-xs font-medium transition-colors',
+                      (bar.mode || 'fixed') === m ? 'bg-card text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground',
+                    )}
+                  >
+                    {m === 'fixed' ? 'Statique' : 'Animé'}
+                  </button>
+                ))}
+              </div>
+            </Field>
+            <Field label="Messages" hint="Une ligne par message — affichés en rotation.">
+              <div className="space-y-2">
+                {messages.map((m, i) => (
+                  <div key={i} className="flex gap-2">
+                    <Input
+                      value={m}
+                      onChange={(e) => {
+                        const next = [...messages];
+                        next[i] = e.target.value;
+                        patchBar({ ...bar, messages: next });
+                      }}
+                      placeholder="Ex: Livraison gratuite dès 50 000 XOF"
+                    />
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => patchBar({ ...bar, messages: messages.filter((_, j) => j !== i) })}
+                      className="shrink-0"
+                    >
+                      Retirer
+                    </Button>
+                  </div>
+                ))}
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => patchBar({ ...bar, messages: [...messages, ''] })}
+                >
+                  + Ajouter un message
+                </Button>
+              </div>
+            </Field>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function HeroEditor({ block, store, setStore, markDirty }: EditorCtx) {
+  const storefront = (store.settings?.storefront || {}) as StorefrontSettings;
+
+  function patchHero(next: Partial<StorefrontSettings>) {
+    const nextStorefront: StorefrontSettings = { ...storefront, ...next };
+    const nextSettings = { ...(store.settings || {}), storefront: nextStorefront };
+    setStore((s) => (s ? { ...s, settings: nextSettings } : s));
+    markDirty('settings', 'hero');
+  }
+
+  return (
+    <div className="flex flex-1 flex-col">
+      <EditorHeader title={block.label} hint={block.hint} />
+      <div className="space-y-5 p-5">
+        <Toggle
+          label="Afficher le hero"
+          checked={storefront.showHero !== false}
+          onChange={(v) => patchHero({ showHero: v })}
+        />
+        {storefront.showHero !== false && (
+          <>
+            <Field label="Titre" hint="Première ligne accrocheuse.">
+              <Input
+                value={storefront.heroTitle || ''}
+                onChange={(e) => patchHero({ heroTitle: e.target.value })}
+                placeholder="Ex: La mode qui te ressemble"
+              />
+            </Field>
+            <Field label="Sous-titre" hint="Phrase d'appui.">
+              <Input
+                value={storefront.heroSubtitle || ''}
+                onChange={(e) => patchHero({ heroSubtitle: e.target.value })}
+                placeholder="Ex: Livraison 48h partout en Afrique de l'Ouest"
+              />
+            </Field>
+            <Field label="URL image desktop" hint="Format paysage idéal (16:9).">
+              <Input
+                value={storefront.heroImage || ''}
+                onChange={(e) => patchHero({ heroImage: e.target.value })}
+                placeholder="https://…/hero.jpg"
+              />
+            </Field>
+            <Field label="URL image mobile (optionnel)" hint="Si vide, on utilise l'image desktop. Format portrait/carré conseillé.">
+              <Input
+                value={storefront.heroImageMobile || ''}
+                onChange={(e) => patchHero({ heroImageMobile: e.target.value })}
+                placeholder="https://…/hero-mobile.jpg"
+              />
+            </Field>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function ProductsGridEditor({ block, store, setStore, markDirty }: EditorCtx) {
+  const storefront = (store.settings?.storefront || {}) as StorefrontSettings;
+
+  function patchGrid(next: Partial<StorefrontSettings>) {
+    const nextStorefront: StorefrontSettings = { ...storefront, ...next };
+    const nextSettings = { ...(store.settings || {}), storefront: nextStorefront };
+    setStore((s) => (s ? { ...s, settings: nextSettings } : s));
+    markDirty('settings', 'products');
+  }
+
+  return (
+    <div className="flex flex-1 flex-col">
+      <EditorHeader title={block.label} hint={block.hint} />
+      <div className="space-y-5 p-5">
+        <Toggle
+          label="Afficher la grille produits sur l'accueil"
+          checked={storefront.showProductsGrid !== false}
+          onChange={(v) => patchGrid({ showProductsGrid: v })}
+        />
+        {storefront.showProductsGrid !== false && (
+          <>
+            <Field label="Titre du bloc">
+              <Input
+                value={storefront.productsGridTitle || ''}
+                onChange={(e) => patchGrid({ productsGridTitle: e.target.value })}
+                placeholder="Ex: Nos meilleures ventes"
+              />
+            </Field>
+            <Field label="Sous-titre du bloc">
+              <Input
+                value={storefront.productsGridSubtitle || ''}
+                onChange={(e) => patchGrid({ productsGridSubtitle: e.target.value })}
+                placeholder="Ex: Les classiques préférés de nos clients"
+              />
+            </Field>
+            <Field label="Nombre de colonnes">
+              <div className="inline-flex rounded-lg bg-muted/40 p-0.5">
+                {([2, 3, 4] as const).map((c) => (
+                  <button
+                    key={c}
+                    type="button"
+                    onClick={() => patchGrid({ productsGridColumns: c })}
+                    className={cn(
+                      'rounded-md px-3 py-1.5 text-xs font-medium transition-colors',
+                      (storefront.productsGridColumns || 3) === c ? 'bg-card text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground',
+                    )}
+                  >
+                    {c} colonnes
+                  </button>
+                ))}
+              </div>
+            </Field>
+            <Field label="Tri par défaut">
+              <select
+                value={storefront.productsGridSort || 'recent'}
+                onChange={(e) => patchGrid({ productsGridSort: e.target.value as StorefrontSettings['productsGridSort'] })}
+                className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+              >
+                <option value="recent">Plus récents</option>
+                <option value="price-asc">Prix croissant</option>
+                <option value="price-desc">Prix décroissant</option>
+                <option value="name-asc">Nom A-Z</option>
+              </select>
+            </Field>
+            <Toggle
+              label="Masquer les produits en rupture"
+              checked={!!storefront.productsGridHideOutOfStock}
+              onChange={(v) => patchGrid({ productsGridHideOutOfStock: v })}
+            />
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function WhatsappEditor({ block, store, setStore, markDirty }: EditorCtx) {
+  const ws: WhatsappSettings = store.settings?.whatsapp || {};
+
+  function patchWs(next: WhatsappSettings) {
+    const nextSettings = { ...(store.settings || {}), whatsapp: next };
+    setStore((s) => (s ? { ...s, settings: nextSettings } : s));
+    markDirty('settings', 'whatsapp');
+  }
+
+  return (
+    <div className="flex flex-1 flex-col">
+      <EditorHeader title={block.label} hint={block.hint} />
+      <div className="space-y-5 p-5">
+        <Toggle
+          label="Afficher le bouton WhatsApp flottant"
+          checked={!!ws.enabled}
+          onChange={(v) => patchWs({ ...ws, enabled: v })}
+        />
+        {ws.enabled && (
+          <>
+            <Field label="Numéro de téléphone" hint="Format international, ex: +221 77 123 45 67.">
+              <Input
+                value={ws.phoneNumber || ''}
+                onChange={(e) => patchWs({ ...ws, phoneNumber: e.target.value })}
+                placeholder="+221771234567"
+              />
+            </Field>
+            <Field label="Position">
+              <div className="inline-flex flex-wrap gap-1 rounded-lg bg-muted/40 p-0.5">
+                {(['bottom-right', 'bottom-left', 'top-right', 'top-left'] as const).map((p) => (
+                  <button
+                    key={p}
+                    type="button"
+                    onClick={() => patchWs({ ...ws, position: p })}
+                    className={cn(
+                      'rounded-md px-2.5 py-1.5 text-[11px] font-medium transition-colors',
+                      (ws.position || 'bottom-right') === p ? 'bg-card text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground',
+                    )}
+                  >
+                    {p === 'bottom-right' ? '↘' : p === 'bottom-left' ? '↙' : p === 'top-right' ? '↗' : '↖'}
+                    {' '}{p.replace('-', ' ')}
+                  </button>
+                ))}
+              </div>
+            </Field>
+            <Field label="Couleur d'accent" hint="Code hex (ex: #25D366).">
+              <Input
+                value={ws.accentColor || ''}
+                onChange={(e) => patchWs({ ...ws, accentColor: e.target.value })}
+                placeholder="#25D366"
+              />
+            </Field>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function CodFormEditor({ block, store, setStore, markDirty }: EditorCtx) {
+  const cf: CodFormSettings = store.settings?.codForm || {};
+
+  function patchCf(next: CodFormSettings) {
+    const nextSettings = { ...(store.settings || {}), codForm: next };
+    setStore((s) => (s ? { ...s, settings: nextSettings } : s));
+    markDirty('settings', 'codForm');
+  }
+
+  return (
+    <div className="flex flex-1 flex-col">
+      <EditorHeader title={block.label} hint={block.hint} />
+      <div className="space-y-5 p-5">
+        <Field label="En-tête du formulaire">
+          <Input
+            value={cf.headline || ''}
+            onChange={(e) => patchCf({ ...cf, headline: e.target.value })}
+            placeholder="Ex: Commander en 30 secondes"
+          />
+        </Field>
+        <Field label="Libellé du bouton">
+          <Input
+            value={cf.submitLabel || ''}
+            onChange={(e) => patchCf({ ...cf, submitLabel: e.target.value })}
+            placeholder="Ex: Commander maintenant"
+          />
+        </Field>
+        <Field label="Phrase de réassurance">
+          <Input
+            value={cf.reassurance || ''}
+            onChange={(e) => patchCf({ ...cf, reassurance: e.target.value })}
+            placeholder="Ex: Sans carte. Livraison 24-72h."
+          />
+        </Field>
+        <div className="space-y-2 rounded-2xl border border-border/60 bg-muted/20 p-4">
+          <div className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Champs visibles</div>
+          <Toggle compact label="Email" checked={cf.showEmail !== false} onChange={(v) => patchCf({ ...cf, showEmail: v })} />
+          <Toggle compact label="Email obligatoire" checked={!!cf.requireEmail} onChange={(v) => patchCf({ ...cf, requireEmail: v })} />
+          <Toggle compact label="Code postal" checked={!!cf.showPostalCode} onChange={(v) => patchCf({ ...cf, showPostalCode: v })} />
+          <Toggle compact label="État/région" checked={!!cf.showState} onChange={(v) => patchCf({ ...cf, showState: v })} />
+          <Toggle compact label="Notes" checked={cf.showNotes !== false} onChange={(v) => patchCf({ ...cf, showNotes: v })} />
+          <Toggle compact label="Quantité" checked={cf.showQuantity !== false} onChange={(v) => patchCf({ ...cf, showQuantity: v })} />
+        </div>
+        <div className="rounded-lg border border-border/60 bg-muted/20 p-3 text-xs text-muted-foreground">
+          Couleurs, forme du bouton, animation, frais de livraison ?
+          {' '}
+          <Link href={`/dashboard/stores/${store._id}/checkout`} className="font-semibold text-primary hover:underline">
+            Ouvrir le réglage complet du formulaire →
+          </Link>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// Common form primitives
+// ─────────────────────────────────────────────────────────────────────
+
+function Field({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
+  return (
+    <div className="space-y-1.5">
+      <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">{label}</Label>
+      {children}
+      {hint && <p className="text-[11px] text-muted-foreground">{hint}</p>}
+    </div>
+  );
+}
+
+function Toggle({ label, checked, onChange, compact }: { label: string; checked: boolean; onChange: (v: boolean) => void; compact?: boolean }) {
+  return (
+    <label className={cn('flex cursor-pointer items-center gap-2.5 rounded-lg border border-border/60 bg-muted/30 px-3', compact ? 'py-1.5' : 'py-2.5')}>
+      <input
+        type="checkbox"
+        checked={checked}
+        onChange={(e) => onChange(e.target.checked)}
+        className="h-4 w-4 rounded border-input"
+      />
+      <span className={cn('text-sm', compact && 'text-xs')}>{label}</span>
+    </label>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// RIGHT — PreviewPane (page switcher + device switcher + iframe)
+// ─────────────────────────────────────────────────────────────────────
+
+function PreviewPane({
+  previewPages,
+  previewPage,
+  setPreviewPage,
+  previewDevice,
+  setPreviewDevice,
+  previewBust,
+  onReload,
+  path,
+}: {
+  previewPages: PreviewPageDef[];
+  previewPage: string;
+  setPreviewPage: (id: string) => void;
+  previewDevice: 'mobile' | 'tablet' | 'desktop';
+  setPreviewDevice: (d: 'mobile' | 'tablet' | 'desktop') => void;
+  previewBust: number;
+  onReload: () => void;
+  path: string | null;
+}) {
+  return (
+    <section className="hidden min-w-0 flex-1 flex-col bg-muted/40 lg:flex">
+      {/* Toolbar */}
+      <div className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-border/60 bg-card/80 px-4 py-2.5 backdrop-blur">
+        <div className="flex flex-wrap items-center gap-1">
+          {previewPages.map((p) => {
+            const Icon = p.icon;
+            const active = previewPage === p.id;
+            return (
+              <button
+                key={p.id}
+                type="button"
+                onClick={() => setPreviewPage(p.id)}
+                className={cn(
+                  'inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-[11px] font-medium transition-colors',
+                  active ? 'bg-primary/10 text-primary' : 'text-muted-foreground hover:bg-muted hover:text-foreground',
+                )}
+              >
+                <Icon className="h-3 w-3" />
+                {p.label}
+              </button>
+            );
+          })}
+        </div>
+        <div className="inline-flex items-center gap-0.5 rounded-lg border border-border/60 bg-muted/40 p-0.5">
+          {([
+            { id: 'mobile', icon: Smartphone, label: 'Mobile', width: 375 },
+            { id: 'tablet', icon: Tablet, label: 'Tablette', width: 768 },
+            { id: 'desktop', icon: Monitor, label: 'Desktop', width: 1280 },
+          ] as const).map((d) => {
+            const Icon = d.icon;
+            const active = previewDevice === d.id;
+            return (
+              <button
+                key={d.id}
+                type="button"
+                onClick={() => setPreviewDevice(d.id)}
+                title={`${d.label} · ${d.width}px`}
+                aria-pressed={active}
+                className={cn(
+                  'grid h-7 w-7 place-items-center rounded-md transition-all',
+                  active ? 'bg-card text-primary shadow-sm' : 'text-muted-foreground hover:text-foreground',
+                )}
+              >
+                <Icon className="h-3.5 w-3.5" />
+              </button>
+            );
+          })}
+          <button
+            type="button"
+            onClick={onReload}
+            title="Recharger"
+            className="ml-0.5 grid h-7 w-7 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-card hover:text-foreground"
+          >
+            <RotateCw className="h-3.5 w-3.5" />
+          </button>
+        </div>
+      </div>
+
+      {/* Iframe area */}
+      <div className="flex flex-1 items-start justify-center overflow-auto p-4">
+        {path ? (
+          <ViewportPreview
+            device={previewDevice}
+            src={`${path}${path.includes('?') ? '&' : '?'}preview=1`}
+            previewBust={previewBust}
+          />
+        ) : (
+          <div className="grid w-full max-w-sm place-items-center rounded-2xl border border-dashed border-border bg-card p-10 text-center">
+            <p className="text-sm text-muted-foreground">
+              Aucun {previewPage === 'product' ? 'produit' : previewPage === 'collection' ? 'collection' : 'page'} à afficher pour cet aperçu.
+              {' '}Crée-en un puis recharge.
+            </p>
+          </div>
+        )}
+      </div>
+    </section>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// ViewportPreview — true-device-width iframe + transform: scale()
 // ─────────────────────────────────────────────────────────────────────
 //
-// We render the storefront iframe at its TRUE device width (375 / 768 /
-// 1280) and scale it down via `transform: scale()` so it fits the
-// available preview column. This is critical because the storefront
-// uses CSS media queries — if we just shrank the iframe element to
-// 375px-wide without preserving the inner document width, the mobile
-// layout would never trigger. Scale-to-fit keeps the inner page
-// thinking it's on a real 375-wide phone.
+// Rendre l'iframe à sa vraie largeur (375/768/1280) et scaler via CSS
+// pour rester dans la colonne disponible. Sans ça, l'iframe forcée
+// à 375px ne déclenche pas les media queries mobiles du storefront.
 function ViewportPreview({
   device,
   src,
@@ -538,7 +1222,6 @@ function ViewportPreview({
   src: string;
   previewBust: number;
 }) {
-  // True device dimensions used by the iframe content.
   const dims = {
     mobile:  { width: 375,  height: 720 },
     tablet:  { width: 768,  height: 1024 },
@@ -548,8 +1231,6 @@ function ViewportPreview({
   const wrapRef = useRef<HTMLDivElement | null>(null);
   const [scale, setScale] = useState(1);
 
-  // Recompute scale = wrapperWidth / trueWidth whenever the wrapper or
-  // device changes. Clamped at 1 so we never upscale (would blur).
   useEffect(() => {
     if (!wrapRef.current) return;
     const el = wrapRef.current;
@@ -564,25 +1245,24 @@ function ViewportPreview({
     return () => obs.disconnect();
   }, [dims.width]);
 
-  // Visual frame max width per device — mobile-shaped column, tablet
-  // medium, desktop fills the available space.
   const maxFrameWidth =
-    device === 'mobile'  ? 320
-    : device === 'tablet' ? 560
+    device === 'mobile' ? 360
+    : device === 'tablet' ? 640
     : 9999;
 
   return (
     <div
       ref={wrapRef}
-      className="mx-auto overflow-hidden rounded-xl border border-border/60 bg-muted/30"
+      className="mx-auto overflow-hidden rounded-2xl border border-border/60 bg-card shadow-xl"
       style={{
         maxWidth: maxFrameWidth,
+        width: '100%',
         height: dims.height * scale,
         transition: 'height 0.25s ease, max-width 0.25s ease',
       }}
     >
       <iframe
-        key={`${device}-${previewBust}`}
+        key={`${device}-${src}-${previewBust}`}
         src={src}
         title="Aperçu de la boutique"
         loading="lazy"
