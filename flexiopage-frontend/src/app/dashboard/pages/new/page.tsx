@@ -73,6 +73,7 @@ const directionOf = (lang: string): 'ltr' | 'rtl' => (RTL_LANGS.has(lang.split('
 interface ProductLite {
   _id: string;
   name: string;
+  slug?: string;
   description?: string;
   price?: number;
   compareAtPrice?: number;
@@ -253,7 +254,13 @@ export default function NewLandingPagePage() {
         setJob(j);
         if (j.status === 'succeeded' && j.result) {
           // Populate editor state from the job result
-          setSections(withDefaultCodForm((j.result.sections as PageSection[]) || []));
+          // Bind le cod-form auto-ajouté au produit sélectionné, si l'utilisateur
+          // a généré depuis un produit. Évite que le renderer tombe sur le
+          // premier produit du catalogue (qui peut ne pas être celui ciblé).
+          const sourceSlug = selectedProductId
+            ? products.find((x) => x._id === selectedProductId)?.slug
+            : undefined;
+          setSections(withDefaultCodForm((j.result.sections as PageSection[]) || [], sourceSlug));
           setSeoTitle(j.result.seoTitle || '');
           setSeoDescription(j.result.seoDescription || '');
           if (j.result.language) setLanguage(j.result.language);

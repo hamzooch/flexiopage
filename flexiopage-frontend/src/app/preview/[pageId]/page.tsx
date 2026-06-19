@@ -60,7 +60,10 @@ export default function PreviewPage() {
     setLoading(true);
     Promise.all([
       storesApi.getPage(storeId, pageId),
-      storesApi.listProducts(storeId, { published: 'true' }).catch(() => ({ data: { products: [] } })),
+      // Inclut les produits en brouillon : le vendeur prévisualise SA propre
+      // page, on veut qu'il puisse tester le formulaire de commande même si
+      // le produit n'est pas encore publié (sinon cod-form → placeholder).
+      storesApi.listProducts(storeId).catch(() => ({ data: { products: [] } })),
       storesApi.get(storeId).catch(() => ({ data: { store: null } })),
     ])
       .then(([pageRes, prodRes, storeRes]) => {
@@ -102,6 +105,11 @@ export default function PreviewPage() {
           currency={page.currency || store?.settings?.currency}
           country={store?.settings?.country}
           themeId={store?.theme?.templateId}
+          // Sans storeSlug le CodFormSection retombe sur un placeholder.
+          // On le passe ici pour que la preview rende le vrai formulaire ;
+          // le submit pointe sur l'API publique du vendeur et fait une
+          // vraie commande, ce qui sert aussi de test end-to-end.
+          storeSlug={store?.slug}
           banner={
             <div className="sticky top-0 z-50 flex flex-wrap items-center justify-between gap-3 border-b border-border/60 bg-card/80 px-5 py-2.5 backdrop-blur-xl">
               <div className="flex items-center gap-2 text-xs">
