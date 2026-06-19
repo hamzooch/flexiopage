@@ -74,6 +74,7 @@ import type {
   AnnouncementBarSettings,
 } from '@/components/dashboard/store-editor';
 import { ThemePreviewGrid } from '@/components/dashboard/theme-preview-card';
+import { MediaPicker } from '@/components/dashboard/MediaPicker';
 import {
   STORE_THEME_TEMPLATES,
   themesForStoreType,
@@ -704,44 +705,45 @@ function ThemeEditor({ block, store, openThemePicker, currentThemeName }: Editor
   );
 }
 
-function BrandingEditor({ block, store, setStore, markDirty }: EditorCtx) {
+function BrandingEditor({ block, storeId, store, setStore, markDirty }: EditorCtx) {
   return (
     <div className="flex flex-1 flex-col">
       <EditorHeader title={block.label} hint={block.hint} />
       <div className="space-y-5 p-5">
-        <Field label="URL du logo" hint="PNG/SVG avec fond transparent recommandé.">
-          <Input
-            value={store.logo || ''}
-            onChange={(e) => {
-              setStore((s) => (s ? { ...s, logo: e.target.value } : s));
-              markDirty('logo');
-            }}
-            placeholder="https://…/logo.png"
-          />
-          {store.logo && (
-            <div className="mt-2 inline-block rounded-lg border border-border/60 bg-muted/30 p-2">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={store.logo} alt="Logo" className="h-12 max-w-[180px] object-contain" />
-            </div>
-          )}
-        </Field>
-        <Field label="URL du favicon" hint="Petite icône onglet navigateur (32×32 idéal).">
-          <Input
-            value={store.favicon || ''}
-            onChange={(e) => {
-              setStore((s) => (s ? { ...s, favicon: e.target.value } : s));
-              markDirty('favicon');
-            }}
-            placeholder="https://…/favicon.png"
-          />
-        </Field>
-        <div className="rounded-lg border border-border/60 bg-muted/20 p-3 text-xs text-muted-foreground">
-          Pour uploader directement un fichier (au lieu d&apos;une URL) :
-          {' '}
-          <Link href={`/dashboard/stores/${store._id}/appearance`} className="font-semibold text-primary hover:underline">
-            Ouvrir l&apos;éditeur d&apos;apparence →
-          </Link>
+        <div className="rounded-2xl border border-border/60 bg-muted/30 p-4">
+          <div className="max-w-[260px]">
+            <MediaPicker
+              storeId={storeId}
+              value={store.logo}
+              onChange={(url) => {
+                setStore((s) => (s ? { ...s, logo: url || '' } : s));
+                markDirty('logo');
+              }}
+              label="Logo de la boutique"
+              shape="square"
+              helper="Format carré recommandé (PNG ou SVG, 512×512). Apparaît dans la navbar du storefront."
+            />
+          </div>
         </div>
+        <div className="rounded-2xl border border-border/60 bg-muted/30 p-4">
+          <div className="max-w-[180px]">
+            <MediaPicker
+              storeId={storeId}
+              value={store.favicon}
+              onChange={(url) => {
+                setStore((s) => (s ? { ...s, favicon: url || '' } : s));
+                markDirty('favicon');
+              }}
+              label="Favicon (onglet du navigateur)"
+              shape="square"
+              helper="32×32 ou 64×64. PNG ou ICO."
+            />
+          </div>
+        </div>
+        <p className="text-[11px] text-muted-foreground">
+          Astuce : les images uploadées ici sont disponibles dans la bibliothèque média de la boutique
+          et réutilisables pour le hero, le slider, etc.
+        </p>
       </div>
     </div>
   );
@@ -829,7 +831,7 @@ function AnnounceEditor({ block, store, setStore, markDirty }: EditorCtx) {
   );
 }
 
-function HeroEditor({ block, store, setStore, markDirty }: EditorCtx) {
+function HeroEditor({ block, storeId, store, setStore, markDirty }: EditorCtx) {
   const storefront = (store.settings?.storefront || {}) as StorefrontSettings;
 
   function patchHero(next: Partial<StorefrontSettings>) {
@@ -864,20 +866,26 @@ function HeroEditor({ block, store, setStore, markDirty }: EditorCtx) {
                 placeholder="Ex: Livraison 48h partout en Afrique de l'Ouest"
               />
             </Field>
-            <Field label="URL image desktop" hint="Format paysage idéal (16:9).">
-              <Input
-                value={storefront.heroImage || ''}
-                onChange={(e) => patchHero({ heroImage: e.target.value })}
-                placeholder="https://…/hero.jpg"
+            <div className="rounded-2xl border border-border/60 bg-muted/30 p-4">
+              <MediaPicker
+                storeId={storeId}
+                value={storefront.heroImage}
+                onChange={(url) => patchHero({ heroImage: url || '' })}
+                label="Image hero (desktop)"
+                shape="wide"
+                helper="Format paysage idéal (16:9). Téléverse depuis ton ordi ou pioche dans la médiathèque."
               />
-            </Field>
-            <Field label="URL image mobile (optionnel)" hint="Si vide, on utilise l'image desktop. Format portrait/carré conseillé.">
-              <Input
-                value={storefront.heroImageMobile || ''}
-                onChange={(e) => patchHero({ heroImageMobile: e.target.value })}
-                placeholder="https://…/hero-mobile.jpg"
+            </div>
+            <div className="rounded-2xl border border-border/60 bg-muted/30 p-4">
+              <MediaPicker
+                storeId={storeId}
+                value={storefront.heroImageMobile}
+                onChange={(url) => patchHero({ heroImageMobile: url || '' })}
+                label="Image hero (mobile, optionnel)"
+                shape="square"
+                helper="Si vide, on utilise l'image desktop. Format portrait/carré conseillé."
               />
-            </Field>
+            </div>
           </>
         )}
       </div>
