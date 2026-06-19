@@ -102,3 +102,42 @@ export async function deleteCollection(req: AuthRequest, res: Response): Promise
   notifyRevalidate(`store:${store.slug}`);
   res.status(204).end();
 }
+
+/**
+ * GET /api/stores/:storeId/products/:productId/collections
+ * Liste les IDs des collections MANUELLES qui contiennent ce produit —
+ * utilisé par la page d'édition produit pour pré-cocher les checkboxes.
+ */
+export async function getProductCollections(req: AuthRequest, res: Response): Promise<void> {
+  const store = req.store!;
+  const collectionIds = await collectionService.listCollectionsForProduct(
+    store._id.toString(),
+    req.params.productId,
+  );
+  res.json({ collectionIds });
+}
+
+/**
+ * POST /api/stores/:storeId/products/:productId/collections
+ * Body : { collectionIds: string[] }
+ * Définit l'appartenance du produit aux collections manuelles ciblées.
+ * Le diff est calculé côté serveur — pas besoin que le client envoie
+ * d'opérations add/remove explicites.
+ */
+export async function setProductCollections(req: AuthRequest, res: Response): Promise<void> {
+  const store = req.store!;
+  const body = (req.body || {}) as { collectionIds?: unknown };
+  const list = Array.isArray(body.collectionIds)
+    ? body.collectionIds.filter((x): x is string => typeof x === 'string')
+    : [];
+  const updated = await collectionService.setProductCollections(
+    store._id.toString(),
+    req.params.productId,
+    list,
+  );
+  // Revalide la home + toutes les pages collection touchées (la revalid
+  // par slug réveille la page collection publique correspondante).
+  const tags = [`store:${store.slug}`, ...updated.map((c) => `collection:${store.slug}:${c.slug}`)];
+  notifyRevalidate(tags);
+  res.json({ collections: updated });
+}

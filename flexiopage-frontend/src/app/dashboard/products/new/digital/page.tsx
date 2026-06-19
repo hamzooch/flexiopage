@@ -25,6 +25,7 @@ import { storesApi } from '@/lib/api';
 import { cn } from '@/lib/utils';
 import { AiDescriptionButton } from '@/components/dashboard/ai-description-button';
 import { ProductDescriptionEditor } from '@/components/dashboard/product-description-editor';
+import { CollectionsPicker } from '@/components/dashboard/collections-picker';
 import {
   Download,
   Video,
@@ -215,6 +216,7 @@ export default function NewDigitalProductPage() {
 
   // Publish
   const [isPublished, setIsPublished] = useState(false);
+  const [selectedCollections, setSelectedCollections] = useState<string[]>([]);
 
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
@@ -365,7 +367,7 @@ export default function NewDigitalProductPage() {
     setSaving(true);
     setError('');
     try {
-      await storesApi.createProduct(storeId, {
+      const createRes = await storesApi.createProduct(storeId, {
         name: name.trim(),
         description: description.trim() || undefined,
         type: 'digital',
@@ -400,6 +402,14 @@ export default function NewDigitalProductPage() {
         seoDescription: seoDescription.trim() || undefined,
         isPublished,
       });
+      const newProduct = (createRes.data as { product?: { _id?: string } }).product;
+      if (newProduct?._id && selectedCollections.length > 0) {
+        try {
+          await storesApi.setProductCollections(storeId, newProduct._id, selectedCollections);
+        } catch (err) {
+          console.warn('[product] échec attribution collections', err);
+        }
+      }
       router.push(`/dashboard/products?storeId=${storeId}`);
       router.refresh();
     } catch (err) {
@@ -708,6 +718,12 @@ export default function NewDigitalProductPage() {
             )}
           </CardContent>
         </Card>
+
+        <CollectionsPicker
+          storeId={storeId}
+          selected={selectedCollections}
+          onChange={setSelectedCollections}
+        />
 
         {/* ── SEO ──────────────────────────────────────────────────── */}
         <Card>

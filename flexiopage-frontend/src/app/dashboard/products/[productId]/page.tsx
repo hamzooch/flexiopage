@@ -40,6 +40,7 @@ import { VariantsEditor, type ProductVariant } from '@/components/dashboard/vari
 import { ProductImagesPicker } from '@/components/dashboard/product-images-picker';
 import { ProductLivePreview } from '@/components/dashboard/product-live-preview';
 import { ProductDescriptionEditor } from '@/components/dashboard/product-description-editor';
+import { CollectionsPicker } from '@/components/dashboard/collections-picker';
 import { TimerPresetPicker } from '@/components/dashboard/timer-presets';
 import { FieldToggle } from '@/components/dashboard/store-editor';
 import {
@@ -107,6 +108,11 @@ export default function EditProductPage() {
   const [sku, setSku] = useState('');
   const [barcode, setBarcode] = useState('');
   const [isPublished, setIsPublished] = useState(false);
+  // Collections manuelles dans lesquelles ce produit est rangé. La valeur
+  // initiale est posée au mount via getProductCollections — on garde une
+  // copie séparée pour calculer si l'utilisateur a touché à la sélection.
+  const [selectedCollections, setSelectedCollections] = useState<string[]>([]);
+  const [initialCollections, setInitialCollections] = useState<string[]>([]);
   const [tags, setTags] = useState<string[]>([]);
   const [variants, setVariants] = useState<ProductVariant[]>([]);
   const [images, setImages] = useState<string[]>([]);
@@ -160,8 +166,9 @@ export default function EditProductPage() {
     Promise.all([
       storesApi.getProduct(storeId, productId),
       storesApi.get(storeId),
+      storesApi.getProductCollections(storeId, productId).catch(() => ({ data: { collectionIds: [] } })),
     ])
-      .then(([prodRes, storeRes]) => {
+      .then(([prodRes, storeRes, colRes]) => {
         if (!alive) return;
         const p = (prodRes.data as { product: Record<string, unknown> }).product;
         setName((p.name as string) || '');
@@ -228,6 +235,10 @@ export default function EditProductPage() {
         const rs = s?.settings?.storefront?.productPage?.style;
         setStoreRatingStars(rs?.ratingStripStars);
         setStoreRatingReviews(rs?.ratingStripReviews);
+
+        const ids = (colRes.data as { collectionIds?: string[] }).collectionIds || [];
+        setSelectedCollections(ids);
+        setInitialCollections(ids);
       })
       .catch(() => setError('Produit introuvable'))
       .finally(() => alive && setLoading(false));
@@ -293,6 +304,17 @@ export default function EditProductPage() {
         // tout l'objet `settings`, donc ne pas envoyer que { codForm } sinon
         // currency/language/storefront/etc. disparaissent.
         tasks.push(storesApi.update(storeId, { settings: { ...storeSettings, codForm } }));
+      }
+      // Si l'appartenance aux collections a changé, on synchronise. Sortable
+      // comparison : tri puis join — la liste est petite (≤ qqs dizaines).
+      const a = [...selectedCollections].sort().join('|');
+      const b = [...initialCollections].sort().join('|');
+      if (a !== b) {
+        tasks.push(
+          storesApi.setProductCollections(storeId, productId, selectedCollections).then(() => {
+            setInitialCollections(selectedCollections);
+          }),
+        );
       }
       await Promise.all(tasks);
       setCodFormDirty(false);
@@ -1189,6 +1211,13 @@ export default function EditProductPage() {
 
           {/* ── 7. Marge & profit ──────────────────────────── */}
           <ProfitCalculator value={profit} onChange={setProfit} currency={currency} />
+
+          {/* ── 7bis. Collections ──────────────────────────── */}
+          <CollectionsPicker
+            storeId={storeId}
+            selected={selectedCollections}
+            onChange={setSelectedCollections}
+          />
 
           {/* ── 8. SEO ─────────────────────────────────────── */}
           <Card>

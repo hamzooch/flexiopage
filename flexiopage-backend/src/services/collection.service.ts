@@ -128,3 +128,55 @@ export async function resolveCollectionProducts(
   }
   return Product.find(q).sort({ updatedAt: -1 }).lean<IProduct[]>();
 }
+
+/**
+ * Définit l'appartenance d'un produit à un set précis de collections
+ * MANUELLES. Calcule le diff côté serveur : ajoute le produit aux
+ * collections cibles qui ne le contenaient pas, retire le produit des
+ * collections manuelles non sélectionnées qui le contenaient. Les
+ * collections automatiques (règles) sont ignorées — elles se résolvent
+ * à la lecture.
+ *
+ * Retourne la liste à jour des collections du store pour que le client
+ * puisse synchroniser son état sans refaire un GET.
+ */
+export async function setProductCollections(
+  storeId: string,
+  productId: string,
+  targetCollectionIds: string[],
+): Promise<ICollection[]> {
+  const all = await Collection.find({ storeId });
+  const targets = new Set(targetCollectionIds.map(String));
+  const tasks: Promise<unknown>[] = [];
+  for (const col of all) {
+    if (col.type !== 'manual') continue;
+    const id = String(col._id);
+    const has = (col.productIds || []).some((p) => String(p) === productId);
+    const wanted = targets.has(id);
+    if (wanted && !has) {
+      tasks.push(
+        Collection.updateOne({ _id: col._id }, { $addToSet: { productIds: productId } }),
+      );
+    } else if (!wanted && has) {
+      tasks.push(
+        Collection.updateOne({ _id: col._id }, { $pull: { productIds: productId } }),
+      );
+    }
+  }
+  await Promise.all(tasks);
+  return Collection.find({ storeId }).sort({ sortOrder: 1, name: 1 }).lean<ICollection[]>();
+}
+
+/**
+ * Liste les IDs des collections manuelles contenant ce produit. Utilisé
+ * par la page d'édition produit pour pré-cocher les bonnes cases.
+ */
+export async function listCollectionsForProduct(
+  storeId: string,
+  productId: string,
+): Promise<string[]> {
+  const docs = await Collection.find({ storeId, type: 'manual', productIds: productId })
+    .select('_id')
+    .lean<{ _id: mongoose.Types.ObjectId }[]>();
+  return docs.map((d) => String(d._id));
+}

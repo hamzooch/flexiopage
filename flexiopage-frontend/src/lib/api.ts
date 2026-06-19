@@ -914,6 +914,14 @@ export const storesApi = {
     ),
   deleteCollection: (storeId: string, collectionId: string) =>
     api.delete(`/stores/${storeId}/collections/${collectionId}`),
+  // Appartenance produit → collections (manuelles uniquement)
+  getProductCollections: (storeId: string, productId: string) =>
+    api.get<{ collectionIds: string[] }>(`/stores/${storeId}/products/${productId}/collections`),
+  setProductCollections: (storeId: string, productId: string, collectionIds: string[]) =>
+    api.post<{ collections: import('@/types/collection').Collection[] }>(
+      `/stores/${storeId}/products/${productId}/collections`,
+      { collectionIds }
+    ),
   // Reviews
   listReviews: (storeId: string, params?: { productId?: string }) =>
     api.get<{ reviews: Array<{ _id: string; productId: string; name: string; rating: number; content: string; title?: string; verified: boolean; isPublished: boolean; createdAt: string }> }>(`/stores/${storeId}/reviews`, { params }),

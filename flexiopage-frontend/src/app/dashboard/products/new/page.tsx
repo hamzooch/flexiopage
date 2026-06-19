@@ -10,6 +10,7 @@ import { Label } from '@/components/ui/label';
 import { storesApi } from '@/lib/api';
 import { Plus, Trash2, ImagePlus, Loader2, Star, ArrowUp, ArrowDown, Sparkles, Upload, X, Download, Video, Key, Crown, Wrench, FileText, Eye, EyeOff } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { CollectionsPicker } from '@/components/dashboard/collections-picker';
 import { AiDescriptionButton } from '@/components/dashboard/ai-description-button';
 import { ProductDescriptionEditor } from '@/components/dashboard/product-description-editor';
 import { ImportProductPanel } from '@/components/dashboard/import-product-panel';
@@ -93,6 +94,9 @@ export default function NewProductPage() {
   const [seoTitle, setSeoTitle] = useState('');
   const [seoDescription, setSeoDescription] = useState('');
   const [isPublished, setIsPublished] = useState(false);
+  // IDs des collections manuelles dans lesquelles ranger le nouveau produit.
+  // Appliqué APRÈS createProduct (besoin du nouveau productId).
+  const [selectedCollections, setSelectedCollections] = useState<string[]>([]);
 
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
@@ -303,7 +307,7 @@ export default function NewProductPage() {
         stock: parseInt(v.stock, 10) || 0,
       }));
 
-      await storesApi.createProduct(storeId, {
+      const createRes = await storesApi.createProduct(storeId, {
         name: name.trim(),
         description: description.trim() || undefined,
         type,
@@ -345,6 +349,17 @@ export default function NewProductPage() {
         seoDescription: seoDescription.trim() || undefined,
         isPublished,
       });
+      // Si le vendeur a coché des collections, on rattache le nouveau
+      // produit. Erreur ici NE doit PAS bloquer la création — on log
+      // simplement, le vendeur pourra réattribuer depuis l'éditeur.
+      const newProduct = (createRes.data as { product?: { _id?: string } }).product;
+      if (newProduct?._id && selectedCollections.length > 0) {
+        try {
+          await storesApi.setProductCollections(storeId, newProduct._id, selectedCollections);
+        } catch (err) {
+          console.warn('[product] échec attribution collections', err);
+        }
+      }
       router.push(`/dashboard/products?storeId=${storeId}`);
       router.refresh();
     } catch {
@@ -893,6 +908,12 @@ export default function NewProductPage() {
             setAccessDays={setAccessDays}
           />
         )}
+
+        <CollectionsPicker
+          storeId={storeId}
+          selected={selectedCollections}
+          onChange={setSelectedCollections}
+        />
 
         {/* SEO */}
         <Card>

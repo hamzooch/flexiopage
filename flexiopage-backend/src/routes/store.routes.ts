@@ -93,6 +93,9 @@ router.post('/:storeId/collections', collectionController.createCollection);
 router.get('/:storeId/collections/:collectionId', collectionController.getCollection);
 router.patch('/:storeId/collections/:collectionId', collectionController.updateCollection);
 router.delete('/:storeId/collections/:collectionId', collectionController.deleteCollection);
+// Appartenance produit → collections manuelles (utilisé par l'éditeur produit)
+router.get('/:storeId/products/:productId/collections', collectionController.getProductCollections);
+router.post('/:storeId/products/:productId/collections', collectionController.setProductCollections);
 
 // Coupons (promotional codes typed in the COD form).
 router.get('/:storeId/coupons', couponController.listCoupons);
