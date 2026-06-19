@@ -80,6 +80,17 @@ import type {
 import { ThemePreviewGrid } from '@/components/dashboard/theme-preview-card';
 import { MediaPicker } from '@/components/dashboard/MediaPicker';
 import {
+  DEFAULT_SECTION_ORDER,
+  resolveSectionOrder,
+  type MovableSectionId,
+} from '@/lib/section-order';
+import {
+  DEFAULT_PRODUCT_PAGE_ORDER,
+  resolveProductPageOrder,
+  type ProductPageSectionId,
+  type ProductPageSettings,
+} from '@/lib/product-page-order';
+import {
   STORE_THEME_TEMPLATES,
   themesForStoreType,
   type StoreThemeTemplate,
@@ -121,11 +132,11 @@ const BLOCKS: BlockDef[] = [
   { id: 'slider',    label: 'Slider',       icon: GalleryHorizontal, group: 'home', mode: 'inline', hint: 'Carousel auto-play avec images.' },
   { id: 'products',  label: 'Grille produits', icon: Package,   group: 'home', mode: 'inline', hint: 'Affichage de la grille sur l\'accueil.' },
   { id: 'testimonials', label: 'Témoignages', icon: Quote,      group: 'home', mode: 'inline', hint: 'Avis clients avec avatar et note.' },
-  { id: 'sections-advanced', label: 'Ordre des sections', icon: Layers, group: 'home', mode: 'link', href: 'sections', hint: 'Réordonner les blocs, options avancées.' },
+  { id: 'section-order', label: 'Ordre des sections', icon: Layers, group: 'home', mode: 'inline', hint: 'Glisser hero/slider/produits/témoignages.' },
   // Conversion
   { id: 'cod',       label: 'Formulaire COD', icon: Wallet,     group: 'conversion', mode: 'inline', hint: 'Champs du paiement à la livraison.', physicalOnly: true },
   { id: 'whatsapp',  label: 'Bouton WhatsApp', icon: MessageCircle, group: 'conversion', mode: 'inline', hint: 'Bulle flottante à droite.' },
-  { id: 'product-page', label: 'Page produit', icon: Tag,       group: 'conversion', mode: 'link', href: 'product-page', hint: 'Badges, timer, témoignages produit.' },
+  { id: 'product-page', label: 'Page produit', icon: Tag,       group: 'conversion', mode: 'inline', hint: 'Toggles + ordre des sections produit.' },
   // Footer
   { id: 'footer',    label: 'Footer',       icon: PanelBottom,  group: 'footer', mode: 'link', href: 'sections', hint: 'Contact, colonnes, signature.' },
   { id: 'info-pages', label: 'Pages d\'information', icon: FileText, group: 'footer', mode: 'link', href: 'info-pages', hint: 'CGV, FAQ, Contact, Confidentialité.' },
@@ -481,8 +492,10 @@ function BlockList({
       else if (p === 'slider')       set.add('slider');
       else if (p === 'products')     set.add('products');
       else if (p === 'testimonials') set.add('testimonials');
+      else if (p === 'sectionOrder') set.add('section-order');
       else if (p === 'whatsapp')     set.add('whatsapp');
       else if (p === 'codForm')      set.add('cod');
+      else if (p === 'productPage')  set.add('product-page');
     }
     return set;
   }, [dirtyTopKeys, dirtySettingsPaths]);
@@ -595,8 +608,10 @@ function BlockEditor(ctx: EditorCtx) {
     case 'slider':    return <SliderEditor {...ctx} />;
     case 'products':  return <ProductsGridEditor {...ctx} />;
     case 'testimonials': return <TestimonialsEditor {...ctx} />;
+    case 'section-order': return <SectionOrderEditor {...ctx} />;
     case 'whatsapp':  return <WhatsappEditor {...ctx} />;
     case 'cod':       return <CodFormEditor {...ctx} />;
+    case 'product-page': return <ProductPageEditor {...ctx} />;
     default:
       return (
         <div className="grid flex-1 place-items-center p-6 text-sm text-muted-foreground">
@@ -1280,6 +1295,221 @@ function TestimonialsEditor({ block, storeId, store, setStore, markDirty }: Edit
             </div>
           </>
         )}
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// Section order — réordonne hero/slider/products/testimonials sur l'accueil
+// ─────────────────────────────────────────────────────────────────────
+
+const SECTION_LABELS: Record<MovableSectionId, string> = {
+  hero:         'Hero',
+  slider:       'Slider',
+  products:     'Grille produits',
+  testimonials: 'Témoignages',
+};
+
+function SectionOrderEditor({ block, store, setStore, markDirty }: EditorCtx) {
+  const storefront = (store.settings?.storefront || {}) as StorefrontSettings;
+  const order = resolveSectionOrder(storefront.sectionOrder);
+
+  function setOrder(next: MovableSectionId[]) {
+    const nextStorefront: StorefrontSettings = { ...storefront, sectionOrder: next };
+    const nextSettings = { ...(store.settings || {}), storefront: nextStorefront };
+    setStore((s) => (s ? { ...s, settings: nextSettings } : s));
+    markDirty('settings', 'sectionOrder');
+  }
+  function move(i: number, dir: -1 | 1) {
+    const j = i + dir;
+    if (j < 0 || j >= order.length) return;
+    const next = [...order];
+    [next[i], next[j]] = [next[j], next[i]];
+    setOrder(next);
+  }
+  function reset() {
+    setOrder([...DEFAULT_SECTION_ORDER]);
+  }
+
+  return (
+    <div className="flex flex-1 flex-col">
+      <EditorHeader title={block.label} hint={block.hint} />
+      <div className="space-y-5 p-5">
+        <p className="text-xs text-muted-foreground">
+          L&apos;ordre s&apos;applique à la page d&apos;accueil de la boutique.
+          Le bandeau, la navbar et le footer restent fixes.
+        </p>
+        <div className="space-y-2">
+          {order.map((id, i) => (
+            <div
+              key={id}
+              className="flex items-center gap-3 rounded-xl border border-border/60 bg-card p-3"
+            >
+              <span className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-primary/10 text-xs font-bold text-primary">
+                {i + 1}
+              </span>
+              <span className="flex-1 text-sm font-medium">{SECTION_LABELS[id]}</span>
+              <div className="flex items-center gap-1">
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  disabled={i === 0}
+                  onClick={() => move(i, -1)}
+                  aria-label="Monter"
+                >
+                  ↑
+                </Button>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  disabled={i === order.length - 1}
+                  onClick={() => move(i, 1)}
+                  aria-label="Descendre"
+                >
+                  ↓
+                </Button>
+              </div>
+            </div>
+          ))}
+        </div>
+        <Button type="button" variant="outline" size="sm" onClick={reset}>
+          Réinitialiser à l&apos;ordre par défaut
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// Page produit — toggles principaux + ordre des sections produit
+// ─────────────────────────────────────────────────────────────────────
+
+const PP_SECTION_LABELS: Record<ProductPageSectionId, string> = {
+  badges:       'Badges de confiance',
+  timer:        'Compte à rebours',
+  description:  'Description longue',
+  testimonials: 'Témoignages clients',
+};
+
+function ProductPageEditor({ block, storeId, store, setStore, markDirty }: EditorCtx) {
+  const storefront = (store.settings?.storefront || {}) as StorefrontSettings;
+  const pp: ProductPageSettings = storefront.productPage || {};
+  const order = resolveProductPageOrder(pp.sectionOrder);
+
+  function patchPp(next: ProductPageSettings) {
+    const nextStorefront: StorefrontSettings = { ...storefront, productPage: next };
+    const nextSettings = { ...(store.settings || {}), storefront: nextStorefront };
+    setStore((s) => (s ? { ...s, settings: nextSettings } : s));
+    markDirty('settings', 'productPage');
+  }
+  function setOrder(next: ProductPageSectionId[]) {
+    patchPp({ ...pp, sectionOrder: next });
+  }
+  function move(i: number, dir: -1 | 1) {
+    const j = i + dir;
+    if (j < 0 || j >= order.length) return;
+    const next = [...order];
+    [next[i], next[j]] = [next[j], next[i]];
+    setOrder(next);
+  }
+
+  return (
+    <div className="flex flex-1 flex-col">
+      <EditorHeader title={block.label} hint={block.hint} />
+      <div className="space-y-5 p-5">
+        <div className="space-y-2 rounded-2xl border border-border/60 bg-muted/20 p-4">
+          <div className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+            Sections affichées
+          </div>
+          <Toggle
+            compact
+            label="Badges de confiance"
+            checked={pp.showBadges !== false}
+            onChange={(v) => patchPp({ ...pp, showBadges: v })}
+          />
+          <Toggle
+            compact
+            label="Compte à rebours (urgence)"
+            checked={!!pp.showTimer}
+            onChange={(v) => patchPp({ ...pp, showTimer: v })}
+          />
+          <Toggle
+            compact
+            label="Description longue"
+            checked={pp.showDescription !== false}
+            onChange={(v) => patchPp({ ...pp, showDescription: v })}
+          />
+          <Toggle
+            compact
+            label="Témoignages clients"
+            checked={!!pp.showTestimonials}
+            onChange={(v) => patchPp({ ...pp, showTestimonials: v })}
+          />
+          <Toggle
+            compact
+            label='Bouton "Ajouter au panier"'
+            checked={pp.showAddToCart !== false}
+            onChange={(v) => patchPp({ ...pp, showAddToCart: v })}
+          />
+        </div>
+
+        <div className="space-y-2">
+          <div className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+            Ordre des sections
+          </div>
+          {order.map((id, i) => (
+            <div
+              key={id}
+              className="flex items-center gap-3 rounded-xl border border-border/60 bg-card p-3"
+            >
+              <span className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-primary/10 text-xs font-bold text-primary">
+                {i + 1}
+              </span>
+              <span className="flex-1 text-sm font-medium">{PP_SECTION_LABELS[id]}</span>
+              <div className="flex items-center gap-1">
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  disabled={i === 0}
+                  onClick={() => move(i, -1)}
+                  aria-label="Monter"
+                >
+                  ↑
+                </Button>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  disabled={i === order.length - 1}
+                  onClick={() => move(i, 1)}
+                  aria-label="Descendre"
+                >
+                  ↓
+                </Button>
+              </div>
+            </div>
+          ))}
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => setOrder([...DEFAULT_PRODUCT_PAGE_ORDER])}
+          >
+            Réinitialiser
+          </Button>
+        </div>
+
+        <div className="rounded-lg border border-border/60 bg-muted/20 p-3 text-xs text-muted-foreground">
+          Pour personnaliser les badges, paramétrer le timer, ou choisir la palette de couleurs de la page produit :
+          {' '}
+          <Link href={`/dashboard/stores/${storeId}/product-page`} className="font-semibold text-primary hover:underline">
+            Ouvrir l&apos;éditeur avancé →
+          </Link>
+        </div>
       </div>
     </div>
   );
