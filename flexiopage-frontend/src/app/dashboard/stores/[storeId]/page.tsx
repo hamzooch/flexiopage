@@ -77,6 +77,10 @@ import type {
   SlideItem,
   TestimonialsSettings,
   TestimonialItem,
+  NavbarSettings,
+  NavMenuLink,
+  BrandDisplay,
+  LogoSize,
 } from '@/components/dashboard/store-editor';
 import { ThemePreviewGrid } from '@/components/dashboard/theme-preview-card';
 import { MediaPicker } from '@/components/dashboard/MediaPicker';
@@ -127,7 +131,7 @@ const BLOCKS: BlockDef[] = [
   { id: 'branding',  label: 'Logo & favicon', icon: ImageIcon,  group: 'identity', mode: 'inline', hint: 'L\'image qui te représente.' },
   // Header
   { id: 'announce',  label: 'Bandeau annonce', icon: Megaphone, group: 'header', mode: 'inline', hint: 'Petits messages au-dessus du header.' },
-  { id: 'navbar',    label: 'Navbar',       icon: PanelTop,     group: 'header', mode: 'link', href: 'sections', hint: 'Menu, logo, recherche.' },
+  { id: 'navbar',    label: 'Navbar',       icon: PanelTop,     group: 'header', mode: 'inline', hint: 'Menu, logo, recherche.' },
   // Accueil
   { id: 'hero',      label: 'Hero',         icon: GalleryHorizontal, group: 'home', mode: 'inline', hint: 'Titre, sous-titre, image principale.' },
   { id: 'slider',    label: 'Slider',       icon: GalleryHorizontal, group: 'home', mode: 'inline', hint: 'Carousel auto-play avec images.' },
@@ -546,6 +550,7 @@ function BlockList({
     if (dirtyTopKeys.has('logo') || dirtyTopKeys.has('favicon')) set.add('branding');
     for (const p of Array.from(dirtySettingsPaths)) {
       if (p === 'announcementBar') set.add('announce');
+      else if (p === 'navbar')       set.add('navbar');
       else if (p === 'hero')         set.add('hero');
       else if (p === 'slider')       set.add('slider');
       else if (p === 'products')     set.add('products');
@@ -676,6 +681,7 @@ function BlockEditor(ctx: EditorCtx) {
     case 'products':  return <ProductsGridEditor {...ctx} />;
     case 'testimonials': return <TestimonialsEditor {...ctx} />;
     case 'section-order': return <SectionOrderEditor {...ctx} />;
+    case 'navbar':    return <NavbarEditor {...ctx} />;
     case 'whatsapp':  return <WhatsappEditor {...ctx} />;
     case 'cod':       return <CodFormEditor {...ctx} />;
     case 'product-page': return <ProductPageEditor {...ctx} />;
@@ -1590,6 +1596,191 @@ function ProductPageEditor({ block, storeId, store, setStore, markDirty }: Edito
           <Link href={`/dashboard/stores/${storeId}/product-page`} className="font-semibold text-primary hover:underline">
             Ouvrir l&apos;éditeur avancé →
           </Link>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// Navbar — affichage marque, taille du logo, liens du menu, options
+// ─────────────────────────────────────────────────────────────────────
+
+const BRAND_DISPLAY_OPTIONS: { value: BrandDisplay; label: string; hint: string }[] = [
+  { value: 'logo+name', label: 'Logo + nom', hint: 'Les deux côte à côte' },
+  { value: 'logo',      label: 'Logo seul',  hint: 'Pas de texte (logo doit être assez lisible)' },
+  { value: 'name',      label: 'Nom seul',   hint: 'Pas de logo, juste la marque écrite' },
+];
+
+const LOGO_SIZE_OPTIONS: { value: LogoSize; label: string }[] = [
+  { value: 'sm', label: 'S' },
+  { value: 'md', label: 'M' },
+  { value: 'lg', label: 'L' },
+  { value: 'xl', label: 'XL' },
+];
+
+function NavbarEditor({ block, storeId, store, setStore, markDirty }: EditorCtx) {
+  const storefront = (store.settings?.storefront || {}) as StorefrontSettings;
+  const nav: NavbarSettings = storefront.navbar || {};
+  const links = nav.menuLinks || [];
+
+  function patchNav(next: NavbarSettings) {
+    const nextStorefront: StorefrontSettings = { ...storefront, navbar: next };
+    const nextSettings = { ...(store.settings || {}), storefront: nextStorefront };
+    setStore((s) => (s ? { ...s, settings: nextSettings } : s));
+    markDirty('settings', 'navbar');
+  }
+  function patchLinks(next: NavMenuLink[]) {
+    patchNav({ ...nav, menuLinks: next });
+  }
+  function patchLink(i: number, partial: Partial<NavMenuLink>) {
+    const next = [...links];
+    next[i] = { ...next[i], ...partial };
+    patchLinks(next);
+  }
+  function moveLink(i: number, dir: -1 | 1) {
+    const j = i + dir;
+    if (j < 0 || j >= links.length) return;
+    const next = [...links];
+    [next[i], next[j]] = [next[j], next[i]];
+    patchLinks(next);
+  }
+
+  return (
+    <div className="flex flex-1 flex-col">
+      <EditorHeader title={block.label} hint={block.hint} />
+      <div className="space-y-5 p-5">
+        {/* Affichage de la marque */}
+        <Field label="Affichage de la marque" hint="Comment ton identité apparaît à gauche de la navbar.">
+          <div className="grid gap-2 sm:grid-cols-3">
+            {BRAND_DISPLAY_OPTIONS.map((opt) => {
+              const active = (nav.brandDisplay || 'logo+name') === opt.value;
+              return (
+                <button
+                  key={opt.value}
+                  type="button"
+                  onClick={() => patchNav({ ...nav, brandDisplay: opt.value })}
+                  className={cn(
+                    'rounded-xl border p-3 text-left transition-colors',
+                    active
+                      ? 'border-primary bg-primary/5 ring-2 ring-primary/20'
+                      : 'border-border/60 hover:border-primary/30 hover:bg-muted/30',
+                  )}
+                >
+                  <div className="text-sm font-semibold">{opt.label}</div>
+                  <div className="mt-0.5 text-[11px] text-muted-foreground">{opt.hint}</div>
+                </button>
+              );
+            })}
+          </div>
+          {!store.logo && (nav.brandDisplay === 'logo' || nav.brandDisplay === 'logo+name') && (
+            <p className="text-[11px] text-amber-700">
+              Aucun logo téléversé — la marque s&apos;affiche en texte tant qu&apos;un logo n&apos;est pas ajouté
+              {' '}
+              <Link href={`/dashboard/stores/${storeId}`} className="font-semibold underline">
+                dans le bloc « Logo &amp; favicon »
+              </Link>.
+            </p>
+          )}
+        </Field>
+
+        {/* Taille du logo */}
+        <Field label="Taille du logo" hint="La navbar s'agrandit en conséquence — ton logo ne se fait jamais rogner.">
+          <div className="inline-flex rounded-lg bg-muted/40 p-0.5">
+            {LOGO_SIZE_OPTIONS.map((opt) => {
+              const active = (nav.logoSize || 'md') === opt.value;
+              return (
+                <button
+                  key={opt.value}
+                  type="button"
+                  onClick={() => patchNav({ ...nav, logoSize: opt.value })}
+                  className={cn(
+                    'rounded-md px-3 py-1.5 text-xs font-semibold transition-colors',
+                    active ? 'bg-card text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground',
+                  )}
+                >
+                  {opt.label}
+                </button>
+              );
+            })}
+          </div>
+        </Field>
+
+        {/* Options de la navbar */}
+        <div className="space-y-2 rounded-2xl border border-border/60 bg-muted/20 p-4">
+          <div className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+            Options
+          </div>
+          <Toggle
+            compact
+            label="Afficher la barre de recherche"
+            checked={!!nav.showSearch}
+            onChange={(v) => patchNav({ ...nav, showSearch: v })}
+          />
+          <Toggle
+            compact
+            label="Afficher le sélecteur de langue"
+            checked={!!nav.showLanguageSwitcher}
+            onChange={(v) => patchNav({ ...nav, showLanguageSwitcher: v })}
+          />
+        </div>
+
+        {/* Liens du menu */}
+        <div className="space-y-3">
+          <div className="flex items-center justify-between">
+            <div>
+              <div className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                Liens du menu ({links.length})
+              </div>
+              <div className="text-[11px] text-muted-foreground">
+                Si vide, un menu par défaut s&apos;affiche (Accueil, Boutique).
+              </div>
+            </div>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => patchLinks([...links, { label: '', url: '' }])}
+            >
+              + Ajouter
+            </Button>
+          </div>
+          {links.length === 0 && (
+            <p className="rounded-lg border border-dashed border-border bg-muted/20 p-4 text-center text-xs text-muted-foreground">
+              Aucun lien — clique « + Ajouter » pour personnaliser le menu.
+            </p>
+          )}
+          {links.map((l, i) => (
+            <div key={i} className="space-y-2 rounded-2xl border border-border/60 bg-card p-3">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold text-muted-foreground">Lien #{i + 1}</span>
+                <div className="flex items-center gap-1">
+                  <Button type="button" variant="ghost" size="sm" disabled={i === 0} onClick={() => moveLink(i, -1)} aria-label="Monter">↑</Button>
+                  <Button type="button" variant="ghost" size="sm" disabled={i === links.length - 1} onClick={() => moveLink(i, 1)} aria-label="Descendre">↓</Button>
+                  <Button type="button" variant="ghost" size="sm" onClick={() => patchLinks(links.filter((_, j) => j !== i))}>Retirer</Button>
+                </div>
+              </div>
+              <Input
+                placeholder="Libellé (ex: Nouveautés)"
+                value={l.label || ''}
+                onChange={(e) => patchLink(i, { label: e.target.value })}
+              />
+              <Input
+                placeholder="URL (/c/nouveautes, /p/contact, https://…)"
+                value={l.url || ''}
+                onChange={(e) => patchLink(i, { url: e.target.value })}
+              />
+              <p className="text-[10px] text-muted-foreground">
+                Les chemins commençant par <code>/</code> sont préfixés automatiquement par le slug
+                de ta boutique (ex: <code>/c/promo</code> → <code>/{store.slug}/c/promo</code>).
+              </p>
+            </div>
+          ))}
+        </div>
+
+        <div className="rounded-lg border border-border/60 bg-muted/20 p-3 text-xs text-muted-foreground">
+          Le <strong>style</strong> visuel de la navbar (standard, centered, bold, glass, editorial) est
+          fixé par le thème actif — change-le depuis le bloc « Thème » à gauche.
         </div>
       </div>
     </div>
