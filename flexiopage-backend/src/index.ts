@@ -88,6 +88,38 @@ const allowedApexHosts = corsOrigins
   })
   .filter((h): h is string => !!h);
 
+// Cache des customDomain vérifiés — les vendeurs ayant branché leur
+// propre nom de domaine (afrochance.com, etc.) doivent pouvoir taper
+// l'API depuis ce domaine. On rafraîchit toutes les 60s pour ne pas
+// faire de DB hit sur chaque preflight CORS.
+let customDomainCache: { hosts: Set<string>; expiresAt: number } = {
+  hosts: new Set(),
+  expiresAt: 0,
+};
+const CUSTOM_DOMAIN_CACHE_MS = 60_000;
+
+async function getVerifiedCustomDomains(): Promise<Set<string>> {
+  if (customDomainCache.expiresAt > Date.now()) return customDomainCache.hosts;
+  try {
+    // Import paresseux — Mongoose n'est pas encore initialisé au top-level
+    // si on importait Store directement ici (boot order).
+    const { Store } = await import('./models/Store.model');
+    const docs = await Store.find(
+      { customDomainVerified: true, customDomain: { $exists: true, $ne: null } },
+      { customDomain: 1 },
+    ).lean<{ customDomain?: string }[]>();
+    const hosts = new Set<string>();
+    for (const d of docs) {
+      if (d.customDomain) hosts.add(d.customDomain.trim().toLowerCase());
+    }
+    customDomainCache = { hosts, expiresAt: Date.now() + CUSTOM_DOMAIN_CACHE_MS };
+    return hosts;
+  } catch (err) {
+    logger.warn({ err }, '[cors] custom-domain cache refresh failed');
+    return customDomainCache.hosts;
+  }
+}
+
 app.use(cors({
   credentials: true,
   origin: (origin, cb) => {
@@ -96,15 +128,31 @@ app.use(cors({
     if (corsOrigins.includes(candidate)) return cb(null, true);
     try {
       const host = new URL(candidate).hostname.toLowerCase();
+      // 1) Sous-domaines de la plateforme (storefronts par défaut).
       if (allowedApexHosts.some((apex) => host === apex || host.endsWith('.' + apex))) {
         return cb(null, true);
       }
+      // 2) Domaines custom vérifiés — afrochance.com, etc. Async lookup
+      //    avec cache 60s pour éviter le DB hit sur chaque preflight.
+      void getVerifiedCustomDomains().then((hosts) => {
+        if (hosts.has(host) || hosts.has(host.replace(/^www\./, ''))) {
+          return cb(null, true);
+        }
+        logger.warn({ origin, host, allowed: corsOrigins }, '[cors] origin rejected');
+        cb(new Error(`CORS: origin ${origin} not allowed`));
+      });
+      return;
     } catch { /* fall through */ }
-    // Log the exact rejected origin so prod misconfigs are easy to spot.
     logger.warn({ origin, allowed: corsOrigins }, '[cors] origin rejected');
     cb(new Error(`CORS: origin ${origin} not allowed`));
   },
 }));
+
+// Helper exporté pour invalider le cache (utilisé après vérification
+// d'un nouveau domaine custom dans le contrôleur store).
+export function invalidateCustomDomainCorsCache(): void {
+  customDomainCache = { hosts: new Set(), expiresAt: 0 };
+}
 // Capture the raw body so webhook handlers can verify provider signatures
 // (e.g. Meta's X-Hub-Signature-256, which signs the exact bytes received).
 app.use(express.json({

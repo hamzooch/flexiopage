@@ -100,10 +100,20 @@ export async function verifyAndSaveDomain(storeId: string): Promise<DomainCheck 
     };
   }
   const check = await checkDomain(store.customDomain);
+  const wasVerified = !!store.customDomainVerified;
   store.customDomainVerified = check.verified;
   store.customDomainTarget = TARGET_HOST;
   if (check.verified) store.customDomainVerifiedAt = new Date();
   await store.save();
+  // Si l'état vérifié vient de changer, on invalide le cache CORS pour
+  // que la storefront sur le nouveau domaine puisse taper l'API dès la
+  // prochaine requête (au lieu d'attendre les 60s du TTL).
+  if (wasVerified !== check.verified) {
+    try {
+      const { invalidateCustomDomainCorsCache } = await import('../index');
+      invalidateCustomDomainCorsCache();
+    } catch { /* boot order may keep this absent in tests; safe to skip */ }
+  }
   return { ...check, saved: true };
 }
 
