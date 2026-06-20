@@ -216,6 +216,10 @@ export default function StoreEditPage() {
   const [saveError, setSaveError] = useState<string | null>(null);
   const [savedFlash, setSavedFlash] = useState(false);
   const [activeBlock, setActiveBlock] = useState<string | null>('identity');
+  // Sur petit écran (< lg) on n'affiche qu'un panneau à la fois — switch
+  // via une barre d'onglets en haut. Sur lg+ les 3 panneaux sont toujours
+  // visibles côte à côte et cet état est ignoré.
+  const [mobileView, setMobileView] = useState<'blocks' | 'editor' | 'preview'>('blocks');
   const [themePickerOpen, setThemePickerOpen] = useState(false);
 
   // Dirty tracker — quels top-level keys ont changé localement.
@@ -341,8 +345,9 @@ export default function StoreEditPage() {
       {/* ── Top bar ───────────────────────────────────────────────── */}
       <header className="flex shrink-0 items-center justify-between gap-3 border-b border-border/60 bg-card/80 px-4 py-3 backdrop-blur-xl sm:px-6">
         <div className="flex min-w-0 items-center gap-3">
-          <Button variant="ghost" size="sm" onClick={() => router.push('/dashboard/stores')} className="-ml-2 shrink-0 gap-1.5">
-            <ArrowLeft className="h-4 w-4" /> Boutiques
+          <Button variant="ghost" size="sm" onClick={() => router.push('/dashboard/stores')} className="-ml-2 shrink-0 gap-1.5 px-2 sm:px-3">
+            <ArrowLeft className="h-4 w-4" />
+            <span className="hidden sm:inline">Boutiques</span>
           </Button>
           <div className="flex min-w-0 items-center gap-2">
             {isDigital ? <Cloud className="h-4 w-4 shrink-0 text-fuchsia-500" /> : <Package className="h-4 w-4 shrink-0 text-indigo-500" />}
@@ -359,8 +364,9 @@ export default function StoreEditPage() {
         </div>
         <div className="flex items-center gap-2">
           <Link href={publicStoreUrl(store)} target="_blank" rel="noopener">
-            <Button variant="outline" size="sm" className="h-9 gap-1.5 rounded-lg">
-              <ExternalLink className="h-3.5 w-3.5" /> Voir la boutique
+            <Button variant="outline" size="sm" className="h-9 gap-1.5 rounded-lg px-2 sm:px-3">
+              <ExternalLink className="h-3.5 w-3.5" />
+              <span className="hidden sm:inline">Voir la boutique</span>
             </Button>
           </Link>
           <Button
@@ -373,7 +379,12 @@ export default function StoreEditPage() {
             )}
           >
             {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : savedFlash ? <Check className="h-3.5 w-3.5" /> : <Save className="h-3.5 w-3.5" />}
-            {saving ? 'Enregistrement…' : savedFlash ? 'Enregistré' : dirty ? `Enregistrer (${Object.keys(patch).length})` : 'Enregistré'}
+            <span className="hidden sm:inline">
+              {saving ? 'Enregistrement…' : savedFlash ? 'Enregistré' : dirty ? `Enregistrer (${patch.keys.size})` : 'Enregistré'}
+            </span>
+            <span className="sm:hidden">
+              {saving ? '…' : savedFlash ? 'OK' : dirty ? patch.keys.size : 'OK'}
+            </span>
           </Button>
         </div>
       </header>
@@ -385,19 +396,60 @@ export default function StoreEditPage() {
         </div>
       )}
 
+      {/* ── Sélecteur d'onglets mobile (< lg) ───────────────────
+          Sur petit écran on n'a pas la place pour les 3 panneaux côte à
+          côte — on ne montre qu'un seul à la fois et l'utilisateur
+          bascule via ces onglets. Caché à partir de lg où la grille
+          côte-à-côte habituelle reprend. */}
+      <div className="flex shrink-0 items-center border-b border-border/60 bg-card/60 px-2 lg:hidden">
+        {([
+          { id: 'blocks',  label: 'Blocs' },
+          { id: 'editor',  label: 'Éditeur' },
+          { id: 'preview', label: 'Aperçu' },
+        ] as const).map((t) => {
+          const active = mobileView === t.id;
+          return (
+            <button
+              key={t.id}
+              type="button"
+              onClick={() => setMobileView(t.id)}
+              className={cn(
+                'flex-1 border-b-2 px-3 py-2.5 text-xs font-semibold transition-colors',
+                active
+                  ? 'border-primary text-primary'
+                  : 'border-transparent text-muted-foreground hover:text-foreground',
+              )}
+            >
+              {t.label}
+            </button>
+          );
+        })}
+      </div>
+
       {/* ── Body (3 panneaux) ──────────────────────────────────── */}
       <div className="flex min-h-0 flex-1">
         {/* LEFT — block list */}
         <BlockList
           blocks={visibleBlocks}
           activeId={activeBlock}
-          onPick={setActiveBlock}
+          onPick={(id) => {
+            setActiveBlock(id);
+            // Sur mobile, après le pick on bascule automatiquement vers
+            // l'éditeur — sinon le seller resterait bloqué sur la liste.
+            setMobileView('editor');
+          }}
           dirtyTopKeys={patch.keys}
           dirtySettingsPaths={patch.settingsPaths}
+          hiddenOnMobile={mobileView !== 'blocks'}
         />
 
         {/* CENTER — block editor */}
-        <main className="flex min-w-0 flex-1 flex-col overflow-y-auto border-r border-border/60 bg-card/40">
+        <main
+          className={cn(
+            'min-w-0 flex-1 flex-col overflow-y-auto border-r border-border/60 bg-card/40 lg:flex',
+            mobileView === 'editor' ? 'flex' : 'hidden',
+          )}
+        >
           {currentBlock ? (
             <BlockEditor
               block={currentBlock}
@@ -427,6 +479,7 @@ export default function StoreEditPage() {
           setPreviewDevice={setPreviewDevice}
           previewBust={previewBust}
           onReload={() => setPreviewBust((n) => n + 1)}
+          mobileVisible={mobileView === 'preview'}
           path={previewPath}
         />
       </div>
@@ -474,12 +527,16 @@ function BlockList({
   onPick,
   dirtyTopKeys,
   dirtySettingsPaths,
+  hiddenOnMobile,
 }: {
   blocks: BlockDef[];
   activeId: string | null;
   onPick: (id: string) => void;
   dirtyTopKeys: Set<DirtyKey>;
   dirtySettingsPaths: Set<string>;
+  /** Si vrai, masqué sur < lg (l'utilisateur a switché vers
+   *  l'éditeur ou la preview via la barre d'onglets mobile). */
+  hiddenOnMobile: boolean;
 }) {
   // Mapping clé → bloc concerné pour le petit dot « modifié ».
   const dirtyBlocks = useMemo(() => {
@@ -504,7 +561,16 @@ function BlockList({
   const groups: Array<BlockDef['group']> = ['identity', 'header', 'home', 'conversion', 'footer', 'advanced'];
 
   return (
-    <aside className="hidden w-72 shrink-0 flex-col overflow-y-auto border-r border-border/60 bg-card/60 md:flex">
+    <aside
+      className={cn(
+        // En desktop large : toujours visible à 288px (w-72).
+        // En tablette/mobile : prend toute la largeur si actif via les
+        // onglets, sinon masqué. La position est en flow normal — pas
+        // d'overlay — pour rester lisible avec un long scroll.
+        'shrink-0 flex-col overflow-y-auto border-r border-border/60 bg-card/60 lg:flex lg:w-72',
+        hiddenOnMobile ? 'hidden' : 'flex w-full',
+      )}
+    >
       <div className="flex-1 px-3 py-4">
         {groups.map((g) => {
           const items = blocks.filter((b) => b.group === g);
@@ -1685,6 +1751,7 @@ function PreviewPane({
   previewBust,
   onReload,
   path,
+  mobileVisible,
 }: {
   previewPages: PreviewPageDef[];
   previewPage: string;
@@ -1694,9 +1761,16 @@ function PreviewPane({
   previewBust: number;
   onReload: () => void;
   path: string | null;
+  /** Sur < lg, ne s'affiche que si l'onglet « Aperçu » est actif. */
+  mobileVisible: boolean;
 }) {
   return (
-    <section className="hidden min-w-0 flex-1 flex-col bg-muted/40 lg:flex">
+    <section
+      className={cn(
+        'min-w-0 flex-1 flex-col bg-muted/40 lg:flex',
+        mobileVisible ? 'flex' : 'hidden',
+      )}
+    >
       {/* Toolbar */}
       <div className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-border/60 bg-card/80 px-4 py-2.5 backdrop-blur">
         <div className="flex flex-wrap items-center gap-1">
