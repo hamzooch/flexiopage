@@ -39,6 +39,7 @@ import {
   Smartphone,
   CheckCircle2,
   Globe,
+  Mail,
 } from 'lucide-react';
 
 /**
@@ -742,14 +743,68 @@ function FinalCta() {
 // FOOTER
 // ─────────────────────────────────────────────────────────────────────
 function Footer() {
+  const year = new Date().getFullYear();
   return (
     <footer className="border-t border-border/40 bg-card/30 backdrop-blur">
-      <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-3 px-4 py-8 text-sm text-muted-foreground sm:px-6 sm:py-10">
-        <div className="flex items-center gap-3">
-          <BrandLogo variant="color" width={120} />
-          <span className="text-xs">— vendre, livrer, encaisser.</span>
+      <div className="mx-auto max-w-6xl px-4 py-8 sm:px-6 sm:py-12">
+        {/* Bloc principal — brand + colonnes de liens */}
+        <div className="grid gap-8 sm:grid-cols-[1.4fr_1fr_1fr_1fr]">
+          {/* Brand */}
+          <div className="space-y-3">
+            <BrandLogo variant="color" width={130} />
+            <p className="text-xs text-muted-foreground">
+              La plateforme tout-en-un pour vendre, livrer et encaisser en Afrique.
+            </p>
+          </div>
+
+          {/* Produit */}
+          <div className="space-y-2">
+            <div className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">Produit</div>
+            <ul className="space-y-1.5 text-sm">
+              <li><a href="#features" className="text-foreground/80 hover:text-foreground hover:underline">Fonctionnalités</a></li>
+              <li><a href="#how" className="text-foreground/80 hover:text-foreground hover:underline">Comment ça marche</a></li>
+              <li><a href="#commission" className="text-foreground/80 hover:text-foreground hover:underline">Tarif</a></li>
+              <li><a href="#faq" className="text-foreground/80 hover:text-foreground hover:underline">FAQ</a></li>
+            </ul>
+          </div>
+
+          {/* Support — email visible + lien vers /support */}
+          <div className="space-y-2">
+            <div className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">Support</div>
+            <ul className="space-y-1.5 text-sm">
+              <li>
+                <Link href="/support" className="text-foreground/80 hover:text-foreground hover:underline">
+                  Nous contacter
+                </Link>
+              </li>
+              <li>
+                <a
+                  href="mailto:support@flexiopage.com"
+                  className="inline-flex items-center gap-1.5 text-foreground/80 hover:text-foreground hover:underline"
+                >
+                  <Mail className="h-3.5 w-3.5" />
+                  support@flexiopage.com
+                </a>
+              </li>
+            </ul>
+          </div>
+
+          {/* Légal */}
+          <div className="space-y-2">
+            <div className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">Légal</div>
+            <ul className="space-y-1.5 text-sm">
+              <li><Link href="/terms-of-service" className="text-foreground/80 hover:text-foreground hover:underline">Conditions</Link></li>
+              <li><Link href="/privacy-policy" className="text-foreground/80 hover:text-foreground hover:underline">Confidentialité</Link></li>
+              <li><Link href="/data-deletion" className="text-foreground/80 hover:text-foreground hover:underline">Suppression données</Link></li>
+            </ul>
+          </div>
         </div>
-        <div className="text-[11px] sm:text-xs">© {new Date().getFullYear()} FlexioPage. Tous droits réservés.</div>
+
+        {/* Bas — copyright */}
+        <div className="mt-8 flex flex-wrap items-center justify-between gap-3 border-t border-border/40 pt-5 text-[11px] text-muted-foreground sm:text-xs">
+          <span>© {year} FlexioPage. Tous droits réservés.</span>
+          <span>vendre · livrer · encaisser</span>
+        </div>
       </div>
     </footer>
   );

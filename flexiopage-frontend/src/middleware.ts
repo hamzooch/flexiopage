@@ -43,6 +43,7 @@ const RESERVED_TOP_LEVEL = new Set([
   'terms-of-service',
   'privacy-policy',
   'data-deletion',
+  'support',         // page publique de contact + formulaire support@flexiopage.com
   // Next.js + framework
   '_next',
   'api',

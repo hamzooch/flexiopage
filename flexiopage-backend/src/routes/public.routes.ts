@@ -12,6 +12,7 @@ import * as couponService from '../services/coupon.service';
 import * as subscriberService from '../services/subscriber.service';
 import * as reviewService from '../services/review.service';
 import * as abandonedCartService from '../services/abandoned-cart.service';
+import { sendEmail } from '../services/email.service';
 import { Product } from '../models/Product.model';
 import { Order } from '../models/Order.model';
 import { Store } from '../models/Store.model';
@@ -1227,6 +1228,115 @@ router.get('/orders/:orderId/status', async (req: Request, res: Response): Promi
     currency: order.currency,
     mockMode: isMockMode(),
   });
+});
+
+// ──────────────────────────────────────────────────────────────────────
+// POST /api/public/support — formulaire de contact public
+// ──────────────────────────────────────────────────────────────────────
+// Permet à n'importe quel visiteur (prospect, vendeur non connecté,
+// utilisateur final) d'écrire à support@flexiopage.com via un formulaire
+// au lieu de devoir ouvrir son client mail. Le message arrive dans la
+// boîte de support avec `replyTo` = email saisi, donc l'agent peut
+// répondre directement au visiteur.
+//
+// Anti-spam minimal :
+//   - champ honeypot `website` (caché côté UI ; rempli = bot = drop silencieux)
+//   - longueurs max strictes (un humain ne tape pas 5000 chars en un message)
+//   - validation email simple côté serveur
+//
+// Pas de captcha pour l'instant — Resend coupe à 3k mails/mois donc même
+// un flot modéré ne fait pas crasher la facture. Si abus, on ajoute un
+// turnstile/recaptcha en deuxième passe.
+
+const SUPPORT_INBOX = process.env.SUPPORT_INBOX || 'support@flexiopage.com';
+
+const SUPPORT_CATEGORIES = new Set([
+  'general',
+  'sales',
+  'technical',
+  'billing',
+  'partnership',
+  'bug-report',
+]);
+
+router.post('/support', async (req: Request, res: Response): Promise<void> => {
+  const body = (req.body || {}) as {
+    name?: string;
+    email?: string;
+    subject?: string;
+    message?: string;
+    category?: string;
+    website?: string; // honeypot
+  };
+
+  // Honeypot — un bot rempli souvent les champs cachés.
+  if (body.website && body.website.trim().length > 0) {
+    // On feint le succès pour ne pas signaler au bot qu'il a été repéré.
+    res.json({ ok: true });
+    return;
+  }
+
+  const name = (body.name || '').trim();
+  const email = (body.email || '').trim().toLowerCase();
+  const subject = (body.subject || '').trim();
+  const message = (body.message || '').trim();
+  const category = SUPPORT_CATEGORIES.has(body.category || '') ? body.category! : 'general';
+
+  // Validations.
+  if (name.length < 2 || name.length > 80) {
+    res.status(400).json({ error: 'Nom invalide (2-80 caractères).' });
+    return;
+  }
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || email.length > 200) {
+    res.status(400).json({ error: 'Email invalide.' });
+    return;
+  }
+  if (subject.length < 3 || subject.length > 140) {
+    res.status(400).json({ error: 'Sujet invalide (3-140 caractères).' });
+    return;
+  }
+  if (message.length < 10 || message.length > 5000) {
+    res.status(400).json({ error: 'Message trop court ou trop long (10-5000 caractères).' });
+    return;
+  }
+
+  // Construction du mail.
+  const safeMessage = message
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+  const html = `
+    <div style="font-family: -apple-system, system-ui, sans-serif; max-width: 600px; margin: 0 auto;">
+      <h2 style="color: #6d28d9; margin: 0 0 6px;">Nouveau message support</h2>
+      <p style="margin: 0 0 18px; font-size: 13px; color: #666;">Catégorie : <strong>${category}</strong></p>
+      <table style="width: 100%; border-collapse: collapse; font-size: 14px;">
+        <tr><td style="padding: 6px 0; color: #666;">De</td><td style="padding: 6px 0;"><strong>${name}</strong> &lt;${email}&gt;</td></tr>
+        <tr><td style="padding: 6px 0; color: #666;">Sujet</td><td style="padding: 6px 0;"><strong>${subject}</strong></td></tr>
+      </table>
+      <div style="margin-top: 18px; padding: 14px; background: #f7f7f9; border-radius: 8px; white-space: pre-wrap;">${safeMessage}</div>
+      <p style="margin-top: 22px; font-size: 12px; color: #999;">Reply-To pointe sur ${email} — un Répondre direct dans le client mail revient au visiteur.</p>
+    </div>
+  `;
+  const text = `Nouveau message support\n\nCatégorie : ${category}\nDe : ${name} <${email}>\nSujet : ${subject}\n\n${message}\n`;
+
+  try {
+    const result = await sendEmail({
+      to: SUPPORT_INBOX,
+      subject: `[Support · ${category}] ${subject}`,
+      html,
+      text,
+      replyTo: email,
+    });
+    if (!result.ok) {
+      console.error('[support] send failed:', result.error);
+      res.status(502).json({ error: 'Le serveur mail n\'a pas pu envoyer ton message. Réessaie ou écris à ' + SUPPORT_INBOX + ' directement.' });
+      return;
+    }
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('[support] exception:', err);
+    res.status(500).json({ error: 'Erreur serveur.' });
+  }
 });
 
 export default router;

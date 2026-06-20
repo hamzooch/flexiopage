@@ -111,6 +111,15 @@ export const authApi = {
     api.post<{ ok: true }>('/auth/resend-verification'),
 };
 
+// Public support — formulaire de contact ouvert (pas d'auth requise).
+// Le backend route POST /api/public/support envoie un mail à
+// support@flexiopage.com avec replyTo = l'email saisi.
+export type SupportCategory = 'general' | 'sales' | 'technical' | 'billing' | 'partnership' | 'bug-report';
+export const supportApi = {
+  submit: (data: { name: string; email: string; subject: string; message: string; category?: SupportCategory; website?: string }) =>
+    api.post<{ ok: true }>('/public/support', data),
+};
+
 // Users
 export const usersApi = {
   getProfile: () => api.get<{ user: unknown; subscription: unknown }>('/users/profile'),
