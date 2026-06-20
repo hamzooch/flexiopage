@@ -111,6 +111,8 @@ export function StoreNavbar({ storeName, storeSlug, storeLogo, theme, config, de
   const navStyle: NavStyle = theme.layout?.nav || 'standard';
   const isBold = navStyle === 'bold';
   const isCentered = navStyle === 'centered';
+  const isGlass = navStyle === 'glass';
+  const isEditorial = navStyle === 'editorial';
 
   // Brand display: logo+name (default), logo only, or name only. If "logo"
   // is chosen but no logo was uploaded, fall back to the name so the bar
@@ -219,6 +221,180 @@ export function StoreNavbar({ storeName, storeSlug, storeLogo, theme, config, de
       {open ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
     </button>
   );
+
+  // ── GLASS ─────────────────────────────────────────────────────────
+  // Frosted backdrop premium feel (Carthago, Bloom) — fond très transparent
+  // qui laisse passer la couleur du hero, blur agressif, liens dans des
+  // pilules avec halo, separator subtil. Idéal pour les boutiques branding.
+  if (isGlass) {
+    const glassBg = bgOverride || hexA(theme.background, 0.55);
+    return (
+      <header
+        className="sticky top-0 z-40 backdrop-blur-2xl backdrop-saturate-150"
+        style={{
+          backgroundColor: glassBg,
+          borderBottom: `1px solid ${hexA(theme.border, 0.6)}`,
+          boxShadow: `0 1px 0 ${hexA(theme.foreground, 0.04)}, 0 8px 30px ${hexA(theme.foreground, 0.04)}`,
+        }}
+      >
+        <div className="mx-auto flex max-w-6xl items-center justify-between gap-4 px-4 py-3 sm:px-6 sm:py-4">
+          {brand}
+          {links.length > 0 && (
+            <nav className="hidden items-center gap-1 md:flex">
+              {links.map((l, i) => (
+                <a
+                  key={i}
+                  href={resolveHref(l.url, storeSlug)}
+                  className="rounded-full px-4 py-1.5 text-xs font-semibold uppercase tracking-wider transition-all hover:scale-105"
+                  style={{
+                    color: effectiveFg,
+                    fontFamily: theme.fontBody,
+                    backgroundColor: hexA(theme.surface, 0.5),
+                    border: `1px solid ${hexA(theme.border, 0.6)}`,
+                  }}
+                >
+                  {l.label}
+                </a>
+              ))}
+            </nav>
+          )}
+          <div className="flex items-center gap-2">
+            {markets && markets.length > 1 && (
+              <MarketSwitcher markets={markets} currentCountry={currentMarketCountry} />
+            )}
+            {config?.showLanguageSwitcher && (
+              <LanguageSwitcher storeSlug={storeSlug} defaultLocale={defaultLocale} />
+            )}
+            {trailing}
+            {cartIcon}
+            {mobileToggle}
+          </div>
+        </div>
+        {/* Mobile sheet */}
+        {open && links.length > 0 && (
+          <div
+            className="border-t md:hidden"
+            style={{ borderColor: theme.border, backgroundColor: bgOverride || theme.background }}
+          >
+            <nav className="mx-auto flex max-w-6xl flex-col gap-1 px-3 py-3 sm:px-6">
+              {links.map((l, i) => (
+                <a
+                  key={i}
+                  href={resolveHref(l.url, storeSlug)}
+                  onClick={() => setOpen(false)}
+                  className="rounded-md px-3 py-2.5 text-sm font-medium"
+                  style={{ color: effectiveFg, fontFamily: theme.fontBody }}
+                >
+                  {l.label}
+                </a>
+              ))}
+            </nav>
+          </div>
+        )}
+      </header>
+    );
+  }
+
+  // ── EDITORIAL ─────────────────────────────────────────────────────
+  // Masthead magazine : nom de marque géant en serif, liens minimaux en
+  // petits caps espacés en dessous, le tout centré et avec un filet
+  // sous le bloc. Atelier, Nova — boutiques qui se vendent comme un brand.
+  if (isEditorial) {
+    return (
+      <header
+        className="sticky top-0 z-40 backdrop-blur-xl"
+        style={{
+          backgroundColor: effectiveBg,
+          borderBottom: `1px solid ${theme.border}`,
+        }}
+      >
+        <div className="mx-auto max-w-6xl px-4 sm:px-6">
+          {/* Top mini-row — mobile toggle + actions seulement ; le brand
+              vit dans son propre row au centre. */}
+          <div className="flex h-10 items-center justify-between gap-2 text-[10px] uppercase tracking-[0.25em]" style={{ color: hexA(effectiveFg, 0.6) }}>
+            <div className="flex items-center gap-2">{mobileToggle}</div>
+            <div className="hidden md:block">— Maison —</div>
+            <div className="flex items-center gap-2">
+              {markets && markets.length > 1 && (
+                <MarketSwitcher markets={markets} currentCountry={currentMarketCountry} />
+              )}
+              {config?.showLanguageSwitcher && (
+                <LanguageSwitcher storeSlug={storeSlug} defaultLocale={defaultLocale} />
+              )}
+              {trailing}
+              {cartIcon}
+            </div>
+          </div>
+          {/* Centre row — nom de marque géant en serif */}
+          <div className="flex justify-center pb-2 pt-1">
+            <Link
+              href={`/${storeSlug}`}
+              className="inline-flex items-center gap-3"
+              style={{ color: effectiveFg }}
+              aria-label={storeName}
+            >
+              {wantLogo && hasLogo && (
+                /* eslint-disable-next-line @next/next/no-img-element */
+                <img
+                  src={mediaUrl(storeLogo)}
+                  alt=""
+                  className="shrink-0 rounded object-contain"
+                  style={{ width: Math.max(40, logoDesktop), height: Math.max(40, logoDesktop) }}
+                />
+              )}
+              {wantName && (
+                <span
+                  className="text-3xl font-bold tracking-tight sm:text-5xl md:text-6xl"
+                  style={{ fontFamily: theme.fontHeading, letterSpacing: '-0.02em' }}
+                >
+                  {storeName}
+                </span>
+              )}
+            </Link>
+          </div>
+          {/* Liens centrés sous le brand */}
+          {links.length > 0 && (
+            <nav
+              className="hidden items-center justify-center gap-6 border-t py-2.5 text-[11px] font-semibold uppercase tracking-[0.2em] md:flex"
+              style={{ borderColor: hexA(theme.border, 0.6), color: hexA(effectiveFg, 0.85) }}
+            >
+              {links.map((l, i) => (
+                <a
+                  key={i}
+                  href={resolveHref(l.url, storeSlug)}
+                  className="transition-colors hover:opacity-60"
+                  style={{ fontFamily: theme.fontBody }}
+                >
+                  {l.label}
+                </a>
+              ))}
+            </nav>
+          )}
+        </div>
+        {/* Mobile sheet */}
+        {open && links.length > 0 && (
+          <div
+            className="border-t md:hidden"
+            style={{ borderColor: theme.border, backgroundColor: bgOverride || theme.background }}
+          >
+            <nav className="mx-auto flex max-w-6xl flex-col gap-1 px-3 py-3 sm:px-6">
+              {links.map((l, i) => (
+                <a
+                  key={i}
+                  href={resolveHref(l.url, storeSlug)}
+                  onClick={() => setOpen(false)}
+                  className="rounded-md px-3 py-2.5 text-xs font-semibold uppercase tracking-[0.2em]"
+                  style={{ color: effectiveFg, fontFamily: theme.fontBody }}
+                >
+                  {l.label}
+                </a>
+              ))}
+            </nav>
+          </div>
+        )}
+      </header>
+    );
+  }
 
   return (
     <header

@@ -17,6 +17,9 @@ export type SectionType =
   | 'footer'
   /** Inline cash-on-delivery order form (physical-product landing pages). */
   | 'cod-form'
+  /** Full-width image block — photo lifestyle / branding shot, optionally
+   *  avec légende et lien. Pas de texte de remplissage, juste l'image. */
+  | 'image'
   | 'custom';
 
 export const ALLOWED_SECTION_TYPES: SectionType[] = [
@@ -24,6 +27,7 @@ export const ALLOWED_SECTION_TYPES: SectionType[] = [
   'features',
   'stats',
   'gallery',
+  'image',
   'product',
   'products',
   'brands',

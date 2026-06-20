@@ -540,6 +540,109 @@ export function SectionEditor({ section, index, onUpdate, onRemove }: SectionEdi
     );
   }
 
+  if (section.type === 'image') {
+    // Bloc image full-width — un seul visuel, ratio configurable, légende
+    // et lien optionnels. Pour les boutiques branding qui veulent
+    // intercaler des plans lifestyle entre les sections.
+    return (
+      <div className="rounded-lg border bg-muted/20 p-4 space-y-4">
+        <div className="flex items-center justify-between">
+          <span className="font-medium">Bloc image</span>
+          <Button type="button" variant="ghost" size="sm" onClick={onRemove}>
+            <Trash2 className="h-4 w-4" />
+          </Button>
+        </div>
+        <div>
+          <Label className="text-xs">URL de l&apos;image</Label>
+          <Input
+            value={(p.imageUrl as string) || ''}
+            onChange={(e) => set('imageUrl', e.target.value)}
+            placeholder="https://…/photo.jpg"
+            className="mt-1"
+          />
+          {(p.imageUrl as string) && (
+            <div className="mt-2 overflow-hidden rounded-md border border-border/60 bg-muted/40">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={(p.imageUrl as string)} alt="" className="block w-full max-h-40 object-cover" />
+            </div>
+          )}
+        </div>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <div>
+            <Label className="text-xs">Texte alternatif (alt)</Label>
+            <Input
+              value={(p.alt as string) || ''}
+              onChange={(e) => set('alt', e.target.value)}
+              placeholder="Description courte pour SEO/accessibilité"
+              className="mt-1"
+            />
+          </div>
+          <div>
+            <Label className="text-xs">Légende (optionnel)</Label>
+            <Input
+              value={(p.caption as string) || ''}
+              onChange={(e) => set('caption', e.target.value)}
+              placeholder="Affichée sous l'image"
+              className="mt-1"
+            />
+          </div>
+        </div>
+        <div className="grid gap-3 sm:grid-cols-3">
+          <div>
+            <Label className="text-xs">Ratio</Label>
+            <select
+              value={(p.ratio as string) || '21/9'}
+              onChange={(e) => set('ratio', e.target.value)}
+              className="mt-1 flex h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+            >
+              <option value="21/9">Panoramique 21:9</option>
+              <option value="16/9">Cinéma 16:9</option>
+              <option value="4/3">Classique 4:3</option>
+              <option value="1/1">Carré 1:1</option>
+              <option value="3/4">Portrait 3:4</option>
+              <option value="9/16">Stories 9:16</option>
+              <option value="auto">Auto (taille réelle)</option>
+            </select>
+          </div>
+          <div>
+            <Label className="text-xs">Largeur</Label>
+            <select
+              value={(p.width as string) || 'contained'}
+              onChange={(e) => set('width', e.target.value)}
+              className="mt-1 flex h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+            >
+              <option value="contained">Conteneur (max 6xl)</option>
+              <option value="narrow">Resserré (max 4xl)</option>
+              <option value="full">Pleine largeur</option>
+            </select>
+          </div>
+          <div>
+            <Label className="text-xs">Coins</Label>
+            <select
+              value={(p.rounded as string) || 'lg'}
+              onChange={(e) => set('rounded', e.target.value)}
+              className="mt-1 flex h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+            >
+              <option value="lg">Arrondis</option>
+              <option value="xl">Très arrondis</option>
+              <option value="sm">Subtils</option>
+              <option value="none">Aucun</option>
+            </select>
+          </div>
+        </div>
+        <div>
+          <Label className="text-xs">Lien (optionnel)</Label>
+          <Input
+            value={(p.link as string) || ''}
+            onChange={(e) => set('link', e.target.value)}
+            placeholder="https://… ou /produit/slug"
+            className="mt-1"
+          />
+        </div>
+      </div>
+    );
+  }
+
   if (section.type === 'product') {
     const highlights = (p.highlights as string[]) || [];
     const trustBadges = (p.trustBadges as string[]) || [];

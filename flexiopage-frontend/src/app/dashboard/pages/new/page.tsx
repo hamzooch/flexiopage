@@ -95,6 +95,7 @@ const SECTION_TYPES = [
   { id: 'steps', label: 'How it works' },
   { id: 'stats', label: 'Stats' },
   { id: 'gallery', label: 'Gallery' },
+  { id: 'image', label: 'Image (bloc photo)' },
   { id: 'product', label: 'Product detail' },
   { id: 'products', label: 'Products grid' },
   { id: 'brands', label: 'Brands / press' },

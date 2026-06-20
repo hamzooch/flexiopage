@@ -154,6 +154,8 @@ function SectionView({
       return <StatsSection p={section.props} />;
     case 'gallery':
       return <GallerySection p={section.props} />;
+    case 'image':
+      return <ImageSection p={section.props} />;
     case 'product':
       return <ProductSection p={section.props} currency={currency} direction={direction} />;
     case 'products':
@@ -479,6 +481,92 @@ function GallerySection({ p }: { p: Record<string, unknown> }) {
               </div>
             ))}
           </div>
+        )}
+      </div>
+    </section>
+  );
+}
+
+// ────────────────────────────── IMAGE BLOCK (full-width banner)
+//
+// Section ultra-simple — UNE image qui occupe le bloc, ratio configurable,
+// légende optionnelle, lien optionnel. Pensée pour les boutiques de
+// branding qui veulent intercaler des plans lifestyle entre les sections
+// (hero → image → produits → image → témoignages). Pas de texte de
+// remplissage : c'est l'image qui parle.
+function ImageSection({ p }: { p: Record<string, unknown> }) {
+  const imageUrl = str(p.imageUrl);
+  const caption = str(p.caption);
+  const link = str(p.link);
+  const alt = str(p.alt) || caption || 'Image';
+  // Ratios courants ; 'auto' laisse l'image dicter sa propre hauteur,
+  // utile pour une typographie / capture portrait sans cropping.
+  const ratio = str(p.ratio, '21/9');
+  // Largeur du bloc — 'full' bord à bord, 'contained' suit la grille
+  // standard 6xl (max-w-6xl). 'narrow' = pleine largeur recentrée plus
+  // resserrée pour les portraits.
+  const width = str(p.width, 'contained');
+  // Rayon des coins — null/none pour un look magazine plein-cadre,
+  // sinon arrondi pour un look produit.
+  const rounded = str(p.rounded, 'lg');
+
+  if (!imageUrl) {
+    return (
+      <section className="mx-auto max-w-4xl px-4 py-12 sm:px-6 sm:py-16">
+        <div className="rounded-2xl border-2 border-dashed border-border bg-muted/30 p-10 text-center text-sm text-muted-foreground">
+          Bloc image — colle une URL d&apos;image dans l&apos;éditeur ou téléverse-en une.
+        </div>
+      </section>
+    );
+  }
+
+  const aspectClass =
+    ratio === 'auto' ? '' :
+    ratio === '1/1'  ? 'aspect-square' :
+    ratio === '4/3'  ? 'aspect-[4/3]' :
+    ratio === '3/4'  ? 'aspect-[3/4]' :
+    ratio === '16/9' ? 'aspect-video' :
+    ratio === '21/9' ? 'aspect-[21/9]' :
+    ratio === '9/16' ? 'aspect-[9/16]' :
+    'aspect-[21/9]';
+
+  const roundedClass =
+    rounded === 'none' ? 'rounded-none' :
+    rounded === 'sm'   ? 'rounded-md' :
+    rounded === 'xl'   ? 'rounded-3xl' :
+    'rounded-2xl';
+
+  const wrapperClass =
+    width === 'full'    ? 'w-full' :
+    width === 'narrow'  ? 'mx-auto max-w-4xl px-4 sm:px-6' :
+    'mx-auto max-w-6xl px-4 sm:px-6';
+
+  const inner = (
+    <div className={`relative overflow-hidden ${roundedClass} ${width === 'full' ? '' : 'shadow-xl'} bg-muted`}>
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img
+        src={absUrl(imageUrl)}
+        alt={alt}
+        className={`block w-full ${aspectClass} ${ratio === 'auto' ? 'h-auto' : 'object-cover'}`}
+        loading="lazy"
+      />
+    </div>
+  );
+
+  return (
+    <section className="py-10 sm:py-16">
+      <div className={wrapperClass}>
+        {link ? (
+          <a href={link} target={link.startsWith('http') ? '_blank' : undefined} rel="noopener noreferrer">
+            {inner}
+          </a>
+        ) : (
+          inner
+        )}
+        {caption && (
+          <p className="mx-auto mt-4 max-w-2xl text-center text-xs italic text-muted-foreground sm:text-sm">
+            {caption}
+          </p>
         )}
       </div>
     </section>

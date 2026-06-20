@@ -47,7 +47,9 @@ export type ProductCardStyle =
 export type NavStyle =
   | 'standard'    // logo left, links right
   | 'centered'    // logo centered, links split below/around
-  | 'bold';       // chunky uppercase, thick divider
+  | 'bold'        // chunky uppercase, thick divider
+  | 'glass'       // frosted backdrop blur, pill links, premium feel
+  | 'editorial';  // huge serif brand name, minimal links — magazine vibe
 export type GridColumns = 2 | 3 | 4;
 /** Variante visuelle du bloc témoignages. Driver de différenciation
  *  entre thèmes — chaque thème fixe la sienne. */
@@ -307,7 +309,7 @@ const atelier: StoreThemeTemplate = {
     borderRadius: 'none',
     spacing: 'relaxed',
     style: 'editorial',
-    layout: { hero: 'editorial', productCard: 'editorial', gridColumns: 2, nav: 'centered', testimonials: 'editorial', footer: 'minimal' },
+    layout: { hero: 'editorial', productCard: 'editorial', gridColumns: 2, nav: 'editorial', testimonials: 'editorial', footer: 'minimal' },
     pattern: 'none',
     shadow: 'sharp',
     dark: false,
@@ -347,7 +349,7 @@ const bloom: StoreThemeTemplate = {
     borderRadius: 'xl',
     spacing: 'relaxed',
     style: 'soft',
-    layout: { hero: 'centered', productCard: 'classic', gridColumns: 3, nav: 'centered', testimonials: 'wall', footer: 'split' },
+    layout: { hero: 'centered', productCard: 'classic', gridColumns: 3, nav: 'glass', testimonials: 'wall', footer: 'split' },
     pattern: 'mesh',
     shadow: 'soft',
     dark: false,
@@ -555,7 +557,7 @@ const nova: StoreThemeTemplate = {
     borderRadius: 'medium',
     spacing: 'relaxed',
     style: 'minimal',
-    layout: { hero: 'centered', productCard: 'classic', gridColumns: 3, nav: 'standard', testimonials: 'grid', footer: 'full' },
+    layout: { hero: 'centered', productCard: 'classic', gridColumns: 3, nav: 'editorial', testimonials: 'grid', footer: 'full' },
     pattern: 'none',
     shadow: 'soft',
     dark: false,
@@ -645,7 +647,7 @@ const carthago: StoreThemeTemplate = {
     borderRadius: 'medium',
     spacing: 'relaxed',
     style: 'editorial',
-    layout: { hero: 'split', productCard: 'classic', gridColumns: 3, nav: 'centered', testimonials: 'editorial', footer: 'full' },
+    layout: { hero: 'split', productCard: 'classic', gridColumns: 3, nav: 'glass', testimonials: 'editorial', footer: 'full' },
     pattern: 'none',
     shadow: 'soft',
     dark: false,
