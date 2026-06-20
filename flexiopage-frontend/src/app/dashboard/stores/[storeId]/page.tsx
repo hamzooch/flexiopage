@@ -24,7 +24,7 @@
  * Checkout / Collection / Wishlist / Info sans quitter l'éditeur.
  */
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import {
@@ -2066,20 +2066,39 @@ function ViewportPreview({
   }[device];
 
   const wrapRef = useRef<HTMLDivElement | null>(null);
-  const [scale, setScale] = useState(1);
+  // Démarre à 0 → tant que useLayoutEffect n'a pas mesuré la largeur
+  // disponible, le wrap a height = 0 donc l'iframe est invisible : pas
+  // de flash à scale=1 (= 1024px de haut pour le tablet). Dès le 1er
+  // layoutEffect on a la vraie valeur AVANT le 1er paint.
+  const [scale, setScale] = useState(0);
 
-  useEffect(() => {
+  // useLayoutEffect (pas useEffect) : s'exécute après le commit DOM mais
+  // AVANT le paint. Sans ça, sur switch mobile→tablet, l'iframe rendait
+  // d'abord à l'ancienne scale (tablet width 768 à scale=0.95 = oversize
+  // qui débordait) puis se corrigeait après paint → flicker.
+  useLayoutEffect(() => {
     if (!wrapRef.current) return;
     const el = wrapRef.current;
+    let raf = 0;
     const compute = () => {
       const available = el.clientWidth;
+      if (available <= 0) return;
       const s = Math.min(1, available / dims.width);
       setScale(s);
     };
     compute();
-    const obs = new ResizeObserver(compute);
+    // requestAnimationFrame autour de l'observer : sans ça, sur certains
+    // navigateurs la rafale de redimensionnement déclenche un setState
+    // par frame qui se chevauche avec le suivant → instabilité visuelle.
+    const obs = new ResizeObserver(() => {
+      cancelAnimationFrame(raf);
+      raf = requestAnimationFrame(compute);
+    });
     obs.observe(el);
-    return () => obs.disconnect();
+    return () => {
+      cancelAnimationFrame(raf);
+      obs.disconnect();
+    };
   }, [dims.width]);
 
   const maxFrameWidth =
@@ -2095,14 +2114,17 @@ function ViewportPreview({
         maxWidth: maxFrameWidth,
         width: '100%',
         height: dims.height * scale,
-        transition: 'height 0.25s ease, max-width 0.25s ease',
+        transition: 'height 0.2s ease, max-width 0.2s ease',
       }}
     >
       <iframe
-        key={`${device}-${src}-${previewBust}`}
+        // Le `device` n'est PLUS dans la key : changer de device modifie
+        // juste width/height/transform de l'iframe (CSS), pas son `src`.
+        // Avant, chaque switch mobile↔tablet↔desktop unmount + remount
+        // l'iframe → rechargement complet de la storefront, jank visible.
+        key={`${src}-${previewBust}`}
         src={src}
         title="Aperçu de la boutique"
-        loading="lazy"
         className="origin-top-left border-0 bg-background"
         style={{
           width: dims.width,
