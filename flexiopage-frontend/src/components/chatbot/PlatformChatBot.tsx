@@ -30,6 +30,18 @@ const STOREFRONT_PATH_PREFIXES = [
 ];
 
 /**
+ * Pages d'authentification de la plateforme — login / signup / vérif email.
+ * Le bot est inutile (et distrayant) sur ces formulaires : l'utilisateur
+ * vient juste pour se connecter ou s'inscrire, pas pour discuter. Si
+ * besoin d'aide, /support reste accessible depuis le footer du landing.
+ */
+const AUTH_PATH_PREFIXES = [
+  '/login',
+  '/register',
+  '/verify-email',
+];
+
+/**
  * Dashboard sub-pages that host a live preview of the seller's storefront.
  * The bot must stay hidden there so it doesn't visually compete with the
  * preview panel — only the seller's own WhatsApp button (if activated) is
@@ -44,6 +56,13 @@ const LIVE_PREVIEW_PATH_PATTERNS: RegExp[] = [
 function pathIsStorefront(pathname: string): boolean {
   return STOREFRONT_PATH_PREFIXES.some(
     (p) => pathname === p || pathname.startsWith(p.endsWith('/') ? p : `${p}/`)
+  );
+}
+
+/** True quand on est sur une page d'auth (login/register/verify-email). */
+function pathIsAuth(pathname: string): boolean {
+  return AUTH_PATH_PREFIXES.some(
+    (p) => pathname === p || pathname.startsWith(`${p}/`) || pathname.startsWith(`${p}?`),
   );
 }
 
@@ -101,6 +120,7 @@ export function PlatformChatBot() {
   // pathIsStorefront, qui ne connaît que les paths canoniques /store/...).
   if (isPreviewIframe) return null;
   if (pathIsStorefront(pathname)) return null;
+  if (pathIsAuth(pathname)) return null;
   // Hide the bot on dashboard pages that render a live storefront preview —
   // only the seller's WhatsApp button (if enabled) should appear there.
   if (pathHasLivePreview(pathname)) return null;

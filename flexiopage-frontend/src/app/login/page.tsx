@@ -92,13 +92,17 @@ function LoginInner() {
     <div className="min-h-screen bg-background">
       <div className="grid min-h-screen lg:grid-cols-[1fr_1.1fr]">
         {/* ── FORM PANEL ────────────────────────────────────────────── */}
-        <div className="flex flex-col justify-center px-6 py-10 sm:px-10 lg:px-16">
+        {/* `justify-start` au lieu de `justify-center` : avant, le formulaire
+            était vertical-centered sur min-h-screen, ce qui laissait un gros
+            vide en haut sur grand écran. On l'ancre maintenant en haut avec
+            un padding confortable, lecture immédiate du logo + form. */}
+        <div className="flex flex-col px-6 pb-10 pt-8 sm:px-10 sm:pt-10 lg:px-16 lg:pt-14">
           <div className="mx-auto w-full max-w-md animate-fade-in-up">
             <Link href="/" className="inline-flex" aria-label="FlexioPage — accueil">
               <BrandLogo variant="color" width={150} priority />
             </Link>
 
-            <div className="mt-10">
+            <div className="mt-6 sm:mt-8">
               <h1 className="text-balance text-3xl font-bold tracking-tight sm:text-4xl">
                 Bon retour <span className="gradient-brand-text">👋</span>
               </h1>
