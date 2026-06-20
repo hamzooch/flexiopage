@@ -55,7 +55,7 @@ export function StructuredData({
       '@type': 'Offer',
       price: '0',
       priceCurrency: 'USD',
-      description: "Sans abonnement — commission de 3% uniquement sur les commandes livrées",
+      description: "Sans abonnement — les 30 premières commandes livrées sont gratuites, petite commission ensuite",
     },
     aggregateRating: {
       '@type': 'AggregateRating',

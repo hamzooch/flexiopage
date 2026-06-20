@@ -13,11 +13,11 @@ import { StructuredData } from '@/components/seo/StructuredData';
 const FAQ_ITEMS = [
   {
     q: 'Comment fonctionne le solde ?',
-    a: "Tu recharges ton solde via Wave, Orange Money, MTN MoMo ou virement. À chaque commande livrée, on prélève 3% (max 1 500 F CFA) directement du solde. Si le solde tombe à 0, tu ne peux plus dispatcher de nouvelles commandes jusqu'au prochain rechargement.",
+    a: "Tes 30 premières commandes livrées sont 100% gratuites — aucun frais ne sort de ton solde. À partir de la 31e commande, une petite commission s'applique sur chaque livraison confirmée par le transporteur. Tu recharges ton solde via Wave, Orange Money, MTN MoMo ou virement quand tu veux.",
   },
   {
     q: "Que se passe-t-il si une commande n'est pas livrée ?",
-    a: "Aucun frais. La commission n'est prélevée que lorsque ton transporteur confirme la livraison ET la collecte du paiement client. Annulation, retour, refus → 0 frais.",
+    a: "Aucun frais. La commission ne s'applique qu'aux commandes livrées ET payées (transporteur confirme la collecte). Annulation, retour, refus → 0 frais. Les 30 premières livraisons restent gratuites de toute façon.",
   },
   {
     q: 'Dans quels pays opérez-vous ?',
@@ -25,7 +25,7 @@ const FAQ_ITEMS = [
   },
   {
     q: 'Puis-je vendre des produits digitaux ?',
-    a: 'Oui. Pour les produits digitaux le client paie en ligne (Wave, Orange Money, carte) et reçoit son fichier instantanément. Le système de commission par vente s\'applique aussi.',
+    a: 'Oui. Pour les produits digitaux le client paie en ligne (Wave, Orange Money, carte) et reçoit son fichier instantanément. Les 30 premières ventes sont gratuites comme pour les produits physiques.',
   },
 ];
 import {
@@ -158,7 +158,7 @@ function Hero() {
             <span className="absolute h-1.5 w-1.5 animate-ping rounded-full bg-emerald-500 opacity-60" />
             <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
           </span>
-          Sans abonnement · Tu paies seulement quand tu vends
+          Sans abonnement · Tes 30 premières commandes sont gratuites
         </motion.div>
 
         <motion.h1
@@ -484,7 +484,7 @@ function HowItWorks() {
     {
       n: '03',
       title: 'Le client commande, tu encaisses',
-      desc: 'Commande à la livraison, MogaDelivery prend le relais, tu reçois ton paiement net après commission.',
+      desc: 'Commande à la livraison, MogaDelivery prend le relais, tu encaisses ton paiement. 30 premières livraisons gratuites, ensuite une petite commission seulement.',
     },
   ];
   return (
@@ -567,12 +567,12 @@ function CommissionPanel() {
               <Wallet className="h-3 w-3" /> Tarification équitable
             </div>
             <h2 className="text-balance text-2xl font-bold tracking-tight sm:text-3xl md:text-4xl lg:text-5xl">
-              Tu paies <span className="bg-gradient-to-r from-amber-500 to-orange-600 bg-clip-text text-transparent">seulement quand tu vends</span>.
+              Tes <span className="bg-gradient-to-r from-amber-500 to-orange-600 bg-clip-text text-transparent">30 premières commandes</span> sont gratuites.
             </h2>
             <p className="mt-4 text-sm leading-relaxed text-muted-foreground sm:mt-5 sm:text-base lg:text-lg">
               Pas d&apos;abonnement, pas de carte bancaire à la création, pas de frais cachés.
-              Tu recharges ton solde quand tu veux, on prélève une petite commission sur chaque commande livrée.
-              <strong className="text-foreground"> Si tu ne vends pas, tu ne paies pas.</strong>
+              Tu lances ta boutique et tu vends sans payer un centime — une petite commission ne s&apos;applique qu&apos;à partir de la
+              {' '}<strong className="text-foreground">31e commande livrée</strong>.
             </p>
 
             <motion.div
@@ -580,12 +580,12 @@ function CommissionPanel() {
               whileInView={{ scale: 1, opacity: 1 }}
               viewport={{ once: true }}
               transition={{ duration: 0.5, delay: 0.2, type: 'spring', stiffness: 200 }}
-              className="mt-6 inline-flex items-baseline gap-3 rounded-2xl border border-border/60 bg-background/60 px-5 py-3.5 backdrop-blur sm:mt-8 sm:px-6 sm:py-4"
+              className="mt-6 inline-flex items-baseline gap-3 rounded-2xl border border-emerald-500/30 bg-emerald-500/5 px-5 py-3.5 backdrop-blur sm:mt-8 sm:px-6 sm:py-4"
             >
-              <span className="text-4xl font-black tracking-tight text-foreground sm:text-5xl">3%</span>
+              <span className="text-4xl font-black tracking-tight text-emerald-700 sm:text-5xl">30</span>
               <div className="text-left">
-                <div className="text-xs font-semibold sm:text-sm">par commande livrée</div>
-                <div className="text-[11px] text-muted-foreground sm:text-xs">débité du solde · plafonné 1 500 F CFA</div>
+                <div className="text-xs font-semibold sm:text-sm">premières commandes livrées</div>
+                <div className="text-[11px] text-muted-foreground sm:text-xs">100% gratuites · sans frais cachés</div>
               </div>
             </motion.div>
 
@@ -637,11 +637,11 @@ function Faq() {
   const items = [
     {
       q: 'Comment fonctionne le solde ?',
-      a: 'Tu rechargeons ton solde via Wave, Orange Money, MTN MoMo ou virement. À chaque commande livrée, on prélève 3% (max 1 500 F CFA) directement du solde. Si le solde tombe à 0, tu ne peux plus dispatcher de nouvelles commandes jusqu’au prochain rechargement.',
+      a: 'Tes 30 premières commandes livrées sont 100% gratuites — aucun frais ne sort de ton solde. À partir de la 31e commande, une petite commission s’applique sur chaque livraison confirmée par le transporteur. Tu recharges ton solde via Wave, Orange Money, MTN MoMo ou virement quand tu veux.',
     },
     {
       q: 'Que se passe-t-il si une commande n’est pas livrée ?',
-      a: 'Aucun frais. La commission n’est prélevée que lorsque ton transporteur confirme la livraison ET la collecte du paiement client. Annulation, retour, refus → 0 frais.',
+      a: 'Aucun frais. La commission ne s’applique qu’aux commandes livrées ET payées (transporteur confirme la collecte). Annulation, retour, refus → 0 frais. Les 30 premières livraisons restent gratuites de toute façon.',
     },
     {
       q: 'Dans quels pays vous opérez ?',
@@ -649,7 +649,7 @@ function Faq() {
     },
     {
       q: 'Puis-je vendre des produits digitaux ?',
-      a: 'Oui. Pour les produits digitaux le client paie en ligne (Wave, Orange Money, carte) et reçoit son fichier instantanément. Le système de commission par vente s’applique aussi.',
+      a: 'Oui. Pour les produits digitaux le client paie en ligne (Wave, Orange Money, carte) et reçoit son fichier instantanément. Les 30 premières ventes sont gratuites comme pour les produits physiques.',
     },
   ];
   return (

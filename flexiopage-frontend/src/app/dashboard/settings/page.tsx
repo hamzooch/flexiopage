@@ -155,11 +155,11 @@ export default function SettingsPage() {
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2"><Wallet className="h-4 w-4" /> Modèle de tarification</CardTitle>
-          <CardDescription>0 € d&apos;abonnement. Tu paies uniquement par commande livrée.</CardDescription>
+          <CardDescription>0 € d&apos;abonnement. Tes 30 premières commandes livrées sont gratuites — petite commission seulement ensuite.</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="grid gap-3 sm:grid-cols-2">
-            <FactPill icon={<Wallet className="h-4 w-4 text-emerald-600" />} title="Commission 3%" desc="Sur chaque commande livrée, plafonnée à 1 500 F CFA." />
+            <FactPill icon={<Wallet className="h-4 w-4 text-emerald-600" />} title="30 commandes gratuites" desc="100% gratuit jusqu'à la 30e livraison. Au-delà, petite commission par commande livrée." />
             <FactPill icon={<Sparkles className="h-4 w-4 text-fuchsia-600" />} title="Génération AI" desc="Landing page / page produit ≈ 500 par génération." />
           </div>
           <Link
