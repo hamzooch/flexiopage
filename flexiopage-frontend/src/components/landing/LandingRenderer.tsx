@@ -798,11 +798,44 @@ function BrandsSection({ p }: { p: Record<string, unknown> }) {
 }
 
 // ────────────────────────────── VIDEO
+//
+// Détecte l'origine de l'URL (YouTube / Vimeo / fichier direct mp4|webm)
+// et choisit le bon mode d'embed. Sans ça, coller une URL YouTube dans
+// <video src=...> donnait un cadre noir cassé (le navigateur ne sait
+// pas streamer un watch?v=...).
+
+/** Extrait l'ID d'une URL YouTube — accepte watch?v=, youtu.be, embed, shorts. */
+function parseYoutubeId(url: string): string | null {
+  if (!url) return null;
+  // youtu.be/<id>
+  let m = url.match(/youtu\.be\/([\w-]{6,20})/);
+  if (m) return m[1];
+  // youtube.com/watch?v=<id>
+  m = url.match(/[?&]v=([\w-]{6,20})/);
+  if (m) return m[1];
+  // youtube.com/embed/<id>  &  /shorts/<id>
+  m = url.match(/youtube\.com\/(?:embed|shorts)\/([\w-]{6,20})/);
+  if (m) return m[1];
+  return null;
+}
+
+/** Extrait l'ID d'une URL Vimeo — accepte player ou page produit. */
+function parseVimeoId(url: string): string | null {
+  if (!url) return null;
+  const m = url.match(/vimeo\.com\/(?:video\/)?(\d{6,})/);
+  return m ? m[1] : null;
+}
+
 function VideoSection({ p }: { p: Record<string, unknown> }) {
   const title = str(p.title);
   const subtitle = str(p.subtitle);
   const videoUrl = str(p.videoUrl);
   const posterUrl = str(p.posterUrl);
+  const ytId = parseYoutubeId(videoUrl);
+  const vmId = parseVimeoId(videoUrl);
+  // Un fichier direct ? extensions courantes streamables par le tag <video>.
+  const isDirectFile = /\.(mp4|webm|ogg|mov|m4v)(\?|$)/i.test(videoUrl);
+
   return (
     <section className="border-t border-border/60">
       <div className="mx-auto max-w-5xl px-6 py-20 sm:py-24">
@@ -813,8 +846,37 @@ function VideoSection({ p }: { p: Record<string, unknown> }) {
           </div>
         )}
         <div className="relative overflow-hidden rounded-3xl border border-border/60 bg-muted shadow-2xl ring-1 ring-black/5">
-          {videoUrl ? (
+          {ytId ? (
+            <iframe
+              src={`https://www.youtube.com/embed/${ytId}?rel=0&modestbranding=1`}
+              title={title || 'Vidéo YouTube'}
+              loading="lazy"
+              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+              allowFullScreen
+              className="aspect-video w-full border-0 bg-black"
+            />
+          ) : vmId ? (
+            <iframe
+              src={`https://player.vimeo.com/video/${vmId}?title=0&byline=0&portrait=0`}
+              title={title || 'Vidéo Vimeo'}
+              loading="lazy"
+              allow="autoplay; fullscreen; picture-in-picture"
+              allowFullScreen
+              className="aspect-video w-full border-0 bg-black"
+            />
+          ) : isDirectFile ? (
             <video src={absUrl(videoUrl)} poster={absUrl(posterUrl) || undefined} controls className="aspect-video w-full bg-black" />
+          ) : videoUrl ? (
+            // URL ni YouTube ni Vimeo ni fichier reconnu — placeholder
+            // utile au vendeur en preview pour qu'il sache que le lien
+            // n'est pas exploitable.
+            <div className="grid aspect-video w-full place-items-center bg-muted text-center text-sm text-muted-foreground">
+              <div className="p-6">
+                URL vidéo non reconnue
+                <br />
+                <span className="text-xs">Colle un lien YouTube, Vimeo, ou un fichier .mp4 / .webm direct.</span>
+              </div>
+            </div>
           ) : posterUrl ? (
             <div className="relative">
               {/* eslint-disable-next-line @next/next/no-img-element */}

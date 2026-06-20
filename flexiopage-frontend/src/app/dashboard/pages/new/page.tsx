@@ -99,7 +99,7 @@ const SECTION_TYPES = [
   { id: 'product', label: 'Product detail' },
   { id: 'products', label: 'Products grid' },
   { id: 'brands', label: 'Brands / press' },
-  { id: 'video', label: 'Video' },
+  { id: 'video', label: 'Vidéo (YouTube / Vimeo)' },
   { id: 'pricing', label: 'Pricing' },
   { id: 'testimonials', label: 'Testimonials' },
   { id: 'cta', label: 'Call to action' },

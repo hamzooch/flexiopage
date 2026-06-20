@@ -16,6 +16,7 @@ import { cn } from '@/lib/utils';
 const SECTION_TYPES = [
   { id: 'hero', label: 'Hero' },
   { id: 'image', label: 'Image (bloc photo)' },
+  { id: 'video', label: 'Vidéo (YouTube / Vimeo)' },
   { id: 'products', label: 'Products' },
   { id: 'testimonials', label: 'Testimonials' },
   { id: 'cta', label: 'CTA' },

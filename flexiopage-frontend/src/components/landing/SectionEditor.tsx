@@ -820,29 +820,55 @@ export function SectionEditor({ section, index, onUpdate, onRemove }: SectionEdi
   }
 
   if (section.type === 'video') {
+    const url = (p.videoUrl as string) || '';
+    // Petit feedback temps réel : on devine la source à partir de l'URL
+    // pour rassurer le vendeur que son lien est bien reconnu.
+    const sourceHint = (() => {
+      if (!url) return '';
+      if (/youtu\.?be/i.test(url))                  return '✓ YouTube détecté — embed iframe automatique.';
+      if (/vimeo\.com/i.test(url))                  return '✓ Vimeo détecté — embed iframe automatique.';
+      if (/\.(mp4|webm|ogg|mov|m4v)(\?|$)/i.test(url)) return '✓ Fichier vidéo direct détecté.';
+      return '⚠ URL non reconnue — colle un lien YouTube, Vimeo, ou un .mp4 / .webm.';
+    })();
     return (
       <div className="rounded-lg border bg-muted/20 p-4 space-y-4">
         <div className="flex items-center justify-between">
-          <span className="font-medium">Video</span>
+          <span className="font-medium">Vidéo</span>
           <Button type="button" variant="ghost" size="sm" onClick={onRemove}>
             <Trash2 className="h-4 w-4" />
           </Button>
         </div>
         <div>
-          <Label className="text-xs">Title</Label>
+          <Label className="text-xs">Titre (optionnel)</Label>
           <Input value={(p.title as string) || ''} onChange={(e) => set('title', e.target.value)} className="mt-1" />
         </div>
         <div>
-          <Label className="text-xs">Subtitle</Label>
+          <Label className="text-xs">Sous-titre (optionnel)</Label>
           <Input value={(p.subtitle as string) || ''} onChange={(e) => set('subtitle', e.target.value)} className="mt-1" />
         </div>
         <div>
-          <Label className="text-xs">Video URL (mp4)</Label>
-          <Input value={(p.videoUrl as string) || ''} onChange={(e) => set('videoUrl', e.target.value)} className="mt-1" />
+          <Label className="text-xs">URL de la vidéo</Label>
+          <Input
+            value={url}
+            onChange={(e) => set('videoUrl', e.target.value)}
+            placeholder="https://youtu.be/… , https://vimeo.com/… , ou https://…/video.mp4"
+            className="mt-1"
+          />
+          <p className={`mt-1.5 text-[11px] ${sourceHint.startsWith('⚠') ? 'text-amber-700' : sourceHint.startsWith('✓') ? 'text-emerald-700' : 'text-muted-foreground'}`}>
+            {sourceHint || 'Supporte YouTube, Vimeo, ou un fichier direct (mp4, webm, mov, ogg, m4v).'}
+          </p>
         </div>
         <div>
-          <Label className="text-xs">Poster URL</Label>
-          <Input value={(p.posterUrl as string) || ''} onChange={(e) => set('posterUrl', e.target.value)} className="mt-1" />
+          <Label className="text-xs">Poster URL (image de couverture, optionnel)</Label>
+          <Input
+            value={(p.posterUrl as string) || ''}
+            onChange={(e) => set('posterUrl', e.target.value)}
+            placeholder="https://…/cover.jpg"
+            className="mt-1"
+          />
+          <p className="mt-1.5 text-[11px] text-muted-foreground">
+            Utile uniquement pour les fichiers vidéo directs — YouTube et Vimeo gèrent leur propre vignette.
+          </p>
         </div>
       </div>
     );
