@@ -265,6 +265,20 @@ export default function StoreEditPage() {
     return () => { cancelled = true; };
   }, [storeId]);
 
+  // Auto-save débouncée : chaque modification déclenche une sauvegarde
+  // 700ms après le dernier changement. Garde le bouton « Enregistrer »
+  // disponible comme force-save. L'iframe se rafraîchit automatiquement
+  // grâce au previewBust incrémenté dans handleSave → l'aperçu droit
+  // reflète les changements quasi en temps réel.
+  useEffect(() => {
+    if (!dirty || saving) return;
+    const t = window.setTimeout(() => {
+      void handleSave();
+    }, 700);
+    return () => window.clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [patch, dirty, saving]);
+
   // Save batched patch — relit la valeur courante du snapshot local
   // pour chaque clé dirty puis envoie au backend (qui fait `$set` complet).
   async function handleSave() {
@@ -284,9 +298,11 @@ export default function StoreEditPage() {
       }
     }
     try {
-      const res = await storesApi.update(storeId, payload);
-      const fresh = (res.data as { store: StoreType }).store;
-      setStore(fresh);
+      await storesApi.update(storeId, payload);
+      // Pas de `setStore(fresh)` : avec l'auto-save, le vendeur tape en
+      // continu et la réponse pourrait écraser ses touches arrivées entre
+      // l'envoi et la réception. L'état local est déjà à jour (on l'a
+      // mis à jour à chaque markDirty), le backend a juste persisté.
       setPatch(emptyPatch);
       setPreviewBust((n) => n + 1);
       setSavedFlash(true);
@@ -367,6 +383,29 @@ export default function StoreEditPage() {
           </div>
         </div>
         <div className="flex items-center gap-2">
+          {/* Statut sync — informe le vendeur que l'auto-save est actif
+              et lui montre où on en est. Caché sur très petit écran pour
+              laisser la place aux boutons. */}
+          <span
+            className={cn(
+              'hidden items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-semibold sm:inline-flex',
+              saving
+                ? 'bg-primary/10 text-primary'
+                : dirty
+                  ? 'bg-amber-500/10 text-amber-700'
+                  : 'bg-emerald-500/10 text-emerald-700',
+            )}
+            title="Auto-sync : tes modifications sont sauvegardées automatiquement 700 ms après l'arrêt de saisie."
+          >
+            {saving ? (
+              <Loader2 className="h-3 w-3 animate-spin" />
+            ) : dirty ? (
+              <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-amber-500" />
+            ) : (
+              <Check className="h-3 w-3" strokeWidth={3} />
+            )}
+            {saving ? 'Sync…' : dirty ? 'Sync auto…' : 'Synchronisé'}
+          </span>
           <Link href={publicStoreUrl(store)} target="_blank" rel="noopener">
             <Button variant="outline" size="sm" className="h-9 gap-1.5 rounded-lg px-2 sm:px-3">
               <ExternalLink className="h-3.5 w-3.5" />
@@ -381,6 +420,7 @@ export default function StoreEditPage() {
               'h-9 gap-1.5 rounded-lg gradient-brand text-white shadow-md shadow-primary/25 hover:opacity-95',
               !dirty && 'opacity-60',
             )}
+            title="Force la sauvegarde maintenant — sinon l'auto-sync s'en occupe dans la seconde."
           >
             {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : savedFlash ? <Check className="h-3.5 w-3.5" /> : <Save className="h-3.5 w-3.5" />}
             <span className="hidden sm:inline">
