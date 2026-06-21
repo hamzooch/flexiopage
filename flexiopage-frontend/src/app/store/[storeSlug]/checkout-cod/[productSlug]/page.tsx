@@ -98,6 +98,15 @@ const COUNTRIES: { code: string; name: string; phonePrefix: string }[] = [
   { code: 'TN', name: 'Tunisie',         phonePrefix: '+216' },
   { code: 'DZ', name: 'Algérie',         phonePrefix: '+213' },
   { code: 'LY', name: 'Libye',           phonePrefix: '+218' },
+  // Europe (livraison hors MogaDelivery, mais on ouvre le formulaire).
+  { code: 'IT', name: 'Italie',          phonePrefix: '+39'  },
+  { code: 'ES', name: 'Espagne',         phonePrefix: '+34'  },
+  { code: 'FR', name: 'France',          phonePrefix: '+33'  },
+  { code: 'BE', name: 'Belgique',        phonePrefix: '+32'  },
+  { code: 'PT', name: 'Portugal',        phonePrefix: '+351' },
+  { code: 'DE', name: 'Allemagne',       phonePrefix: '+49'  },
+  { code: 'NL', name: 'Pays-Bas',        phonePrefix: '+31'  },
+  { code: 'CH', name: 'Suisse',          phonePrefix: '+41'  },
 ];
 
 export default function CodCheckoutPage() {

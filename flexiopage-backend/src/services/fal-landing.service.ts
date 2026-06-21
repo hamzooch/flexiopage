@@ -109,6 +109,29 @@ Local cues: Vision 2030, Riyadh Park / Mall of Arabia, Hajj / Umrah seasons.`,
   LY: 'Libyan Arabic — markers: "نبي" (je veux), "هكي" (comme ça).',
   SD: 'Sudanese Arabic — markers: "داير" (je veux), "كده" (comme ça).',
   MR: 'Hassaniya Arabic / MSA.',
+
+  // ── Europe — ton conversationnel local, pas un anglais traduit ───
+  IT: `Italian conversational — should sound like an Italian friend on Instagram / WhatsApp recommending the product, NOT a marketing brochure.
+Tone markers:
+  - Direct 2nd person ("tu") with warm familiarity. NEVER "Lei" (too formal for D2C).
+  - Real expressions: "davvero", "proprio quello", "fidati", "te lo dico io", "a casa tua in 48 ore".
+  - Emoji used sparingly but naturally (🇮🇹 ✨ 🔥) — like a real post, not a banner.
+Cultural hooks: domenica in famiglia, aperitivo, casa al mare, regalo perfetto, made in Italy.
+Bad example (do NOT do this): "Scopri il nostro nuovo prodotto innovativo dalle qualità superiori".
+Good example: "Lo abbiamo testato per settimane prima di lanciarlo. Risultato? 9 italiane su 10 lo riordinano. Provalo a casa, soldi indietro se non ti piace."`,
+
+  ES: `Spanish conversational (España) — should sound like a Spanish friend on Instagram / WhatsApp, NOT a corporate ad.
+Tone markers:
+  - 2nd person familiar ("tú"), NEVER "usted" (too formal for D2C).
+  - Casual phrasings: "de verdad", "te lo digo en serio", "te va a flipar", "una pasada", "vale la pena".
+  - Real Spanish punch: "fíjate", "encima", "porque sí".
+  - Emoji modérés (🔥 ✨ 🇪🇸) usés comme dans un post réel.
+Cultural hooks: domingos en familia, vermut, casa de playa, regalo perfecto, hecho a mano.
+Bad example: "Descubre nuestro nuevo producto innovador de alta calidad".
+Good example: "Lo probamos durante semanas antes de sacarlo. Resultado: 9 de cada 10 chicas lo repiten. Pruébalo en casa, devolución gratuita si no te gusta."`,
+
+  // Note: la France (FR) reste sans entrée dédiée — l'AI génère un
+  // français standard ce qui convient pour la plupart des marques D2C.
 };
 
 /**
@@ -135,6 +158,13 @@ const PHOTO_CULTURE: Record<string, string> = {
   US: 'modern American living room, natural daylight',
   GB: 'London apartment with sash window',
   DE: 'Berlin apartment, minimalist',
+  // Europe — décors qui résonnent localement, évitent l'AI generic « modern home »
+  IT: 'sun-lit Italian apartment in Milan or Rome, terracotta tiles, soft Mediterranean light, espresso cup on a wooden table, or rustic Tuscan stone wall context for cottagecore products',
+  ES: 'bright Spanish apartment in Madrid or Barcelona, white walls, warm golden hour light, terraza con plantas, or Mediterranean coastal context (Costa Brava, Valencia)',
+  PT: 'Lisbon apartment with azulejos tile accents, soft Atlantic light, pastéis de nata on a plate',
+  BE: 'Brussels or Antwerp apartment, soft northern European daylight, minimalist styling',
+  NL: 'Amsterdam apartment, large window facing canal, scandi-minimal interior, soft natural light',
+  CH: 'Swiss alpine chalet or Zurich apartment, warm wood, clean lines, mountain daylight',
 };
 
 function isArabCountry(code?: string): boolean {
