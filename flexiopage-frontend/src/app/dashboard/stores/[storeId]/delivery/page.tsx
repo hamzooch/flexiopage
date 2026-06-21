@@ -5,7 +5,7 @@ import { useParams, useRouter } from 'next/navigation';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { CheckCircle2, Circle, Truck, Eye, AlertTriangle } from 'lucide-react';
+import { CheckCircle2, Circle, Truck, Eye, AlertTriangle, Clock, Lock } from 'lucide-react';
 import { storesApi, extractApiError } from '@/lib/api';
 import { StoreSubPageShell, type SaveStatus } from '@/components/dashboard/store-sub-page';
 import type { DeliveryIntegration, StoreType } from '@/components/dashboard/store-editor';
@@ -194,6 +194,22 @@ export default function StoreDeliveryPage() {
           </label>
         </CardContent>
       </Card>
+
+      {/* Autres transporteurs — pas encore intégrés mais affichés pour
+          que le vendeur sache que la couverture s'étend. Cards verrouillées,
+          pas d'inputs branchés. */}
+      <UpcomingCarrierCard
+        name="Codrox"
+        status="soon"
+        regions="Afrique du Nord + Europe"
+        pitch="Coursier multi-pays, dispatch automatique des commandes payées. Intégration en cours de finalisation."
+      />
+      <UpcomingCarrierCard
+        name="ShipBob"
+        status="planned"
+        regions="USA · UK · UE · CA"
+        pitch="3PL avec entrepôts pré-positionnés pour livrer en 2-3 jours sur tes marchés Tier 1. Intégration prévue après les tests pilotes."
+      />
 
       <Card>
         <CardHeader>
@@ -460,5 +476,73 @@ function DeliveryReadinessPreview({ cfg }: { cfg: DeliveryIntegration }) {
         )}
       </div>
     </div>
+  );
+}
+
+/**
+ * Carte « transporteur à venir » — sert à signaler au vendeur quelles
+ * intégrations arrivent sans débloquer aucune action. Le but : poser
+ * la roadmap dans son contexte (il voit qu'il n'est pas bloqué à vie
+ * avec un seul partenaire) sans introduire de faux toggles qui
+ * laisseraient croire qu'on est branché.
+ *
+ * - status='soon'    → bientôt disponible (en finalisation)
+ * - status='planned' → pas encore disponible (roadmap, plus loin)
+ */
+function UpcomingCarrierCard({
+  name,
+  status,
+  regions,
+  pitch,
+}: {
+  name: string;
+  status: 'soon' | 'planned';
+  regions: string;
+  pitch: string;
+}) {
+  const isSoon = status === 'soon';
+  return (
+    <Card className="border-dashed bg-muted/30 opacity-90">
+      <CardHeader>
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <CardTitle className="flex items-center gap-2">
+              {name}
+              <span
+                className={cn(
+                  'inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[10px] font-semibold',
+                  isSoon
+                    ? 'bg-amber-500/10 text-amber-700'
+                    : 'bg-muted text-muted-foreground',
+                )}
+              >
+                {isSoon ? <Clock className="h-3 w-3" /> : <Lock className="h-3 w-3" />}
+                {isSoon ? 'Bientôt' : 'Pas encore disponible'}
+              </span>
+            </CardTitle>
+            <CardDescription className="mt-1">
+              {pitch}
+            </CardDescription>
+          </div>
+          {/* Toggle visuellement présent mais désactivé — montre que la
+              place de l'option est réservée. */}
+          <label className="inline-flex cursor-not-allowed items-center gap-2 opacity-50">
+            <input type="checkbox" disabled className="h-4 w-4 rounded border-input" />
+            <span className="text-sm font-medium">Activé</span>
+          </label>
+        </div>
+      </CardHeader>
+      <CardContent>
+        <div className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
+          <span className="inline-flex items-center gap-1.5 rounded-full bg-background px-2.5 py-1">
+            <Truck className="h-3 w-3" />
+            {regions}
+          </span>
+          <span>
+            On te ping dès que c&apos;est branché — pas besoin de revenir vérifier.
+          </span>
+        </div>
+      </CardContent>
+    </Card>
   );
 }
