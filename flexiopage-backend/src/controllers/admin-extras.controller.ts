@@ -406,6 +406,58 @@ export async function exportCsv(req: AuthRequest, res: Response): Promise<void> 
 }
 
 // ─────────────────────────────────────────────────────────────────────
+// DELIVERY CONFIG INSPECTOR (diag MogaDelivery)
+// ─────────────────────────────────────────────────────────────────────
+
+function maskSecret(s?: string): string | undefined {
+  if (!s) return undefined;
+  if (s.length <= 8) return '****';
+  return `${s.slice(0, 4)}…${s.slice(-4)} (len=${s.length})`;
+}
+
+/**
+ * GET /api/admin/stores/:storeId/delivery-config — renvoie la config MD
+ * (markets + intégration legacy) avec les secrets masqués. Utile pour
+ * diagnostiquer un 401 sans aller en base.
+ */
+export async function getStoreDeliveryConfig(req: AuthRequest, res: Response): Promise<void> {
+  const { storeId } = req.params;
+  const store = await Store.findById(storeId).select('name slug markets integrations.delivery settings.country').lean();
+  if (!store) { res.status(404).json({ error: 'Store not found' }); return; }
+  res.json({
+    store: { _id: store._id, name: store.name, slug: store.slug, country: store.settings?.country },
+    markets: (store.markets || []).map((m) => ({
+      country: m.country,
+      currency: m.currency,
+      isDefault: m.isDefault,
+      enabled: m.enabled,
+      delivery: m.delivery ? {
+        provider: m.delivery.provider,
+        enabled: m.delivery.enabled,
+        storeIdMD: m.delivery.storeIdMD,
+        boutiqueIdMD: m.delivery.boutiqueIdMD,
+        baseUrl: m.delivery.baseUrl,
+        webhookSecret: maskSecret(m.delivery.webhookSecret),
+      } : null,
+    })),
+    integrations: {
+      delivery: store.integrations?.delivery ? {
+        provider: store.integrations.delivery.provider,
+        enabled: store.integrations.delivery.enabled,
+        autoDispatch: store.integrations.delivery.autoDispatch,
+        baseUrl: store.integrations.delivery.baseUrl,
+        webhookSecret: maskSecret(store.integrations.delivery.webhookSecret),
+      } : null,
+    },
+    env: {
+      FLEXIOPAGE_WEBHOOK_SECRET: maskSecret(process.env.FLEXIOPAGE_WEBHOOK_SECRET),
+      BOUTSHOP_WEBHOOK_SECRET: maskSecret(process.env.BOUTSHOP_WEBHOOK_SECRET),
+      MOGADELIVERY_WEBHOOK_URL: process.env.MOGADELIVERY_WEBHOOK_URL,
+    },
+  });
+}
+
+// ─────────────────────────────────────────────────────────────────────
 // HEALTH & MONITORING
 // ─────────────────────────────────────────────────────────────────────
 

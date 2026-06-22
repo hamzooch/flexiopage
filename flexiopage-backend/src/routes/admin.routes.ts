@@ -74,5 +74,6 @@ router.get('/reports', adminExtras.getReports);
 router.get('/exports/:type', adminExtras.exportCsv);
 router.post('/users/bulk', requireAdminWrite, adminExtras.bulkUserAction);
 router.patch('/stores/:storeId/commission', requireSuperAdmin, adminExtras.setStoreCommission);
+router.get('/stores/:storeId/delivery-config', adminExtras.getStoreDeliveryConfig);
 
 export default router;

@@ -60,12 +60,53 @@ class MogaDeliveryProvider implements DeliveryProviderImpl {
   private defaultUrl = 'https://api.admin-mogadelivery.com/api/webhooks/flexiopage';
 
   isConfigured(store: IStore): boolean {
+    // Multi-pays : si au moins un market MD activé avec un secret, c'est ok.
+    const marketReady = (store.markets || []).some(
+      (m) => m.delivery?.provider === 'mogadelivery' && m.delivery?.enabled !== false && m.delivery?.webhookSecret
+    );
+    if (marketReady) return true;
+    // Legacy mono-pays.
     const cfg = store.integrations?.delivery;
     if (!cfg?.enabled) return false;
     return !!(cfg.webhookSecret || process.env.FLEXIOPAGE_WEBHOOK_SECRET || process.env.BOUTSHOP_WEBHOOK_SECRET);
   }
 
-  private getConfig(store: IStore): { secret: string; url: string } {
+  /**
+   * Trouve le market MD à utiliser pour cette commande. On essaye dans l'ordre :
+   *   1. `order.marketCountry` (snapshot figé au checkout)
+   *   2. `shippingAddress.country`
+   *   3. le market `isDefault`
+   *   4. le 1er market MD activé
+   * Renvoie `null` si aucun market n'est défini ou aucun ne porte un secret MD.
+   */
+  private resolveMarket(order: IOrder, store: IStore): NonNullable<IStore['markets']>[number] | null {
+    const markets = (store.markets || []).filter((m) => m.delivery?.provider === 'mogadelivery' && m.delivery?.enabled !== false);
+    if (!markets.length) return null;
+    const wanted = (order.marketCountry || order.shippingAddress?.country || '').toUpperCase();
+    if (wanted) {
+      const hit = markets.find((m) => m.country?.toUpperCase() === wanted);
+      if (hit) return hit;
+    }
+    const def = markets.find((m) => m.isDefault) || markets[0];
+    return def || null;
+  }
+
+  /**
+   * Résout (secret, URL, storeIdMD) pour cette commande. Priorité au market
+   * MD lorsqu'il est posé (modèle multi-pays MD), fallback sur l'intégration
+   * legacy mono-pays + env.
+   */
+  private getConfig(order: IOrder, store: IStore): { secret: string; url: string; storeIdMD: string; source: 'market' | 'legacy' } {
+    const market = this.resolveMarket(order, store);
+    if (market?.delivery?.webhookSecret && market.delivery.storeIdMD) {
+      const url = (market.delivery.baseUrl || process.env.MOGADELIVERY_WEBHOOK_URL || this.defaultUrl).replace(/\/$/, '');
+      return {
+        secret: market.delivery.webhookSecret,
+        url,
+        storeIdMD: market.delivery.storeIdMD,
+        source: 'market',
+      };
+    }
     const cfg = store.integrations?.delivery;
     const secret =
       cfg?.webhookSecret ||
@@ -76,7 +117,9 @@ class MogaDeliveryProvider implements DeliveryProviderImpl {
       throw new Error('FLEXIOPAGE_WEBHOOK_SECRET missing (set env or store.integrations.delivery.webhookSecret)');
     }
     const url = (cfg?.baseUrl || process.env.MOGADELIVERY_WEBHOOK_URL || this.defaultUrl).replace(/\/$/, '');
-    return { secret, url };
+    // Legacy mono-pays : on garde l'ObjectId Mongo comme identifiant côté MD
+    // (compat ascendante — MD V1 inbound continue de matcher dessus).
+    return { secret, url, storeIdMD: order.storeId.toString(), source: 'legacy' };
   }
 
   /**
@@ -85,7 +128,7 @@ class MogaDeliveryProvider implements DeliveryProviderImpl {
    * - `store_id` at root identifies the seller
    * - `line_items[].sku` is what MogaDelivery uses to match its own products
    */
-  private buildBody(order: IOrder, store: IStore): Record<string, unknown> {
+  private buildBody(order: IOrder, store: IStore, storeIdMD: string): Record<string, unknown> {
     const ship = order.shippingAddress || {};
     const country = ship.country || store.settings?.country || '';
     const phone = order.customerPhone || order.paymentPhone || '';
@@ -97,7 +140,9 @@ class MogaDeliveryProvider implements DeliveryProviderImpl {
     return {
       id: order.orderNumber,
       order_id: order.orderNumber,
-      store_id: order.storeId.toString(),
+      // Modèle MD multi-pays : c'est le storeIdMD du marché qui identifie la
+      // Boutique côté MD, pas notre ObjectId Mongo (fallback en legacy).
+      store_id: storeIdMD,
       currency: order.currency,
       total: order.total,
 
@@ -154,8 +199,8 @@ class MogaDeliveryProvider implements DeliveryProviderImpl {
   }
 
   async dispatch({ order, store }: { order: IOrder; store: IStore }): Promise<DispatchResult> {
-    const { secret, url } = this.getConfig(store);
-    const requestBody = this.buildBody(order, store);
+    const { secret, url, storeIdMD, source } = this.getConfig(order, store);
+    const requestBody = this.buildBody(order, store, storeIdMD);
     const rawBody = JSON.stringify(requestBody);
     const signature = crypto.createHmac('sha256', this.hmacKey(secret)).update(rawBody).digest('hex');
     // Garde-trace : on stocke le payload exact qu'on transmet AVANT l'appel.
@@ -172,7 +217,11 @@ class MogaDeliveryProvider implements DeliveryProviderImpl {
     // TEMP DEBUG — remove after MogaDelivery 401 is resolved
     console.log('[mogadelivery dispatch DEBUG]', {
       url,
-      storeId: order.storeId.toString(),
+      source,
+      storeIdMD,
+      marketCountry: order.marketCountry,
+      shippingCountry: order.shippingAddress?.country,
+      mongoStoreId: order.storeId.toString(),
       orderNumber: order.orderNumber,
       secretFirst4: secret.slice(0, 4),
       secretLast4: secret.slice(-4),
@@ -187,7 +236,7 @@ class MogaDeliveryProvider implements DeliveryProviderImpl {
       headers: {
         'Content-Type': 'application/json',
         'X-Flexiopage-Signature': signature,
-        'X-Flexiopage-Store-Id': order.storeId.toString(),
+        'X-Flexiopage-Store-Id': storeIdMD,
       },
       body: rawBody,
     });
@@ -226,17 +275,28 @@ class MogaDeliveryProvider implements DeliveryProviderImpl {
     headers: Record<string, string | undefined>,
     store?: IStore
   ): Promise<WebhookResult> {
-    const secret =
-      store?.integrations?.delivery?.webhookSecret ||
-      process.env.FLEXIOPAGE_WEBHOOK_SECRET ||
-      process.env.BOUTSHOP_WEBHOOK_SECRET;
+    // Multi-pays : on accepte la signature si elle matche le secret de
+    // n'importe quel marché MD activé OU le secret legacy/env. Le bon
+    // secret est celui qui correspond au pays de la commande côté MD,
+    // mais MD n'envoie pas toujours le pays dans l'inbound — on essaye tout.
+    const candidateSecrets: string[] = [];
+    if (store?.markets?.length) {
+      for (const m of store.markets) {
+        if (m.delivery?.provider === 'mogadelivery' && m.delivery?.webhookSecret) {
+          candidateSecrets.push(m.delivery.webhookSecret);
+        }
+      }
+    }
+    if (store?.integrations?.delivery?.webhookSecret) candidateSecrets.push(store.integrations.delivery.webhookSecret);
+    if (process.env.FLEXIOPAGE_WEBHOOK_SECRET) candidateSecrets.push(process.env.FLEXIOPAGE_WEBHOOK_SECRET);
+    if (process.env.BOUTSHOP_WEBHOOK_SECRET) candidateSecrets.push(process.env.BOUTSHOP_WEBHOOK_SECRET);
     const signatureHeader =
       (headers['x-flexiopage-signature'] as string) ||
       (headers['x-boutshop-signature'] as string) ||
       (headers['x-moga-signature'] as string) ||
       (headers['x-signature'] as string) ||
       '';
-    if (secret && signatureHeader) {
+    if (candidateSecrets.length && signatureHeader) {
       const provided = signatureHeader.replace(/^sha256=/i, '');
       const rawForHash = JSON.stringify(payload);
       // Tolérant aux deux conventions HMAC (cf. hmacKey côté dispatch) :
@@ -244,8 +304,10 @@ class MogaDeliveryProvider implements DeliveryProviderImpl {
       // ne matche pas. Symétrique au fix MogaDelivery — accepte les senders
       // legacy le temps qu'ils migrent, sans rejeter les bons.
       const candidates: Array<string | Buffer> = [];
-      if (/^[a-f0-9]{64}$/i.test(secret)) candidates.push(Buffer.from(secret, 'hex'));
-      candidates.push(secret);
+      for (const s of candidateSecrets) {
+        if (/^[a-f0-9]{64}$/i.test(s)) candidates.push(Buffer.from(s, 'hex'));
+        candidates.push(s);
+      }
       const matched = candidates.some((key) => {
         const computed = crypto.createHmac('sha256', key).update(rawForHash).digest('hex');
         return provided.length === computed.length
