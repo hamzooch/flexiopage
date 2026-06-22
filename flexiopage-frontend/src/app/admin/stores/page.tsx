@@ -5,8 +5,9 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Input } from '@/components/ui/input';
 import { adminApi, type AdminStore } from '@/lib/api';
 import { cn, storeAbsoluteUrl } from '@/lib/utils';
-import { Loader2, Cloud, Package, ExternalLink, Search, X } from 'lucide-react';
+import { Loader2, Cloud, Package, ExternalLink, Search, X, Download } from 'lucide-react';
 import Link from 'next/link';
+import { Button } from '@/components/ui/button';
 
 type TypeFilter = 'all' | 'physical' | 'digital';
 type StatusFilter = 'all' | 'live' | 'draft';
@@ -58,8 +59,20 @@ export default function AdminStoresPage() {
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Boutiques ({total})</CardTitle>
-        <CardDescription>Toutes les boutiques de la plateforme, plus récentes en premier.</CardDescription>
+        <div className="flex items-start justify-between gap-2">
+          <div>
+            <CardTitle>Boutiques ({total})</CardTitle>
+            <CardDescription>Toutes les boutiques de la plateforme, plus récentes en premier.</CardDescription>
+          </div>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => adminApi.downloadExport('stores')}
+            className="gap-2"
+          >
+            <Download className="h-3.5 w-3.5" /> CSV
+          </Button>
+        </div>
 
         {/* Filters */}
         <div className="mt-4 flex flex-col gap-2.5">

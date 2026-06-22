@@ -448,6 +448,18 @@ export interface IStore extends Document {
     };
   };
   isPublished: boolean;
+  /**
+   * Override de la politique de commission par défaut. Quand non défini, le
+   * service wallet retombe sur COMMISSION_RATE / COMMISSION_CAP (env).
+   * Le plateforme-admin peut négocier un taux dégressif pour une store sans
+   * toucher au reste.
+   */
+  commission?: {
+    /** Taux décimal (0.025 = 2.5 %). 0 = pas de commission. */
+    rate?: number;
+    /** Plafond absolu, exprimé dans la devise de la commande. */
+    cap?: number;
+  };
   createdAt: Date;
   updatedAt: Date;
 }
@@ -743,6 +755,10 @@ const StoreSchema = new Schema<IStore>(
       },
     },
     isPublished: { type: Boolean, default: false },
+    commission: {
+      rate: { type: Number, min: 0, max: 1 },
+      cap: { type: Number, min: 0 },
+    },
   },
   { timestamps: true }
 );

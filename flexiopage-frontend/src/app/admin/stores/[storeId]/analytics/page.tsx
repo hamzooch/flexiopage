@@ -22,8 +22,12 @@ import {
   Users,
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { adminApi } from '@/lib/api';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { adminApi, extractApiError } from '@/lib/api';
+import { useAuthStore } from '@/stores/auth-store';
 import { formatCurrency, storeAbsoluteUrl } from '@/lib/utils';
+import { Percent, Save, Loader2 } from 'lucide-react';
 import { KpiCard } from '@/components/charts/KpiCard';
 import { RangeSwitcher } from '@/components/charts/RangeSwitcher';
 import { RevenueAreaChart } from '@/components/charts/RevenueAreaChart';
@@ -193,6 +197,15 @@ export default function AdminStoreDrilldownPage() {
         </div>
       </section>
 
+      {/* Commission override (superadmin/owner only) */}
+      <CommissionCard
+        storeId={store._id}
+        storeName={store.name}
+        currency={currency}
+        initial={store.commission}
+        onSaved={(c) => setData((d) => (d ? { ...d, store: { ...d.store, commission: c } } : d))}
+      />
+
       {/* KPI grid */}
       <div className="grid grid-cols-2 gap-2.5 sm:gap-3 lg:grid-cols-4">
         <KpiCard
@@ -327,5 +340,151 @@ function FooterStat({ label, value }: { label: string; value: string }) {
       <div className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground sm:text-[11px]">{label}</div>
       <div className="mt-1 break-words text-lg font-bold sm:text-xl">{value}</div>
     </div>
+  );
+}
+
+/**
+ * Carte d'édition de la commission spécifique à cette store. Seuls superadmin
+ * et owner peuvent y écrire (l'API renverra 403 sinon). On affiche l'état
+ * actuel + un bandeau "défaut" quand aucun override n'est posé.
+ */
+function CommissionCard({
+  storeId,
+  storeName,
+  currency,
+  initial,
+  onSaved,
+}: {
+  storeId: string;
+  storeName: string;
+  currency: string;
+  initial?: { rate?: number; cap?: number };
+  onSaved: (c?: { rate?: number; cap?: number }) => void;
+}) {
+  const me = useAuthStore((s) => s.user);
+  const canEdit = me?.role === 'superadmin' || me?.role === 'owner';
+  const [ratePct, setRatePct] = useState(initial?.rate != null ? (initial.rate * 100).toString() : '');
+  const [cap, setCap] = useState(initial?.cap != null ? initial.cap.toString() : '');
+  const [saving, setSaving] = useState(false);
+  const [feedback, setFeedback] = useState<{ kind: 'success' | 'error'; text: string } | null>(null);
+
+  const hasOverride = initial?.rate != null || initial?.cap != null;
+
+  async function save() {
+    setSaving(true);
+    setFeedback(null);
+    try {
+      const data: { rate?: number | null; cap?: number | null } = {};
+      const rateNum = ratePct.trim() === '' ? null : Number(ratePct) / 100;
+      const capNum = cap.trim() === '' ? null : Number(cap);
+      if (rateNum !== null && (!Number.isFinite(rateNum) || rateNum < 0 || rateNum > 1)) {
+        setFeedback({ kind: 'error', text: 'Taux invalide (0–100 %).' });
+        setSaving(false);
+        return;
+      }
+      if (capNum !== null && (!Number.isFinite(capNum) || capNum < 0)) {
+        setFeedback({ kind: 'error', text: 'Plafond invalide.' });
+        setSaving(false);
+        return;
+      }
+      data.rate = rateNum;
+      data.cap = capNum;
+      const res = await adminApi.setStoreCommission(storeId, data);
+      const c = res.data.store.commission;
+      onSaved(c);
+      setFeedback({ kind: 'success', text: 'Commission mise à jour.' });
+    } catch (err) {
+      setFeedback({ kind: 'error', text: extractApiError(err, 'Échec de la sauvegarde.') });
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function reset() {
+    if (!confirm('Effacer l\'override et revenir à la politique globale ?')) return;
+    setSaving(true);
+    setFeedback(null);
+    try {
+      const res = await adminApi.setStoreCommission(storeId, { rate: null, cap: null });
+      const c = res.data.store.commission;
+      onSaved(c);
+      setRatePct(''); setCap('');
+      setFeedback({ kind: 'success', text: 'Override supprimé.' });
+    } catch (err) {
+      setFeedback({ kind: 'error', text: extractApiError(err, 'Échec de la suppression.') });
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <Card>
+      <CardHeader className="pb-3">
+        <CardTitle className="flex items-center gap-2 text-sm sm:text-base">
+          <Percent className="h-4 w-4 text-rose-600" />
+          Commission {storeName}
+        </CardTitle>
+        <p className="text-[11px] text-muted-foreground sm:text-xs">
+          {hasOverride
+            ? `Override actif · taux ${(initial!.rate ?? 0) * 100}%, plafond ${initial!.cap ?? '∞'} ${currency}`
+            : 'Aucun override — utilise la politique globale (COMMISSION_RATE / COMMISSION_CAP).'}
+        </p>
+      </CardHeader>
+      <CardContent>
+        {!canEdit ? (
+          <p className="rounded-md bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
+            Lecture seule — seul un superadmin/owner peut modifier la commission.
+          </p>
+        ) : (
+          <>
+            <div className="grid gap-3 sm:grid-cols-[1fr,1fr,auto] sm:items-end">
+              <div>
+                <label className="mb-1 block text-[11px] font-semibold text-muted-foreground">Taux (%)</label>
+                <Input
+                  type="number"
+                  step="0.1"
+                  min="0"
+                  max="100"
+                  value={ratePct}
+                  onChange={(e) => setRatePct(e.target.value)}
+                  placeholder="ex. 2.5 (vide = défaut)"
+                />
+              </div>
+              <div>
+                <label className="mb-1 block text-[11px] font-semibold text-muted-foreground">Plafond ({currency})</label>
+                <Input
+                  type="number"
+                  step="1"
+                  min="0"
+                  value={cap}
+                  onChange={(e) => setCap(e.target.value)}
+                  placeholder="ex. 2000 (vide = défaut)"
+                />
+              </div>
+              <div className="flex gap-2 sm:justify-end">
+                <Button onClick={save} disabled={saving} className="gap-2">
+                  {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
+                  Enregistrer
+                </Button>
+                {hasOverride && (
+                  <Button variant="outline" onClick={reset} disabled={saving}>
+                    Effacer
+                  </Button>
+                )}
+              </div>
+            </div>
+            {feedback && (
+              <p
+                className={`mt-2 rounded-md px-3 py-1.5 text-xs ${
+                  feedback.kind === 'success' ? 'bg-emerald-500/10 text-emerald-700' : 'bg-rose-500/10 text-rose-700'
+                }`}
+              >
+                {feedback.text}
+              </p>
+            )}
+          </>
+        )}
+      </CardContent>
+    </Card>
   );
 }

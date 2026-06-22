@@ -9,7 +9,7 @@ import { adminApi, type AdminWallet, type WalletBucket } from '@/lib/api';
 import { useAuthStore } from '@/stores/auth-store';
 import { cn } from '@/lib/utils';
 import {
-  Loader2, Wallet as WalletIcon, Sparkles, X, AlertTriangle, Check, ArrowDownToLine, Plus, Minus, Search,
+  Loader2, Wallet as WalletIcon, Sparkles, X, AlertTriangle, Check, ArrowDownToLine, Plus, Minus, Search, Download,
 } from 'lucide-react';
 
 function fmt(amount: number, currency: string): string {
@@ -74,8 +74,20 @@ export default function AdminWalletsPage() {
     <>
       <Card>
         <CardHeader>
-          <CardTitle>Wallets vendeurs ({wallets.length})</CardTitle>
-          <CardDescription>Solde principal + solde IA de chaque vendeur. Clique sur un wallet pour ajuster.</CardDescription>
+          <div className="flex items-start justify-between gap-2">
+            <div>
+              <CardTitle>Wallets vendeurs ({wallets.length})</CardTitle>
+              <CardDescription>Solde principal + solde IA de chaque vendeur. Clique sur un wallet pour ajuster.</CardDescription>
+            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => adminApi.downloadExport('wallets')}
+              className="gap-2"
+            >
+              <Download className="h-3.5 w-3.5" /> CSV
+            </Button>
+          </div>
 
           {/* Filters */}
           <div className="mt-4 flex flex-col gap-2.5">

@@ -521,6 +521,7 @@ export async function applyDeliveryWebhook(args: {
         orderNumber: order.orderNumber,
         orderTotal: order.total,
         orderCurrency: order.currency,
+        storeId: store._id,
       });
       if (!result.alreadyApplied && result.amount > 0) {
         console.log(`[wallet] commission ${result.amount} ${order.currency} charged for ${order.orderNumber}, balance now ${result.balanceAfter}`);

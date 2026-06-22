@@ -5,10 +5,11 @@ import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { adminApi, type AdminComplaint, type ComplaintStatus, type ComplaintPriority } from '@/lib/api';
+import { adminApi, type AdminComplaint, type ComplaintStatus, type ComplaintPriority, type StaffRole } from '@/lib/api';
 import {
-  ArrowLeft, Loader2, Send, Mail, Clock, MessageSquare, Crown, ShieldCheck, User as UserIcon,
+  ArrowLeft, Loader2, Send, Mail, Clock, MessageSquare, Crown, ShieldCheck, User as UserIcon, UserPlus,
 } from 'lucide-react';
+import { useAuthStore } from '@/stores/auth-store';
 
 const STATUS_LABELS: Record<ComplaintStatus, string> = {
   open: 'Ouverte',
@@ -23,13 +24,21 @@ const PRIORITY_LABELS: Record<ComplaintPriority, string> = {
   urgent: 'Urgente',
 };
 
+type StaffMember = { _id: string; email: string; name: string; role: StaffRole };
+
 export default function AdminComplaintDetailPage() {
   const params = useParams();
   const id = params.id as string;
+  const me = useAuthStore((s) => s.user);
   const [data, setData] = useState<AdminComplaint | null>(null);
   const [loading, setLoading] = useState(true);
   const [reply, setReply] = useState('');
   const [sending, setSending] = useState(false);
+  const [staff, setStaff] = useState<StaffMember[]>([]);
+
+  useEffect(() => {
+    adminApi.staff().then((res) => setStaff(res.data.staff)).catch(() => {});
+  }, []);
 
   async function load() {
     setLoading(true);
@@ -48,6 +57,10 @@ export default function AdminComplaintDetailPage() {
   }
   async function changePriority(priority: ComplaintPriority) {
     await adminApi.patchComplaint(id, { priority });
+    await load();
+  }
+  async function changeAssignee(userId: string | null) {
+    await adminApi.patchComplaint(id, { assignedTo: userId });
     await load();
   }
   async function sendReply(e: React.FormEvent) {
@@ -90,7 +103,7 @@ export default function AdminComplaintDetailPage() {
             </span>
           </div>
         </CardHeader>
-        <CardContent className="grid gap-3 sm:grid-cols-2">
+        <CardContent className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
           <div>
             <div className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Statut</div>
             <div className="mt-1.5 flex flex-wrap gap-1.5">
@@ -123,6 +136,36 @@ export default function AdminComplaintDetailPage() {
                   {PRIORITY_LABELS[p]}
                 </button>
               ))}
+            </div>
+          </div>
+          <div>
+            <div className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Assigné à</div>
+            <div className="mt-1.5 flex items-center gap-2">
+              <select
+                value={data.assignedTo?._id || ''}
+                onChange={(e) => changeAssignee(e.target.value || null)}
+                className="flex h-9 flex-1 min-w-0 rounded-md border border-input bg-background px-2 text-sm"
+              >
+                <option value="">— Personne —</option>
+                {staff.map((s) => (
+                  <option key={s._id} value={s._id}>
+                    {s.name} {s._id === me?._id ? '(moi)' : ''} · {s.role}
+                  </option>
+                ))}
+              </select>
+              {me?._id && data.assignedTo?._id !== me._id && (
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  onClick={() => changeAssignee(me._id)}
+                  className="h-9 shrink-0 gap-1.5 text-xs"
+                  title="Me l'assigner"
+                >
+                  <UserPlus className="h-3.5 w-3.5" />
+                  Prendre
+                </Button>
+              )}
             </div>
           </div>
         </CardContent>

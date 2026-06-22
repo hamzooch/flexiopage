@@ -628,7 +628,87 @@ export const adminApi = {
   /** Renvoie le mail de vérification au nom d'un user cible (support manuel). */
   adminResendVerification: (userId: string) =>
     api.post<{ ok: true }>(`/admin/users/${userId}/resend-verification`),
+
+  // ── Audit logs ──
+  audit: (params?: { limit?: number; cursor?: string; action?: string; actorId?: string; targetId?: string }) =>
+    api.get<{ items: AdminAuditLog[]; nextCursor: string | null }>('/admin/audit', { params }),
+
+  // ── Staff (pour l'assignation des tickets) ──
+  staff: () =>
+    api.get<{ staff: Array<{ _id: string; email: string; name: string; role: StaffRole }> }>('/admin/staff'),
+
+  // ── Bulk users ──
+  bulkUsers: (data: { userIds: string[]; action: 'suspend' | 'unsuspend' | 'verify_email'; reason?: string }) =>
+    api.post<{ ok: boolean; updated: number; skipped: Array<{ email: string; reason: string }> }>('/admin/users/bulk', data),
+
+  // ── Commission override ──
+  setStoreCommission: (storeId: string, data: { rate?: number | null; cap?: number | null }) =>
+    api.patch<{ store: { _id: string; name: string; slug: string; commission?: { rate?: number; cap?: number } } }>(
+      `/admin/stores/${storeId}/commission`,
+      data,
+    ),
+
+  // ── Reports ──
+  reports: (params?: { months?: number }) =>
+    api.get<{ months: AdminReportRow[] }>('/admin/reports', { params }),
+
+  // ── Health ──
+  health: () => api.get<AdminHealth>('/admin/health'),
+
+  // ── Exports (CSV download) ──
+  /** Téléchargement CSV avec auth — déclenche la sauvegarde du fichier dans le navigateur. */
+  downloadExport: async (type: 'users' | 'orders' | 'wallets' | 'complaints' | 'stores'): Promise<void> => {
+    const res = await api.get<Blob>(`/admin/exports/${type}`, { responseType: 'blob' });
+    const url = URL.createObjectURL(res.data);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${type}-${new Date().toISOString().slice(0, 10)}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  },
 };
+
+// ── Admin extras types ──
+export interface AdminAuditLog {
+  _id: string;
+  action: string;
+  actorEmail: string;
+  actorRole: string;
+  actorId: string;
+  targetId?: string;
+  targetType?: 'user' | 'store' | 'wallet' | 'complaint' | 'settings';
+  summary: string;
+  metadata?: Record<string, unknown>;
+  ip?: string;
+  createdAt: string;
+}
+
+export interface AdminReportRow {
+  month: string;
+  signups: number;
+  newStores: number;
+  orders: number;
+  gmvByCurrency: Record<string, number>;
+  commissionByCurrency: Record<string, number>;
+}
+
+export interface AdminHealth {
+  timestamp: string;
+  db: { ok: boolean; latencyMs: number; readyState: number };
+  integrations: Record<string, boolean>;
+  runtime: {
+    uptimeSeconds: number;
+    nodeVersion: string;
+    platform: string;
+    memoryMB: { rss: number; heapUsed: number; heapTotal: number };
+    loadAvg: number[];
+    cpus: number;
+  };
+  alerts: { failedPayments24h: number; urgentComplaints: number; openTickets: number };
+  counters: { users: number; stores: number; orders: number; newOrders24h: number; products: number };
+}
 
 // Stores (and nested resources)
 export const storesApi = {

@@ -6,7 +6,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { adminApi, type AdminComplaint, type ComplaintStatus } from '@/lib/api';
-import { Search, Loader2, MessageSquare, ChevronRight, AlertCircle, Clock, Check, X as XIcon } from 'lucide-react';
+import { Search, Loader2, MessageSquare, ChevronRight, AlertCircle, Clock, Check, X as XIcon, Download, User as UserIcon } from 'lucide-react';
+import { useAuthStore } from '@/stores/auth-store';
 
 const STATUS_LABELS: Record<ComplaintStatus, string> = {
   open: 'Ouverte',
@@ -16,11 +17,13 @@ const STATUS_LABELS: Record<ComplaintStatus, string> = {
 };
 
 export default function AdminComplaintsPage() {
+  const me = useAuthStore((s) => s.user);
   const [complaints, setComplaints] = useState<AdminComplaint[]>([]);
   const [counts, setCounts] = useState<Record<string, number>>({});
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<'all' | ComplaintStatus>('all');
   const [search, setSearch] = useState('');
+  const [showMine, setShowMine] = useState(false);
 
   async function load() {
     setLoading(true);
@@ -51,18 +54,40 @@ export default function AdminComplaintsPage() {
                 : 'Aucun ticket à traiter pour l\'instant.'}
             </CardDescription>
           </div>
-          <form onSubmit={(e) => { e.preventDefault(); load(); }} className="flex gap-2">
-            <div className="relative">
-              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-              <Input
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                placeholder="Rechercher un sujet…"
-                className="w-48 pl-10 sm:w-64"
-              />
-            </div>
-            <Button type="submit" variant="outline" size="sm">Filtrer</Button>
-          </form>
+          <div className="flex items-center gap-2">
+            <Button
+              type="button"
+              variant={showMine ? 'default' : 'outline'}
+              size="sm"
+              onClick={() => setShowMine((v) => !v)}
+              className="gap-1.5"
+              title="Afficher uniquement les tickets qui me sont assignés"
+            >
+              <UserIcon className="h-3.5 w-3.5" />
+              Ma queue
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => adminApi.downloadExport('complaints')}
+              className="gap-1.5"
+            >
+              <Download className="h-3.5 w-3.5" /> CSV
+            </Button>
+            <form onSubmit={(e) => { e.preventDefault(); load(); }} className="flex gap-2">
+              <div className="relative">
+                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  placeholder="Rechercher un sujet…"
+                  className="w-48 pl-10 sm:w-64"
+                />
+              </div>
+              <Button type="submit" variant="outline" size="sm">Filtrer</Button>
+            </form>
+          </div>
         </div>
 
         {/* Status tabs */}
@@ -92,13 +117,20 @@ export default function AdminComplaintsPage() {
       <CardContent>
         {loading ? (
           <div className="grid place-items-center py-16"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>
-        ) : complaints.length === 0 ? (
-          <p className="rounded-lg border border-dashed border-border bg-muted/30 p-6 text-center text-sm text-muted-foreground">
-            Aucune réclamation pour ce filtre.
-          </p>
-        ) : (
+        ) : (() => {
+          const visible = showMine && me?._id
+            ? complaints.filter((c) => c.assignedTo?._id === me._id)
+            : complaints;
+          if (visible.length === 0) {
+            return (
+              <p className="rounded-lg border border-dashed border-border bg-muted/30 p-6 text-center text-sm text-muted-foreground">
+                {showMine ? 'Aucun ticket assigné à toi pour ce filtre.' : 'Aucune réclamation pour ce filtre.'}
+              </p>
+            );
+          }
+          return (
           <ul className="divide-y divide-border">
-            {complaints.map((c) => (
+            {visible.map((c) => (
               <li key={c._id}>
                 <Link
                   href={`/admin/complaints/${c._id}`}
@@ -128,7 +160,8 @@ export default function AdminComplaintsPage() {
               </li>
             ))}
           </ul>
-        )}
+          );
+        })()}
       </CardContent>
     </Card>
   );

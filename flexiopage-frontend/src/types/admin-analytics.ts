@@ -78,6 +78,8 @@ export interface AdminStoreDrilldown {
     createdAt: string;
     owner?: { _id: string; email: string; name?: string } | string;
     settings?: { currency?: string; country?: string };
+    /** Override de la commission appliqué à cette boutique (sinon politique globale). */
+    commission?: { rate?: number; cap?: number };
   };
   analytics: StoreAnalyticsRich;
 }

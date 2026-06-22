@@ -6,6 +6,7 @@
 import { Response } from 'express';
 import { AuthRequest } from '../middleware/auth.middleware';
 import { Complaint, type ComplaintCategory, type ComplaintPriority, type ComplaintStatus } from '../models/Complaint.model';
+import { logAudit } from '../services/audit-log.service';
 
 const VALID_STATUS: ComplaintStatus[] = ['open', 'in_progress', 'resolved', 'closed'];
 const VALID_CATEGORY: ComplaintCategory[] = ['order', 'payment', 'wallet', 'account', 'delivery', 'other'];
@@ -163,6 +164,18 @@ export async function patchComplaintAdmin(req: AuthRequest, res: Response): Prom
     .populate('assignedTo', 'email name')
     .lean();
   if (!c) { res.status(404).json({ error: 'Complaint not found' }); return; }
+  const auditAction = body.assignedTo !== undefined ? 'complaint.assign' : 'complaint.update';
+  await logAudit({
+    action: auditAction,
+    req,
+    targetId: String(c._id),
+    targetType: 'complaint',
+    summary:
+      body.assignedTo !== undefined
+        ? `Assignation réclamation "${c.subject}" → ${(c.assignedTo as unknown as { email?: string })?.email || 'aucun'}`
+        : `Réclamation "${c.subject}" · ${body.status || ''}${body.priority ? ` (priorité ${body.priority})` : ''}`.trim(),
+    metadata: { changes: updates },
+  });
   res.json({ complaint: c });
 }
 

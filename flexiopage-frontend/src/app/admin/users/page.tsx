@@ -6,11 +6,11 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
-import { adminApi, type AdminUser, type StaffRole } from '@/lib/api';
+import { adminApi, extractApiError, type AdminUser, type StaffRole } from '@/lib/api';
 import { useAuthStore } from '@/stores/auth-store';
 import {
   Search, Loader2, Crown, Mail, Store as StoreIcon, BadgeCheck, Ban, Clock, ChevronRight,
-  Plus, X, ShieldCheck, ShieldAlert, Eye, AlertCircle, CheckCircle2,
+  Plus, X, ShieldCheck, ShieldAlert, Eye, AlertCircle, CheckCircle2, Download, Power, BadgeCheck as BadgeCheckIcon,
 } from 'lucide-react';
 import { Pagination } from '@/components/ui/pagination';
 
@@ -22,10 +22,71 @@ export default function AdminUsersPage() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [showCreate, setShowCreate] = useState(false);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [bulkBusy, setBulkBusy] = useState(false);
+  const [bulkFeedback, setBulkFeedback] = useState<{ kind: 'success' | 'error'; text: string } | null>(null);
+  const [exporting, setExporting] = useState(false);
 
   const currentUser = useAuthStore((s) => s.user);
   const myRole = (currentUser?.role || 'user') as StaffRole;
   const canCreate = myRole === 'owner' || myRole === 'superadmin';
+  const canWrite = ['owner', 'superadmin', 'admin'].includes(myRole);
+
+  const toggleSelected = (id: string) =>
+    setSelected((s) => {
+      const next = new Set(s);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+
+  const selectAllVisible = () =>
+    setSelected((s) => {
+      const next = new Set(s);
+      const allSelected = users.every((u) => next.has(u._id));
+      if (allSelected) users.forEach((u) => next.delete(u._id));
+      else users.forEach((u) => next.add(u._id));
+      return next;
+    });
+
+  async function runBulk(action: 'suspend' | 'unsuspend' | 'verify_email') {
+    if (!selected.size) return;
+    let reason = '';
+    if (action === 'suspend') {
+      reason = window.prompt('Raison de la suspension (optionnel) :') || '';
+    } else if (!window.confirm(`Confirmer "${action}" sur ${selected.size} compte(s) ?`)) {
+      return;
+    }
+    setBulkBusy(true);
+    setBulkFeedback(null);
+    try {
+      const res = await adminApi.bulkUsers({
+        userIds: Array.from(selected),
+        action,
+        reason: reason.trim() || undefined,
+      });
+      setBulkFeedback({
+        kind: 'success',
+        text:
+          `${res.data.updated} compte(s) mis à jour` +
+          (res.data.skipped.length ? ` · ${res.data.skipped.length} ignoré(s)` : ''),
+      });
+      setSelected(new Set());
+      await load();
+    } catch (err) {
+      setBulkFeedback({ kind: 'error', text: extractApiError(err, 'Échec du bulk.') });
+    } finally {
+      setBulkBusy(false);
+    }
+  }
+
+  async function downloadCsv() {
+    setExporting(true);
+    try {
+      await adminApi.downloadExport('users');
+    } finally {
+      setExporting(false);
+    }
+  }
 
   async function load() {
     setLoading(true);
@@ -52,13 +113,19 @@ export default function AdminUsersPage() {
             <CardTitle className="text-base sm:text-lg">Utilisateurs ({total})</CardTitle>
             <CardDescription className="text-xs sm:text-sm">Clique sur une ligne pour voir le détail.</CardDescription>
           </div>
-          {canCreate && (
-            <Button onClick={() => setShowCreate((v) => !v)} className="gap-2 px-3 sm:px-4">
-              {showCreate ? <X className="h-4 w-4" /> : <Plus className="h-4 w-4" />}
-              <span className="hidden sm:inline">{showCreate ? 'Annuler' : 'Créer un compte'}</span>
-              <span className="sm:hidden">{showCreate ? 'Annuler' : 'Créer'}</span>
+          <div className="flex flex-wrap items-center gap-2">
+            <Button onClick={downloadCsv} disabled={exporting} variant="outline" size="sm" className="gap-2">
+              {exporting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />}
+              CSV
             </Button>
-          )}
+            {canCreate && (
+              <Button onClick={() => setShowCreate((v) => !v)} className="gap-2 px-3 sm:px-4">
+                {showCreate ? <X className="h-4 w-4" /> : <Plus className="h-4 w-4" />}
+                <span className="hidden sm:inline">{showCreate ? 'Annuler' : 'Créer un compte'}</span>
+                <span className="sm:hidden">{showCreate ? 'Annuler' : 'Créer'}</span>
+              </Button>
+            )}
+          </div>
         </div>
       </CardHeader>
       <CardContent className="px-3 sm:px-6">
@@ -83,6 +150,36 @@ export default function AdminUsersPage() {
           <Button type="submit" variant="outline">Filtrer</Button>
         </form>
 
+        {canWrite && selected.size > 0 && (
+          <div className="mb-4 flex flex-wrap items-center gap-2 rounded-lg border border-rose-500/30 bg-rose-500/5 px-3 py-2 text-xs">
+            <span className="font-semibold">{selected.size} sélectionné(s)</span>
+            <span className="text-muted-foreground">·</span>
+            <Button size="sm" variant="outline" onClick={() => runBulk('verify_email')} disabled={bulkBusy} className="h-7 gap-1.5 text-xs">
+              <BadgeCheckIcon className="h-3 w-3" /> Vérifier email
+            </Button>
+            <Button size="sm" variant="outline" onClick={() => runBulk('suspend')} disabled={bulkBusy} className="h-7 gap-1.5 text-xs">
+              <Ban className="h-3 w-3" /> Suspendre
+            </Button>
+            <Button size="sm" variant="outline" onClick={() => runBulk('unsuspend')} disabled={bulkBusy} className="h-7 gap-1.5 text-xs">
+              <Power className="h-3 w-3" /> Réactiver
+            </Button>
+            <Button size="sm" variant="ghost" onClick={() => setSelected(new Set())} disabled={bulkBusy} className="h-7 text-xs">
+              Annuler
+            </Button>
+            {bulkBusy && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+          </div>
+        )}
+        {bulkFeedback && (
+          <div
+            className={`mb-4 flex items-center gap-2 rounded-md px-3 py-2 text-xs ${
+              bulkFeedback.kind === 'success' ? 'bg-emerald-500/10 text-emerald-700' : 'bg-rose-500/10 text-rose-700'
+            }`}
+          >
+            {bulkFeedback.kind === 'success' ? <CheckCircle2 className="h-3.5 w-3.5" /> : <AlertCircle className="h-3.5 w-3.5" />}
+            {bulkFeedback.text}
+          </div>
+        )}
+
         {loading ? (
           <div className="grid place-items-center py-16"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>
         ) : users.length === 0 ? (
@@ -91,15 +188,38 @@ export default function AdminUsersPage() {
           </p>
         ) : (
           <>
+          {canWrite && (
+            <label className="mb-2 flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-[11px] text-muted-foreground hover:bg-muted/40">
+              <input
+                type="checkbox"
+                checked={users.length > 0 && users.every((u) => selected.has(u._id))}
+                onChange={selectAllVisible}
+                className="h-3.5 w-3.5 rounded border-border accent-rose-600"
+              />
+              Tout sélectionner sur cette page
+            </label>
+          )}
           <ul className="divide-y divide-border">
             {users.map((u) => {
               const initials = (u.name || u.email).split(/[\s@]/).map((s) => s[0]).filter(Boolean).slice(0, 2).join('').toUpperCase();
               const isStaff = u.role !== 'user';
+              const isSelected = selected.has(u._id);
               return (
-                <li key={u._id}>
+                <li key={u._id} className={isSelected ? 'bg-rose-500/5' : ''}>
+                  <div className="flex items-center gap-1.5 sm:gap-2">
+                  {canWrite && (
+                    <input
+                      type="checkbox"
+                      checked={isSelected}
+                      onChange={() => toggleSelected(u._id)}
+                      onClick={(e) => e.stopPropagation()}
+                      className="ml-2.5 h-4 w-4 shrink-0 rounded border-border accent-rose-600"
+                      aria-label={`Sélectionner ${u.email}`}
+                    />
+                  )}
                   <Link
                     href={`/admin/users/${u._id}`}
-                    className="group flex items-center gap-2.5 rounded-lg p-2.5 hover:bg-muted/30 sm:gap-4 sm:p-3"
+                    className="group flex flex-1 items-center gap-2.5 rounded-lg p-2.5 hover:bg-muted/30 sm:gap-4 sm:p-3"
                   >
                     <div className={`grid h-9 w-9 shrink-0 place-items-center rounded-full text-xs font-semibold text-white shadow-md sm:h-10 sm:w-10 ${
                       u.suspended ? 'bg-rose-500/40 grayscale' :
@@ -133,6 +253,7 @@ export default function AdminUsersPage() {
                     </div>
                     <ChevronRight className="hidden h-4 w-4 shrink-0 text-muted-foreground transition-transform group-hover:translate-x-0.5 sm:block" />
                   </Link>
+                  </div>
                 </li>
               );
             })}

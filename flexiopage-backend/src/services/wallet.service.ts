@@ -26,10 +26,16 @@ const COMMISSION_CAP = Number(process.env.COMMISSION_CAP || 1500);
  */
 export type AI_COSTS = AiKind;
 
-export function commissionFor(orderTotal: number): number {
+export function commissionFor(orderTotal: number, override?: { rate?: number; cap?: number }): number {
   if (!orderTotal || orderTotal <= 0) return 0;
-  const raw = Math.round(orderTotal * COMMISSION_RATE);
-  return Math.min(raw, COMMISSION_CAP);
+  const rate = typeof override?.rate === 'number' && Number.isFinite(override.rate) && override.rate >= 0
+    ? override.rate
+    : COMMISSION_RATE;
+  const cap = typeof override?.cap === 'number' && Number.isFinite(override.cap) && override.cap >= 0
+    ? override.cap
+    : COMMISSION_CAP;
+  const raw = Math.round(orderTotal * rate);
+  return Math.min(raw, cap);
 }
 
 /** Token cost for one AI generation kind (lu depuis Settings, fallback défauts). */
@@ -266,6 +272,7 @@ export async function chargeCommissionForOrder(args: {
   orderNumber: string;
   orderTotal: number;
   orderCurrency: string;
+  storeId?: string | mongoose.Types.ObjectId;
 }): Promise<{ amount: number; alreadyApplied: boolean; balanceAfter: number; skippedReason?: string }> {
   const wallet = await getOrCreateWallet(args.userId, args.orderCurrency);
 
@@ -276,17 +283,30 @@ export async function chargeCommissionForOrder(args: {
     return { amount: 0, alreadyApplied: false, balanceAfter: wallet.balance, skippedReason: reason };
   }
 
-  const amount = commissionFor(args.orderTotal);
+  // Charge per-store override quand présent.
+  let override: { rate?: number; cap?: number } | undefined;
+  if (args.storeId) {
+    try {
+      const { Store } = await import('../models/Store.model');
+      const s = await Store.findById(args.storeId).select('commission').lean();
+      if (s?.commission) override = s.commission;
+    } catch {
+      /* fall back to default policy */
+    }
+  }
+
+  const amount = commissionFor(args.orderTotal, override);
   if (amount <= 0) {
     return { amount: 0, alreadyApplied: false, balanceAfter: wallet.balance };
   }
+  const effectiveRate = (override?.rate ?? COMMISSION_RATE) * 100;
   const { transaction, alreadyApplied } = await debit({
     userId: args.userId,
     amount,
     kind: 'commission',
     orderId: args.orderId,
     orderNumber: args.orderNumber,
-    note: `Commission ${(COMMISSION_RATE * 100).toFixed(0)}% sur commande livrée`,
+    note: `Commission ${effectiveRate.toFixed(1)}% sur commande livrée`,
   });
   return { amount, alreadyApplied, balanceAfter: transaction.balanceAfter };
 }

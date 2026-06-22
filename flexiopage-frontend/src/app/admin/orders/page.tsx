@@ -19,7 +19,9 @@ import {
   XCircle,
   RotateCcw,
   TrendingUp,
+  Download,
 } from 'lucide-react';
+import { Button } from '@/components/ui/button';
 
 function fmt(amount: number, currency: string): string {
   try {
@@ -102,10 +104,22 @@ export default function AdminOrdersStatsPage() {
     <div className="space-y-6">
       <Card>
         <CardHeader>
-          <CardTitle className="text-base sm:text-lg">Statistiques des commandes ({total})</CardTitle>
-          <CardDescription className="text-xs sm:text-sm">
-            Vue d&apos;ensemble plateforme — pour le détail commande par commande, consulte le dashboard du vendeur.
-          </CardDescription>
+          <div className="flex items-start justify-between gap-2">
+            <div>
+              <CardTitle className="text-base sm:text-lg">Statistiques des commandes ({total})</CardTitle>
+              <CardDescription className="text-xs sm:text-sm">
+                Vue d&apos;ensemble plateforme — pour le détail commande par commande, consulte le dashboard du vendeur.
+              </CardDescription>
+            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => adminApi.downloadExport('orders')}
+              className="gap-2"
+            >
+              <Download className="h-3.5 w-3.5" /> CSV
+            </Button>
+          </div>
         </CardHeader>
         <CardContent>
           {loading ? (

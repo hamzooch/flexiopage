@@ -22,7 +22,9 @@ import { Wallet } from '../models/Wallet.model';
 import { Complaint } from '../models/Complaint.model';
 import { credit, debit, usdToTokens, usdToTokensRate } from '../services/wallet.service';
 import { listActivities } from '../services/activity-log.service';
+import { logAudit, listAudit } from '../services/audit-log.service';
 import type { ActivityType } from '../models/ActivityLog.model';
+import type { AuditAction } from '../models/AuditLog.model';
 import {
   Settings,
   getSettings,
@@ -467,6 +469,7 @@ export async function getStoreDrilldown(req: AuthRequest, res: Response): Promis
       createdAt: store.createdAt,
       owner: store.ownerId,
       settings: { currency: store.settings?.currency, country: store.settings?.country },
+      commission: store.commission,
     },
     analytics,
   });
@@ -588,6 +591,14 @@ export async function adjustWallet(req: AuthRequest, res: Response): Promise<voi
       kind: 'adjustment',
       note: `[admin] ${reason.trim()}`,
     });
+    await logAudit({
+      action: 'wallet.adjust',
+      req,
+      targetId: userId,
+      targetType: 'wallet',
+      summary: `Crédit ${value} (${target}) · ${reason.trim()}`,
+      metadata: { amount: value, bucket: target, reason: reason.trim() },
+    });
     res.json({
       ok: true,
       bucket: target,
@@ -602,6 +613,14 @@ export async function adjustWallet(req: AuthRequest, res: Response): Promise<voi
       bucket: target,
       kind: 'adjustment',
       note: `[admin] ${reason.trim()}`,
+    });
+    await logAudit({
+      action: 'wallet.adjust',
+      req,
+      targetId: userId,
+      targetType: 'wallet',
+      summary: `Débit ${Math.abs(value)} (${target}) · ${reason.trim()}`,
+      metadata: { amount: value, bucket: target, reason: reason.trim() },
     });
     res.json({
       ok: true,
@@ -634,6 +653,7 @@ export async function updateUserRole(req: AuthRequest, res: Response): Promise<v
     res.status(403).json({ error: 'Only an owner can grant the owner role' });
     return;
   }
+  const before = await User.findById(userId).select('role').lean();
   const u = await User.findByIdAndUpdate(userId, { $set: { role } }, { new: true })
     .select('email name role')
     .lean();
@@ -641,6 +661,14 @@ export async function updateUserRole(req: AuthRequest, res: Response): Promise<v
     res.status(404).json({ error: 'User not found' });
     return;
   }
+  await logAudit({
+    action: 'user.role_change',
+    req,
+    targetId: userId,
+    targetType: 'user',
+    summary: `${u.email} : ${before?.role || '?'} → ${role}`,
+    metadata: { before: before?.role, after: role },
+  });
   res.json({ user: u });
 }
 
@@ -682,6 +710,18 @@ export async function creditWallet(req: AuthRequest, res: Response): Promise<voi
         ? `[admin] Recharge IA · ${value} USD → ${creditAmount} tokens`
         : '[admin] Recharge principal'),
   });
+  if (!result.alreadyApplied) {
+    await logAudit({
+      action: 'wallet.credit',
+      req,
+      targetId: userId,
+      targetType: 'wallet',
+      summary: bucket === 'ai'
+        ? `Top-up IA ${value} USD → ${creditAmount} tokens`
+        : `Top-up principal ${creditAmount} USD`,
+      metadata: { amount: value, bucket, credited: creditAmount, paymentReference },
+    });
+  }
   res.json({
     ok: true,
     bucket,
@@ -792,6 +832,26 @@ export async function patchUser(req: AuthRequest, res: Response): Promise<void> 
     res.status(404).json({ error: 'User not found' });
     return;
   }
+  // Pick the most descriptive action available for audit clarity.
+  let action: AuditAction = 'user.update';
+  let summary = `Modif ${u.email}`;
+  if (typeof body.suspended === 'boolean') {
+    action = body.suspended ? 'user.suspend' : 'user.unsuspend';
+    summary = body.suspended
+      ? `Suspension ${u.email}${body.suspendedReason ? ` · ${body.suspendedReason}` : ''}`
+      : `Réactivation ${u.email}`;
+  } else if (body.role && body.role !== undefined) {
+    action = 'user.role_change';
+    summary = `${u.email} → rôle ${body.role}`;
+  }
+  await logAudit({
+    action,
+    req,
+    targetId: userId,
+    targetType: 'user',
+    summary,
+    metadata: { changes: updates },
+  });
   res.json({ user: u });
 }
 
@@ -823,6 +883,13 @@ export async function resetUserPassword(req: AuthRequest, res: Response): Promis
     res.status(404).json({ error: 'User not found' });
     return;
   }
+  await logAudit({
+    action: 'user.reset_password',
+    req,
+    targetId: userId,
+    targetType: 'user',
+    summary: `Reset password ${u.email}`,
+  });
   res.json({
     ok: true,
     email: u.email,
@@ -851,6 +918,14 @@ export async function deleteUser(req: AuthRequest, res: Response): Promise<void>
     Wallet.deleteOne({ userId }),
     User.deleteOne({ _id: userId }),
   ]);
+  await logAudit({
+    action: 'user.delete',
+    req,
+    targetId: userId,
+    targetType: 'user',
+    summary: `Suppression compte ${user.email} (+ ${stores.length} stores, orders, produits, wallet)`,
+    metadata: { storesDeleted: stores.length },
+  });
   res.json({ ok: true, email: user.email });
 }
 
@@ -904,6 +979,14 @@ export async function createUser(req: AuthRequest, res: Response): Promise<void>
     emailVerified: true,
   });
 
+  await logAudit({
+    action: 'user.create',
+    req,
+    targetId: String(user._id),
+    targetType: 'user',
+    summary: `Création ${user.email} (${user.role})`,
+    metadata: { email: user.email, role: user.role },
+  });
   res.status(201).json({
     user: {
       _id: user._id,
@@ -981,6 +1064,13 @@ export async function updateAiPricing(req: AuthRequest, res: Response): Promise<
   await Settings.updateOne({ key: 'global' }, { $set: update }, { upsert: true });
   invalidateSettingsCache();
   const fresh = await getSettings(true);
+  await logAudit({
+    action: 'settings.ai_pricing',
+    req,
+    targetType: 'settings',
+    summary: 'Tarifs AI mis à jour',
+    metadata: { update },
+  });
   res.json({ aiPricing: fresh.aiPricing, updatedAt: fresh.updatedAt });
 }
 
@@ -1012,6 +1102,13 @@ export async function updateAuthSettings(req: AuthRequest, res: Response): Promi
   await Settings.updateOne({ key: 'global' }, { $set: update }, { upsert: true });
   invalidateSettingsCache();
   const fresh = await getSettings(true);
+  await logAudit({
+    action: 'settings.auth',
+    req,
+    targetType: 'settings',
+    summary: 'Réglages auth mis à jour',
+    metadata: { update },
+  });
   res.json({ auth: fresh.auth, updatedAt: fresh.updatedAt });
 }
 
@@ -1026,6 +1123,13 @@ export async function adminResendVerification(req: AuthRequest, res: Response): 
   const { userId } = req.params;
   try {
     const result = await resendVerification(userId);
+    await logAudit({
+      action: 'user.resend_verification',
+      req,
+      targetId: userId,
+      targetType: 'user',
+      summary: `Renvoi mail de vérification pour user ${userId}`,
+    });
     res.json(result);
   } catch (err) {
     const e = err as Error & { statusCode?: number; code?: string; retryAfter?: number };

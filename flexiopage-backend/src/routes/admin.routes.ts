@@ -16,6 +16,7 @@ import {
 } from '../middleware/auth.middleware';
 import { sanitizeMiddleware } from '../middleware/validate';
 import * as admin from '../controllers/admin.controller';
+import * as adminExtras from '../controllers/admin-extras.controller';
 import * as complaint from '../controllers/complaint.controller';
 
 const router = Router();
@@ -64,5 +65,14 @@ router.get('/complaints', complaint.listComplaintsAdmin);
 router.get('/complaints/:id', complaint.getComplaintAdmin);
 router.patch('/complaints/:id', complaint.patchComplaintAdmin);
 router.post('/complaints/:id/messages', complaint.postAdminMessage);
+
+// ── Quality-of-life admin endpoints ──
+router.get('/audit', adminExtras.listAuditLogs);
+router.get('/staff', adminExtras.listStaff);
+router.get('/health', adminExtras.getHealth);
+router.get('/reports', adminExtras.getReports);
+router.get('/exports/:type', adminExtras.exportCsv);
+router.post('/users/bulk', requireAdminWrite, adminExtras.bulkUserAction);
+router.patch('/stores/:storeId/commission', requireSuperAdmin, adminExtras.setStoreCommission);
 
 export default router;

@@ -31,6 +31,9 @@ import {
   DollarSign,
   Activity,
   Sliders,
+  FileText,
+  HeartPulse,
+  BarChart3,
 } from 'lucide-react';
 import { useAuthStore } from '@/stores/auth-store';
 import { cn } from '@/lib/utils';
@@ -43,6 +46,7 @@ const SECTIONS: { title: string; items: NavItem[] }[] = [
     title: 'Plateforme',
     items: [
       { href: '/admin',          label: "Vue d'ensemble", icon: LayoutDashboard },
+      { href: '/admin/reports',  label: 'Reports',         icon: BarChart3 },
       { href: '/admin/activity', label: 'Activité',        icon: Activity },
       { href: '/admin/orders',   label: 'Commandes',      icon: ShoppingCart },
     ],
@@ -59,6 +63,8 @@ const SECTIONS: { title: string; items: NavItem[] }[] = [
   {
     title: 'Système',
     items: [
+      { href: '/admin/health',   label: 'Santé',      icon: HeartPulse },
+      { href: '/admin/audit',    label: 'Audit',      icon: FileText },
       { href: '/admin/pricing',  label: 'Tarifs AI',  icon: DollarSign },
       { href: '/admin/settings', label: 'Réglages',   icon: Sliders },
       { href: '/admin/profile',  label: 'Profil',     icon: UserIcon },
@@ -274,6 +280,10 @@ function labelFromPath(path: string): string {
     complaints: 'Réclamations',
     activity: 'Activité',
     profile: 'Profil',
+    audit: 'Audit',
+    health: 'Santé plateforme',
+    reports: 'Reports',
+    settings: 'Réglages',
   };
   const seg = path.split('/')[2];
   return map[seg] || seg || 'Admin';
