@@ -60,15 +60,18 @@ class MogaDeliveryProvider implements DeliveryProviderImpl {
   private defaultUrl = 'https://api.admin-mogadelivery.com/api/webhooks/flexiopage';
 
   isConfigured(store: IStore): boolean {
-    // Multi-pays : si au moins un market MD activé avec un secret, c'est ok.
+    // Multi-pays : au moins un market MD activé avec storeIdMD + secret.
     const marketReady = (store.markets || []).some(
-      (m) => m.delivery?.provider === 'mogadelivery' && m.delivery?.enabled !== false && m.delivery?.webhookSecret
+      (m) => m.delivery?.provider === 'mogadelivery'
+        && m.delivery?.enabled !== false
+        && m.delivery?.webhookSecret
+        && m.delivery?.storeIdMD
     );
     if (marketReady) return true;
-    // Legacy mono-pays.
+    // Legacy mono-pays : on exige un webhookSecret posé au niveau de la store.
+    // L'env global n'est plus considéré comme une config valide.
     const cfg = store.integrations?.delivery;
-    if (!cfg?.enabled) return false;
-    return !!(cfg.webhookSecret || process.env.FLEXIOPAGE_WEBHOOK_SECRET || process.env.BOUTSHOP_WEBHOOK_SECRET);
+    return !!(cfg?.enabled && cfg.webhookSecret);
   }
 
   /**
@@ -98,7 +101,16 @@ class MogaDeliveryProvider implements DeliveryProviderImpl {
    */
   private getConfig(order: IOrder, store: IStore): { secret: string; url: string; storeIdMD: string; source: 'market' | 'legacy' } {
     const market = this.resolveMarket(order, store);
-    if (market?.delivery?.webhookSecret && market.delivery.storeIdMD) {
+    if (market) {
+      // Modèle multi-pays : on EXIGE storeIdMD + webhookSecret du marché.
+      // Pas de fallback env ici — sinon MD rejette en 401 silencieusement et
+      // c'est imbittable à debug. Mieux vaut un message explicite côté seller.
+      if (!market.delivery?.storeIdMD || !market.delivery?.webhookSecret) {
+        throw new Error(
+          `MogaDelivery: marché ${market.country} mal configuré — storeIdMD et webhookSecret requis. ` +
+          `Va dans Réglages → Livraison de la boutique et complète les deux champs (ou refais l'onboarding MD).`
+        );
+      }
       const url = (market.delivery.baseUrl || process.env.MOGADELIVERY_WEBHOOK_URL || this.defaultUrl).replace(/\/$/, '');
       return {
         secret: market.delivery.webhookSecret,
@@ -107,19 +119,23 @@ class MogaDeliveryProvider implements DeliveryProviderImpl {
         source: 'market',
       };
     }
+    // Pas de markets[] configurés : modèle legacy mono-pays. On EXIGE le secret
+    // posé au niveau de la store (integrations.delivery.webhookSecret). L'env
+    // n'est plus utilisée comme fallback silencieux — MD signe désormais par
+    // store côté eux, donc utiliser un secret global mène à un 401 garanti.
     const cfg = store.integrations?.delivery;
-    const secret =
-      cfg?.webhookSecret ||
-      process.env.FLEXIOPAGE_WEBHOOK_SECRET ||
-      process.env.BOUTSHOP_WEBHOOK_SECRET ||
-      '';
-    if (!secret) {
-      throw new Error('FLEXIOPAGE_WEBHOOK_SECRET missing (set env or store.integrations.delivery.webhookSecret)');
+    if (!cfg?.webhookSecret) {
+      throw new Error(
+        `MogaDelivery: secret HMAC manquant pour cette boutique. ` +
+        `Va dans Réglages → Livraison et colle le secret fourni par MogaDelivery dans "Secret webhook". ` +
+        `Le secret global FLEXIOPAGE_WEBHOOK_SECRET n'est plus utilisé — MD attend un secret par boutique.`
+      );
     }
-    const url = (cfg?.baseUrl || process.env.MOGADELIVERY_WEBHOOK_URL || this.defaultUrl).replace(/\/$/, '');
+    const url = (cfg.baseUrl || process.env.MOGADELIVERY_WEBHOOK_URL || this.defaultUrl).replace(/\/$/, '');
     // Legacy mono-pays : on garde l'ObjectId Mongo comme identifiant côté MD
-    // (compat ascendante — MD V1 inbound continue de matcher dessus).
-    return { secret, url, storeIdMD: order.storeId.toString(), source: 'legacy' };
+    // (compat ascendante — MD V1 inbound continue de matcher dessus pour les
+    // boutiques pré-migration multi-pays).
+    return { secret: cfg.webhookSecret, url, storeIdMD: order.storeId.toString(), source: 'legacy' };
   }
 
   /**

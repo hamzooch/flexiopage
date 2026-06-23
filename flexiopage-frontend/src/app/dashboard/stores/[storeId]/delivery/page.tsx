@@ -153,18 +153,31 @@ export default function StoreDeliveryPage() {
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="moga-secret">Secret webhook</Label>
+            <Label htmlFor="moga-secret">
+              Secret webhook <span className="text-rose-600">*</span>
+            </Label>
             <Input
               id="moga-secret"
               type="password"
               autoComplete="off"
-              placeholder="(optionnel) clé HMAC partagée"
+              placeholder="64 caractères hexadécimaux fournis par MogaDelivery"
               value={delivery.webhookSecret || ''}
               onChange={(e) => setDelivery((d) => ({ ...d, webhookSecret: e.target.value }))}
+              className={delivery.enabled && !delivery.webhookSecret?.trim() ? 'border-rose-500/60' : ''}
             />
             <p className="text-xs text-muted-foreground">
-              Configure ce même secret côté MogaDelivery pour qu&apos;on vérifie la signature des webhooks entrants.
+              <strong>Obligatoire.</strong> Demande-le à MogaDelivery (dashboard → API → Webhook secret).
+              Sans cette clé, les commandes ne pourront pas être envoyées (401 Unauthorized).
             </p>
+            {delivery.enabled && !delivery.webhookSecret?.trim() && (
+              <div className="flex items-start gap-2 rounded-md bg-rose-500/10 px-3 py-2 text-xs text-rose-700">
+                <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                <span>
+                  Le dispatch est activé mais aucun secret n&apos;est posé — chaque commande échouera avec un 401.
+                  Récupère la clé sur ton dashboard MogaDelivery et colle-la ici.
+                </span>
+              </div>
+            )}
           </div>
 
           <div className="rounded-xl border border-border/60 bg-muted/30 p-4">

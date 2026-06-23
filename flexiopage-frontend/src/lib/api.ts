@@ -655,6 +655,10 @@ export const adminApi = {
   // ── Health ──
   health: () => api.get<AdminHealth>('/admin/health'),
 
+  // ── Delivery config diag ──
+  getStoreDeliveryConfig: (storeId: string) =>
+    api.get<AdminDeliveryDiag>(`/admin/stores/${storeId}/delivery-config`),
+
   // ── Exports (CSV download) ──
   /** Téléchargement CSV avec auth — déclenche la sauvegarde du fichier dans le navigateur. */
   downloadExport: async (type: 'users' | 'orders' | 'wallets' | 'complaints' | 'stores'): Promise<void> => {
@@ -692,6 +696,38 @@ export interface AdminReportRow {
   orders: number;
   gmvByCurrency: Record<string, number>;
   commissionByCurrency: Record<string, number>;
+}
+
+export interface AdminDeliveryDiag {
+  store: { _id: string; name: string; slug: string; country?: string };
+  markets: Array<{
+    country: string;
+    currency: string;
+    isDefault?: boolean;
+    enabled?: boolean;
+    delivery: null | {
+      provider?: string;
+      enabled?: boolean;
+      storeIdMD?: string;
+      boutiqueIdMD?: string;
+      baseUrl?: string;
+      webhookSecret?: string;
+    };
+  }>;
+  integrations: {
+    delivery: null | {
+      provider?: string;
+      enabled?: boolean;
+      autoDispatch?: boolean;
+      baseUrl?: string;
+      webhookSecret?: string;
+    };
+  };
+  env: {
+    FLEXIOPAGE_WEBHOOK_SECRET?: string;
+    BOUTSHOP_WEBHOOK_SECRET?: string;
+    MOGADELIVERY_WEBHOOK_URL?: string;
+  };
 }
 
 export interface AdminHealth {

@@ -24,10 +24,10 @@ import {
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { adminApi, extractApiError } from '@/lib/api';
+import { adminApi, extractApiError, type AdminDeliveryDiag } from '@/lib/api';
 import { useAuthStore } from '@/stores/auth-store';
 import { formatCurrency, storeAbsoluteUrl } from '@/lib/utils';
-import { Percent, Save, Loader2 } from 'lucide-react';
+import { Percent, Save, Loader2, Truck, XCircle, AlertTriangle } from 'lucide-react';
 import { KpiCard } from '@/components/charts/KpiCard';
 import { RangeSwitcher } from '@/components/charts/RangeSwitcher';
 import { RevenueAreaChart } from '@/components/charts/RevenueAreaChart';
@@ -205,6 +205,9 @@ export default function AdminStoreDrilldownPage() {
         initial={store.commission}
         onSaved={(c) => setData((d) => (d ? { ...d, store: { ...d.store, commission: c } } : d))}
       />
+
+      {/* Diagnostic MogaDelivery */}
+      <DeliveryDiagCard storeId={store._id} />
 
       {/* KPI grid */}
       <div className="grid grid-cols-2 gap-2.5 sm:gap-3 lg:grid-cols-4">
@@ -485,6 +488,154 @@ function CommissionCard({
           </>
         )}
       </CardContent>
+    </Card>
+  );
+}
+
+/**
+ * Carte diagnostic MogaDelivery — affiche markets[] et integrations.delivery
+ * pour cette boutique avec secrets masqués. Permet de comprendre d'un coup
+ * d'œil pourquoi le dispatch renvoie 401 (secret manquant, storeIdMD vide,
+ * env utilisée en fallback, etc.).
+ */
+function DeliveryDiagCard({ storeId }: { storeId: string }) {
+  const [data, setData] = useState<AdminDeliveryDiag | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [open, setOpen] = useState(false);
+
+  async function load() {
+    setLoading(true);
+    try {
+      const res = await adminApi.getStoreDeliveryConfig(storeId);
+      setData(res.data);
+      setOpen(true);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  // Diagnostic synthétique : "OK", "warning" ou "ko" + message.
+  const verdict = (() => {
+    if (!data) return null;
+    const marketsMD = data.markets.filter((m) => m.delivery?.provider === 'mogadelivery' && m.delivery?.enabled !== false);
+    const marketReady = marketsMD.filter((m) => m.delivery?.storeIdMD && m.delivery?.webhookSecret);
+    const legacy = data.integrations.delivery;
+    if (marketReady.length > 0) {
+      return { kind: 'ok' as const, text: `${marketReady.length} marché(s) MD prêt(s). Dispatch via marché.` };
+    }
+    if (marketsMD.length > 0 && marketReady.length === 0) {
+      return {
+        kind: 'ko' as const,
+        text: `${marketsMD.length} marché(s) MD activé(s) mais storeIdMD ou webhookSecret manquant. Le dispatch va planter.`,
+      };
+    }
+    if (legacy?.enabled && legacy.webhookSecret) {
+      return { kind: 'ok' as const, text: 'Config legacy mono-pays valide.' };
+    }
+    if (legacy?.enabled && !legacy.webhookSecret) {
+      return { kind: 'ko' as const, text: 'Integration delivery activée mais webhookSecret vide → 401 garanti.' };
+    }
+    return { kind: 'warn' as const, text: 'Aucune config MD trouvée (ni markets, ni integrations.delivery).' };
+  })();
+
+  return (
+    <Card>
+      <CardHeader className="pb-3">
+        <div className="flex items-start justify-between gap-2">
+          <div>
+            <CardTitle className="flex items-center gap-2 text-sm sm:text-base">
+              <Truck className="h-4 w-4 text-rose-600" />
+              Diagnostic MogaDelivery
+            </CardTitle>
+            <p className="text-[11px] text-muted-foreground sm:text-xs">
+              Vérifie la config delivery (secrets masqués) — utile en cas de 401 au dispatch.
+            </p>
+          </div>
+          <Button variant="outline" size="sm" onClick={load} disabled={loading}>
+            {loading && <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />}
+            {open ? 'Rafraîchir' : 'Vérifier'}
+          </Button>
+        </div>
+      </CardHeader>
+      {open && data && (
+        <CardContent className="space-y-3">
+          {verdict && (
+            <div
+              className={`flex items-start gap-2 rounded-md px-3 py-2 text-xs ${
+                verdict.kind === 'ok'
+                  ? 'bg-emerald-500/10 text-emerald-700'
+                  : verdict.kind === 'ko'
+                    ? 'bg-rose-500/10 text-rose-700'
+                    : 'bg-amber-500/10 text-amber-700'
+              }`}
+            >
+              {verdict.kind === 'ok' ? <CheckCircle2 className="h-3.5 w-3.5 shrink-0" />
+                : verdict.kind === 'ko' ? <XCircle className="h-3.5 w-3.5 shrink-0" />
+                  : <AlertTriangle className="h-3.5 w-3.5 shrink-0" />}
+              <span>{verdict.text}</span>
+            </div>
+          )}
+
+          <div>
+            <div className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Markets ({data.markets.length})</div>
+            {data.markets.length === 0 ? (
+              <p className="mt-1 text-xs text-muted-foreground">Aucun marché configuré — la boutique est en mode legacy mono-pays.</p>
+            ) : (
+              <ul className="mt-1 space-y-1">
+                {data.markets.map((m) => (
+                  <li key={m.country} className="rounded-md border border-border/60 bg-card px-2.5 py-1.5 text-xs">
+                    <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5">
+                      <span className="font-semibold">{m.country} · {m.currency}</span>
+                      {m.isDefault && <span className="rounded-full bg-rose-500/10 px-1.5 py-0.5 text-[9px] font-bold uppercase text-rose-700">défaut</span>}
+                      {m.enabled === false && <span className="rounded-full bg-muted px-1.5 py-0.5 text-[9px] font-bold uppercase text-muted-foreground">désactivé</span>}
+                    </div>
+                    {m.delivery ? (
+                      <div className="mt-1 grid gap-x-3 gap-y-0.5 text-[11px] font-mono text-muted-foreground sm:grid-cols-[auto_1fr]">
+                        <span>provider</span><span>{m.delivery.provider || '—'}</span>
+                        <span>storeIdMD</span><span className={!m.delivery.storeIdMD ? 'text-rose-700' : ''}>{m.delivery.storeIdMD || '⚠ vide'}</span>
+                        <span>webhookSecret</span><span className={!m.delivery.webhookSecret ? 'text-rose-700' : ''}>{m.delivery.webhookSecret || '⚠ vide'}</span>
+                        {m.delivery.boutiqueIdMD && (<><span>boutiqueIdMD</span><span>{m.delivery.boutiqueIdMD}</span></>)}
+                        {m.delivery.baseUrl && (<><span>baseUrl</span><span>{m.delivery.baseUrl}</span></>)}
+                      </div>
+                    ) : (
+                      <p className="mt-0.5 text-[11px] text-muted-foreground">pas de delivery configuré sur ce marché</p>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+
+          <div>
+            <div className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Integration legacy</div>
+            {data.integrations.delivery ? (
+              <div className="mt-1 grid gap-x-3 gap-y-0.5 rounded-md border border-border/60 bg-card px-2.5 py-1.5 text-[11px] font-mono text-muted-foreground sm:grid-cols-[auto_1fr]">
+                <span>provider</span><span>{data.integrations.delivery.provider || '—'}</span>
+                <span>enabled</span><span>{String(data.integrations.delivery.enabled)}</span>
+                <span>autoDispatch</span><span>{String(data.integrations.delivery.autoDispatch)}</span>
+                <span>webhookSecret</span>
+                <span className={!data.integrations.delivery.webhookSecret ? 'text-rose-700' : ''}>
+                  {data.integrations.delivery.webhookSecret || '⚠ vide'}
+                </span>
+                {data.integrations.delivery.baseUrl && (<><span>baseUrl</span><span>{data.integrations.delivery.baseUrl}</span></>)}
+              </div>
+            ) : (
+              <p className="mt-1 text-xs text-muted-foreground">Aucune integration delivery posée au niveau de la store.</p>
+            )}
+          </div>
+
+          <div>
+            <div className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Env serveur</div>
+            <div className="mt-1 grid gap-x-3 gap-y-0.5 rounded-md border border-border/60 bg-card px-2.5 py-1.5 text-[11px] font-mono text-muted-foreground sm:grid-cols-[auto_1fr]">
+              <span>FLEXIOPAGE_WEBHOOK_SECRET</span><span>{data.env.FLEXIOPAGE_WEBHOOK_SECRET || '—'}</span>
+              <span>MOGADELIVERY_WEBHOOK_URL</span><span>{data.env.MOGADELIVERY_WEBHOOK_URL || '— (défaut hardcodé)'}</span>
+            </div>
+            <p className="mt-1 text-[10px] text-muted-foreground">
+              L&apos;env n&apos;est plus utilisée comme fallback de signature — le secret doit être posé par boutique (markets[] ou integrations.delivery).
+            </p>
+          </div>
+        </CardContent>
+      )}
     </Card>
   );
 }
