@@ -658,6 +658,25 @@ export const adminApi = {
   // ── Delivery config diag ──
   getStoreDeliveryConfig: (storeId: string) =>
     api.get<AdminDeliveryDiag>(`/admin/stores/${storeId}/delivery-config`),
+  /** Met à jour la config delivery d'une store (secret, baseUrl, enabled). */
+  patchStoreDeliveryConfig: (
+    storeId: string,
+    data: { webhookSecret?: string | null; baseUrl?: string | null; enabled?: boolean },
+  ) =>
+    api.patch<{
+      ok: boolean;
+      store: {
+        _id: string;
+        name: string;
+        slug: string;
+        delivery: null | {
+          provider?: string;
+          enabled?: boolean;
+          baseUrl?: string;
+          webhookSecret?: string;
+        };
+      };
+    }>(`/admin/stores/${storeId}/delivery-config`, data),
 
   // ── Exports (CSV download) ──
   /** Téléchargement CSV avec auth — déclenche la sauvegarde du fichier dans le navigateur. */

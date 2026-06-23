@@ -416,6 +416,95 @@ function maskSecret(s?: string): string | undefined {
 }
 
 /**
+ * PATCH /api/admin/stores/:storeId/delivery-config — body :
+ *   { webhookSecret?: string|null, baseUrl?: string|null, enabled?: boolean }
+ *
+ * Permet à un admin de fixer/corriger le secret HMAC MD d'une boutique sans
+ * passer par le compte seller. `null` efface le champ.
+ */
+export async function patchStoreDeliveryConfig(req: AuthRequest, res: Response): Promise<void> {
+  const { storeId } = req.params;
+  const body = (req.body || {}) as {
+    webhookSecret?: string | null;
+    baseUrl?: string | null;
+    enabled?: boolean;
+  };
+  const set: Record<string, unknown> = {};
+  const unset: Record<string, unknown> = {};
+
+  if (body.webhookSecret !== undefined) {
+    if (body.webhookSecret === null || body.webhookSecret === '') {
+      unset['integrations.delivery.webhookSecret'] = '';
+    } else if (typeof body.webhookSecret === 'string' && body.webhookSecret.trim().length >= 8) {
+      set['integrations.delivery.webhookSecret'] = body.webhookSecret.trim();
+    } else {
+      res.status(400).json({ error: 'webhookSecret must be at least 8 chars or null to clear' });
+      return;
+    }
+  }
+  if (body.baseUrl !== undefined) {
+    if (body.baseUrl === null || body.baseUrl === '') {
+      unset['integrations.delivery.baseUrl'] = '';
+    } else if (typeof body.baseUrl === 'string' && /^https?:\/\//.test(body.baseUrl)) {
+      set['integrations.delivery.baseUrl'] = body.baseUrl.trim();
+    } else {
+      res.status(400).json({ error: 'baseUrl must be a http(s) URL or null to clear' });
+      return;
+    }
+  }
+  if (typeof body.enabled === 'boolean') {
+    set['integrations.delivery.enabled'] = body.enabled;
+    // Quand on active, par défaut le provider est mogadelivery — sinon les
+    // checks downstream (`provider === 'mogadelivery'`) cassent.
+    set['integrations.delivery.provider'] = 'mogadelivery';
+  }
+
+  const mutation: Record<string, unknown> = {};
+  if (Object.keys(set).length) mutation.$set = set;
+  if (Object.keys(unset).length) mutation.$unset = unset;
+  if (!Object.keys(mutation).length) {
+    res.status(400).json({ error: 'No delivery fields provided' });
+    return;
+  }
+
+  const store = await Store.findByIdAndUpdate(storeId, mutation, { new: true })
+    .select('name slug integrations.delivery')
+    .lean();
+  if (!store) { res.status(404).json({ error: 'Store not found' }); return; }
+
+  await logAudit({
+    action: 'store.commission_override',
+    req,
+    targetId: storeId,
+    targetType: 'store',
+    summary: `Config delivery mise à jour pour ${store.name}`,
+    metadata: {
+      fields: Object.keys(body),
+      enabled: body.enabled,
+      hasSecret: typeof body.webhookSecret === 'string' && body.webhookSecret.length > 0,
+      baseUrl: body.baseUrl,
+    },
+  });
+
+  res.json({
+    ok: true,
+    store: {
+      _id: store._id,
+      name: store.name,
+      slug: store.slug,
+      delivery: store.integrations?.delivery ? {
+        provider: store.integrations.delivery.provider,
+        enabled: store.integrations.delivery.enabled,
+        baseUrl: store.integrations.delivery.baseUrl,
+        webhookSecret: store.integrations.delivery.webhookSecret
+          ? maskSecret(store.integrations.delivery.webhookSecret)
+          : undefined,
+      } : null,
+    },
+  });
+}
+
+/**
  * GET /api/admin/stores/:storeId/delivery-config — renvoie la config MD
  * (markets + intégration legacy) avec les secrets masqués. Utile pour
  * diagnostiquer un 401 sans aller en base.

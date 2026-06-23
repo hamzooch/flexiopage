@@ -502,6 +502,11 @@ function DeliveryDiagCard({ storeId }: { storeId: string }) {
   const [data, setData] = useState<AdminDeliveryDiag | null>(null);
   const [loading, setLoading] = useState(false);
   const [open, setOpen] = useState(false);
+  // Édition du secret HMAC (mode legacy uniquement — markets[] gérés côté seller)
+  const [newSecret, setNewSecret] = useState('');
+  const [newBaseUrl, setNewBaseUrl] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [saveFeedback, setSaveFeedback] = useState<{ kind: 'success' | 'error'; text: string } | null>(null);
 
   async function load() {
     setLoading(true);
@@ -509,8 +514,32 @@ function DeliveryDiagCard({ storeId }: { storeId: string }) {
       const res = await adminApi.getStoreDeliveryConfig(storeId);
       setData(res.data);
       setOpen(true);
+      setNewBaseUrl(res.data.integrations.delivery?.baseUrl || '');
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function saveSecret() {
+    if (!newSecret.trim() && !newBaseUrl.trim()) {
+      setSaveFeedback({ kind: 'error', text: 'Colle au moins un secret ou une baseUrl.' });
+      return;
+    }
+    setSaving(true);
+    setSaveFeedback(null);
+    try {
+      const payload: { webhookSecret?: string; baseUrl?: string | null; enabled?: boolean } = { enabled: true };
+      if (newSecret.trim()) payload.webhookSecret = newSecret.trim();
+      if (newBaseUrl.trim()) payload.baseUrl = newBaseUrl.trim();
+      else if (newBaseUrl === '') payload.baseUrl = null;
+      await adminApi.patchStoreDeliveryConfig(storeId, payload);
+      setSaveFeedback({ kind: 'success', text: 'Secret mis à jour. Réessaye le dispatch.' });
+      setNewSecret('');
+      await load();
+    } catch (err) {
+      setSaveFeedback({ kind: 'error', text: extractApiError(err, 'Échec de la sauvegarde.') });
+    } finally {
+      setSaving(false);
     }
   }
 
@@ -631,8 +660,49 @@ function DeliveryDiagCard({ storeId }: { storeId: string }) {
               <span>MOGADELIVERY_WEBHOOK_URL</span><span>{data.env.MOGADELIVERY_WEBHOOK_URL || '— (défaut hardcodé)'}</span>
             </div>
             <p className="mt-1 text-[10px] text-muted-foreground">
-              L&apos;env n&apos;est plus utilisée comme fallback de signature — le secret doit être posé par boutique (markets[] ou integrations.delivery).
+              Priorité au secret per-store ; l&apos;env reste un fallback pour les boutiques pré-migration.
             </p>
+          </div>
+
+          <div className="rounded-md border border-rose-500/30 bg-rose-500/5 p-3">
+            <div className="text-[11px] font-semibold uppercase tracking-wider text-rose-700">
+              Fixer le secret HMAC de cette boutique
+            </div>
+            <p className="mt-1 text-[11px] text-muted-foreground">
+              Colle ici le secret webhook fourni par MogaDelivery pour cette boutique (mode legacy mono-pays).
+              Pas besoin de passer par le compte seller.
+            </p>
+            <div className="mt-2 grid gap-2 sm:grid-cols-[1fr,auto]">
+              <Input
+                type="text"
+                value={newSecret}
+                onChange={(e) => setNewSecret(e.target.value)}
+                placeholder="64 caractères hexadécimaux (ex. 9b0b0d98fa…f556)"
+                className="font-mono text-xs"
+              />
+              <Button onClick={saveSecret} disabled={saving} className="gap-2">
+                {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
+                Enregistrer
+              </Button>
+            </div>
+            <div className="mt-2 grid gap-2 sm:grid-cols-[1fr,auto]">
+              <Input
+                type="text"
+                value={newBaseUrl}
+                onChange={(e) => setNewBaseUrl(e.target.value)}
+                placeholder="Base URL MD (optionnel, vide = défaut)"
+                className="text-xs"
+              />
+            </div>
+            {saveFeedback && (
+              <p
+                className={`mt-2 rounded-md px-3 py-1.5 text-xs ${
+                  saveFeedback.kind === 'success' ? 'bg-emerald-500/10 text-emerald-700' : 'bg-rose-500/10 text-rose-700'
+                }`}
+              >
+                {saveFeedback.text}
+              </p>
+            )}
           </div>
         </CardContent>
       )}

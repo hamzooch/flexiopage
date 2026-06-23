@@ -277,6 +277,16 @@ class MogaDeliveryProvider implements DeliveryProviderImpl {
     })();
     if (!res.ok) {
       const errMsg = typeof json?.error === 'string' ? json.error : (text.slice(0, 200) || res.statusText);
+      // Sur 401 on enrichit le message avec le contexte (source du secret, prefix,
+      // storeIdMD envoyé) — ça permet de comparer avec ce que MD a en base sans
+      // déduire à l'aveugle. Le secret complet n'est jamais exposé.
+      if (res.status === 401) {
+        throw new Error(
+          `mogadelivery 401: ${errMsg} — store_id envoyé "${storeIdMD}", secret source "${source}" ` +
+          `(${secret.slice(0, 4)}…${secret.slice(-4)}, len=${secret.length}). ` +
+          `Vérifie que ce secret correspond à celui que MogaDelivery a en base pour cette boutique.`
+        );
+      }
       throw new Error(`mogadelivery ${res.status}: ${errMsg}`);
     }
     // MogaDelivery's order.created webhook returns 200 OK and may not echo a
