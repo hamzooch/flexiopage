@@ -95,13 +95,16 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
   const canSwitchToOwner =
     role === 'owner' || user?.email?.toLowerCase() === FOUNDER_EMAIL;
 
-  const initials = (user?.name || user?.email || 'A')
-    .split(/[\s@]/)
-    .map((s) => s[0])
-    .filter(Boolean)
-    .slice(0, 2)
-    .join('')
-    .toUpperCase();
+  // Initiales : on garantit 2 caractères quand possible (un seul mot →
+  // les 2 premières lettres, deux mots ou plus → 1ʳᵉ lettre de chaque).
+  const initials = (() => {
+    const source = (user?.name?.trim() || user?.email?.split('@')[0] || 'A');
+    const parts = source.split(/[\s.\-_@]+/).filter(Boolean);
+    if (parts.length >= 2) return (parts[0][0] + parts[1][0]).toUpperCase();
+    if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+    return 'A';
+  })();
+  const displayName = user?.name?.trim() || user?.email?.split('@')[0] || 'Admin';
 
   return (
     <div className="flex min-h-screen bg-muted/20">
@@ -144,7 +147,7 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
         <nav className="flex-1 space-y-5 overflow-y-auto px-3 py-4">
           {SECTIONS.map((section) => (
             <div key={section.title}>
-              <div className="px-3 pb-1.5 text-[10px] font-bold uppercase tracking-wider text-muted-foreground/60">
+              <div className="px-3 pb-1.5 text-[11px] font-bold uppercase tracking-wider text-muted-foreground/60">
                 {section.title}
               </div>
               <ul className="space-y-0.5">
@@ -158,7 +161,7 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
                         href={item.href}
                         onClick={() => setOpen(false)}
                         className={cn(
-                          'group relative flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors',
+                          'group relative flex items-center gap-3 rounded-lg px-3 py-2.5 text-[15px] font-medium transition-colors',
                           isActive
                             ? 'bg-rose-500/10 text-rose-700'
                             : 'text-foreground/70 hover:bg-muted hover:text-foreground'
@@ -167,7 +170,7 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
                         {isActive && (
                           <span className="absolute -left-3 top-1/2 h-5 w-1 -translate-y-1/2 rounded-r-full bg-rose-500" />
                         )}
-                        <item.icon className={cn('h-[17px] w-[17px] shrink-0', isActive && 'text-rose-600')} />
+                        <item.icon className={cn('h-[18px] w-[18px] shrink-0', isActive && 'text-rose-600')} />
                         <span className="truncate">{item.label}</span>
                       </Link>
                     </li>
@@ -196,14 +199,14 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
         <div className="shrink-0 border-t border-border/60 p-3">
           <Link
             href="/admin/profile"
-            className="flex min-w-0 items-center gap-2.5 rounded-lg p-1.5 transition-colors hover:bg-muted/60"
+            className="flex min-w-0 items-center gap-3 rounded-lg p-2 transition-colors hover:bg-muted/60"
           >
-            <div className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-gradient-to-br from-rose-600 to-orange-600 text-[11px] font-semibold text-white shadow-sm">
+            <div className="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-gradient-to-br from-rose-600 to-orange-600 text-sm font-bold text-white shadow-sm">
               {initials}
             </div>
             <div className="min-w-0 flex-1 leading-tight">
-              <div className="truncate text-sm font-medium">{user?.name}</div>
-              <div className="truncate text-[11px] text-muted-foreground">{user?.email}</div>
+              <div className="truncate text-[15px] font-semibold">{displayName}</div>
+              <div className="truncate text-xs text-muted-foreground">{user?.email}</div>
             </div>
           </Link>
           <button

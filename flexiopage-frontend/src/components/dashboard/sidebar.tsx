@@ -154,13 +154,17 @@ export function Sidebar({ mobileOpen = false, onMobileClose }: Props) {
   const emailLocal = user?.email?.split('@')[0];
   const displayName = trimmedName || emailLocal || t('common.user');
 
-  const initials = (trimmedName || emailLocal || 'U')
-    .split(/[\s.\-_@]+/)
-    .map((s) => s[0])
-    .filter(Boolean)
-    .slice(0, 2)
-    .join('')
-    .toUpperCase();
+  // Initiales : on garantit 2 caractères quand possible (un seul mot →
+  // les 2 premières lettres, deux mots ou plus → 1ʳᵉ lettre de chaque
+  // des 2 premiers). Avant on prenait juste la 1ʳᵉ lettre de chaque
+  // partie ce qui donnait "H" pour "Hamza" — peu lisible dans le rond.
+  const initials = (() => {
+    const source = trimmedName || emailLocal || 'U';
+    const parts = source.split(/[\s.\-_@]+/).filter(Boolean);
+    if (parts.length >= 2) return (parts[0][0] + parts[1][0]).toUpperCase();
+    if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+    return 'U';
+  })();
 
   // Staff (owner/superadmin/admin/supervisor) and the platform founder get a
   // shortcut button to the admin area. Email is kept alongside the role check
@@ -244,7 +248,7 @@ export function Sidebar({ mobileOpen = false, onMobileClose }: Props) {
         <nav className="flex-1 space-y-5 overflow-y-auto px-3 py-4">
           {sections.map((section) => (
             <div key={section.titleKey}>
-              <div className="px-3 pb-1.5 text-[10px] font-bold uppercase tracking-wider text-muted-foreground/60">
+              <div className="px-3 pb-1.5 text-[11px] font-bold uppercase tracking-wider text-muted-foreground/60">
                 {t(section.titleKey)}
               </div>
               <ul className="space-y-0.5">
@@ -278,7 +282,7 @@ export function Sidebar({ mobileOpen = false, onMobileClose }: Props) {
                         href={item.href}
                         onClick={onMobileClose}
                         className={cn(
-                          'group relative flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors',
+                          'group relative flex items-center gap-3 rounded-lg px-3 py-2.5 text-[15px] font-medium transition-colors',
                           isActive
                             ? 'bg-primary/10 text-primary'
                             : 'text-foreground/70 hover:bg-sidebar-muted hover:text-foreground'
@@ -287,7 +291,7 @@ export function Sidebar({ mobileOpen = false, onMobileClose }: Props) {
                         {isActive && (
                           <span className="absolute -start-3 top-1/2 h-5 w-1 -translate-y-1/2 rounded-e-full gradient-brand" />
                         )}
-                        <item.icon className="h-[17px] w-[17px] shrink-0" />
+                        <item.icon className="h-[18px] w-[18px] shrink-0" />
                         <span className="truncate">{t(item.labelKey)}</span>
                         {showInstalled && (
                           <span className="ms-auto rounded-full bg-emerald-500/10 px-1.5 py-0.5 text-[9px] font-semibold text-emerald-700">
@@ -354,17 +358,17 @@ export function Sidebar({ mobileOpen = false, onMobileClose }: Props) {
           <Link
             href="/dashboard/profile"
             onClick={onMobileClose}
-            className="flex items-center gap-2.5 rounded-lg p-1.5 transition-colors hover:bg-sidebar-muted"
+            className="flex items-center gap-3 rounded-lg p-2 transition-colors hover:bg-sidebar-muted"
           >
-            <div className="grid h-9 w-9 shrink-0 place-items-center rounded-full gradient-brand text-[11px] font-semibold text-white shadow-sm">
+            <div className="grid h-11 w-11 shrink-0 place-items-center rounded-full gradient-brand text-sm font-bold text-white shadow-sm">
               {hydrated ? initials : 'U'}
             </div>
             <div className="min-w-0 flex-1 leading-tight">
-              <div className="truncate text-sm font-medium text-foreground">
-                {hydrated ? displayName : <span className="inline-block h-3 w-20 animate-pulse rounded bg-muted" />}
+              <div className="truncate text-[15px] font-semibold text-foreground">
+                {hydrated ? displayName : <span className="inline-block h-3.5 w-24 animate-pulse rounded bg-muted" />}
               </div>
-              <div className="truncate text-[11px] text-muted-foreground">
-                {hydrated ? user?.email : <span className="inline-block h-2.5 w-24 animate-pulse rounded bg-muted/70" />}
+              <div className="truncate text-xs text-muted-foreground">
+                {hydrated ? user?.email : <span className="inline-block h-3 w-28 animate-pulse rounded bg-muted/70" />}
               </div>
             </div>
           </Link>
