@@ -804,6 +804,25 @@ export const storesApi = {
   // Google Sheets webhook
   testSheets: (storeId: string, webhookUrl?: string) =>
     api.post<{ ok: boolean; status?: number; error?: string }>(`/stores/${storeId}/integrations/sheets/test`, { webhookUrl }),
+  /**
+   * Onboarde la boutique chez MogaDelivery (crée la Boutique côté MD,
+   * génère un secret, le pousse à MD, le sauvegarde en DB).
+   * Renvoie `mode: 'auto'` quand MOGADELIVERY_API_KEY est posée en env,
+   * `mode: 'manual'` sinon (avec le secret à transmettre par mail).
+   */
+  connectMogaDelivery: (storeId: string, data?: { country?: string; marketCountry?: string }) =>
+    api.post<{
+      mode: 'auto' | 'manual';
+      // mode=auto
+      boutiqueIdMD?: string;
+      storeIdMD?: string;
+      webhookSecretPreview?: string;
+      country?: string;
+      // mode=manual
+      webhookSecret?: string;
+      message?: string;
+      hint?: { storeId: string; storeName: string; country: string };
+    }>(`/stores/${storeId}/delivery/connect-mogadelivery`, data || {}),
   // Products
   listProducts: (storeId: string, params?: { published?: string; limit?: number; skip?: number; search?: string }) =>
     api.get<{ products: unknown[]; total: number; limit: number; skip: number }>(`/stores/${storeId}/products`, { params }),

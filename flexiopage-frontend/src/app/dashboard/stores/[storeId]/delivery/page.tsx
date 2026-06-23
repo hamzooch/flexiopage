@@ -5,8 +5,9 @@ import { useParams, useRouter } from 'next/navigation';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { CheckCircle2, Circle, Truck, Eye, AlertTriangle, Clock, Lock } from 'lucide-react';
+import { CheckCircle2, Circle, Truck, Eye, AlertTriangle, Clock, Lock, Zap, Copy, Check, Loader2 } from 'lucide-react';
 import { storesApi, extractApiError } from '@/lib/api';
+import { Button } from '@/components/ui/button';
 import { StoreSubPageShell, type SaveStatus } from '@/components/dashboard/store-sub-page';
 import type { DeliveryIntegration, StoreType } from '@/components/dashboard/store-editor';
 import { cn } from '@/lib/utils';
@@ -24,6 +25,62 @@ export default function StoreDeliveryPage() {
     enabled: false,
     autoDispatch: true,
   });
+  // Onboarding auto MD
+  const [connecting, setConnecting] = useState(false);
+  const [connectResult, setConnectResult] = useState<null | {
+    kind: 'success' | 'manual' | 'error';
+    message: string;
+    secret?: string;
+  }>(null);
+  const [secretCopied, setSecretCopied] = useState(false);
+
+  async function handleConnect() {
+    setConnecting(true);
+    setConnectResult(null);
+    try {
+      const res = await storesApi.connectMogaDelivery(storeId);
+      if (res.data.mode === 'auto') {
+        setConnectResult({
+          kind: 'success',
+          message: `Boutique connectée chez MogaDelivery. Le secret a été généré et synchronisé (preview ${res.data.webhookSecretPreview}). Tu peux retenter un dispatch.`,
+        });
+        // Recharge le store pour afficher le secret en DB
+        const fresh = await storesApi.get(storeId);
+        const s = (fresh.data as { store: StoreType }).store;
+        if (s.integrations?.delivery) {
+          setDelivery({
+            provider: s.integrations.delivery.provider || 'mogadelivery',
+            enabled: !!s.integrations.delivery.enabled,
+            apiKey: s.integrations.delivery.apiKey || '',
+            baseUrl: s.integrations.delivery.baseUrl || '',
+            webhookSecret: s.integrations.delivery.webhookSecret || '',
+            autoDispatch: s.integrations.delivery.autoDispatch !== false,
+            pickupAddress: s.integrations.delivery.pickupAddress || {},
+          });
+        }
+      } else {
+        setConnectResult({
+          kind: 'manual',
+          secret: res.data.webhookSecret,
+          message: res.data.message || 'Mode manuel : envoie ce secret à MogaDelivery puis enregistre.',
+        });
+      }
+    } catch (err) {
+      setConnectResult({ kind: 'error', message: extractApiError(err, 'Onboarding échoué.') });
+    } finally {
+      setConnecting(false);
+    }
+  }
+
+  async function copyManualSecret() {
+    const s = connectResult?.secret;
+    if (!s) return;
+    try {
+      await navigator.clipboard.writeText(s);
+      setSecretCopied(true);
+      setTimeout(() => setSecretCopied(false), 2000);
+    } catch { /* fallback : selection manuelle */ }
+  }
 
   useEffect(() => {
     if (!storeId) return;
@@ -125,6 +182,51 @@ export default function StoreDeliveryPage() {
           </div>
         </CardHeader>
         <CardContent className="space-y-5">
+          {/* Onboarding auto — recommandé pour les nouvelles boutiques et
+              les reconnexions après un secret désynchronisé. */}
+          <div className="rounded-xl border border-fuchsia-500/30 bg-gradient-to-br from-fuchsia-500/5 to-rose-500/5 p-4">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <div className="flex items-center gap-2">
+                  <Zap className="h-4 w-4 text-fuchsia-700" />
+                  <h3 className="text-sm font-semibold">Connexion automatique MogaDelivery</h3>
+                </div>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Crée ta Boutique côté MogaDelivery, génère un secret HMAC et le pose des deux côtés en un clic.
+                  Utilise ce bouton aussi pour resynchroniser le secret si un dispatch renvoie 401.
+                </p>
+              </div>
+              <Button type="button" onClick={handleConnect} disabled={connecting} className="gap-2">
+                {connecting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Zap className="h-3.5 w-3.5" />}
+                {delivery.webhookSecret ? 'Resynchroniser' : 'Connecter'}
+              </Button>
+            </div>
+            {connectResult && (
+              <div
+                className={`mt-3 rounded-md px-3 py-2 text-xs ${
+                  connectResult.kind === 'success' ? 'bg-emerald-500/10 text-emerald-800' :
+                  connectResult.kind === 'manual' ? 'bg-amber-500/10 text-amber-800' :
+                  'bg-rose-500/10 text-rose-800'
+                }`}
+              >
+                <p>{connectResult.message}</p>
+                {connectResult.kind === 'manual' && connectResult.secret && (
+                  <div className="mt-2 flex items-center gap-2 rounded-md border border-border bg-card px-2.5 py-1.5">
+                    <code className="flex-1 truncate font-mono text-[11px]">{connectResult.secret}</code>
+                    <button
+                      type="button"
+                      onClick={copyManualSecret}
+                      className="inline-flex h-7 items-center gap-1 rounded-md border border-border bg-background px-2 text-[11px] font-medium transition-colors hover:bg-muted"
+                    >
+                      {secretCopied ? <Check className="h-3 w-3 text-emerald-700" /> : <Copy className="h-3 w-3" />}
+                      {secretCopied ? 'Copié' : 'Copier'}
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
           <div className="grid gap-4 sm:grid-cols-2">
             <div className="space-y-2">
               <Label htmlFor="moga-key">Clé API MogaDelivery *</Label>

@@ -246,6 +246,118 @@ export async function previewDomainController(req: AuthRequest, res: Response): 
   res.json(result);
 }
 
+/**
+ * POST /api/stores/:storeId/delivery/connect-mogadelivery
+ *
+ * Orchestre l'onboarding complet pour cette boutique :
+ *   1. POST /boutiques côté MD pour créer la Boutique du pays
+ *   2. Génération du webhookSecret 64-hex
+ *   3. POST /integrations/flexiopage/connect côté MD pour poser le secret
+ *   4. Sauvegarde dans store.integrations.delivery (mode legacy mono-pays)
+ *      ou store.markets[].delivery quand un pays spécifique est demandé.
+ *
+ * Body optionnel : { country?: string, marketCountry?: string }
+ *   - `country` : pays de la Boutique côté MD (défaut: store.settings.country)
+ *   - `marketCountry` : si fourni, écrit dans store.markets[country].delivery
+ *     au lieu de integrations.delivery
+ *
+ * Si MOGADELIVERY_API_KEY n'est pas en env, on retombe en mode manuel :
+ *   on génère juste le secret et on le renvoie pour que l'admin l'envoie
+ *   à MD à la main (avec un message clair côté UI).
+ */
+export async function connectMogaDeliveryController(req: AuthRequest, res: Response): Promise<void> {
+  const store = req.store!;
+  const body = (req.body || {}) as { country?: string; marketCountry?: string };
+  const country = (body.marketCountry || body.country || store.settings?.country || '').toUpperCase();
+  if (!country || country.length !== 2) {
+    res.status(400).json({ error: 'country (ISO 3166-1 alpha-2) requis — précise-le ou pose-le dans Réglages → Général.' });
+    return;
+  }
+
+  const {
+    onboardStoreOnMogaDelivery,
+    isOnboardingAvailable,
+    generateWebhookSecret,
+  } = await import('../services/mogadelivery-onboarding.service');
+
+  // Mode manuel : pas de clé API → on génère juste le secret et on demande
+  // à l'admin/seller de le pousser à MD par mail.
+  if (!isOnboardingAvailable()) {
+    const webhookSecret = generateWebhookSecret();
+    res.json({
+      mode: 'manual',
+      webhookSecret,
+      message:
+        "Clé API MogaDelivery absente côté serveur — voici un secret prêt à l'emploi. " +
+        "Envoie-le à MogaDelivery pour qu'ils l'enregistrent côté leur Boutique, " +
+        "puis clique Enregistrer pour le sauvegarder ici aussi.",
+      hint: { storeId: String(store._id), storeName: store.name, country },
+    });
+    return;
+  }
+
+  try {
+    const result = await onboardStoreOnMogaDelivery({
+      storeId: String(store._id),
+      storeName: store.name,
+      country,
+      description: `FlexioPage · ${store.name}`,
+    });
+
+    // Sauvegarde — multi-pays si marketCountry précisé, sinon legacy integrations.
+    const { Store } = await import('../models/Store.model');
+    if (body.marketCountry) {
+      const cleanMarket = country;
+      const fresh = await Store.findById(store._id);
+      if (!fresh) { res.status(404).json({ error: 'Store not found' }); return; }
+      const markets = fresh.markets || [];
+      const idx = markets.findIndex((m) => m.country?.toUpperCase() === cleanMarket);
+      const marketDelivery = {
+        provider: 'mogadelivery' as const,
+        enabled: true,
+        storeIdMD: result.storeIdMD,
+        boutiqueIdMD: result.boutiqueIdMD,
+        webhookSecret: result.webhookSecret,
+      };
+      if (idx >= 0) {
+        markets[idx].delivery = { ...(markets[idx].delivery || {}), ...marketDelivery };
+      } else {
+        markets.push({
+          country: cleanMarket,
+          currency: fresh.settings?.currency || 'USD',
+          enabled: true,
+          delivery: marketDelivery,
+        });
+      }
+      fresh.markets = markets;
+      await fresh.save();
+    } else {
+      await Store.updateOne(
+        { _id: store._id },
+        {
+          $set: {
+            'integrations.delivery.provider': 'mogadelivery',
+            'integrations.delivery.enabled': true,
+            'integrations.delivery.webhookSecret': result.webhookSecret,
+          },
+        },
+      );
+    }
+
+    res.json({
+      mode: 'auto',
+      boutiqueIdMD: result.boutiqueIdMD,
+      storeIdMD: result.storeIdMD,
+      // On masque le secret dans la réponse — il est déjà sauvegardé en DB.
+      webhookSecretPreview: `${result.webhookSecret.slice(0, 4)}…${result.webhookSecret.slice(-4)}`,
+      country,
+    });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : 'Onboarding MogaDelivery échoué.';
+    res.status(502).json({ error: msg });
+  }
+}
+
 /** POST /api/stores/:storeId/integrations/sheets/test — ping the Apps Script webhook. */
 export async function testSheetsController(req: AuthRequest, res: Response): Promise<void> {
   const store = req.store!;

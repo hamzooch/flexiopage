@@ -79,6 +79,7 @@ router.get('/:storeId/orders/:orderId', orderController.getOrder);
 router.patch('/:storeId/orders/:orderId/payment', orderController.updateOrderPaymentStatus);
 router.patch('/:storeId/orders/:orderId/fulfillment', orderController.updateOrderFulfillment);
 router.post('/:storeId/orders/:orderId/dispatch', orderController.dispatchOrderToCourier);
+router.post('/:storeId/delivery/connect-mogadelivery', storeController.connectMogaDeliveryController);
 router.patch('/:storeId/orders/:orderId/manual-status', orderController.manualStatusOverride);
 router.patch('/:storeId/orders/:orderId/confirmation', orderController.updateConfirmationStatus);
 

@@ -27,7 +27,8 @@ import { Input } from '@/components/ui/input';
 import { adminApi, extractApiError, type AdminDeliveryDiag } from '@/lib/api';
 import { useAuthStore } from '@/stores/auth-store';
 import { formatCurrency, storeAbsoluteUrl } from '@/lib/utils';
-import { Percent, Save, Loader2, Truck, XCircle, AlertTriangle, Sparkles, Copy, Check } from 'lucide-react';
+import { Percent, Save, Loader2, Truck, XCircle, AlertTriangle, Sparkles, Copy, Check, Zap } from 'lucide-react';
+import { storesApi } from '@/lib/api';
 import { KpiCard } from '@/components/charts/KpiCard';
 import { RangeSwitcher } from '@/components/charts/RangeSwitcher';
 import { RevenueAreaChart } from '@/components/charts/RevenueAreaChart';
@@ -544,6 +545,32 @@ function DeliveryDiagCard({ storeId }: { storeId: string }) {
     }
   }
 
+  const [autoConnecting, setAutoConnecting] = useState(false);
+  async function autoConnect() {
+    setAutoConnecting(true);
+    setSaveFeedback(null);
+    try {
+      const res = await storesApi.connectMogaDelivery(storeId);
+      if (res.data.mode === 'auto') {
+        setSaveFeedback({
+          kind: 'success',
+          text: `Onboarding réussi. storeIdMD=${res.data.storeIdMD}, secret synchronisé avec MD (${res.data.webhookSecretPreview}). Retente le dispatch.`,
+        });
+      } else {
+        setNewSecret(res.data.webhookSecret || '');
+        setSaveFeedback({
+          kind: 'success',
+          text: 'Mode manuel : secret généré localement (clé API MD absente en env). Envoie-le à MD, puis clique Enregistrer.',
+        });
+      }
+      await load();
+    } catch (err) {
+      setSaveFeedback({ kind: 'error', text: extractApiError(err, 'Onboarding échoué.') });
+    } finally {
+      setAutoConnecting(false);
+    }
+  }
+
   async function saveSecret() {
     if (!newSecret.trim() && !newBaseUrl.trim()) {
       setSaveFeedback({ kind: 'error', text: 'Colle au moins un secret ou une baseUrl.' });
@@ -604,10 +631,16 @@ function DeliveryDiagCard({ storeId }: { storeId: string }) {
               Vérifie la config delivery (secrets masqués) — utile en cas de 401 au dispatch.
             </p>
           </div>
-          <Button variant="outline" size="sm" onClick={load} disabled={loading}>
-            {loading && <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />}
-            {open ? 'Rafraîchir' : 'Vérifier'}
-          </Button>
+          <div className="flex flex-wrap items-center gap-2">
+            <Button variant="outline" size="sm" onClick={load} disabled={loading}>
+              {loading && <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />}
+              {open ? 'Rafraîchir' : 'Vérifier'}
+            </Button>
+            <Button size="sm" onClick={autoConnect} disabled={autoConnecting} className="gap-2" title="Crée/réinitialise la Boutique chez MogaDelivery + synchronise un secret HMAC neuf">
+              {autoConnecting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Zap className="h-3.5 w-3.5" />}
+              Connecter / Resync
+            </Button>
+          </div>
         </div>
       </CardHeader>
       {open && data && (
