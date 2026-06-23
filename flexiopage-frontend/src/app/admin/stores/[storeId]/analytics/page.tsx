@@ -27,7 +27,7 @@ import { Input } from '@/components/ui/input';
 import { adminApi, extractApiError, type AdminDeliveryDiag } from '@/lib/api';
 import { useAuthStore } from '@/stores/auth-store';
 import { formatCurrency, storeAbsoluteUrl } from '@/lib/utils';
-import { Percent, Save, Loader2, Truck, XCircle, AlertTriangle } from 'lucide-react';
+import { Percent, Save, Loader2, Truck, XCircle, AlertTriangle, Sparkles, Copy, Check } from 'lucide-react';
 import { KpiCard } from '@/components/charts/KpiCard';
 import { RangeSwitcher } from '@/components/charts/RangeSwitcher';
 import { RevenueAreaChart } from '@/components/charts/RevenueAreaChart';
@@ -507,6 +507,30 @@ function DeliveryDiagCard({ storeId }: { storeId: string }) {
   const [newBaseUrl, setNewBaseUrl] = useState('');
   const [saving, setSaving] = useState(false);
   const [saveFeedback, setSaveFeedback] = useState<{ kind: 'success' | 'error'; text: string } | null>(null);
+  const [copied, setCopied] = useState(false);
+
+  function generateSecret() {
+    // 64 chars hex via WebCrypto — la convention attendue côté MD.
+    const bytes = new Uint8Array(32);
+    crypto.getRandomValues(bytes);
+    const hex = Array.from(bytes).map((b) => b.toString(16).padStart(2, '0')).join('');
+    setNewSecret(hex);
+    setSaveFeedback({
+      kind: 'success',
+      text: 'Secret généré. Copie-le, envoie-le à MogaDelivery (à poser côté leur Boutique), puis clique Enregistrer.',
+    });
+  }
+
+  async function copySecret() {
+    if (!newSecret) return;
+    try {
+      await navigator.clipboard.writeText(newSecret);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      /* clipboard refusée — l'utilisateur peut sélectionner à la main */
+    }
+  }
 
   async function load() {
     setLoading(true);
@@ -669,10 +693,12 @@ function DeliveryDiagCard({ storeId }: { storeId: string }) {
               Fixer le secret HMAC de cette boutique
             </div>
             <p className="mt-1 text-[11px] text-muted-foreground">
-              Colle ici le secret webhook fourni par MogaDelivery pour cette boutique (mode legacy mono-pays).
-              Pas besoin de passer par le compte seller.
+              MogaDelivery valide désormais la signature avec un secret par Boutique (logs MD :{' '}
+              <code className="rounded bg-muted/60 px-1 py-0.5 text-[10px]">secret=store</code>).
+              Deux options : <strong>(1)</strong> demande à MD le secret qu&apos;ils ont en base pour cette boutique et colle-le, ou{' '}
+              <strong>(2)</strong> génère-en un ici, envoie-le à MD pour qu&apos;ils le posent côté eux.
             </p>
-            <div className="mt-2 grid gap-2 sm:grid-cols-[1fr,auto]">
+            <div className="mt-2 grid gap-2 sm:grid-cols-[1fr,auto,auto]">
               <Input
                 type="text"
                 value={newSecret}
@@ -680,11 +706,28 @@ function DeliveryDiagCard({ storeId }: { storeId: string }) {
                 placeholder="64 caractères hexadécimaux (ex. 9b0b0d98fa…f556)"
                 className="font-mono text-xs"
               />
+              <Button type="button" variant="outline" onClick={generateSecret} className="gap-2" title="Générer un secret aléatoire 64-hex">
+                <Sparkles className="h-3.5 w-3.5" />
+                Générer
+              </Button>
               <Button onClick={saveSecret} disabled={saving} className="gap-2">
                 {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
                 Enregistrer
               </Button>
             </div>
+            {newSecret.length === 64 && (
+              <div className="mt-2 flex items-center gap-2 rounded-md border border-emerald-500/30 bg-emerald-500/5 px-2.5 py-1.5">
+                <code className="flex-1 truncate font-mono text-[11px] text-emerald-800">{newSecret}</code>
+                <button
+                  type="button"
+                  onClick={copySecret}
+                  className="inline-flex h-7 items-center gap-1 rounded-md border border-border bg-card px-2 text-[11px] font-medium transition-colors hover:bg-muted"
+                >
+                  {copied ? <Check className="h-3 w-3 text-emerald-700" /> : <Copy className="h-3 w-3" />}
+                  {copied ? 'Copié' : 'Copier'}
+                </button>
+              </div>
+            )}
             <div className="mt-2 grid gap-2 sm:grid-cols-[1fr,auto]">
               <Input
                 type="text"
