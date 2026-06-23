@@ -68,10 +68,13 @@ class MogaDeliveryProvider implements DeliveryProviderImpl {
         && m.delivery?.storeIdMD
     );
     if (marketReady) return true;
-    // Legacy mono-pays : on exige un webhookSecret posé au niveau de la store.
-    // L'env global n'est plus considéré comme une config valide.
+    // Legacy mono-pays : config valide si l'intégration est activée et qu'au
+    // moins un secret est disponible (per-store > env). On garde l'env comme
+    // fallback de dernier recours pour les boutiques pré-migration qui
+    // tournaient déjà comme ça.
     const cfg = store.integrations?.delivery;
-    return !!(cfg?.enabled && cfg.webhookSecret);
+    if (!cfg?.enabled) return false;
+    return !!(cfg.webhookSecret || process.env.FLEXIOPAGE_WEBHOOK_SECRET || process.env.BOUTSHOP_WEBHOOK_SECRET);
   }
 
   /**
@@ -119,23 +122,34 @@ class MogaDeliveryProvider implements DeliveryProviderImpl {
         source: 'market',
       };
     }
-    // Pas de markets[] configurés : modèle legacy mono-pays. On EXIGE le secret
-    // posé au niveau de la store (integrations.delivery.webhookSecret). L'env
-    // n'est plus utilisée comme fallback silencieux — MD signe désormais par
-    // store côté eux, donc utiliser un secret global mène à un 401 garanti.
+    // Pas de markets[] configurés : modèle legacy mono-pays. Priorité au
+    // secret per-store ; l'env reste un fallback de dernier recours pour les
+    // boutiques pré-migration qui n'ont pas encore posé leur secret en DB.
+    // On log un warning quand on tombe sur l'env — ça permet d'identifier les
+    // boutiques à migrer sans casser leur dispatch en attendant.
     const cfg = store.integrations?.delivery;
-    if (!cfg?.webhookSecret) {
+    const secret =
+      cfg?.webhookSecret ||
+      process.env.FLEXIOPAGE_WEBHOOK_SECRET ||
+      process.env.BOUTSHOP_WEBHOOK_SECRET ||
+      '';
+    if (!secret) {
       throw new Error(
-        `MogaDelivery: secret HMAC manquant pour cette boutique. ` +
-        `Va dans Réglages → Livraison et colle le secret fourni par MogaDelivery dans "Secret webhook". ` +
-        `Le secret global FLEXIOPAGE_WEBHOOK_SECRET n'est plus utilisé — MD attend un secret par boutique.`
+        `MogaDelivery: aucun secret HMAC disponible (ni store.integrations.delivery.webhookSecret, ni FLEXIOPAGE_WEBHOOK_SECRET en env). ` +
+        `Va dans Réglages → Livraison de la boutique et colle le secret fourni par MogaDelivery.`
       );
     }
-    const url = (cfg.baseUrl || process.env.MOGADELIVERY_WEBHOOK_URL || this.defaultUrl).replace(/\/$/, '');
+    if (!cfg?.webhookSecret) {
+      console.warn(
+        `[mogadelivery] store ${store._id} (${store.slug}) utilise le secret env FLEXIOPAGE_WEBHOOK_SECRET — ` +
+        `à migrer vers integrations.delivery.webhookSecret pour s'aligner sur le modèle MD per-boutique.`
+      );
+    }
+    const url = (cfg?.baseUrl || process.env.MOGADELIVERY_WEBHOOK_URL || this.defaultUrl).replace(/\/$/, '');
     // Legacy mono-pays : on garde l'ObjectId Mongo comme identifiant côté MD
     // (compat ascendante — MD V1 inbound continue de matcher dessus pour les
     // boutiques pré-migration multi-pays).
-    return { secret: cfg.webhookSecret, url, storeIdMD: order.storeId.toString(), source: 'legacy' };
+    return { secret, url, storeIdMD: order.storeId.toString(), source: 'legacy' };
   }
 
   /**
