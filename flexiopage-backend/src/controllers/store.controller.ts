@@ -267,7 +267,14 @@ export async function previewDomainController(req: AuthRequest, res: Response): 
  */
 export async function connectMogaDeliveryController(req: AuthRequest, res: Response): Promise<void> {
   const store = req.store!;
-  const body = (req.body || {}) as { country?: string; marketCountry?: string };
+  const body = (req.body || {}) as {
+    country?: string;
+    marketCountry?: string;
+    /** JWT seller MD (recommandé — auth scoped au seller chez MD). */
+    sellerToken?: string;
+    /** Si la Boutique existe déjà côté MD, on skip /boutiques et on /connect direct. */
+    existingBoutiqueId?: string;
+  };
   const country = (body.marketCountry || body.country || store.settings?.country || '').toUpperCase();
   if (!country || country.length !== 2) {
     res.status(400).json({ error: 'country (ISO 3166-1 alpha-2) requis — précise-le ou pose-le dans Réglages → Général.' });
@@ -280,17 +287,19 @@ export async function connectMogaDeliveryController(req: AuthRequest, res: Respo
     generateWebhookSecret,
   } = await import('../services/mogadelivery-onboarding.service');
 
-  // Mode manuel : pas de clé API → on génère juste le secret et on demande
-  // à l'admin/seller de le pousser à MD par mail.
-  if (!isOnboardingAvailable()) {
+  // Mode manuel : ni JWT seller fourni ni env partner credential → on
+  // génère juste le secret côté nous et on demande au seller de coller le
+  // résultat dans la console MD lui-même (cf. réponse MD 2026-06-23).
+  if (!isOnboardingAvailable(body.sellerToken)) {
     const webhookSecret = generateWebhookSecret();
     res.json({
       mode: 'manual',
       webhookSecret,
       message:
-        "Clé API MogaDelivery absente côté serveur — voici un secret prêt à l'emploi. " +
-        "Envoie-le à MogaDelivery pour qu'ils l'enregistrent côté leur Boutique, " +
-        "puis clique Enregistrer pour le sauvegarder ici aussi.",
+        "Aucun token MogaDelivery fourni (JWT seller ou partner credential). " +
+        "Voici un secret 64-hex prêt à l'emploi. Connecte-toi sur ton compte " +
+        "MogaDelivery, va dans Intégrations → FlexioPage, colle ce secret + " +
+        "ton boutiqueId, puis enregistre-le ici dans 'Secret webhook'.",
       hint: { storeId: String(store._id), storeName: store.name, country },
     });
     return;
@@ -302,6 +311,8 @@ export async function connectMogaDeliveryController(req: AuthRequest, res: Respo
       storeName: store.name,
       country,
       description: `FlexioPage · ${store.name}`,
+      sellerToken: body.sellerToken,
+      existingBoutiqueId: body.existingBoutiqueId,
     });
 
     // Sauvegarde — multi-pays si marketCountry précisé, sinon legacy integrations.

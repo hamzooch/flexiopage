@@ -810,7 +810,17 @@ export const storesApi = {
    * Renvoie `mode: 'auto'` quand MOGADELIVERY_API_KEY est posée en env,
    * `mode: 'manual'` sinon (avec le secret à transmettre par mail).
    */
-  connectMogaDelivery: (storeId: string, data?: { country?: string; marketCountry?: string }) =>
+  connectMogaDelivery: (
+    storeId: string,
+    data?: {
+      country?: string;
+      marketCountry?: string;
+      /** JWT seller MD — auth scoped au seller, recommandé par MD (2026-06-23). */
+      sellerToken?: string;
+      /** Si la Boutique existe déjà côté MD, on skip /boutiques. */
+      existingBoutiqueId?: string;
+    },
+  ) =>
     api.post<{
       mode: 'auto' | 'manual';
       // mode=auto

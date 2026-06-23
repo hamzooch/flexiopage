@@ -33,12 +33,18 @@ export default function StoreDeliveryPage() {
     secret?: string;
   }>(null);
   const [secretCopied, setSecretCopied] = useState(false);
+  const [mdJwt, setMdJwt] = useState('');
+  const [existingBoutiqueId, setExistingBoutiqueId] = useState('');
+  const [showAdvanced, setShowAdvanced] = useState(false);
 
   async function handleConnect() {
     setConnecting(true);
     setConnectResult(null);
     try {
-      const res = await storesApi.connectMogaDelivery(storeId);
+      const res = await storesApi.connectMogaDelivery(storeId, {
+        sellerToken: mdJwt.trim() || undefined,
+        existingBoutiqueId: existingBoutiqueId.trim() || undefined,
+      });
       if (res.data.mode === 'auto') {
         setConnectResult({
           kind: 'success',
@@ -192,8 +198,8 @@ export default function StoreDeliveryPage() {
                   <h3 className="text-sm font-semibold">Connexion automatique MogaDelivery</h3>
                 </div>
                 <p className="mt-1 text-xs text-muted-foreground">
-                  Crée ta Boutique côté MogaDelivery, génère un secret HMAC et le pose des deux côtés en un clic.
-                  Utilise ce bouton aussi pour resynchroniser le secret si un dispatch renvoie 401.
+                  Crée ta Boutique côté MogaDelivery (ou resync le secret si déjà créée), génère un HMAC et le pose des deux côtés en un clic.
+                  Colle ton JWT MD dans Avancé si tu en as un — sinon on bascule en mode manuel.
                 </p>
               </div>
               <Button type="button" onClick={handleConnect} disabled={connecting} className="gap-2">
@@ -201,6 +207,45 @@ export default function StoreDeliveryPage() {
                 {delivery.webhookSecret ? 'Resynchroniser' : 'Connecter'}
               </Button>
             </div>
+            <button
+              type="button"
+              onClick={() => setShowAdvanced((v) => !v)}
+              className="mt-2 text-[11px] font-medium text-fuchsia-700 hover:underline"
+            >
+              {showAdvanced ? 'Masquer' : 'Afficher'} les options avancées (JWT MD, boutique existante)
+            </button>
+            {showAdvanced && (
+              <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                <div>
+                  <Label htmlFor="md-jwt" className="text-[11px]">JWT seller MogaDelivery (optionnel)</Label>
+                  <Input
+                    id="md-jwt"
+                    type="password"
+                    autoComplete="off"
+                    value={mdJwt}
+                    onChange={(e) => setMdJwt(e.target.value)}
+                    placeholder="eyJhbGciOi..."
+                    className="font-mono text-xs"
+                  />
+                  <p className="mt-1 text-[10px] text-muted-foreground">
+                    Connecte-toi sur admin-mogadelivery.com, copie ton token depuis DevTools (Application → Storage → JWT). Servirá uniquement pour cet appel.
+                  </p>
+                </div>
+                <div>
+                  <Label htmlFor="md-boutique" className="text-[11px]">boutiqueId existant (resync)</Label>
+                  <Input
+                    id="md-boutique"
+                    value={existingBoutiqueId}
+                    onChange={(e) => setExistingBoutiqueId(e.target.value)}
+                    placeholder="Laisse vide pour créer une nouvelle Boutique"
+                    className="text-xs"
+                  />
+                  <p className="mt-1 text-[10px] text-muted-foreground">
+                    Si MogaDelivery a déjà créé la Boutique, colle son id pour juste rotater le secret.
+                  </p>
+                </div>
+              </div>
+            )}
             {connectResult && (
               <div
                 className={`mt-3 rounded-md px-3 py-2 text-xs ${
