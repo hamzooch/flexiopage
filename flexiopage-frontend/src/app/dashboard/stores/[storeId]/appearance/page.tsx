@@ -13,6 +13,7 @@ import {
 } from '@/data/store-themes';
 import { ThemePreviewGrid } from '@/components/dashboard/theme-preview-card';
 import { ThemePaletteEditor } from '@/components/dashboard/theme-palette-editor';
+import { LogoColorExtractor } from '@/components/dashboard/logo-color-extractor';
 import { MediaPicker } from '@/components/dashboard/MediaPicker';
 import { StoreSubPageShell, type SaveStatus } from '@/components/dashboard/store-sub-page';
 import { StoreHomepageLivePreview } from '@/components/dashboard/store-homepage-live-preview';
@@ -184,6 +185,21 @@ export default function StoreAppearancePage() {
           />
         </CardContent>
       </Card>
+
+      {themeTokens && logo && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Couleurs du logo</CardTitle>
+            <CardDescription>
+              Génère la palette du thème à partir des couleurs de ton logo. Tu choisis
+              la couleur principale et l&apos;accent, puis tu appliques.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <LogoColorExtractor logo={logo} theme={themeTokens} onChange={setThemeTokens} />
+          </CardContent>
+        </Card>
+      )}
 
       {themeTokens && (
         <Card>
