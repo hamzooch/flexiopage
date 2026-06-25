@@ -5,7 +5,7 @@ import { useParams, useRouter } from 'next/navigation';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { CheckCircle2, Circle, Truck, Eye, AlertTriangle, Clock, Lock, Zap, Copy, Check, Loader2 } from 'lucide-react';
+import { CheckCircle2, Circle, Truck, Eye, AlertTriangle, Clock, Lock, Zap, Copy, Check, Loader2, Power } from 'lucide-react';
 import { storesApi, extractApiError } from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { StoreSubPageShell, type SaveStatus } from '@/components/dashboard/store-sub-page';
@@ -27,6 +27,7 @@ export default function StoreDeliveryPage() {
   });
   // Onboarding auto MD
   const [connecting, setConnecting] = useState(false);
+  const [togglingConn, setTogglingConn] = useState(false);
   const [connectResult, setConnectResult] = useState<null | {
     kind: 'success' | 'manual' | 'error';
     message: string;
@@ -75,6 +76,25 @@ export default function StoreDeliveryPage() {
       setConnectResult({ kind: 'error', message: extractApiError(err, 'Onboarding échoué.') });
     } finally {
       setConnecting(false);
+    }
+  }
+
+  async function handleToggleConnection(connect: boolean) {
+    setTogglingConn(true);
+    setConnectResult(null);
+    try {
+      await storesApi.setDeliveryConnection(storeId, connect);
+      setDelivery((d) => ({ ...d, enabled: connect }));
+      setConnectResult({
+        kind: 'success',
+        message: connect
+          ? 'Intégration reconnectée — les dispatchs reprennent. Secret inchangé, aucun risque de 401.'
+          : 'Intégration déconnectée — dispatchs suspendus. Ton secret et ta Boutique MogaDelivery sont conservés ; reconnecte quand tu veux.',
+      });
+    } catch (err) {
+      setConnectResult({ kind: 'error', message: extractApiError(err, 'Action impossible.') });
+    } finally {
+      setTogglingConn(false);
     }
   }
 
@@ -188,6 +208,41 @@ export default function StoreDeliveryPage() {
           </div>
         </CardHeader>
         <CardContent className="space-y-5">
+          {/* Statut de connexion + déconnexion douce / reconnexion. Visible
+              dès qu'un secret est en place (boutique déjà connectée). Bascule
+              juste le master switch — secret et Boutique MD conservés. */}
+          {delivery.webhookSecret && (
+            <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border p-3">
+              <div className="flex flex-wrap items-center gap-2 text-sm">
+                <span
+                  className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium ${
+                    delivery.enabled
+                      ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-700'
+                      : 'border-border bg-muted text-muted-foreground'
+                  }`}
+                >
+                  <span className={`h-1.5 w-1.5 rounded-full ${delivery.enabled ? 'bg-emerald-500' : 'bg-muted-foreground/50'}`} />
+                  {delivery.enabled ? 'Connecté' : 'Déconnecté'}
+                </span>
+                <span className="text-xs text-muted-foreground">
+                  {delivery.enabled
+                    ? 'Les commandes payées partent automatiquement chez le coursier.'
+                    : 'Dispatchs suspendus — secret et Boutique MD conservés.'}
+                </span>
+              </div>
+              <Button
+                type="button"
+                variant={delivery.enabled ? 'outline' : 'default'}
+                onClick={() => handleToggleConnection(!delivery.enabled)}
+                disabled={togglingConn}
+                className="gap-2"
+              >
+                {togglingConn ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Power className="h-3.5 w-3.5" />}
+                {delivery.enabled ? 'Déconnecter' : 'Reconnecter'}
+              </Button>
+            </div>
+          )}
+
           {/* Onboarding auto — recommandé pour les nouvelles boutiques et
               les reconnexions après un secret désynchronisé. */}
           <div className="rounded-xl border border-fuchsia-500/30 bg-gradient-to-br from-fuchsia-500/5 to-rose-500/5 p-4">

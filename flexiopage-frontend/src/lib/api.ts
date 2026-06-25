@@ -678,6 +678,28 @@ export const adminApi = {
       };
     }>(`/admin/stores/${storeId}/delivery-config`, data),
 
+  // ── Delivery dashboard (cross-store) ──
+  /** Toutes les boutiques avec config delivery + verdict + stats dispatch 7j. */
+  getDeliveryOverview: () =>
+    api.get<{ stores: AdminDeliveryOverviewRow[]; generatedAt: string }>('/admin/delivery/overview'),
+  /** Journal des échanges webhook (sortants + entrants), paginé par cursor. */
+  getWebhookLogs: (params?: {
+    storeId?: string;
+    direction?: 'inbound' | 'outbound';
+    status?: 'success' | 'error';
+    limit?: number;
+    cursor?: string;
+  }) => api.get<{ items: AdminWebhookLog[]; nextCursor: string | null }>('/admin/delivery/logs', { params }),
+  /** Empreintes SHA-256 des secrets d'une boutique (comparaison avec MD). */
+  getStoreDeliveryFingerprint: (storeId: string) =>
+    api.get<AdminDeliveryFingerprint>(`/admin/stores/${storeId}/delivery/fingerprint`),
+  /** Relance un dispatch échoué pour une commande. */
+  redispatchOrder: (storeId: string, orderId: string) =>
+    api.post<{ ok: boolean; alreadyDispatched?: boolean; error?: string }>(
+      `/admin/stores/${storeId}/orders/${orderId}/redispatch`,
+      {},
+    ),
+
   // ── Exports (CSV download) ──
   /** Téléchargement CSV avec auth — déclenche la sauvegarde du fichier dans le navigateur. */
   downloadExport: async (type: 'users' | 'orders' | 'wallets' | 'complaints' | 'stores'): Promise<void> => {
@@ -747,6 +769,59 @@ export interface AdminDeliveryDiag {
     BOUTSHOP_WEBHOOK_SECRET?: string;
     MOGADELIVERY_WEBHOOK_URL?: string;
   };
+}
+
+export interface AdminDeliveryOverviewRow {
+  storeId: string;
+  name: string;
+  slug: string;
+  country?: string;
+  kind: 'ok' | 'warn' | 'ko' | 'off';
+  reason: string;
+  source: 'market' | 'legacy' | 'none';
+  connected: boolean;
+  marketsCount: number;
+  legacyEnabled: boolean;
+  legacyHasSecret: boolean;
+  dispatch7d: null | {
+    total: number;
+    errors: number;
+    lastAt: string;
+    lastStatus: 'success' | 'error';
+    lastHttp?: number;
+    lastError?: string;
+  };
+}
+
+export interface AdminWebhookLog {
+  _id: string;
+  storeId?: string;
+  storeName?: string;
+  orderNumber?: string;
+  direction: 'inbound' | 'outbound';
+  event?: string;
+  status: 'success' | 'error';
+  httpStatus?: number;
+  storeIdSent?: string;
+  secretSource?: string;
+  signatureValid?: boolean;
+  error?: string;
+  requestBody?: string;
+  responseBody?: string;
+  createdAt: string;
+}
+
+export interface AdminDeliveryFingerprint {
+  store: { _id: string; name: string };
+  algo: string;
+  sources: Array<{
+    source: string;
+    country?: string;
+    isHex64: boolean;
+    len: number;
+    preview: string;
+    fingerprint: string;
+  }>;
 }
 
 export interface AdminHealth {
@@ -833,6 +908,12 @@ export const storesApi = {
       message?: string;
       hint?: { storeId: string; storeName: string; country: string };
     }>(`/stores/${storeId}/delivery/connect-mogadelivery`, data || {}),
+  /**
+   * Déconnexion douce / reconnexion MogaDelivery — bascule le master switch
+   * sans toucher au secret ni au boutiqueId (reconnexion instantanée, zéro 401).
+   */
+  setDeliveryConnection: (storeId: string, enabled: boolean) =>
+    api.post<{ ok: boolean; connected: boolean }>(`/stores/${storeId}/delivery/connection`, { enabled }),
   // Products
   listProducts: (storeId: string, params?: { published?: string; limit?: number; skip?: number; search?: string }) =>
     api.get<{ products: unknown[]; total: number; limit: number; skip: number }>(`/stores/${storeId}/products`, { params }),

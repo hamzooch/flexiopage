@@ -4,6 +4,7 @@
  * gros admin.controller.ts pour limiter le rebasage.
  */
 import os from 'os';
+import crypto from 'crypto';
 import { Response } from 'express';
 import mongoose from 'mongoose';
 import { AuthRequest } from '../middleware/auth.middleware';
@@ -13,6 +14,8 @@ import { Order } from '../models/Order.model';
 import { Wallet } from '../models/Wallet.model';
 import { Complaint } from '../models/Complaint.model';
 import { Product } from '../models/Product.model';
+import { WebhookLog } from '../models/WebhookLog.model';
+import { dispatchOrder } from '../services/delivery.service';
 import { listAudit } from '../services/audit-log.service';
 import { logAudit } from '../services/audit-log.service';
 import type { AuditAction } from '../models/AuditLog.model';
@@ -473,7 +476,7 @@ export async function patchStoreDeliveryConfig(req: AuthRequest, res: Response):
   if (!store) { res.status(404).json({ error: 'Store not found' }); return; }
 
   await logAudit({
-    action: 'store.commission_override',
+    action: 'store.delivery_config',
     req,
     targetId: storeId,
     targetType: 'store',
@@ -544,6 +547,223 @@ export async function getStoreDeliveryConfig(req: AuthRequest, res: Response): P
       MOGADELIVERY_WEBHOOK_URL: process.env.MOGADELIVERY_WEBHOOK_URL,
     },
   });
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// DELIVERY OVERVIEW / WEBHOOK LOGS / TROUBLESHOOTING (cross-store)
+// ─────────────────────────────────────────────────────────────────────
+
+/**
+ * Calcule un verdict de config delivery (OK/warn/KO) pour une boutique, en
+ * miroir de la logique de dispatch (market prioritaire, sinon legacy mono-pays).
+ */
+function deliveryVerdict(store: {
+  markets?: Array<{ country?: string; delivery?: { provider?: string; enabled?: boolean; storeIdMD?: string; webhookSecret?: string } }>;
+  integrations?: { delivery?: { enabled?: boolean; webhookSecret?: string } };
+}): { kind: 'ok' | 'warn' | 'ko' | 'off'; reason: string; source: 'market' | 'legacy' | 'none'; connected: boolean } {
+  const marketsMD = (store.markets || []).filter((m) => m.delivery?.provider === 'mogadelivery' && m.delivery?.enabled !== false);
+  const marketReady = marketsMD.filter((m) => m.delivery?.storeIdMD && m.delivery?.webhookSecret);
+  const legacy = store.integrations?.delivery;
+  const hasCreds = marketReady.length > 0 || !!legacy?.webhookSecret;
+  // Master switch : c'est `integrations.delivery.enabled` que dispatchOrder
+  // teste pour autoriser un envoi (mono comme multi-pays).
+  const connected = !!legacy?.enabled;
+  const source: 'market' | 'legacy' | 'none' = marketReady.length ? 'market' : (legacy?.webhookSecret ? 'legacy' : 'none');
+
+  // Misconfig hard (toujours signalée, même déconnectée).
+  if (marketsMD.length && !marketReady.length) {
+    return { kind: 'ko', reason: 'Marché MD activé mais storeIdMD ou webhookSecret manquant', source: 'market', connected };
+  }
+  if (!hasCreds) {
+    return { kind: 'ko', reason: 'Aucune config MD (ni market, ni integration)', source: 'none', connected };
+  }
+  // Déconnexion douce : identifiants présents mais master switch coupé.
+  if (!connected) {
+    return { kind: 'off', reason: 'Déconnecté — identifiants conservés, réactivable en 1 clic', source, connected };
+  }
+  // Connecté.
+  if (!marketReady.length && legacy && !legacy.webhookSecret) {
+    return { kind: 'ko', reason: 'Integration activée mais webhookSecret vide → 401 garanti', source: 'legacy', connected };
+  }
+  if (marketReady.length) {
+    return { kind: 'ok', reason: `${marketReady.length} marché(s) MD prêt(s)`, source: 'market', connected };
+  }
+  return { kind: 'warn', reason: 'Legacy mono-pays — ObjectId Mongo envoyé comme store_id', source: 'legacy', connected };
+}
+
+/**
+ * GET /api/admin/delivery/overview — toutes les boutiques avec une config
+ * delivery, leur verdict (OK/warn/KO) et les stats de dispatch des 7 derniers
+ * jours. Les boutiques en problème remontent en premier.
+ */
+export async function getDeliveryOverview(_req: AuthRequest, res: Response): Promise<void> {
+  const stores = await Store.find({
+    $or: [
+      { 'markets.delivery.provider': 'mogadelivery' },
+      { 'integrations.delivery.enabled': true },
+      { 'integrations.delivery.provider': 'mogadelivery' },
+    ],
+  }).select('name slug markets integrations.delivery settings.country').lean();
+
+  const since = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+  const stats = await WebhookLog.aggregate([
+    { $match: { direction: 'outbound', createdAt: { $gte: since } } },
+    { $sort: { createdAt: -1 } },
+    {
+      $group: {
+        _id: '$storeId',
+        total: { $sum: 1 },
+        errors: { $sum: { $cond: [{ $eq: ['$status', 'error'] }, 1, 0] } },
+        lastAt: { $first: '$createdAt' },
+        lastStatus: { $first: '$status' },
+        lastHttp: { $first: '$httpStatus' },
+        lastError: { $first: '$error' },
+      },
+    },
+  ]);
+  const statById = new Map(stats.map((s) => [String(s._id), s]));
+
+  const rows = stores.map((store) => {
+    const verdict = deliveryVerdict(store);
+    const st = statById.get(String(store._id));
+    return {
+      storeId: String(store._id),
+      name: store.name,
+      slug: store.slug,
+      country: store.settings?.country,
+      ...verdict,
+      marketsCount: (store.markets || []).length,
+      legacyEnabled: !!store.integrations?.delivery?.enabled,
+      legacyHasSecret: !!store.integrations?.delivery?.webhookSecret,
+      dispatch7d: st
+        ? { total: st.total, errors: st.errors, lastAt: st.lastAt, lastStatus: st.lastStatus, lastHttp: st.lastHttp, lastError: st.lastError }
+        : null,
+    };
+  });
+  const rank: Record<string, number> = { ko: 0, warn: 1, ok: 2, off: 3 };
+  rows.sort((a, b) => (rank[a.kind] - rank[b.kind]) || ((b.dispatch7d?.errors || 0) - (a.dispatch7d?.errors || 0)));
+
+  res.json({ stores: rows, generatedAt: new Date().toISOString() });
+}
+
+/**
+ * GET /api/admin/delivery/logs?storeId=&direction=&status=&limit=&cursor=
+ * Journal des échanges webhook (sortants + entrants), pagination par cursor
+ * (createdAt décroissant). Aucun secret n'est stocké dans ce journal.
+ */
+export async function getWebhookLogs(req: AuthRequest, res: Response): Promise<void> {
+  const limit = Math.min(Number(req.query.limit) || 50, 200);
+  const filter: Record<string, unknown> = {};
+  if (typeof req.query.storeId === 'string' && mongoose.isValidObjectId(req.query.storeId)) filter.storeId = req.query.storeId;
+  if (req.query.direction === 'inbound' || req.query.direction === 'outbound') filter.direction = req.query.direction;
+  if (req.query.status === 'success' || req.query.status === 'error') filter.status = req.query.status;
+  if (typeof req.query.cursor === 'string' && req.query.cursor) {
+    const d = new Date(req.query.cursor);
+    if (!Number.isNaN(d.getTime())) filter.createdAt = { $lt: d };
+  }
+
+  const docs = await WebhookLog.find(filter).sort({ createdAt: -1 }).limit(limit + 1).lean();
+  const hasMore = docs.length > limit;
+  const page = hasMore ? docs.slice(0, limit) : docs;
+
+  const storeIds = [...new Set(page.map((i) => i.storeId).filter(Boolean).map(String))];
+  const stores = storeIds.length ? await Store.find({ _id: { $in: storeIds } }).select('name slug').lean() : [];
+  const nameById = new Map(stores.map((s) => [String(s._id), s.name]));
+
+  res.json({
+    items: page.map((i) => ({
+      _id: String(i._id),
+      storeId: i.storeId ? String(i.storeId) : undefined,
+      storeName: i.storeId ? nameById.get(String(i.storeId)) : undefined,
+      orderNumber: i.orderNumber,
+      direction: i.direction,
+      event: i.event,
+      status: i.status,
+      httpStatus: i.httpStatus,
+      storeIdSent: i.storeIdSent,
+      secretSource: i.secretSource,
+      signatureValid: i.signatureValid,
+      error: i.error,
+      requestBody: i.requestBody,
+      responseBody: i.responseBody,
+      createdAt: i.createdAt,
+    })),
+    nextCursor: hasMore ? page[page.length - 1].createdAt.toISOString() : null,
+  });
+}
+
+/**
+ * Empreinte SHA-256 de la VRAIE clé HMAC (32 octets décodés si secret 64-hex,
+ * sinon octets UTF-8). Permet de comparer le secret avec MD sans l'exposer —
+ * c'est l'outil qui tranche un 401 « secret désynchronisé ».
+ */
+function secretFingerprint(secret?: string): { isHex64: boolean; len: number; preview: string; fingerprint: string } | null {
+  if (!secret) return null;
+  const isHex64 = /^[a-f0-9]{64}$/i.test(secret);
+  const key = isHex64 ? Buffer.from(secret.toLowerCase(), 'hex') : Buffer.from(secret, 'utf8');
+  return {
+    isHex64,
+    len: secret.length,
+    preview: maskSecret(secret) as string,
+    fingerprint: crypto.createHash('sha256').update(key).digest('hex'),
+  };
+}
+
+/**
+ * GET /api/admin/stores/:storeId/delivery/fingerprint — empreintes des secrets
+ * (markets + legacy + env) pour comparer avec MD sans révéler la clé.
+ */
+export async function getStoreDeliveryFingerprint(req: AuthRequest, res: Response): Promise<void> {
+  const { storeId } = req.params;
+  const store = await Store.findById(storeId).select('name markets integrations.delivery').lean();
+  if (!store) { res.status(404).json({ error: 'Store not found' }); return; }
+
+  const sources: Array<{ source: string; country?: string; isHex64: boolean; len: number; preview: string; fingerprint: string }> = [];
+  for (const m of store.markets || []) {
+    const fp = secretFingerprint(m.delivery?.webhookSecret);
+    if (fp) sources.push({ source: 'market', country: m.country, ...fp });
+  }
+  const legacyFp = secretFingerprint(store.integrations?.delivery?.webhookSecret);
+  if (legacyFp) sources.push({ source: 'legacy', ...legacyFp });
+  const envFp = secretFingerprint(process.env.FLEXIOPAGE_WEBHOOK_SECRET);
+  if (envFp) sources.push({ source: 'env:FLEXIOPAGE_WEBHOOK_SECRET', ...envFp });
+
+  res.json({
+    store: { _id: String(store._id), name: store.name },
+    algo: 'sha256(clé HMAC) — clé = Buffer.from(secret,"hex") si 64-hex, sinon utf8',
+    sources,
+  });
+}
+
+/**
+ * POST /api/admin/stores/:storeId/orders/:orderId/redispatch — relance un
+ * dispatch (efface le marqueur d'idempotence puis ré-appelle dispatchOrder).
+ */
+export async function redispatchOrder(req: AuthRequest, res: Response): Promise<void> {
+  const { storeId, orderId } = req.params;
+  if (!mongoose.isValidObjectId(orderId)) { res.status(400).json({ error: 'Invalid orderId' }); return; }
+  const order = await Order.findById(orderId);
+  if (!order || String(order.storeId) !== String(storeId)) { res.status(404).json({ error: 'Order not found for this store' }); return; }
+  const store = await Store.findById(storeId);
+  if (!store) { res.status(404).json({ error: 'Store not found' }); return; }
+
+  // Efface le marqueur d'idempotence pour forcer une nouvelle tentative.
+  if (order.delivery) {
+    order.delivery.externalId = undefined as unknown as string;
+    order.delivery.error = undefined as unknown as string;
+  }
+  const result = await dispatchOrder({ order, store });
+
+  await logAudit({
+    action: 'store.delivery_redispatch',
+    req,
+    targetId: storeId,
+    targetType: 'store',
+    summary: `Redispatch ${order.orderNumber} → ${result.ok ? 'OK' : 'échec'}`,
+    metadata: { orderId, orderNumber: order.orderNumber, ok: result.ok, error: result.error },
+  });
+
+  res.json({ ok: result.ok, alreadyDispatched: result.alreadyDispatched, error: result.error, result: result.result });
 }
 
 // ─────────────────────────────────────────────────────────────────────

@@ -16,6 +16,7 @@ import type { IOrder } from '../models/Order.model';
 import { Order } from '../models/Order.model';
 import type { IStore } from '../models/Store.model';
 import { logActivity } from './activity-log.service';
+import { logWebhook } from '../models/WebhookLog.model';
 
 export type DeliveryProvider = 'mogadelivery' | 'yalidine' | 'noest' | 'aramex' | 'manual' | 'other';
 
@@ -277,6 +278,20 @@ class MogaDeliveryProvider implements DeliveryProviderImpl {
     })();
     if (!res.ok) {
       const errMsg = typeof json?.error === 'string' ? json.error : (text.slice(0, 200) || res.statusText);
+      void logWebhook({
+        storeId: order.storeId,
+        orderId: order._id,
+        orderNumber: order.orderNumber,
+        direction: 'outbound',
+        event: 'order.created',
+        status: 'error',
+        httpStatus: res.status,
+        storeIdSent: storeIdMD,
+        secretSource: source,
+        error: `${res.status}: ${errMsg}`,
+        requestBody: requestBody,
+        responseBody: text,
+      });
       // Sur 401 on enrichit le message avec le contexte (source du secret, prefix,
       // storeIdMD envoyé) — ça permet de comparer avec ce que MD a en base sans
       // déduire à l'aveugle. Le secret complet n'est jamais exposé.
@@ -293,6 +308,19 @@ class MogaDeliveryProvider implements DeliveryProviderImpl {
     // delivery id. Use the orderNumber as our externalId so subsequent status
     // webhooks can look the order up by `order_id`.
     const externalId = String(json.delivery_id || json.id || json.order_id || order.orderNumber);
+    void logWebhook({
+      storeId: order.storeId,
+      orderId: order._id,
+      orderNumber: order.orderNumber,
+      direction: 'outbound',
+      event: 'order.created',
+      status: 'success',
+      httpStatus: res.status,
+      storeIdSent: storeIdMD,
+      secretSource: source,
+      requestBody: requestBody,
+      responseBody: text,
+    });
     return {
       externalId,
       externalStatus: String(json.status || 'pending'),
@@ -565,7 +593,17 @@ export async function applyDeliveryWebhook(args: {
   if (!order && parsedNoCheck.orderId) {
     order = await Order.findOne({ orderNumber: parsedNoCheck.orderId });
   }
-  if (!order) return { ok: false, error: 'Order not found for webhook' };
+  if (!order) {
+    void logWebhook({
+      orderNumber: parsedNoCheck.orderId,
+      direction: 'inbound',
+      event: parsedNoCheck.status,
+      status: 'error',
+      error: 'Order not found for webhook',
+      responseBody: args.payload,
+    });
+    return { ok: false, error: 'Order not found for webhook' };
+  }
 
   // Now do a SIGNED parse using the store's secret
   const { Store } = await import('../models/Store.model');
@@ -576,6 +614,17 @@ export async function applyDeliveryWebhook(args: {
       await impl.parseWebhook(args.payload, args.headers, store);
     } catch (err) {
       console.warn('[delivery webhook] signature check failed:', (err as Error).message);
+      void logWebhook({
+        storeId: order.storeId,
+        orderId: order._id,
+        orderNumber: order.orderNumber,
+        direction: 'inbound',
+        event: parsedNoCheck.status,
+        status: 'error',
+        signatureValid: false,
+        error: (err as Error).message,
+        responseBody: args.payload,
+      });
       return { ok: false, error: (err as Error).message };
     }
   }
@@ -634,5 +683,15 @@ export async function applyDeliveryWebhook(args: {
     }
   }
 
+  void logWebhook({
+    storeId: order.storeId,
+    orderId: order._id,
+    orderNumber: order.orderNumber,
+    direction: 'inbound',
+    event: parsedNoCheck.status,
+    status: 'success',
+    signatureValid: store ? true : undefined,
+    responseBody: parsedNoCheck.raw,
+  });
   return { ok: true, orderId: order._id.toString(), status: parsedNoCheck.status };
 }

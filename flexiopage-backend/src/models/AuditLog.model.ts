@@ -21,6 +21,8 @@ export type AuditAction =
   | 'wallet.adjust'
   | 'wallet.credit'
   | 'store.commission_override'
+  | 'store.delivery_config'
+  | 'store.delivery_redispatch'
   | 'complaint.update'
   | 'complaint.assign'
   | 'settings.ai_pricing'

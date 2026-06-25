@@ -77,4 +77,10 @@ router.patch('/stores/:storeId/commission', requireSuperAdmin, adminExtras.setSt
 router.get('/stores/:storeId/delivery-config', adminExtras.getStoreDeliveryConfig);
 router.patch('/stores/:storeId/delivery-config', requireAdminWrite, adminExtras.patchStoreDeliveryConfig);
 
+// ── Delivery / webhooks dashboard (cross-store) ──
+router.get('/delivery/overview', adminExtras.getDeliveryOverview);
+router.get('/delivery/logs', adminExtras.getWebhookLogs);
+router.get('/stores/:storeId/delivery/fingerprint', adminExtras.getStoreDeliveryFingerprint);
+router.post('/stores/:storeId/orders/:orderId/redispatch', requireAdminWrite, adminExtras.redispatchOrder);
+
 export default router;

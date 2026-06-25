@@ -369,6 +369,47 @@ export async function connectMogaDeliveryController(req: AuthRequest, res: Respo
   }
 }
 
+/**
+ * POST /api/stores/:storeId/delivery/connection — body : { enabled: boolean }
+ *
+ * Déconnexion douce / reconnexion de l'intégration MogaDelivery. On bascule
+ * UNIQUEMENT le master switch `integrations.delivery.enabled` (que dispatchOrder
+ * teste pour autoriser un envoi) ; on ne touche ni au `webhookSecret`, ni au
+ * `storeIdMD`/`boutiqueIdMD` des markets. Une reconnexion est donc instantanée
+ * et sans risque de 401 — le secret reste synchronisé avec MD.
+ */
+export async function setMogaDeliveryConnectionController(req: AuthRequest, res: Response): Promise<void> {
+  const store = req.store!;
+  const enabled = (req.body || {}).enabled;
+  if (typeof enabled !== 'boolean') {
+    res.status(400).json({ error: 'enabled (boolean) requis' });
+    return;
+  }
+  const { Store } = await import('../models/Store.model');
+
+  if (enabled) {
+    // Reconnexion : on exige des identifiants déjà posés (legacy ou market),
+    // sinon ce n'est pas une reconnexion mais un premier onboarding.
+    const fresh = await Store.findById(store._id).select('markets integrations.delivery').lean();
+    const hasLegacy = !!fresh?.integrations?.delivery?.webhookSecret;
+    const hasMarket = (fresh?.markets || []).some(
+      (m) => m.delivery?.provider === 'mogadelivery' && m.delivery?.webhookSecret && m.delivery?.storeIdMD,
+    );
+    if (!hasLegacy && !hasMarket) {
+      res.status(400).json({
+        error: 'Aucun identifiant MogaDelivery enregistré — connecte la boutique avant de pouvoir reconnecter.',
+      });
+      return;
+    }
+  }
+
+  await Store.updateOne(
+    { _id: store._id },
+    { $set: { 'integrations.delivery.enabled': enabled, 'integrations.delivery.provider': 'mogadelivery' } },
+  );
+  res.json({ ok: true, connected: enabled });
+}
+
 /** POST /api/stores/:storeId/integrations/sheets/test — ping the Apps Script webhook. */
 export async function testSheetsController(req: AuthRequest, res: Response): Promise<void> {
   const store = req.store!;

@@ -34,6 +34,7 @@ import {
   FileText,
   HeartPulse,
   BarChart3,
+  Truck,
 } from 'lucide-react';
 import { useAuthStore } from '@/stores/auth-store';
 import { cn } from '@/lib/utils';
@@ -64,6 +65,7 @@ const SECTIONS: { title: string; items: NavItem[] }[] = [
     title: 'Système',
     items: [
       { href: '/admin/health',   label: 'Santé',      icon: HeartPulse },
+      { href: '/admin/delivery', label: 'Livraison',  icon: Truck },
       { href: '/admin/audit',    label: 'Audit',      icon: FileText },
       { href: '/admin/pricing',  label: 'Tarifs AI',  icon: DollarSign },
       { href: '/admin/settings', label: 'Réglages',   icon: Sliders },
@@ -284,6 +286,7 @@ function labelFromPath(path: string): string {
     activity: 'Activité',
     profile: 'Profil',
     audit: 'Audit',
+    delivery: 'Livraison & Webhooks',
     health: 'Santé plateforme',
     reports: 'Reports',
     settings: 'Réglages',
