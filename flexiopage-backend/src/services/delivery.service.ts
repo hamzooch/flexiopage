@@ -12,13 +12,14 @@
  * via `integrations.delivery.baseUrl` or `MOGADELIVERY_WEBHOOK_URL` env.
  */
 import crypto from 'crypto';
+import * as soap from 'soap';
 import type { IOrder } from '../models/Order.model';
 import { Order } from '../models/Order.model';
 import type { IStore } from '../models/Store.model';
 import { logActivity } from './activity-log.service';
 import { logWebhook } from '../models/WebhookLog.model';
 
-export type DeliveryProvider = 'mogadelivery' | 'yalidine' | 'noest' | 'aramex' | 'manual' | 'other';
+export type DeliveryProvider = 'mogadelivery' | 'bestdelivery' | 'manual' | 'other';
 
 export interface DispatchResult {
   externalId: string;
@@ -428,17 +429,100 @@ class MogaDeliveryProvider implements DeliveryProviderImpl {
 }
 
 // ─────────────────────────────────────────────────────────────────────
+// Best Delivery (Tunisie) — SOAP, api.best-delivery.net/serviceShipments.php
+// ─────────────────────────────────────────────────────────────────────
+//
+// Différences majeures avec MogaDelivery :
+//   - Protocole SOAP (Document/Literal), pas REST/JSON.
+//   - Auth Basic : login + pwd du compte expéditeur, dans chaque requête.
+//   - AUCUN webhook : la sync de statut se fait en POLLING (TrackShipmentStatus),
+//     branché en phase 2. Ici on ne gère que le dispatch (CreatePickup).
+//   - Zone Tunisie : le champ `gouvernerat` est requis.
+//
+// ⚠️ Le wrapping exact de l'argument SOAP `pickup` et les noms de champs sont à
+// confirmer contre le sandbox Best Delivery (pas de creds de test au moment du
+// code). Le mapping ci-dessous suit le WSDL serviceShipments.
+class BestDeliveryProvider implements DeliveryProviderImpl {
+  id: DeliveryProvider = 'bestdelivery';
+  private defaultWsdl = 'https://api.best-delivery.net/serviceShipments.php?wsdl';
+
+  isConfigured(store: IStore): boolean {
+    const cfg = store.integrations?.delivery;
+    return !!(cfg?.enabled && cfg.provider === 'bestdelivery' && cfg.login && cfg.pwd);
+  }
+
+  async dispatch({ order, store }: { order: IOrder; store: IStore }): Promise<DispatchResult> {
+    const cfg = store.integrations?.delivery;
+    const login = cfg?.login || '';
+    const pwd = cfg?.pwd || '';
+    if (!login || !pwd) {
+      throw new Error('Best Delivery : login/pwd du compte expéditeur manquants (Réglages → Livraison).');
+    }
+    const addr = order.shippingAddress || {};
+    const gouvernerat = addr.state || addr.city || '';
+    if (!gouvernerat) {
+      throw new Error('Best Delivery : governorat (shippingAddress.state) requis pour créer le colis.');
+    }
+
+    // Champs CreatePickup (cf. WSDL `pickup`). On n'envoie que ce qui est
+    // pertinent pour une création depuis FlexioPage ; le reste est géré par BD.
+    const pickup = {
+      login,
+      pwd,
+      nom: order.customerName || order.email,
+      gouvernerat,
+      ville: addr.city || gouvernerat,
+      adresse: [addr.line1, addr.line2].filter(Boolean).join(', ') || '-',
+      tel: order.customerPhone || '',
+      tel2: '',
+      designation: order.items.map((i) => i.name).join(', ').slice(0, 250) || 'Commande',
+      nb_article: order.items.reduce((s, i) => s + (i.quantity || 0), 0) || 1,
+      prix: order.total,
+      echange: 0,
+      msg: order.notes || '',
+    };
+
+    const wsdl = cfg?.baseUrl || this.defaultWsdl;
+    const client = await soap.createClientAsync(wsdl);
+    // L'opération est générée dynamiquement depuis le WSDL — non typée.
+    const [result] = await (client as unknown as {
+      CreatePickupAsync: (args: Record<string, unknown>) => Promise<[Record<string, unknown>]>;
+    }).CreatePickupAsync({ pickup });
+
+    const hasErrors = Number(result?.HasErrors) === 1 || result?.HasErrors === true;
+    if (hasErrors) {
+      throw new Error(`bestdelivery: ${result?.ErrorsTxt || 'CreatePickup a échoué'}`);
+    }
+    const externalId = String(result?.CodeBarre || '');
+    if (!externalId) {
+      throw new Error(`bestdelivery: réponse sans CodeBarre (${JSON.stringify(result).slice(0, 200)})`);
+    }
+    return {
+      externalId,
+      externalStatus: 'pending',
+      trackingUrl: typeof result?.Url === 'string' ? result.Url : undefined,
+      raw: result,
+    };
+  }
+
+  async parseWebhook(): Promise<WebhookResult> {
+    // Best Delivery n'expose pas de webhook entrant — la synchro de statut se
+    // fait par polling (TrackShipmentStatus), prévu en phase 2.
+    throw new Error('Best Delivery : pas de webhook entrant (modèle pull/polling).');
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────
 // Registry
 // ─────────────────────────────────────────────────────────────────────
 const mogadelivery = new MogaDeliveryProvider();
+const bestdelivery = new BestDeliveryProvider();
 
 // New providers (Yalidine, Noest, Aramex) currently route through the same
 // generic handler — replace each with a real implementation later.
 const PROVIDERS: Record<DeliveryProvider, DeliveryProviderImpl> = {
-  yalidine: mogadelivery as unknown as DeliveryProviderImpl,
-  noest: mogadelivery as unknown as DeliveryProviderImpl,
-  aramex: mogadelivery as unknown as DeliveryProviderImpl,
   mogadelivery,
+  bestdelivery,
   manual: mogadelivery as unknown as DeliveryProviderImpl, // placeholder
   other: mogadelivery as unknown as DeliveryProviderImpl,
 };

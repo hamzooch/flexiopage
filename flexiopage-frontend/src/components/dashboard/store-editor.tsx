@@ -16,11 +16,14 @@ import { MediaPicker } from '@/components/dashboard/MediaPicker';
 // TYPES
 // ─────────────────────────────────────────────────────────────────────
 export interface DeliveryIntegration {
-  provider?: 'mogadelivery' | 'manual' | 'other';
+  provider?: 'mogadelivery' | 'bestdelivery' | 'manual' | 'other';
   enabled?: boolean;
   apiKey?: string;
   baseUrl?: string;
   webhookSecret?: string;
+  /** Best Delivery (SOAP) : identifiants du compte expéditeur. */
+  login?: string;
+  pwd?: string;
   autoDispatch?: boolean;
   pickupAddress?: {
     contactName?: string;

@@ -61,6 +61,8 @@ export default function StoreDeliveryPage() {
             apiKey: s.integrations.delivery.apiKey || '',
             baseUrl: s.integrations.delivery.baseUrl || '',
             webhookSecret: s.integrations.delivery.webhookSecret || '',
+            login: s.integrations.delivery.login || '',
+            pwd: s.integrations.delivery.pwd || '',
             autoDispatch: s.integrations.delivery.autoDispatch !== false,
             pickupAddress: s.integrations.delivery.pickupAddress || {},
           });
@@ -126,6 +128,8 @@ export default function StoreDeliveryPage() {
             apiKey: s.integrations.delivery.apiKey || '',
             baseUrl: s.integrations.delivery.baseUrl || '',
             webhookSecret: s.integrations.delivery.webhookSecret || '',
+            login: s.integrations.delivery.login || '',
+            pwd: s.integrations.delivery.pwd || '',
             autoDispatch: s.integrations.delivery.autoDispatch !== false,
             pickupAddress: s.integrations.delivery.pickupAddress || {},
           });
@@ -151,6 +155,8 @@ export default function StoreDeliveryPage() {
           apiKey: updated.integrations.delivery.apiKey || '',
           baseUrl: updated.integrations.delivery.baseUrl || '',
           webhookSecret: updated.integrations.delivery.webhookSecret || '',
+          login: updated.integrations.delivery.login || '',
+          pwd: updated.integrations.delivery.pwd || '',
           autoDispatch: updated.integrations.delivery.autoDispatch !== false,
           pickupAddress: updated.integrations.delivery.pickupAddress || {},
         });
@@ -187,7 +193,7 @@ export default function StoreDeliveryPage() {
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
               <CardTitle className="flex items-center gap-2">
-                MogaDelivery
+                {delivery.provider === 'bestdelivery' ? 'Best Delivery' : 'MogaDelivery'}
                 <span className="rounded-full bg-fuchsia-500/10 px-2.5 py-1 text-[10px] font-semibold text-fuchsia-700">
                   Coursier intégré
                 </span>
@@ -208,6 +214,73 @@ export default function StoreDeliveryPage() {
           </div>
         </CardHeader>
         <CardContent className="space-y-5">
+          {/* Sélecteur de transporteur */}
+          <div className="space-y-1.5">
+            <Label htmlFor="delivery-provider">Transporteur</Label>
+            <select
+              id="delivery-provider"
+              value={delivery.provider || 'mogadelivery'}
+              onChange={(e) => setDelivery((d) => ({ ...d, provider: e.target.value as DeliveryIntegration['provider'] }))}
+              className="w-full rounded-md border bg-background px-3 py-2 text-sm"
+            >
+              <option value="mogadelivery">MogaDelivery — multi-pays (Afrique de l&apos;Ouest)</option>
+              <option value="bestdelivery">Best Delivery — Tunisie (SOAP)</option>
+            </select>
+          </div>
+
+          {/* ── Best Delivery (Tunisie) — auth login/pwd, SOAP, suivi en polling (phase 2) ── */}
+          {delivery.provider === 'bestdelivery' && (
+            <div className="space-y-4">
+              <div className="flex items-start gap-2 rounded-md bg-sky-500/10 px-3 py-2 text-xs text-sky-800">
+                <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                <span>
+                  Best Delivery couvre la <strong>Tunisie</strong>. Renseigne les identifiants de ton compte expéditeur.
+                  Le suivi de statut se fera par interrogation automatique (polling) — disponible en phase 2.
+                </span>
+              </div>
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div className="space-y-2">
+                  <Label htmlFor="bd-login">Login Best Delivery <span className="text-rose-600">*</span></Label>
+                  <Input
+                    id="bd-login"
+                    autoComplete="off"
+                    placeholder="login du compte expéditeur"
+                    value={delivery.login || ''}
+                    onChange={(e) => setDelivery((d) => ({ ...d, login: e.target.value }))}
+                    className={delivery.enabled && !delivery.login?.trim() ? 'border-rose-500/60' : ''}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="bd-pwd">Mot de passe <span className="text-rose-600">*</span></Label>
+                  <Input
+                    id="bd-pwd"
+                    type="password"
+                    autoComplete="off"
+                    placeholder="••••••••"
+                    value={delivery.pwd || ''}
+                    onChange={(e) => setDelivery((d) => ({ ...d, pwd: e.target.value }))}
+                    className={delivery.enabled && !delivery.pwd?.trim() ? 'border-rose-500/60' : ''}
+                  />
+                </div>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="bd-wsdl">WSDL (avancé)</Label>
+                <Input
+                  id="bd-wsdl"
+                  placeholder="https://api.best-delivery.net/serviceShipments.php?wsdl"
+                  value={delivery.baseUrl || ''}
+                  onChange={(e) => setDelivery((d) => ({ ...d, baseUrl: e.target.value }))}
+                />
+                <p className="text-xs text-muted-foreground">Laisse vide pour l&apos;endpoint de production par défaut.</p>
+              </div>
+              <p className="text-[11px] text-muted-foreground">
+                ℹ️ Le governorat de livraison requis par Best Delivery est repris du champ « état/région » de l&apos;adresse de la commande.
+              </p>
+            </div>
+          )}
+
+          {delivery.provider !== 'bestdelivery' && (
+          <>
           {/* Statut de connexion + déconnexion douce / reconnexion. Visible
               dès qu'un secret est en place (boutique déjà connectée). Bascule
               juste le master switch — secret et Boutique MD conservés. */}
@@ -391,6 +464,8 @@ export default function StoreDeliveryPage() {
               Ajoute cette URL dans ta config MogaDelivery pour recevoir les changements de statut (assigné, en transit, livré, retourné).
             </p>
           </div>
+          </>
+          )}
 
           <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-border/60 bg-card p-4">
             <input

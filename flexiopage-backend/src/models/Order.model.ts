@@ -101,7 +101,7 @@ export interface IOrder extends Document {
    */
   delivery?: {
     /** Which provider the order was sent to. */
-    provider?: 'mogadelivery' | 'yalidine' | 'noest' | 'aramex' | 'manual' | 'other';
+    provider?: 'mogadelivery' | 'bestdelivery' | 'manual' | 'other';
     /** Provider's id for the dispatch (e.g. MD-12345). */
     externalId?: string;
     /** Status reported by the provider (pending|assigned|in_transit|delivered|returned|cancelled|failed). */
@@ -216,7 +216,7 @@ const OrderSchema = new Schema<IOrder>(
     downloadToken: { type: String },
     downloadExpiresAt: { type: Date },
     delivery: {
-      provider: { type: String, enum: ['mogadelivery', 'yalidine', 'noest', 'aramex', 'manual', 'other'] },
+      provider: { type: String, enum: ['mogadelivery', 'bestdelivery', 'manual', 'other'] },
       externalId: { type: String, index: true },
       externalStatus: { type: String },
       trackingUrl: { type: String },

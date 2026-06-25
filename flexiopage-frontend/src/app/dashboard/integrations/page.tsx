@@ -58,7 +58,7 @@ interface PickupAddress {
 }
 
 interface DeliveryConfig {
-  provider?: 'mogadelivery' | 'yalidine' | 'noest' | 'aramex' | 'manual' | 'other';
+  provider?: 'mogadelivery' | 'bestdelivery' | 'firstdelivery' | 'dropex' | 'adex' | 'manual' | 'other';
   enabled?: boolean;
   apiKey?: string;
   baseUrl?: string;
@@ -590,11 +590,11 @@ function PixelRow({ icon, label, help, children }: { icon: React.ReactNode; labe
 // transporteur last-mile. On ne le propose donc plus comme « société de
 // livraison » pour ne pas brouiller le positionnement.
 const CARRIER_PROVIDERS = [
-  { id: 'yalidine',     label: 'Yalidine (Algérie)',       description: 'Livraison nationale Algérie' },
-  { id: 'noest',        label: 'Noest Express (Algérie)',  description: 'Livraison express Algérie' },
-  { id: 'aramex',       label: 'Aramex (MENA)',            description: 'International MENA + Asie' },
-  { id: 'manual',       label: 'Manuel (sans API)',         description: 'Tu gères toi-même les expéditions' },
-  { id: 'other',        label: 'Autre',                     description: 'Autre transporteur' },
+  { id: 'firstdelivery', label: 'First Delivery', description: 'Transporteur Tunisie',                  comingSoon: true },
+  { id: 'dropex',        label: 'Dropex',         description: 'Transporteur Tunisie',                  comingSoon: true },
+  { id: 'adex',          label: 'Adex',           description: 'Transporteur Tunisie',                  comingSoon: true },
+  { id: 'manual',        label: 'Manuel (sans API)', description: 'Tu gères toi-même les expéditions',  comingSoon: false },
+  { id: 'other',         label: 'Autre',          description: 'Autre transporteur',                    comingSoon: false },
 ] as const;
 
 const LOGISTICS_PROVIDERS = [
@@ -737,6 +737,7 @@ function CarrierPanel({ store, onSaved, saving, setSaving }: PanelProps) {
                 description={p.description}
                 icon={<Truck className="h-5 w-5" />}
                 selected={provider === p.id}
+                comingSoon={p.comingSoon}
                 onSelect={() => setProvider(p.id)}
               />
             ))}
@@ -1201,6 +1202,7 @@ function ProviderCard({
   icon,
   logoUrl,
   selected,
+  comingSoon = false,
   onSelect,
 }: {
   name: string;
@@ -1208,6 +1210,7 @@ function ProviderCard({
   icon: React.ReactNode;
   logoUrl?: string;
   selected: boolean;
+  comingSoon?: boolean;
   onSelect: () => void;
 }) {
   return (
@@ -1216,6 +1219,8 @@ function ProviderCard({
         'group relative flex flex-col rounded-2xl border bg-card p-4 transition-all duration-300',
         selected
           ? 'border-primary ring-2 ring-primary/15'
+          : comingSoon
+          ? 'border-border/60 opacity-75'
           : 'border-border/60 hover:-translate-y-0.5 hover:border-primary/30 hover:shadow-lg'
       )}
     >
@@ -1224,6 +1229,10 @@ function ProviderCard({
         {selected ? (
           <span className="inline-flex items-center gap-1 rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-semibold text-primary">
             <CheckCircle2 className="h-3 w-3" /> Sélectionné
+          </span>
+        ) : comingSoon ? (
+          <span className="inline-flex items-center gap-1 rounded-full bg-amber-500/10 px-2 py-0.5 text-[10px] font-semibold text-amber-700">
+            <span className="h-1.5 w-1.5 rounded-full bg-amber-500" /> Bientôt
           </span>
         ) : (
           <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/10 px-2 py-0.5 text-[10px] font-semibold text-emerald-700">
@@ -1235,14 +1244,16 @@ function ProviderCard({
       <p className="mt-0.5 line-clamp-2 text-xs text-muted-foreground">{description}</p>
       <Button
         size="sm"
-        variant={selected ? 'outline' : 'default'}
-        onClick={selected ? undefined : onSelect}
-        disabled={selected}
-        aria-disabled={selected}
+        variant={selected || comingSoon ? 'outline' : 'default'}
+        onClick={selected || comingSoon ? undefined : onSelect}
+        disabled={selected || comingSoon}
+        aria-disabled={selected || comingSoon}
         className={cn(
           'mt-3 w-full gap-1.5',
           selected
             ? 'cursor-default border-emerald-500/40 text-emerald-700 opacity-100 disabled:opacity-100'
+            : comingSoon
+            ? 'cursor-default text-muted-foreground'
             : 'gradient-brand text-white',
         )}
       >
@@ -1250,6 +1261,8 @@ function ProviderCard({
           <>
             <CheckCircle2 className="h-3.5 w-3.5" /> Intégré
           </>
+        ) : comingSoon ? (
+          'Bientôt disponible'
         ) : (
           <>
             <Plug className="h-3.5 w-3.5" /> Intégrer

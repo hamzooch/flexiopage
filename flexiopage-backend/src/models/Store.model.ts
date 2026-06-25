@@ -23,7 +23,7 @@ export interface IStoreMarket {
   enabled?: boolean;
   /** Intégration livraison spécifique à ce pays. */
   delivery?: {
-    provider: 'mogadelivery' | 'yalidine' | 'noest' | 'aramex' | 'manual' | 'other';
+    provider: 'mogadelivery' | 'bestdelivery' | 'manual' | 'other';
     /** `store_id` côté MogaDelivery — distinct par Boutique/pays. */
     storeIdMD?: string;
     /** Secret HMAC partagé avec MD pour ce store (signature outbound + verify inbound). */
@@ -380,14 +380,17 @@ export interface IStore extends Document {
    */
   integrations?: {
     delivery?: {
-      provider: 'mogadelivery' | 'yalidine' | 'noest' | 'aramex' | 'manual' | 'other';
+      provider: 'mogadelivery' | 'bestdelivery' | 'manual' | 'other';
       enabled: boolean;
       /** API key issued by the provider (server-side only). */
       apiKey?: string;
-      /** Override the default base URL. */
+      /** Override the default base URL (ou WSDL pour Best Delivery). */
       baseUrl?: string;
       /** Optional secret used to verify inbound webhooks (HMAC-SHA256). */
       webhookSecret?: string;
+      /** Best Delivery (SOAP) : identifiants du compte expéditeur. */
+      login?: string;
+      pwd?: string;
       /** Pickup origin used by the courier when collecting the package. */
       pickupAddress?: {
         contactName?: string;
@@ -489,7 +492,7 @@ const StoreSchema = new Schema<IStore>(
         delivery: {
           provider: {
             type: String,
-            enum: ['mogadelivery', 'yalidine', 'noest', 'aramex', 'manual', 'other'],
+            enum: ['mogadelivery', 'bestdelivery', 'manual', 'other'],
           },
           storeIdMD: { type: String, trim: true },
           webhookSecret: { type: String, trim: true },
@@ -710,11 +713,13 @@ const StoreSchema = new Schema<IStore>(
     },
     integrations: {
       delivery: {
-        provider: { type: String, enum: ['mogadelivery', 'yalidine', 'noest', 'aramex', 'manual', 'other'] },
+        provider: { type: String, enum: ['mogadelivery', 'bestdelivery', 'manual', 'other'] },
         enabled: { type: Boolean, default: false },
         apiKey: { type: String },
         baseUrl: { type: String },
         webhookSecret: { type: String },
+        login: { type: String },
+        pwd: { type: String },
         pickupAddress: {
           contactName: { type: String },
           contactPhone: { type: String },
