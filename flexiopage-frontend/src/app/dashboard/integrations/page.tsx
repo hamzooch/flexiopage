@@ -62,6 +62,11 @@ interface DeliveryConfig {
   enabled?: boolean;
   apiKey?: string;
   baseUrl?: string;
+  /** MogaDelivery : secret HMAC (posé via la page livraison de la boutique). */
+  webhookSecret?: string;
+  /** Best Delivery (SOAP) : identifiants du compte expéditeur. */
+  login?: string;
+  pwd?: string;
   autoDispatch?: boolean;
   pickupAddress?: PickupAddress;
 }
@@ -590,6 +595,7 @@ function PixelRow({ icon, label, help, children }: { icon: React.ReactNode; labe
 // transporteur last-mile. On ne le propose donc plus comme « société de
 // livraison » pour ne pas brouiller le positionnement.
 const CARRIER_PROVIDERS = [
+  { id: 'bestdelivery',  label: 'Best Delivery',  description: 'Transporteur Tunisie — livraison nationale', comingSoon: false },
   { id: 'firstdelivery', label: 'First Delivery', description: 'Transporteur Tunisie',                  comingSoon: true },
   { id: 'dropex',        label: 'Dropex',         description: 'Transporteur Tunisie',                  comingSoon: true },
   { id: 'adex',          label: 'Adex',           description: 'Transporteur Tunisie',                  comingSoon: true },
@@ -663,6 +669,8 @@ function CarrierPanel({ store, onSaved, saving, setSaving }: PanelProps) {
   const [provider, setProvider] = useState<string>(d.provider || 'manual');
   const [enabled, setEnabled] = useState(!!d.enabled);
   const [apiKey, setApiKey] = useState(d.apiKey || '');
+  const [login, setLogin] = useState(d.login || '');
+  const [pwd, setPwd] = useState(d.pwd || '');
   const [baseUrl, setBaseUrl] = useState(d.baseUrl || '');
   const [autoDispatch, setAutoDispatch] = useState(d.autoDispatch ?? true);
   const [pickup, setPickup] = useState<PickupAddress>(d.pickupAddress || {});
@@ -680,9 +688,12 @@ function CarrierPanel({ store, onSaved, saving, setSaving }: PanelProps) {
         integrations: {
           ...store.integrations,
           delivery: {
+            ...d, // préserve les champs non gérés ici (ex. webhookSecret MogaDelivery)
             provider,
             enabled,
             apiKey: apiKey.trim() || undefined,
+            login: login.trim() || undefined,
+            pwd: pwd.trim() || undefined,
             baseUrl: baseUrl.trim() || undefined,
             autoDispatch,
             pickupAddress: pickup,
@@ -713,6 +724,8 @@ function CarrierPanel({ store, onSaved, saving, setSaving }: PanelProps) {
       setProvider('manual');
       setEnabled(false);
       setApiKey('');
+      setLogin('');
+      setPwd('');
       setBaseUrl('');
       setAutoDispatch(true);
       setPickup({});
@@ -752,16 +765,34 @@ function CarrierPanel({ store, onSaved, saving, setSaving }: PanelProps) {
           label="Auto-dispatch des commandes"
           sublabel="Envoie automatiquement chaque commande payée (ou COD) au transporteur." />
 
-        <div className="grid gap-3 sm:grid-cols-2">
-          <div>
-            <Label>Clé API</Label>
-            <Input type="password" value={apiKey} onChange={(e) => setApiKey(e.target.value)} className="mt-1.5 h-11 font-mono" />
+        {provider === 'bestdelivery' ? (
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div>
+              <Label>Login Best Delivery</Label>
+              <Input value={login} onChange={(e) => setLogin(e.target.value)} autoComplete="off" placeholder="login du compte expéditeur" className="mt-1.5 h-11" />
+            </div>
+            <div>
+              <Label>Mot de passe</Label>
+              <Input type="password" value={pwd} onChange={(e) => setPwd(e.target.value)} autoComplete="off" placeholder="••••••••" className="mt-1.5 h-11" />
+            </div>
+            <div className="sm:col-span-2">
+              <Label>WSDL (optionnel)</Label>
+              <Input value={baseUrl} onChange={(e) => setBaseUrl(e.target.value)} placeholder="https://api.best-delivery.net/serviceShipments.php?wsdl" className="mt-1.5 h-11 font-mono text-xs" />
+              <p className="mt-1 text-xs text-muted-foreground">Tunisie · le governorat de livraison est repris du champ « état/région » de l&apos;adresse. Laisse le WSDL vide pour la valeur par défaut.</p>
+            </div>
           </div>
-          <div>
-            <Label>Base URL (optionnel)</Label>
-            <Input value={baseUrl} onChange={(e) => setBaseUrl(e.target.value)} placeholder="https://api.transporteur.com" className="mt-1.5 h-11 font-mono text-xs" />
+        ) : (
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div>
+              <Label>Clé API</Label>
+              <Input type="password" value={apiKey} onChange={(e) => setApiKey(e.target.value)} className="mt-1.5 h-11 font-mono" />
+            </div>
+            <div>
+              <Label>Base URL (optionnel)</Label>
+              <Input value={baseUrl} onChange={(e) => setBaseUrl(e.target.value)} placeholder="https://api.transporteur.com" className="mt-1.5 h-11 font-mono text-xs" />
+            </div>
           </div>
-        </div>
+        )}
 
         <div className="rounded-2xl border border-border/60 bg-muted/20 p-4">
           <h4 className="mb-3 text-sm font-semibold">Adresse de pickup</h4>
