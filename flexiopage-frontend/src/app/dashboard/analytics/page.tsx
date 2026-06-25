@@ -10,6 +10,7 @@ import {
   Download,
   Eye,
   MousePointerClick,
+  Percent,
   RefreshCcw,
   RotateCcw,
   ShoppingCart,
@@ -267,6 +268,14 @@ export default function DashboardAnalyticsPage() {
               icon={MousePointerClick}
               accent="violet"
               hint="fiches produit ouvertes"
+            />
+            <KpiCard
+              label="Taux de conversion"
+              value={`${data.kpis.conversionRate.value.toFixed(2)}%`}
+              delta={data.kpis.conversionRate.deltaPct}
+              icon={Percent}
+              accent="pink"
+              hint="visites → commandes"
             />
           </div>
 

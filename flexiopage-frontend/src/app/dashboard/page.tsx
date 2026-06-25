@@ -39,6 +39,7 @@ import {
   RefreshCw,
   CheckCircle2,
   CalendarRange,
+  Percent,
 } from 'lucide-react';
 import { useAuthStore } from '@/stores/auth-store';
 import { useStoreStore } from '@/stores/store-store';
@@ -388,7 +389,7 @@ export default function DashboardOverviewPage() {
             restent lisibles, 4 colonnes à partir de sm: pour scanner
             l'ensemble d'un coup d'œil. ── */}
       {activeStore && (
-        <section className="grid grid-cols-2 gap-2 sm:grid-cols-4 sm:gap-3">
+        <section className="grid grid-cols-2 gap-2 sm:grid-cols-3 sm:gap-3 lg:grid-cols-5">
           <KpiCard
             label="Revenu total"
             value={<KpiMoney amount={k?.sales.value ?? 0} currency={currency} />}
@@ -423,6 +424,15 @@ export default function DashboardOverviewPage() {
             previousValue={`${k?.pageViews.previous ?? 0} avant`}
             icon={Eye}
             tone="indigo"
+            loading={loadingAnalytics && !analytics}
+          />
+          <KpiCard
+            label="Taux de conversion"
+            value={`${(k?.conversionRate.value ?? 0).toFixed(2)}%`}
+            deltaPct={k?.conversionRate.deltaPct ?? null}
+            previousValue={`${(k?.conversionRate.previous ?? 0).toFixed(2)}% avant`}
+            icon={Percent}
+            tone="rose"
             loading={loadingAnalytics && !analytics}
           />
         </section>
@@ -554,13 +564,14 @@ export default function DashboardOverviewPage() {
 // ─────────────────────────────────────────────────────────────────────
 
 const KPI_TONE: Record<
-  'emerald' | 'amber' | 'violet' | 'indigo',
+  'emerald' | 'amber' | 'violet' | 'indigo' | 'rose',
   { iconBg: string; glow: string }
 > = {
   emerald: { iconBg: 'from-emerald-500 to-teal-600', glow: 'shadow-emerald-500/20' },
   amber:   { iconBg: 'from-amber-500 to-orange-600', glow: 'shadow-amber-500/20' },
   violet:  { iconBg: 'from-violet-500 to-fuchsia-600', glow: 'shadow-violet-500/20' },
   indigo:  { iconBg: 'from-indigo-500 to-blue-600', glow: 'shadow-indigo-500/20' },
+  rose:    { iconBg: 'from-rose-500 to-pink-600', glow: 'shadow-rose-500/20' },
 };
 
 /** Money figure for a KPI headline: renders the currency symbol/code at a

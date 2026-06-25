@@ -151,6 +151,8 @@ export interface StoreAnalyticsRich {
     pageViews: { value: number; previous: number; deltaPct: number | null };
     /** Subset of pageViews — only the public product detail page. */
     productViews: { value: number; previous: number; deltaPct: number | null };
+    /** Taux de conversion = commandes créées / visites (page_view) × 100. */
+    conversionRate: { value: number; previous: number; deltaPct: number | null };
   };
   /** All-time aggregates (no window filter). */
   totals: {
@@ -458,6 +460,11 @@ export async function getStoreAnalyticsRich(
   const prevFulfillmentRate = p.paid === 0 ? 0 : (p.fulfilled / p.paid) * 100;
   const aov = a.paid === 0 ? 0 : a.revenue / a.paid;
   const prevAov = p.paid === 0 ? 0 : p.revenue / p.paid;
+  // Taux de conversion visites → commandes (1ʳᵉ marche du tunnel). On garde
+  // pageViews comme dénominateur, cohérent avec le KPI "Visiteurs" et le
+  // FunnelStrip déjà affichés côté front.
+  const conversionRate = curViews.pageViews === 0 ? 0 : (a.orders / curViews.pageViews) * 100;
+  const prevConversionRate = prvViews.pageViews === 0 ? 0 : (p.orders / prvViews.pageViews) * 100;
 
   return {
     range,
@@ -477,6 +484,7 @@ export async function getStoreAnalyticsRich(
       pendingOrders: { value: pendingNow },
       pageViews: { value: curViews.pageViews, previous: prvViews.pageViews, deltaPct: pctDelta(curViews.pageViews, prvViews.pageViews) },
       productViews: { value: curViews.productViews, previous: prvViews.productViews, deltaPct: pctDelta(curViews.productViews, prvViews.productViews) },
+      conversionRate: { value: conversionRate, previous: prevConversionRate, deltaPct: pctDelta(conversionRate, prevConversionRate) },
     },
     totals: { totalRevenue: t.revenue, totalSales: t.sales, totalOrders: t.orders, totalCustomers: t.customers },
     timeseries,

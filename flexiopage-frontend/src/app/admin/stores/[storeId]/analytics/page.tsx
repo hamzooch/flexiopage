@@ -269,6 +269,13 @@ export default function AdminStoreDrilldownPage() {
           icon={Clock}
           accent="amber"
         />
+        <KpiCard
+          label="Taux de conversion"
+          value={`${analytics.kpis.conversionRate.value.toFixed(2)}%`}
+          delta={analytics.kpis.conversionRate.deltaPct}
+          icon={Percent}
+          accent="pink"
+        />
       </div>
 
       {/* Revenue chart */}

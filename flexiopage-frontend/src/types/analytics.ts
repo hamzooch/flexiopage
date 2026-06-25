@@ -30,6 +30,8 @@ export interface StoreAnalyticsRich {
     pageViews: KpiValue;
     /** Subset of pageViews — only the product detail page. */
     productViews: KpiValue;
+    /** Taux de conversion = commandes créées / visites × 100. */
+    conversionRate: KpiValue;
   };
   totals: {
     totalRevenue: number;
