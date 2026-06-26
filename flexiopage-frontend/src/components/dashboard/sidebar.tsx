@@ -131,20 +131,12 @@ export function Sidebar({ mobileOpen = false, onMobileClose }: Props) {
   // sous l'entrée principale "Applications" (logos en mini gradient).
   const installedApps = useInstalledApps(currentStoreId);
 
-  // Zustand persist s'hydrate APRÈS le premier rendu client. Pendant ce
-  // bref instant `user` est null et la carte vendeur en bas du sidebar
-  // affichait un générique « Utilisateur ». On attend l'hydratation pour
-  // afficher la vraie valeur (cf même pattern dans Header).
-  const [hydrated, setHydrated] = useState(false);
-  useEffect(() => {
-    const apply = () => setHydrated(true);
-    if (useAuthStore.persist?.hasHydrated?.()) {
-      apply();
-      return;
-    }
-    const unsub = useAuthStore.persist?.onFinishHydration?.(apply);
-    return () => { if (typeof unsub === 'function') unsub(); };
-  }, []);
+  // On gate l'affichage de la carte vendeur sur la PRÉSENCE de `user` plutôt
+  // que sur un flag d'hydratation persist : ce dernier pouvait rester bloqué
+  // à false (selon le timing de rehydration zustand), laissant le sidebar sur
+  // « U » + placeholders alors que `user` était bien chargé. `user` est
+  // réactif et null au 1ᵉʳ rendu (SSR + client avant rehydration) → pas de
+  // mismatch, et la vraie valeur s'affiche dès que le store est hydraté.
 
   // Nom à afficher — on préfère la partie locale de l'email plutôt que la
   // chaîne « Utilisateur » quand `name` est vide ou que des espaces (cas
@@ -361,14 +353,14 @@ export function Sidebar({ mobileOpen = false, onMobileClose }: Props) {
             className="flex items-center gap-3 rounded-lg p-2 transition-colors hover:bg-sidebar-muted"
           >
             <div className="grid h-11 w-11 shrink-0 place-items-center rounded-full gradient-brand text-sm font-bold text-white shadow-sm">
-              {hydrated ? initials : 'U'}
+              {user ? initials : 'U'}
             </div>
             <div className="min-w-0 flex-1 leading-tight">
               <div className="truncate text-[15px] font-semibold text-foreground">
-                {hydrated ? displayName : <span className="inline-block h-3.5 w-24 animate-pulse rounded bg-muted" />}
+                {user ? displayName : <span className="inline-block h-3.5 w-24 animate-pulse rounded bg-muted" />}
               </div>
               <div className="truncate text-xs text-muted-foreground">
-                {hydrated ? user?.email : <span className="inline-block h-3 w-28 animate-pulse rounded bg-muted/70" />}
+                {user ? user.email : <span className="inline-block h-3 w-28 animate-pulse rounded bg-muted/70" />}
               </div>
             </div>
           </Link>
