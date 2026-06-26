@@ -38,20 +38,11 @@ export function Header({ onOpenMobileNav }: Props = {}) {
   const [activeStoreName, setActiveStoreName] = useState<string | null>(null);
   const { t } = useT();
 
-  // Zustand persist hydrates from localStorage AFTER the first client render,
-  // so on a fresh mount `user` is briefly null and the dropdown would flash
-  // "Utilisateur" before snapping to the seller's real name. Track hydration
-  // explicitly and hold a placeholder during the gap.
-  const [hydrated, setHydrated] = useState(false);
-  useEffect(() => {
-    const apply = () => setHydrated(true);
-    if (useAuthStore.persist?.hasHydrated?.()) {
-      apply();
-      return;
-    }
-    const unsub = useAuthStore.persist?.onFinishHydration?.(apply);
-    return () => { if (typeof unsub === 'function') unsub(); };
-  }, []);
+  // On gate l'affichage du nom/email sur la PRÉSENCE de `user` plutôt que sur
+  // un flag d'hydratation persist : ce dernier pouvait rester bloqué à false
+  // (timing de rehydration zustand) et figer le menu sur des placeholders.
+  // `user` est réactif et null au 1ᵉʳ rendu (SSR + client avant rehydration)
+  // → pas de mismatch, et la vraie valeur s'affiche dès le store hydraté.
 
   // The header shows which store the dashboard is currently scoped to. We
   // fetch the name lazily so we don't add a heavy load — list endpoint is
@@ -216,10 +207,10 @@ export function Header({ onOpenMobileNav }: Props = {}) {
               </div>
               <div className="min-w-0">
                 <div className="truncate text-sm font-medium">
-                  {hydrated ? displayName : <span className="inline-block h-3 w-24 animate-pulse rounded bg-muted" />}
+                  {user ? displayName : <span className="inline-block h-3 w-24 animate-pulse rounded bg-muted" />}
                 </div>
                 <div className="truncate text-xs text-muted-foreground">
-                  {hydrated ? user?.email : <span className="inline-block h-2.5 w-32 animate-pulse rounded bg-muted/70" />}
+                  {user ? user.email : <span className="inline-block h-2.5 w-32 animate-pulse rounded bg-muted/70" />}
                 </div>
               </div>
             </div>
