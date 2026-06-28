@@ -14,6 +14,7 @@ const nextConfig = {
       // External CDNs used by demo content / templates
       { protocol: 'https', hostname: 'images.unsplash.com' },
       { protocol: 'https', hostname: 'res.cloudinary.com' },
+      { protocol: 'https', hostname: 'picsum.photos' },
     ],
     formats: ['image/avif', 'image/webp'],
   },

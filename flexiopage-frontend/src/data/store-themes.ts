@@ -654,9 +654,49 @@ const carthago: StoreThemeTemplate = {
   }),
 };
 
+// ─────────────────────────────────────────────────────────────────────
+// MAISON — marque minimaliste premium (noir / blanc / beige), façon
+// Shopify Dawn/Studio. Hero plein cadre + toutes les sections recommandées.
+// ─────────────────────────────────────────────────────────────────────
+const maison: StoreThemeTemplate = {
+  id: 'maison',
+  name: 'Maison',
+  tagline: 'Marque minimaliste · noir & beige · premium',
+  description:
+    'Noir encre, blanc cassé, beige sable. Playfair Display éditorial sur Inter. Hero plein cadre oversized, cartes éditoriales sans bordure, navigation nom-de-marque, témoignages magazine, footer signature. Beaucoup de blanc, coins nets — l’esthétique « brand » façon Shopify Dawn/Studio. Idéal mode, lifestyle, déco, beauté et marques premium.',
+  niche: 'general',
+  nicheLabel: 'Marque premium',
+  forStoreTypes: ['physical'],
+  theme: makeTheme({
+    templateId: 'maison',
+    primary: '#141414',          // noir encre
+    primaryFg: '#ffffff',
+    accent: '#a18a68',           // beige doré sobre
+    background: '#faf8f4',       // blanc cassé chaud (papier)
+    surface: '#ffffff',
+    surfaceMuted: '#f1ede4',     // sable clair
+    foreground: '#1a1a1a',
+    muted: '#7c766b',
+    border: '#e7e1d6',
+    gradientFrom: '#141414',
+    gradientTo: '#a18a68',
+    fontHeading: '"Playfair Display", "Cormorant Garamond", Georgia, serif',
+    fontBody: '"Inter", system-ui, -apple-system, sans-serif',
+    fontDisplaySize: 'xlarge',
+    borderRadius: 'none',        // coins nets, minimal premium
+    spacing: 'relaxed',          // beaucoup de blanc
+    style: 'editorial',
+    // hero 'fullbleed' → toutes les sections (hero/slider/products/testimonials) recommandées.
+    layout: { hero: 'fullbleed', productCard: 'editorial', gridColumns: 3, nav: 'editorial', testimonials: 'editorial', footer: 'bold' },
+    pattern: 'none',
+    shadow: 'sharp',
+    dark: false,
+  }),
+};
+
 export const STORE_THEME_TEMPLATES: StoreThemeTemplate[] = [
   // Physical stores
-  nova, carthago, volt, atelier, bloom,
+  maison, nova, carthago, volt, atelier, bloom,
   // Digital stores
   pulse, sage, studio, lumen,
   // Universal / multi-type

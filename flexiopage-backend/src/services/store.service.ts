@@ -1,5 +1,6 @@
 import { Store, IStore, StoreType } from '../models/Store.model';
 import { LandingPage } from '../models/LandingPage.model';
+import { Product } from '../models/Product.model';
 import mongoose from 'mongoose';
 import { slugify } from '../lib/slugify';
 
@@ -152,6 +153,53 @@ async function seedInfoPages(storeId: mongoose.Types.ObjectId, language?: string
   }
 }
 
+/**
+ * Produits de démonstration créés dans chaque nouvelle boutique pour qu'elle
+ * ait l'air d'une vraie boutique dès l'ouverture (storefront non vide, aperçu
+ * de thème réaliste). Ce sont de VRAIS produits : le vendeur les modifie (nom,
+ * prix, images, description) ou les supprime depuis la page Produits.
+ * Nommés « Produit 1 … N » pour être clairement identifiables comme du test.
+ */
+const DEMO_PRODUCT_COUNT = 6;
+const DEMO_PRICES = [25, 35, 45, 30, 60, 40];
+const DEMO_COMPARE_AT = [0, 49, 0, 0, 79, 0];
+
+async function seedDemoProducts(
+  storeId: mongoose.Types.ObjectId,
+  storeType: StoreType,
+  currency?: string,
+) {
+  const type: StoreType = storeType === 'digital' ? 'digital' : 'physical';
+  const docs = Array.from({ length: DEMO_PRODUCT_COUNT }, (_, idx) => {
+    const i = idx + 1;
+    const compareAt = DEMO_COMPARE_AT[idx];
+    return {
+      storeId,
+      name: `Produit ${i}`,
+      slug: `produit-${i}`,
+      description:
+        'Produit de démonstration. Modifie son nom, sa description, son prix et ses images — ou supprime-le quand tu ajoutes tes vrais produits.',
+      type,
+      price: DEMO_PRICES[idx] ?? 30,
+      compareAtPrice: compareAt && compareAt > 0 ? compareAt : undefined,
+      currency: currency?.trim().toUpperCase() || undefined,
+      sku: `DEMO-${i}`,
+      stock: 50,
+      trackInventory: true,
+      allowBackorder: false,
+      images: [`https://picsum.photos/seed/flexio-demo-${i}/900/900`],
+      isPublished: true,
+    };
+  });
+  // insertMany non bloquant — un seed produit raté ne doit pas faire échouer
+  // la création de la boutique.
+  try {
+    await Product.insertMany(docs, { ordered: false });
+  } catch (err) {
+    console.error('[store.seedDemoProducts] failed:', (err as Error).message);
+  }
+}
+
 export interface CreateStoreInput {
   name: string;
   slug?: string;
@@ -209,6 +257,8 @@ export async function createStore(input: CreateStoreInput): Promise<IStore> {
   });
   // Best-effort seeding — failure here doesn't roll back the store creation.
   await seedInfoPages(store._id, lang, dir);
+  // Produits de démo « Produit 1..N » → boutique non vide dès l'ouverture.
+  await seedDemoProducts(store._id, input.storeType, store.settings?.currency);
   return store;
 }
 
