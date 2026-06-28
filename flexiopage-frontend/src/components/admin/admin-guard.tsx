@@ -7,8 +7,13 @@
  *
  * Allowed staff roles: owner, superadmin, admin, supervisor.
  *
- * Waits for the auth store to rehydrate from localStorage before deciding,
- * so we don't bounce out on a hard refresh.
+ * On lit le token/role en priorité depuis le store live, avec fallback sur le
+ * blob persisté dans localStorage — comme le dashboard AuthGuard. On NE dépend
+ * PAS du callback d'hydratation zustand (qui pouvait soit ne jamais se
+ * déclencher → page figée, soit, avec un timeout de secours, marquer "hydraté"
+ * avant la relecture du token → éjection vers /login au refresh). La décision
+ * est différée après le 1ᵉʳ rendu client (`mounted`) pour éviter tout mismatch
+ * SSR et toute redirection prématurée.
  */
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
@@ -16,33 +21,41 @@ import { useAuthStore } from '@/stores/auth-store';
 import { Loader2, ShieldAlert } from 'lucide-react';
 
 const STAFF_ROLES = new Set(['owner', 'superadmin', 'admin', 'supervisor']);
+const AUTH_STORAGE_KEY = 'flexiopage-auth';
+
+function readPersistedAuth(): { token?: string | null; user?: { role?: string } | null } | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    const raw = window.localStorage.getItem(AUTH_STORAGE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as { state?: { token?: string | null; user?: { role?: string } | null } };
+    return parsed?.state ?? null;
+  } catch {
+    return null;
+  }
+}
 
 export function AdminGuard({ children }: { children: React.ReactNode }) {
   const router = useRouter();
-  const token = useAuthStore((s) => s.token);
-  const user = useAuthStore((s) => s.user);
-  const [hydrated, setHydrated] = useState(false);
+  const liveToken = useAuthStore((s) => s.token);
+  const liveUser = useAuthStore((s) => s.user) as { role?: string } | null;
+  const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
-    if (typeof window === 'undefined') return;
-    const markHydrated = () => setHydrated(true);
-    if (useAuthStore.persist?.hasHydrated?.()) {
-      markHydrated();
-      return;
-    }
-    const unsub = useAuthStore.persist?.onFinishHydration?.(markHydrated);
-    const t = setTimeout(markHydrated, 200);
-    return () => {
-      clearTimeout(t);
-      if (typeof unsub === 'function') unsub();
-    };
+    setMounted(true);
   }, []);
 
-  const role = (user as { role?: string } | null)?.role;
+  // Valeur effective : store live, sinon blob localStorage (le store live est
+  // déjà réhydraté au render côté client, le fallback couvre les cas limites).
+  // Lu seulement après mount → pas de divergence avec le rendu SSR (token null).
+  const persisted = mounted ? readPersistedAuth() : null;
+  const token = liveToken ?? persisted?.token ?? null;
+  const user = liveUser ?? persisted?.user ?? null;
+  const role = user?.role;
   const isStaff = role ? STAFF_ROLES.has(role) : false;
 
   useEffect(() => {
-    if (!hydrated) return;
+    if (!mounted) return;
     if (!token) {
       router.replace('/login?next=/admin');
       return;
@@ -50,9 +63,9 @@ export function AdminGuard({ children }: { children: React.ReactNode }) {
     if (user && !isStaff) {
       router.replace('/dashboard');
     }
-  }, [hydrated, token, user, isStaff, router]);
+  }, [mounted, token, user, isStaff, router]);
 
-  if (!hydrated || !token) {
+  if (!mounted || !token) {
     return (
       <div className="grid min-h-screen place-items-center">
         <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
