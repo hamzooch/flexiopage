@@ -700,6 +700,16 @@ export const adminApi = {
       {},
     ),
 
+  // ── Limites de boutiques (comptes autorisés à dépasser le défaut) ──
+  getStoreLimits: () =>
+    api.get<{ defaultLimit: number; users: AdminStoreLimitUser[] }>('/admin/store-limits'),
+  /** Pose (ou réinitialise via null) la limite de boutiques d'un compte. */
+  setUserStoreLimit: (userId: string, storeLimit: number | null) =>
+    api.patch<{ ok: boolean; user: AdminStoreLimitUser }>(
+      `/admin/users/${userId}/store-limit`,
+      { storeLimit },
+    ),
+
   // ── Exports (CSV download) ──
   /** Téléchargement CSV avec auth — déclenche la sauvegarde du fichier dans le navigateur. */
   downloadExport: async (type: 'users' | 'orders' | 'wallets' | 'complaints' | 'stores'): Promise<void> => {
@@ -822,6 +832,15 @@ export interface AdminDeliveryFingerprint {
     preview: string;
     fingerprint: string;
   }>;
+}
+
+export interface AdminStoreLimitUser {
+  _id: string;
+  email: string;
+  name: string;
+  role: 'owner' | 'superadmin' | 'admin' | 'supervisor' | 'user';
+  storeLimit: number | null;
+  currentStores: number;
 }
 
 export interface AdminHealth {

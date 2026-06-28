@@ -47,15 +47,20 @@ export async function createStore(req: AuthRequest, res: Response): Promise<void
     res.status(403).json({ error: 'Les membres d’équipe ne peuvent pas créer de boutique.' });
     return;
   }
-  // Per-account limit: a seller can own at most STORE_LIMIT_PER_USER stores.
+  // Per-account limit: a seller can own at most `storeLimit` stores. Override
+  // admin par-compte (`user.storeLimit`) sinon limite globale STORE_LIMIT_PER_USER.
   // Skipped for staff (admin/superadmin) so they can manage support/test stores.
   if (!STAFF_ROLES.has(req.user.role || 'user')) {
+    const effectiveLimit =
+      typeof req.user.storeLimit === 'number' && req.user.storeLimit >= 0
+        ? req.user.storeLimit
+        : STORE_LIMIT_PER_USER;
     const existing = await storeService.getStoresByOwner(req.user._id.toString());
-    if (existing.length >= STORE_LIMIT_PER_USER) {
+    if (existing.length >= effectiveLimit) {
       res.status(403).json({
-        error: `Limite atteinte : tu ne peux créer que ${STORE_LIMIT_PER_USER} boutiques par compte. Contacte le support si tu as besoin de plus.`,
+        error: `Limite atteinte : tu ne peux créer que ${effectiveLimit} boutiques par compte. Contacte le support si tu as besoin de plus.`,
         code: 'store_limit_reached',
-        limit: STORE_LIMIT_PER_USER,
+        limit: effectiveLimit,
         current: existing.length,
       });
       return;

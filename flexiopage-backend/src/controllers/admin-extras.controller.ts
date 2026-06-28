@@ -767,6 +767,95 @@ export async function redispatchOrder(req: AuthRequest, res: Response): Promise<
 }
 
 // ─────────────────────────────────────────────────────────────────────
+// STORE LIMITS — comptes autorisés à dépasser la limite par défaut
+// ─────────────────────────────────────────────────────────────────────
+
+function defaultStoreLimit(): number {
+  return Number(process.env.STORE_LIMIT_PER_USER) || 4;
+}
+
+/**
+ * GET /api/admin/store-limits — liste les comptes avec un override de limite
+ * de boutiques (storeLimit posé), + leur nombre de boutiques actuel et la
+ * limite globale par défaut.
+ */
+export async function getStoreLimits(_req: AuthRequest, res: Response): Promise<void> {
+  const users = await User.find({ storeLimit: { $exists: true, $ne: null } })
+    .select('email name role storeLimit')
+    .sort({ updatedAt: -1 })
+    .lean();
+
+  const ids = users.map((u) => u._id);
+  const counts = ids.length
+    ? await Store.aggregate([
+        { $match: { ownerId: { $in: ids } } },
+        { $group: { _id: '$ownerId', n: { $sum: 1 } } },
+      ])
+    : [];
+  const countById = new Map(counts.map((c) => [String(c._id), c.n as number]));
+
+  res.json({
+    defaultLimit: defaultStoreLimit(),
+    users: users.map((u) => ({
+      _id: String(u._id),
+      email: u.email,
+      name: u.name,
+      role: u.role,
+      storeLimit: u.storeLimit,
+      currentStores: countById.get(String(u._id)) || 0,
+    })),
+  });
+}
+
+/**
+ * PATCH /api/admin/users/:userId/store-limit — body { storeLimit: number|null }.
+ * `null` (ou vide) réinitialise au défaut global. Sinon entier 0–1000.
+ */
+export async function setUserStoreLimit(req: AuthRequest, res: Response): Promise<void> {
+  const { userId } = req.params;
+  if (!mongoose.isValidObjectId(userId)) { res.status(400).json({ error: 'Invalid userId' }); return; }
+
+  const raw = (req.body || {}).storeLimit;
+  let storeLimit: number | null;
+  if (raw === null || raw === undefined || raw === '') {
+    storeLimit = null;
+  } else {
+    const n = Number(raw);
+    if (!Number.isInteger(n) || n < 0 || n > 1000) {
+      res.status(400).json({ error: 'storeLimit doit être un entier 0–1000, ou null pour réinitialiser au défaut.' });
+      return;
+    }
+    storeLimit = n;
+  }
+
+  const mutation = storeLimit === null ? { $unset: { storeLimit: '' } } : { $set: { storeLimit } };
+  const user = await User.findByIdAndUpdate(userId, mutation, { new: true }).select('email name role storeLimit').lean();
+  if (!user) { res.status(404).json({ error: 'User not found' }); return; }
+
+  await logAudit({
+    action: 'user.update',
+    req,
+    targetId: userId,
+    targetType: 'user',
+    summary: `Limite boutiques ${storeLimit === null ? 'réinitialisée (défaut)' : `→ ${storeLimit}`} pour ${user.email}`,
+    metadata: { storeLimit },
+  });
+
+  const currentStores = await Store.countDocuments({ ownerId: userId });
+  res.json({
+    ok: true,
+    user: {
+      _id: String(user._id),
+      email: user.email,
+      name: user.name,
+      role: user.role,
+      storeLimit: user.storeLimit ?? null,
+      currentStores,
+    },
+  });
+}
+
+// ─────────────────────────────────────────────────────────────────────
 // HEALTH & MONITORING
 // ─────────────────────────────────────────────────────────────────────
 

@@ -77,6 +77,10 @@ router.patch('/stores/:storeId/commission', requireSuperAdmin, adminExtras.setSt
 router.get('/stores/:storeId/delivery-config', adminExtras.getStoreDeliveryConfig);
 router.patch('/stores/:storeId/delivery-config', requireAdminWrite, adminExtras.patchStoreDeliveryConfig);
 
+// ── Store limits (comptes autorisés à dépasser la limite par défaut) ──
+router.get('/store-limits', adminExtras.getStoreLimits);
+router.patch('/users/:userId/store-limit', requireAdminWrite, adminExtras.setUserStoreLimit);
+
 // ── Delivery / webhooks dashboard (cross-store) ──
 router.get('/delivery/overview', adminExtras.getDeliveryOverview);
 router.get('/delivery/logs', adminExtras.getWebhookLogs);

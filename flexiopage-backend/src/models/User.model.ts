@@ -60,6 +60,12 @@ export interface IUser extends Document {
   suspendedReason?: string;
   suspendedAt?: Date;
   /**
+   * Override admin du nombre max de boutiques pour ce compte. Quand absent,
+   * la limite globale `STORE_LIMIT_PER_USER` (env, défaut 4) s'applique.
+   * Géré depuis /admin/store-limits.
+   */
+  storeLimit?: number;
+  /**
    * Seller's country (ISO 3166-1 alpha-2, e.g. 'TN', 'DZ', 'FR'). Drives the
    * default wallet currency and is shown on the profile.
    */
@@ -107,6 +113,7 @@ const UserSchema = new Schema<IUser>(
     suspended: { type: Boolean, default: false },
     suspendedReason: { type: String },
     suspendedAt: { type: Date },
+    storeLimit: { type: Number, min: 0 },
     country: { type: String, trim: true, uppercase: true, maxlength: 2 },
     currency: { type: String, trim: true, uppercase: true, maxlength: 3 },
     lastLoginAt: { type: Date },
