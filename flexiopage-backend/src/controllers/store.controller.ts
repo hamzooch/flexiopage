@@ -284,22 +284,19 @@ export async function connectMogaDeliveryController(req: AuthRequest, res: Respo
   const {
     onboardStoreOnMogaDelivery,
     isOnboardingAvailable,
-    generateWebhookSecret,
   } = await import('../services/mogadelivery-onboarding.service');
 
-  // Mode manuel : ni JWT seller fourni ni env partner credential → on
-  // génère juste le secret côté nous et on demande au seller de coller le
-  // résultat dans la console MD lui-même (cf. réponse MD 2026-06-23).
+  // Mode manuel : ni JWT seller fourni ni env partner credential → on ne peut
+  // pas enregistrer l'intégration via l'API MD. Modèle « secret plateforme » :
+  // plus aucun secret par-boutique à échanger — il suffit que MD enregistre ce
+  // `store_id`. Le secret HMAC est géré au niveau plateforme (env partagé).
   if (!isOnboardingAvailable(body.sellerToken)) {
-    const webhookSecret = generateWebhookSecret();
     res.json({
       mode: 'manual',
-      webhookSecret,
       message:
-        "Aucun token MogaDelivery fourni (JWT seller ou partner credential). " +
-        "Voici un secret 64-hex prêt à l'emploi. Connecte-toi sur ton compte " +
-        "MogaDelivery, va dans Intégrations → FlexioPage, colle ce secret + " +
-        "ton boutiqueId, puis enregistre-le ici dans 'Secret webhook'.",
+        "Aucun token MogaDelivery fourni. Demande à MogaDelivery d'enregistrer " +
+        "ce store_id pour ta boutique (l'authentification utilise le secret " +
+        "plateforme partagé — aucun secret par boutique à coller).",
       hint: { storeId: String(store._id), storeName: store.name, country },
     });
     return;
@@ -328,7 +325,7 @@ export async function connectMogaDeliveryController(req: AuthRequest, res: Respo
         enabled: true,
         storeIdMD: result.storeIdMD,
         boutiqueIdMD: result.boutiqueIdMD,
-        webhookSecret: result.webhookSecret,
+        // Pas de webhookSecret par-boutique : signature via le secret plateforme (env).
       };
       if (idx >= 0) {
         markets[idx].delivery = { ...(markets[idx].delivery || {}), ...marketDelivery };
@@ -349,7 +346,6 @@ export async function connectMogaDeliveryController(req: AuthRequest, res: Respo
           $set: {
             'integrations.delivery.provider': 'mogadelivery',
             'integrations.delivery.enabled': true,
-            'integrations.delivery.webhookSecret': result.webhookSecret,
           },
         },
       );
@@ -359,8 +355,6 @@ export async function connectMogaDeliveryController(req: AuthRequest, res: Respo
       mode: 'auto',
       boutiqueIdMD: result.boutiqueIdMD,
       storeIdMD: result.storeIdMD,
-      // On masque le secret dans la réponse — il est déjà sauvegardé en DB.
-      webhookSecretPreview: `${result.webhookSecret.slice(0, 4)}…${result.webhookSecret.slice(-4)}`,
       country,
     });
   } catch (err) {
@@ -388,16 +382,17 @@ export async function setMogaDeliveryConnectionController(req: AuthRequest, res:
   const { Store } = await import('../models/Store.model');
 
   if (enabled) {
-    // Reconnexion : on exige des identifiants déjà posés (legacy ou market),
-    // sinon ce n'est pas une reconnexion mais un premier onboarding.
+    // Reconnexion : on exige que l'intégration MD ait déjà été configurée
+    // (provider posé, ou un market MD avec storeIdMD). Modèle secret plateforme :
+    // plus besoin d'un secret par-boutique — l'auth passe par le secret env global.
     const fresh = await Store.findById(store._id).select('markets integrations.delivery').lean();
-    const hasLegacy = !!fresh?.integrations?.delivery?.webhookSecret;
+    const hasLegacy = fresh?.integrations?.delivery?.provider === 'mogadelivery';
     const hasMarket = (fresh?.markets || []).some(
-      (m) => m.delivery?.provider === 'mogadelivery' && m.delivery?.webhookSecret && m.delivery?.storeIdMD,
+      (m) => m.delivery?.provider === 'mogadelivery' && m.delivery?.storeIdMD,
     );
     if (!hasLegacy && !hasMarket) {
       res.status(400).json({
-        error: 'Aucun identifiant MogaDelivery enregistré — connecte la boutique avant de pouvoir reconnecter.',
+        error: 'Aucune intégration MogaDelivery configurée — connecte la boutique avant de pouvoir reconnecter.',
       });
       return;
     }

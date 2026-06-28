@@ -97,7 +97,10 @@ interface ConnectIntegrationInput {
   boutiqueId: string;
   storeId: string;
   storeName: string;
-  webhookSecret: string;
+  /** Optionnel — modèle « secret plateforme » : on ne pose plus de secret
+   *  par-boutique chez MD (il prioriserait ce secret sur le secret plateforme
+   *  global et casserait la vérif). On laisse MD retomber sur son env global. */
+  webhookSecret?: string;
   /** JWT seller MD. */
   sellerToken?: string;
 }
@@ -111,17 +114,26 @@ interface ConnectIntegrationResult {
 }
 
 /**
- * Étape 2 : connecte FlexioPage à la Boutique avec le secret généré.
+ * Étape 2 : connecte FlexioPage à la Boutique (enregistre le `store_id`).
  *
- * Réponse MD attendue (confirmée 2026-06-23) :
- *   `{ success: true, integrationId: "<id>" }`
+ * Réponse MD attendue : `{ success: true, integrationId: "<id>" }`.
  *
- * MD impose un `webhookSecret` 64-hex. Le secret n'est jamais relu par MD —
- * il est juste enregistré pour valider les signatures inbound futures.
+ * Modèle « secret plateforme » : on ne transmet PAS de `webhookSecret`
+ * par-boutique. MD vérifie les signatures avec son secret plateforme global
+ * (`FLEXIOPAGE_WEBHOOK_SECRET`, partagé). Si un secret est quand même fourni
+ * (compat/transition), il doit être 64-hex.
  */
 export async function connectIntegration(input: ConnectIntegrationInput): Promise<ConnectIntegrationResult> {
-  if (!/^[a-f0-9]{64}$/i.test(input.webhookSecret)) {
-    throw new Error('webhookSecret doit être 64 caractères hexadécimaux');
+  const body: Record<string, unknown> = {
+    boutiqueId: input.boutiqueId,
+    storeId: input.storeId,
+    storeName: input.storeName,
+  };
+  if (input.webhookSecret) {
+    if (!/^[a-f0-9]{64}$/i.test(input.webhookSecret)) {
+      throw new Error('webhookSecret doit être 64 caractères hexadécimaux');
+    }
+    body.webhookSecret = input.webhookSecret;
   }
   const res = await fetch(`${baseUrl()}/integrations/flexiopage/connect`, {
     method: 'POST',
@@ -129,12 +141,7 @@ export async function connectIntegration(input: ConnectIntegrationInput): Promis
       'Content-Type': 'application/json',
       Authorization: `Bearer ${resolveAuth(input.sellerToken)}`,
     },
-    body: JSON.stringify({
-      boutiqueId: input.boutiqueId,
-      storeId: input.storeId,
-      storeName: input.storeName,
-      webhookSecret: input.webhookSecret,
-    }),
+    body: JSON.stringify(body),
   });
   const text = await res.text();
   const json = (() => {
@@ -166,16 +173,16 @@ interface OnboardStoreResult {
   boutiqueIdMD: string;
   storeIdMD: string;
   integrationId: string;
-  webhookSecret: string;
 }
 
 /**
- * Flux complet : (1) crée la Boutique côté MD pour ce pays, (2) génère un
- * secret côté nous, (3) appelle /connect pour le poser chez MD. Renvoie de
- * quoi peupler `store.markets[].delivery` ou `store.integrations.delivery`.
+ * Flux complet : (1) crée la Boutique côté MD pour ce pays (si pas
+ * d'`existingBoutiqueId`), (2) appelle `/connect` pour enregistrer le
+ * `store_id`. Modèle « secret plateforme » : aucun secret par-boutique n'est
+ * généré ni transmis — MD vérifie avec son secret plateforme global.
  *
- * Cas `existingBoutiqueId` : utile pour resync une boutique déjà créée sur
- * MD (ex. Afrochance) — on saute l'étape 1 et on rotate juste le secret.
+ * Cas `existingBoutiqueId` : resync d'une boutique déjà créée sur MD — on
+ * saute l'étape 1 et on (ré)enregistre juste l'intégration.
  */
 export async function onboardStoreOnMogaDelivery(input: OnboardStoreInput): Promise<OnboardStoreResult> {
   let boutiqueId = input.existingBoutiqueId?.trim();
@@ -188,15 +195,13 @@ export async function onboardStoreOnMogaDelivery(input: OnboardStoreInput): Prom
     });
     boutiqueId = created.boutiqueId;
   }
-  const webhookSecret = generateWebhookSecret();
   const { integrationId, storeIdMD } = await connectIntegration({
     boutiqueId,
     storeId: input.storeId,
     storeName: input.storeName,
-    webhookSecret,
     sellerToken: input.sellerToken,
   });
-  return { boutiqueIdMD: boutiqueId, storeIdMD, integrationId, webhookSecret };
+  return { boutiqueIdMD: boutiqueId, storeIdMD, integrationId };
 }
 
 /** Indique si l'onboarding auto est disponible (token disponible).

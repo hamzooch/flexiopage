@@ -5,7 +5,7 @@ import { useParams, useRouter } from 'next/navigation';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { CheckCircle2, Circle, Truck, Eye, AlertTriangle, Clock, Lock, Zap, Copy, Check, Loader2, Power } from 'lucide-react';
+import { CheckCircle2, Circle, Truck, Eye, AlertTriangle, Clock, Lock, Zap, Loader2, Power } from 'lucide-react';
 import { storesApi, extractApiError } from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { StoreSubPageShell, type SaveStatus } from '@/components/dashboard/store-sub-page';
@@ -31,9 +31,7 @@ export default function StoreDeliveryPage() {
   const [connectResult, setConnectResult] = useState<null | {
     kind: 'success' | 'manual' | 'error';
     message: string;
-    secret?: string;
   }>(null);
-  const [secretCopied, setSecretCopied] = useState(false);
   const [mdJwt, setMdJwt] = useState('');
   const [existingBoutiqueId, setExistingBoutiqueId] = useState('');
   const [showAdvanced, setShowAdvanced] = useState(false);
@@ -49,9 +47,9 @@ export default function StoreDeliveryPage() {
       if (res.data.mode === 'auto') {
         setConnectResult({
           kind: 'success',
-          message: `Boutique connectée chez MogaDelivery. Le secret a été généré et synchronisé (preview ${res.data.webhookSecretPreview}). Tu peux retenter un dispatch.`,
+          message: `Boutique enregistrée chez MogaDelivery (store_id ${res.data.storeIdMD ?? storeId}). L'authentification utilise le secret plateforme — tu peux dispatcher.`,
         });
-        // Recharge le store pour afficher le secret en DB
+        // Recharge le store pour refléter l'activation en DB.
         const fresh = await storesApi.get(storeId);
         const s = (fresh.data as { store: StoreType }).store;
         if (s.integrations?.delivery) {
@@ -70,8 +68,7 @@ export default function StoreDeliveryPage() {
       } else {
         setConnectResult({
           kind: 'manual',
-          secret: res.data.webhookSecret,
-          message: res.data.message || 'Mode manuel : envoie ce secret à MogaDelivery puis enregistre.',
+          message: res.data.message || "Mode manuel : demande à MogaDelivery d'enregistrer ce store_id.",
         });
       }
     } catch (err) {
@@ -98,16 +95,6 @@ export default function StoreDeliveryPage() {
     } finally {
       setTogglingConn(false);
     }
-  }
-
-  async function copyManualSecret() {
-    const s = connectResult?.secret;
-    if (!s) return;
-    try {
-      await navigator.clipboard.writeText(s);
-      setSecretCopied(true);
-      setTimeout(() => setSecretCopied(false), 2000);
-    } catch { /* fallback : selection manuelle */ }
   }
 
   useEffect(() => {
@@ -281,26 +268,18 @@ export default function StoreDeliveryPage() {
 
           {delivery.provider !== 'bestdelivery' && (
           <>
-          {/* Statut de connexion + déconnexion douce / reconnexion. Visible
-              dès qu'un secret est en place (boutique déjà connectée). Bascule
-              juste le master switch — secret et Boutique MD conservés. */}
-          {delivery.webhookSecret && (
+          {/* Statut de connexion + déconnexion douce. Visible quand l'intégration
+              est active. Le bouton suspend l'émission (master switch) — la
+              Boutique MD reste enregistrée, reconnexion via « Connecter ». */}
+          {delivery.enabled && (
             <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border p-3">
               <div className="flex flex-wrap items-center gap-2 text-sm">
-                <span
-                  className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium ${
-                    delivery.enabled
-                      ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-700'
-                      : 'border-border bg-muted text-muted-foreground'
-                  }`}
-                >
-                  <span className={`h-1.5 w-1.5 rounded-full ${delivery.enabled ? 'bg-emerald-500' : 'bg-muted-foreground/50'}`} />
-                  {delivery.enabled ? 'Connecté' : 'Déconnecté'}
+                <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2.5 py-1 text-xs font-medium text-emerald-700">
+                  <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+                  Connecté
                 </span>
                 <span className="text-xs text-muted-foreground">
-                  {delivery.enabled
-                    ? 'Les commandes payées partent automatiquement chez le coursier.'
-                    : 'Dispatchs suspendus — secret et Boutique MD conservés.'}
+                  Les commandes payées partent automatiquement chez le coursier.
                 </span>
               </div>
               <Button
@@ -332,7 +311,7 @@ export default function StoreDeliveryPage() {
               </div>
               <Button type="button" onClick={handleConnect} disabled={connecting} className="gap-2">
                 {connecting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Zap className="h-3.5 w-3.5" />}
-                {delivery.webhookSecret ? 'Resynchroniser' : 'Connecter'}
+                {delivery.enabled ? 'Resynchroniser' : 'Connecter'}
               </Button>
             </div>
             <button
@@ -383,76 +362,28 @@ export default function StoreDeliveryPage() {
                 }`}
               >
                 <p>{connectResult.message}</p>
-                {connectResult.kind === 'manual' && connectResult.secret && (
-                  <div className="mt-2 flex items-center gap-2 rounded-md border border-border bg-card px-2.5 py-1.5">
-                    <code className="flex-1 truncate font-mono text-[11px]">{connectResult.secret}</code>
-                    <button
-                      type="button"
-                      onClick={copyManualSecret}
-                      className="inline-flex h-7 items-center gap-1 rounded-md border border-border bg-background px-2 text-[11px] font-medium transition-colors hover:bg-muted"
-                    >
-                      {secretCopied ? <Check className="h-3 w-3 text-emerald-700" /> : <Copy className="h-3 w-3" />}
-                      {secretCopied ? 'Copié' : 'Copier'}
-                    </button>
-                  </div>
-                )}
               </div>
             )}
           </div>
 
-          <div className="grid gap-4 sm:grid-cols-2">
-            <div className="space-y-2">
-              <Label htmlFor="moga-key">Clé API MogaDelivery *</Label>
-              <Input
-                id="moga-key"
-                type="password"
-                autoComplete="off"
-                placeholder="md_live_..."
-                value={delivery.apiKey || ''}
-                onChange={(e) => setDelivery((d) => ({ ...d, apiKey: e.target.value }))}
-              />
-              <p className="text-xs text-muted-foreground">
-                Récupère-la dans ton tableau de bord <code className="rounded bg-muted px-1 py-0.5 text-[11px]">admin-mogadelivery.com</code> → API.
-              </p>
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="moga-base">Base URL (avancé)</Label>
-              <Input
-                id="moga-base"
-                placeholder="https://admin-mogadelivery.com"
-                value={delivery.baseUrl || ''}
-                onChange={(e) => setDelivery((d) => ({ ...d, baseUrl: e.target.value }))}
-              />
-              <p className="text-xs text-muted-foreground">Laisse vide pour utiliser la valeur par défaut.</p>
-            </div>
+          <div className="flex items-start gap-2 rounded-md bg-emerald-500/10 px-3 py-2 text-xs text-emerald-800">
+            <CheckCircle2 className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+            <span>
+              L&apos;authentification est gérée par le <strong>secret plateforme MogaDelivery</strong> — aucune clé API
+              ni secret par boutique à saisir. Il te suffit de connecter ta boutique (bouton ci-dessus) ; MogaDelivery
+              identifie tes commandes par leur <code className="rounded bg-emerald-500/10 px-1 py-0.5">store_id</code>.
+            </span>
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="moga-secret">
-              Secret webhook <span className="text-rose-600">*</span>
-            </Label>
+            <Label htmlFor="moga-base">Base URL (avancé)</Label>
             <Input
-              id="moga-secret"
-              type="password"
-              autoComplete="off"
-              placeholder="64 caractères hexadécimaux fournis par MogaDelivery"
-              value={delivery.webhookSecret || ''}
-              onChange={(e) => setDelivery((d) => ({ ...d, webhookSecret: e.target.value }))}
-              className={delivery.enabled && !delivery.webhookSecret?.trim() ? 'border-rose-500/60' : ''}
+              id="moga-base"
+              placeholder="https://api.admin-mogadelivery.com/api/webhooks/flexiopage"
+              value={delivery.baseUrl || ''}
+              onChange={(e) => setDelivery((d) => ({ ...d, baseUrl: e.target.value }))}
             />
-            <p className="text-xs text-muted-foreground">
-              <strong>Obligatoire.</strong> Demande-le à MogaDelivery (dashboard → API → Webhook secret).
-              Sans cette clé, les commandes ne pourront pas être envoyées (401 Unauthorized).
-            </p>
-            {delivery.enabled && !delivery.webhookSecret?.trim() && (
-              <div className="flex items-start gap-2 rounded-md bg-rose-500/10 px-3 py-2 text-xs text-rose-700">
-                <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-                <span>
-                  Le dispatch est activé mais aucun secret n&apos;est posé — chaque commande échouera avec un 401.
-                  Récupère la clé sur ton dashboard MogaDelivery et colle-la ici.
-                </span>
-              </div>
-            )}
+            <p className="text-xs text-muted-foreground">Laisse vide pour l&apos;endpoint MogaDelivery par défaut.</p>
           </div>
 
           <div className="rounded-xl border border-border/60 bg-muted/30 p-4">
@@ -461,7 +392,8 @@ export default function StoreDeliveryPage() {
               {webhookUrl}
             </code>
             <p className="mt-1.5 text-xs text-muted-foreground">
-              Ajoute cette URL dans ta config MogaDelivery pour recevoir les changements de statut (assigné, en transit, livré, retourné).
+              MogaDelivery appelle cette URL pour pousser les changements de statut (assigné, en transit, livré, retourné),
+              signés avec le secret plateforme.
             </p>
           </div>
           </>
@@ -593,23 +525,17 @@ export default function StoreDeliveryPage() {
 
 function DeliveryReadinessPreview({ cfg }: { cfg: DeliveryIntegration }) {
   const pickup = cfg.pickupAddress || {};
-  const hasKey      = !!cfg.apiKey?.trim();
   const hasContact  = !!(pickup.contactName?.trim() && pickup.contactPhone?.trim());
   const hasAddress  = !!(pickup.line1?.trim() && pickup.city?.trim() && pickup.country?.trim());
-  const hasSecret   = !!cfg.webhookSecret?.trim();
   const enabled     = !!cfg.enabled;
 
   const checks = [
-    { key: 'enabled',  label: 'Intégration activée',         done: enabled,    required: true,
-      hint: enabled ? 'Active.' : 'Coche « Activé » en haut de la carte MogaDelivery.' },
-    { key: 'key',      label: 'Clé API MogaDelivery',         done: hasKey,     required: true,
-      hint: hasKey ? 'Configurée.' : 'Récupère-la dans admin-mogadelivery.com → API.' },
+    { key: 'enabled',  label: 'Boutique connectée & activée', done: enabled,    required: true,
+      hint: enabled ? 'Connectée — auth via le secret plateforme.' : 'Clique « Connecter » pour enregistrer ta boutique chez MogaDelivery.' },
     { key: 'contact',  label: 'Contact de l\'expédition',     done: hasContact, required: true,
       hint: hasContact ? 'Nom + téléphone OK.' : 'Renseigne le nom + téléphone du contact.' },
     { key: 'address',  label: 'Adresse de retrait',           done: hasAddress, required: true,
       hint: hasAddress ? 'Adresse complète.' : 'Manque adresse, ville ou pays.' },
-    { key: 'secret',   label: 'Secret webhook (recommandé)',  done: hasSecret,  required: false,
-      hint: hasSecret ? 'Webhooks signés.' : 'Ajoute-le pour vérifier la signature HMAC des webhooks.' },
   ];
 
   const totalReq = checks.filter((c) => c.required).length;
@@ -736,7 +662,7 @@ function DeliveryReadinessPreview({ cfg }: { cfg: DeliveryIntegration }) {
               { step: '1', label: 'Client passe commande (COD)', ok: true },
               { step: '2', label: auto ? 'Envoi auto à MogaDelivery' : 'Envoi manuel à MogaDelivery', ok: ready },
               { step: '3', label: 'Coursier collecte le colis', ok: ready && hasAddress },
-              { step: '4', label: 'Webhook → statut à jour', ok: ready && (hasSecret || true) },
+              { step: '4', label: 'Webhook → statut à jour', ok: ready },
             ].map((s) => (
               <div key={s.step} className="flex items-center gap-2">
                 <span

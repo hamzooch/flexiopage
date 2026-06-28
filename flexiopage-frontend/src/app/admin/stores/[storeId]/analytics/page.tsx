@@ -561,13 +561,12 @@ function DeliveryDiagCard({ storeId }: { storeId: string }) {
       if (res.data.mode === 'auto') {
         setSaveFeedback({
           kind: 'success',
-          text: `Onboarding réussi. storeIdMD=${res.data.storeIdMD}, secret synchronisé avec MD (${res.data.webhookSecretPreview}). Retente le dispatch.`,
+          text: `Boutique enregistrée chez MD (storeIdMD=${res.data.storeIdMD}). Auth via le secret plateforme — retente le dispatch.`,
         });
       } else {
-        setNewSecret(res.data.webhookSecret || '');
         setSaveFeedback({
           kind: 'success',
-          text: 'Mode manuel : secret généré localement (clé API MD absente en env). Envoie-le à MD, puis clique Enregistrer.',
+          text: res.data.message || "Mode manuel : demande à MD d'enregistrer ce store_id (auth via secret plateforme).",
         });
       }
       await load();
@@ -604,8 +603,10 @@ function DeliveryDiagCard({ storeId }: { storeId: string }) {
   // Diagnostic synthétique : "OK", "warning" ou "ko" + message.
   const verdict = (() => {
     if (!data) return null;
+    // Modèle secret plateforme : un marché est prêt dès qu'il a un storeIdMD
+    // (l'auth passe par le secret plateforme env, plus de secret par-boutique).
     const marketsMD = data.markets.filter((m) => m.delivery?.provider === 'mogadelivery' && m.delivery?.enabled !== false);
-    const marketReady = marketsMD.filter((m) => m.delivery?.storeIdMD && m.delivery?.webhookSecret);
+    const marketReady = marketsMD.filter((m) => m.delivery?.storeIdMD);
     const legacy = data.integrations.delivery;
     if (marketReady.length > 0) {
       return { kind: 'ok' as const, text: `${marketReady.length} marché(s) MD prêt(s). Dispatch via marché.` };
@@ -613,14 +614,11 @@ function DeliveryDiagCard({ storeId }: { storeId: string }) {
     if (marketsMD.length > 0 && marketReady.length === 0) {
       return {
         kind: 'ko' as const,
-        text: `${marketsMD.length} marché(s) MD activé(s) mais storeIdMD ou webhookSecret manquant. Le dispatch va planter.`,
+        text: `${marketsMD.length} marché(s) MD activé(s) mais storeIdMD manquant. Le routage va planter.`,
       };
     }
-    if (legacy?.enabled && legacy.webhookSecret) {
-      return { kind: 'ok' as const, text: 'Config legacy mono-pays valide.' };
-    }
-    if (legacy?.enabled && !legacy.webhookSecret) {
-      return { kind: 'ko' as const, text: 'Integration delivery activée mais webhookSecret vide → 401 garanti.' };
+    if (legacy?.enabled) {
+      return { kind: 'ok' as const, text: 'Intégration activée — auth via secret plateforme.' };
     }
     return { kind: 'warn' as const, text: 'Aucune config MD trouvée (ni markets, ni integrations.delivery).' };
   })();
@@ -728,15 +726,14 @@ function DeliveryDiagCard({ storeId }: { storeId: string }) {
             </p>
           </div>
 
-          <div className="rounded-md border border-rose-500/30 bg-rose-500/5 p-3">
-            <div className="text-[11px] font-semibold uppercase tracking-wider text-rose-700">
-              Fixer le secret HMAC de cette boutique
+          <div className="rounded-md border border-border/60 bg-muted/30 p-3">
+            <div className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+              Secret par-boutique (override legacy)
             </div>
             <p className="mt-1 text-[11px] text-muted-foreground">
-              MogaDelivery valide désormais la signature avec un secret par Boutique (logs MD :{' '}
-              <code className="rounded bg-muted/60 px-1 py-0.5 text-[10px]">secret=store</code>).
-              Deux options : <strong>(1)</strong> demande à MD le secret qu&apos;ils ont en base pour cette boutique et colle-le, ou{' '}
-              <strong>(2)</strong> génère-en un ici, envoie-le à MD pour qu&apos;ils le posent côté eux.
+              ⚠️ Obsolète : l&apos;authentification utilise désormais le <strong>secret plateforme</strong>
+              (`FLEXIOPAGE_WEBHOOK_SECRET`, partagé avec MD). Le dispatch ne lit plus de secret par-boutique.
+              Ce champ ne sert que d&apos;override exceptionnel — en temps normal, laisse-le vide.
             </p>
             <div className="mt-2 grid gap-2 sm:grid-cols-[1fr,auto,auto]">
               <Input

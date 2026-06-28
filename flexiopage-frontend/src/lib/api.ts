@@ -898,13 +898,11 @@ export const storesApi = {
   ) =>
     api.post<{
       mode: 'auto' | 'manual';
-      // mode=auto
+      // mode=auto — modèle secret plateforme : pas de secret par boutique renvoyé.
       boutiqueIdMD?: string;
       storeIdMD?: string;
-      webhookSecretPreview?: string;
       country?: string;
       // mode=manual
-      webhookSecret?: string;
       message?: string;
       hint?: { storeId: string; storeName: string; country: string };
     }>(`/stores/${storeId}/delivery/connect-mogadelivery`, data || {}),

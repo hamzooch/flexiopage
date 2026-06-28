@@ -62,21 +62,19 @@ class MogaDeliveryProvider implements DeliveryProviderImpl {
   private defaultUrl = 'https://api.admin-mogadelivery.com/api/webhooks/flexiopage';
 
   isConfigured(store: IStore): boolean {
-    // Multi-pays : au moins un market MD activé avec storeIdMD + secret.
+    // Modèle secret plateforme : la signature dépend du secret env (partagé
+    // avec MD), plus d'un secret par-boutique. Une boutique est « configurée »
+    // dès que ce secret existe ET qu'elle a une cible MD : un market activé
+    // avec un storeIdMD, ou l'intégration delivery activée (routage sur l'ObjectId).
+    const hasPlatformSecret = !!(process.env.FLEXIOPAGE_WEBHOOK_SECRET || process.env.BOUTSHOP_WEBHOOK_SECRET);
+    if (!hasPlatformSecret) return false;
     const marketReady = (store.markets || []).some(
       (m) => m.delivery?.provider === 'mogadelivery'
         && m.delivery?.enabled !== false
-        && m.delivery?.webhookSecret
         && m.delivery?.storeIdMD
     );
     if (marketReady) return true;
-    // Legacy mono-pays : config valide si l'intégration est activée et qu'au
-    // moins un secret est disponible (per-store > env). On garde l'env comme
-    // fallback de dernier recours pour les boutiques pré-migration qui
-    // tournaient déjà comme ça.
-    const cfg = store.integrations?.delivery;
-    if (!cfg?.enabled) return false;
-    return !!(cfg.webhookSecret || process.env.FLEXIOPAGE_WEBHOOK_SECRET || process.env.BOUTSHOP_WEBHOOK_SECRET);
+    return !!store.integrations?.delivery?.enabled;
   }
 
   /**
@@ -100,58 +98,30 @@ class MogaDeliveryProvider implements DeliveryProviderImpl {
   }
 
   /**
-   * Résout (secret, URL, storeIdMD) pour cette commande. Priorité au market
-   * MD lorsqu'il est posé (modèle multi-pays MD), fallback sur l'intégration
-   * legacy mono-pays + env.
+   * Résout (secret, URL, store_id) pour cette commande.
+   *
+   * Modèle « secret plateforme » (validé MD 2026-06-27, type Shopify) : on
+   * signe TOUJOURS avec le secret plateforme unique `FLEXIOPAGE_WEBHOOK_SECRET`
+   * (posé en env, partagé avec MD). Le secret est découplé de l'identité
+   * boutique → plus de secret par-boutique, donc plus de désync (fini les 401
+   * récurrents). Le `store_id` sert UNIQUEMENT au routage côté MD, qui résout
+   * sur `(platform, store_id)` : on envoie le `storeIdMD` du marché s'il est
+   * posé, sinon l'ObjectId Mongo de la boutique.
    */
   private getConfig(order: IOrder, store: IStore): { secret: string; url: string; storeIdMD: string; source: 'market' | 'legacy' } {
-    const market = this.resolveMarket(order, store);
-    if (market) {
-      // Modèle multi-pays : on EXIGE storeIdMD + webhookSecret du marché.
-      // Pas de fallback env ici — sinon MD rejette en 401 silencieusement et
-      // c'est imbittable à debug. Mieux vaut un message explicite côté seller.
-      if (!market.delivery?.storeIdMD || !market.delivery?.webhookSecret) {
-        throw new Error(
-          `MogaDelivery: marché ${market.country} mal configuré — storeIdMD et webhookSecret requis. ` +
-          `Va dans Réglages → Livraison de la boutique et complète les deux champs (ou refais l'onboarding MD).`
-        );
-      }
-      const url = (market.delivery.baseUrl || process.env.MOGADELIVERY_WEBHOOK_URL || this.defaultUrl).replace(/\/$/, '');
-      return {
-        secret: market.delivery.webhookSecret,
-        url,
-        storeIdMD: market.delivery.storeIdMD,
-        source: 'market',
-      };
-    }
-    // Pas de markets[] configurés : modèle legacy mono-pays. Priorité au
-    // secret per-store ; l'env reste un fallback de dernier recours pour les
-    // boutiques pré-migration qui n'ont pas encore posé leur secret en DB.
-    // On log un warning quand on tombe sur l'env — ça permet d'identifier les
-    // boutiques à migrer sans casser leur dispatch en attendant.
-    const cfg = store.integrations?.delivery;
-    const secret =
-      cfg?.webhookSecret ||
-      process.env.FLEXIOPAGE_WEBHOOK_SECRET ||
-      process.env.BOUTSHOP_WEBHOOK_SECRET ||
-      '';
+    const secret = process.env.FLEXIOPAGE_WEBHOOK_SECRET || process.env.BOUTSHOP_WEBHOOK_SECRET || '';
     if (!secret) {
       throw new Error(
-        `MogaDelivery: aucun secret HMAC disponible (ni store.integrations.delivery.webhookSecret, ni FLEXIOPAGE_WEBHOOK_SECRET en env). ` +
-        `Va dans Réglages → Livraison de la boutique et colle le secret fourni par MogaDelivery.`
+        'MogaDelivery: secret plateforme manquant — pose `FLEXIOPAGE_WEBHOOK_SECRET` en env ' +
+        '(exactement la même valeur que celle transmise à MogaDelivery).'
       );
     }
-    if (!cfg?.webhookSecret) {
-      console.warn(
-        `[mogadelivery] store ${store._id} (${store.slug}) utilise le secret env FLEXIOPAGE_WEBHOOK_SECRET — ` +
-        `à migrer vers integrations.delivery.webhookSecret pour s'aligner sur le modèle MD per-boutique.`
-      );
-    }
-    const url = (cfg?.baseUrl || process.env.MOGADELIVERY_WEBHOOK_URL || this.defaultUrl).replace(/\/$/, '');
-    // Legacy mono-pays : on garde l'ObjectId Mongo comme identifiant côté MD
-    // (compat ascendante — MD V1 inbound continue de matcher dessus pour les
-    // boutiques pré-migration multi-pays).
-    return { secret, url, storeIdMD: order.storeId.toString(), source: 'legacy' };
+    const market = this.resolveMarket(order, store);
+    const cfg = store.integrations?.delivery;
+    const storeIdMD = market?.delivery?.storeIdMD || order.storeId.toString();
+    const source: 'market' | 'legacy' = market?.delivery?.storeIdMD ? 'market' : 'legacy';
+    const url = (market?.delivery?.baseUrl || cfg?.baseUrl || process.env.MOGADELIVERY_WEBHOOK_URL || this.defaultUrl).replace(/\/$/, '');
+    return { secret, url, storeIdMD, source };
   }
 
   /**
@@ -246,22 +216,21 @@ class MogaDeliveryProvider implements DeliveryProviderImpl {
     };
     try { await order.save(); } catch { /* silencieux — info debug uniquement */ }
 
-    // TEMP DEBUG — remove after MogaDelivery 401 is resolved
-    console.log('[mogadelivery dispatch DEBUG]', {
-      url,
-      source,
-      storeIdMD,
-      marketCountry: order.marketCountry,
-      shippingCountry: order.shippingAddress?.country,
-      mongoStoreId: order.storeId.toString(),
-      orderNumber: order.orderNumber,
-      secretFirst4: secret.slice(0, 4),
-      secretLast4: secret.slice(-4),
-      secretLen: secret.length,
-      signature,
-      bodyLen: rawBody.length,
-      bodyPreview: rawBody.slice(0, 300),
-    });
+    // Debug optionnel — activé seulement via DEBUG_MOGADELIVERY=true. Ne logge
+    // JAMAIS de fragment de secret (le secret plateforme est sensible) ; juste
+    // de quoi tracer le routage et le corps signé.
+    const debugMD = process.env.DEBUG_MOGADELIVERY === 'true';
+    if (debugMD) {
+      console.log('[mogadelivery dispatch]', {
+        url,
+        source,
+        storeIdMD,
+        marketCountry: order.marketCountry,
+        shippingCountry: order.shippingAddress?.country,
+        orderNumber: order.orderNumber,
+        bodyLen: rawBody.length,
+      });
+    }
 
     const res = await fetch(url, {
       method: 'POST',
@@ -273,7 +242,9 @@ class MogaDeliveryProvider implements DeliveryProviderImpl {
       body: rawBody,
     });
     const text = await res.text();
-    console.log('[mogadelivery dispatch DEBUG response]', { status: res.status, body: text.slice(0, 400) });
+    if (debugMD) {
+      console.log('[mogadelivery dispatch response]', { status: res.status, body: text.slice(0, 400) });
+    }
     const json = (() => {
       try { return JSON.parse(text) as Record<string, unknown>; } catch { return {} as Record<string, unknown>; }
     })();
