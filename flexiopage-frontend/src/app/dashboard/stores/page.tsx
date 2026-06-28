@@ -21,8 +21,8 @@ import {
   Globe,
   Loader2,
   Package,
+  Pencil,
   Search,
-  Settings as SettingsIcon,
   Sparkles,
   Store as StoreIcon,
   X,
@@ -485,8 +485,8 @@ function StoreCard({
         )}
         <Link href={`/dashboard/stores/${store._id}`}>
           <Button variant="outline" size="sm" className="h-9 gap-1.5 rounded-lg">
-            <SettingsIcon className="h-3.5 w-3.5" />
-            Réglages
+            <Pencil className="h-3.5 w-3.5" />
+            Modifier boutique
           </Button>
         </Link>
         <Link href={publicUrl} target="_blank" rel="noopener">
