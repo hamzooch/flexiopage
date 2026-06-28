@@ -372,6 +372,16 @@ export interface IStore extends Document {
           overlay?: 'none' | 'light' | 'dark';      // default 'dark'
         }>;
       };
+      /**
+       * Section vidéo : un lien (YouTube / Vimeo / mp4) affiché dans un cadre
+       * avec un titre + un paragraphe à côté. Disponible sur tous les thèmes.
+       */
+      video?: {
+        enabled?: boolean;
+        url?: string;        // lien YouTube / Vimeo / .mp4
+        title?: string;
+        text?: string;       // paragraphe affiché à côté de la vidéo
+      };
     };
   };
   /**
@@ -708,6 +718,12 @@ const StoreSchema = new Schema<IStore>(
               overlay: { type: String, enum: ['none', 'light', 'dark'], default: 'dark' },
             },
           ],
+        },
+        video: {
+          enabled: { type: Boolean, default: false },
+          url: { type: String, trim: true },
+          title: { type: String, trim: true },
+          text: { type: String, trim: true },
         },
       },
     },

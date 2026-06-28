@@ -30,6 +30,7 @@ import {
   Download,
   Zap,
   Clock,
+  Play,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -934,6 +935,44 @@ function ModalFeaturedRow({ template }: { template: StoreThemeTemplate }) {
 }
 
 // ── Modal mock — final CTA banner just above the footer ─────────────
+// ── Modal mock — section vidéo (cadre + paragraphe à côté) ──
+function ModalVideo({ template }: { template: StoreThemeTemplate }) {
+  const t = template.theme;
+  const radius = RADIUS_PX[t.borderRadius];
+  return (
+    <section className="border-t" style={{ borderColor: t.border, backgroundColor: t.surfaceMuted }}>
+      <div className="mx-auto max-w-5xl px-6 py-14">
+        <div className="grid items-center gap-8 lg:grid-cols-[1.6fr_1fr]">
+          <div
+            className="relative grid aspect-video w-full place-items-center overflow-hidden"
+            style={{ borderRadius: radius, backgroundColor: t.surface, border: `1px solid ${t.border}` }}
+          >
+            <div
+              className="pointer-events-none absolute inset-0"
+              style={{ background: `linear-gradient(135deg, ${t.gradientFrom}22, ${t.gradientTo}22)` }}
+              aria-hidden
+            />
+            <span className="relative grid h-14 w-14 place-items-center rounded-full" style={{ backgroundColor: t.primary, color: t.primaryFg }}>
+              <Play className="h-5 w-5" />
+            </span>
+          </div>
+          <div>
+            <div className="mb-2 text-[11px] font-semibold uppercase tracking-[0.25em]" style={{ color: t.muted }}>
+              Vidéo
+            </div>
+            <h3 className="text-2xl font-bold leading-tight sm:text-3xl" style={{ fontFamily: t.fontHeading, color: t.foreground }}>
+              Notre histoire
+            </h3>
+            <p className="mt-2 text-sm leading-relaxed" style={{ color: t.muted }}>
+              Présente ta marque, ton savoir-faire ou ton produit en vidéo — un lien YouTube, Vimeo ou un fichier suffit.
+            </p>
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
 function ModalCtaBanner({ template }: { template: StoreThemeTemplate }) {
   const t = template.theme;
   const radius = RADIUS_PX[t.borderRadius];
@@ -1231,6 +1270,9 @@ export function ThemePreviewModal({ template, onClose, onUse }: ModalProps) {
             {/* TESTIMONIALS — mock customer reviews so the seller sees what
                 a populated "Avis clients" section will look like */}
             <ModalTestimonials template={template} />
+
+            {/* VIDEO — cadre vidéo + paragraphe (section dispo sur tous les thèmes) */}
+            <ModalVideo template={template} />
 
             {/* CTA BANNER — final conversion strip before footer */}
             <ModalCtaBanner template={template} />

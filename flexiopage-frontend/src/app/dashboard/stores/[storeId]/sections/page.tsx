@@ -21,6 +21,7 @@ import {
   NavbarEditor,
   SliderEditor,
   TestimonialsEditor,
+  VideoEditor,
   type CodFormSettings,
   type StorefrontSettings,
   type StoreType,
@@ -39,6 +40,7 @@ import {
   LayoutGrid,
   MessageSquareQuote,
   PanelBottom,
+  Video,
   CheckCircle2,
   Circle,
   MessageCircle,
@@ -102,6 +104,13 @@ const SECTIONS: SectionDef[] = [
     title: 'Témoignages',
     isActive: (s) => Array.isArray(s.testimonials) && s.testimonials.length > 0,
     isCustomized: (s) => Array.isArray(s.testimonials) && s.testimonials.length > 0,
+  },
+  {
+    id: 'video',
+    icon: Video,
+    title: 'Vidéo',
+    isActive: (s) => !!s.video?.enabled,
+    isCustomized: (s) => !!s.video?.url,
   },
   {
     id: 'footer',
@@ -802,6 +811,24 @@ export default function StoreSectionsPage() {
                 storeId={storeId}
                 testimonials={storefront.testimonials}
                 onChange={(testimonials) => setStorefront({ ...storefront, testimonials })}
+              />
+            </CardContent>
+          </Card>}
+
+          {isCardVisible('video') && <Card id="video" className="scroll-mt-6">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-base">
+                <Video className="h-4 w-4 text-primary" />
+                Vidéo
+              </CardTitle>
+              <CardDescription>
+                Colle un lien vidéo (YouTube, Vimeo ou .mp4) — il s&apos;affiche dans un cadre avec un titre et un paragraphe à côté.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <VideoEditor
+                video={storefront.video}
+                onChange={(video) => setStorefront({ ...storefront, video })}
               />
             </CardContent>
           </Card>}

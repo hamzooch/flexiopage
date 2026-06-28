@@ -24,6 +24,7 @@ import type { PublicMarket } from '@/components/storefront/market-switcher';
 import { cookies } from 'next/headers';
 import { StoreFooter, type FooterConfig } from '@/components/storefront/StoreFooter';
 import { StorefrontTestimonials, type TestimonialsConfig } from '@/components/storefront/Testimonials';
+import { StorefrontVideo, type VideoConfig } from '@/components/storefront/Video';
 import { AnnouncementBar, type AnnouncementBarConfig } from '@/components/storefront/AnnouncementBar';
 import { HeroMedia } from '@/components/storefront/hero-media';
 import type { WhatsappConfig } from '@/components/storefront/whatsapp-button';
@@ -55,6 +56,7 @@ interface StorefrontConfig {
   footerNote?: string;
   footer?: FooterConfig;
   slider?: SliderConfig;
+  video?: VideoConfig;
   sectionOrder?: MovableSectionId[];
 }
 
@@ -350,6 +352,9 @@ export default async function PublicStorePage({ params }: Props) {
             </>
           );
         })()}
+        {/* Section vidéo (lien YouTube/Vimeo/mp4 → cadre + paragraphe). Position
+            fixe sous les sections du corps ; ne s'affiche que si activée + lien posé. */}
+        <StorefrontVideo config={sf.video} theme={theme} />
         {isDigital && showFeatures && <DigitalTrustStrip theme={theme} />}
         {isDigital && showFeatures && <DigitalGuarantee theme={theme} />}
         {showFooter && (

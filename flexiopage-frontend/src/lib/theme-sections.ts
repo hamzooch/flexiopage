@@ -31,11 +31,12 @@ export type SectionId =
   | 'slider'
   | 'products'
   | 'testimonials'
+  | 'video'
   | 'footer'
   | 'whatsapp';
 
 /** Sections affichées par défaut sur tous les thèmes. */
-const ALWAYS_RECOMMENDED: SectionId[] = ['announcement', 'navbar', 'products', 'footer', 'whatsapp'];
+const ALWAYS_RECOMMENDED: SectionId[] = ['announcement', 'navbar', 'products', 'video', 'footer', 'whatsapp'];
 
 export interface ThemeSectionRecommendation {
   /** Sections affichées par défaut dans l'éditeur. */
@@ -49,7 +50,7 @@ export interface ThemeSectionRecommendation {
 /** Sections potentielles supplémentaires selon le layout du hero. */
 export function getRecommendedSectionsForTheme(theme: Partial<ThemeTokens> | undefined | null): ThemeSectionRecommendation {
   const heroLayout = theme?.layout?.hero;
-  const all = new Set<SectionId>(['announcement', 'navbar', 'hero', 'slider', 'products', 'testimonials', 'footer', 'whatsapp']);
+  const all = new Set<SectionId>(['announcement', 'navbar', 'hero', 'slider', 'products', 'testimonials', 'video', 'footer', 'whatsapp']);
   const recommended = new Set<SectionId>(ALWAYS_RECOMMENDED);
 
   // Par défaut (pas de thème ou layout inconnu), on recommande tout.

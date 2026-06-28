@@ -121,6 +121,15 @@ export interface SliderSettings {
   slides?: SlideItem[];
 }
 
+export interface VideoSettings {
+  enabled?: boolean;
+  /** Lien vidéo : YouTube, Vimeo ou fichier .mp4/.webm. */
+  url?: string;
+  title?: string;
+  /** Paragraphe affiché à côté de la vidéo. */
+  text?: string;
+}
+
 export interface NavMenuLink {
   label: string;
   url: string;
@@ -225,6 +234,7 @@ export interface StorefrontSettings {
   footerNote?: string;
   footer?: FooterSettings;
   slider?: SliderSettings;
+  video?: VideoSettings;
   /** Order of the 4 movable body sections on the public storefront. */
   sectionOrder?: Array<'hero' | 'slider' | 'products' | 'testimonials'>;
   /** Per-store product-page customization (timer, badges, order, etc.). */
@@ -384,6 +394,71 @@ export function FieldToggle({
         {sublabel && <p className="mt-0.5 text-xs text-muted-foreground">{sublabel}</p>}
       </div>
     </label>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// VIDEO EDITOR — lien vidéo (YouTube/Vimeo/mp4) + titre + paragraphe
+// ─────────────────────────────────────────────────────────────────────
+export function VideoEditor({
+  video,
+  onChange,
+}: {
+  video?: VideoSettings;
+  onChange: (v: VideoSettings) => void;
+}) {
+  const cfg: VideoSettings = { enabled: false, url: '', title: '', text: '', ...(video || {}) };
+  function update(patch: Partial<VideoSettings>) {
+    onChange({ ...cfg, ...patch });
+  }
+  return (
+    <div className="space-y-3">
+      <FieldToggle
+        label="Afficher la section vidéo"
+        sublabel="Une vidéo (YouTube, Vimeo ou .mp4) dans un cadre, avec un titre et un paragraphe à côté."
+        checked={!!cfg.enabled}
+        onChange={(v) => update({ enabled: v })}
+      />
+      {cfg.enabled && (
+        <div className="space-y-3 rounded-lg border border-border/60 bg-card p-3">
+          <div className="space-y-1">
+            <Label htmlFor="video-url">Lien de la vidéo</Label>
+            <Input
+              id="video-url"
+              value={cfg.url || ''}
+              onChange={(e) => update({ url: e.target.value })}
+              placeholder="https://youtube.com/watch?v=… ou https://…/video.mp4"
+            />
+            <p className="text-[11px] text-muted-foreground">YouTube, Vimeo ou un fichier .mp4/.webm.</p>
+          </div>
+          <div className="space-y-1">
+            <Label htmlFor="video-title">Titre</Label>
+            <Input
+              id="video-title"
+              value={cfg.title || ''}
+              onChange={(e) => update({ title: e.target.value })}
+              placeholder="Notre histoire"
+            />
+          </div>
+          <div className="space-y-1">
+            <Label htmlFor="video-text">Paragraphe</Label>
+            <textarea
+              id="video-text"
+              value={cfg.text || ''}
+              onChange={(e) => update({ text: e.target.value })}
+              rows={4}
+              className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+              placeholder="Présente ta marque, ton produit ou ton savoir-faire en quelques lignes…"
+            />
+          </div>
+          {!cfg.url?.trim() && (
+            <p className="rounded-md bg-amber-500/10 px-3 py-2 text-xs text-amber-700">
+              Ajoute un lien vidéo pour que la section s&apos;affiche sur ta boutique.
+            </p>
+          )}
+        </div>
+      )}
+    </div>
   );
 }
 
