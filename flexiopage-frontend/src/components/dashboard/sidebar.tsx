@@ -37,7 +37,7 @@ import {
   Building2,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { useAuthStore, type TeamRole } from '@/stores/auth-store';
+import { useAuthStore, readPersistedUser, type TeamRole } from '@/stores/auth-store';
 import { useStoreStore } from '@/stores/store-store';
 import { BrandLogo } from '@/components/brand-logo';
 import { useT, type TKey } from '@/lib/i18n';
@@ -124,7 +124,13 @@ export function Sidebar({ mobileOpen = false, onMobileClose }: Props) {
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const currentTab = searchParams?.get('tab') ?? null;
-  const user = useAuthStore((s) => s.user);
+  // Live store, avec fallback localStorage : la réhydratation zustand peut
+  // laisser `user` à null au render (callback peu fiable) → on lirait « U » /
+  // placeholder. Le fallback garantit le nom/initiales dès le 1ᵉʳ rendu client.
+  const liveUser = useAuthStore((s) => s.user);
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => { setMounted(true); }, []);
+  const user = liveUser ?? (mounted ? readPersistedUser() : null);
   const currentStoreId = useStoreStore((s) => s.currentStoreId);
   const { t } = useT();
   // Apps installées pour la boutique active — affichées comme sous-items

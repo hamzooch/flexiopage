@@ -44,6 +44,26 @@ interface AuthState {
   isAuthenticated: boolean;
 }
 
+const AUTH_STORAGE_KEY = 'flexiopage-auth';
+
+/**
+ * Lit le `user` persisté directement depuis localStorage. Fallback robuste
+ * quand la réhydratation zustand du store live n'a pas (encore) peuplé `user`
+ * au render — cas observé sur cette app (cf. dashboard AuthGuard). À utiliser
+ * en complément du sélecteur live : `liveUser ?? readPersistedUser()`.
+ */
+export function readPersistedUser(): User | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    const raw = window.localStorage.getItem(AUTH_STORAGE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as { state?: { user?: User | null } };
+    return parsed?.state?.user ?? null;
+  } catch {
+    return null;
+  }
+}
+
 export const useAuthStore = create<AuthState>()(
   persist(
     (set, get) => ({

@@ -5,7 +5,7 @@ import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { LogOut, Menu, Repeat, Search, Settings as SettingsIcon, Store as StoreIcon, User } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { useAuthStore } from '@/stores/auth-store';
+import { useAuthStore, readPersistedUser } from '@/stores/auth-store';
 import { useStoreStore } from '@/stores/store-store';
 import { storesApi } from '@/lib/api';
 import { cn } from '@/lib/utils';
@@ -30,10 +30,17 @@ interface Props {
 }
 
 export function Header({ onOpenMobileNav }: Props = {}) {
-  const { user, logout } = useAuthStore();
+  const logout = useAuthStore((s) => s.logout);
+  // Live store + fallback localStorage : la réhydratation zustand peut laisser
+  // `user` à null au render → l'avatar/menu afficherait « U »/placeholder. Le
+  // fallback garantit le nom/initiales dès le 1ᵉʳ rendu client.
+  const liveUser = useAuthStore((s) => s.user);
   const router = useRouter();
   const pathname = usePathname();
   const [menuOpen, setMenuOpen] = useState(false);
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => { setMounted(true); }, []);
+  const user = liveUser ?? (mounted ? readPersistedUser() : null);
   const currentStoreId = useStoreStore((s) => s.currentStoreId);
   const [activeStoreName, setActiveStoreName] = useState<string | null>(null);
   const { t } = useT();
