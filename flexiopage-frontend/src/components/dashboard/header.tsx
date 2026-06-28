@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
-import { ExternalLink, LogOut, Menu, Repeat, Search, Settings as SettingsIcon, Store as StoreIcon, User } from 'lucide-react';
+import { LogOut, Menu, Repeat, Search, Settings as SettingsIcon, Store as StoreIcon, User } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useAuthStore } from '@/stores/auth-store';
 import { useStoreStore } from '@/stores/store-store';
@@ -161,17 +161,6 @@ export function Header({ onOpenMobileNav }: Props = {}) {
         </Link>
 
         <WalletBadges />
-
-        <Link href="/" target="_blank">
-          <Button
-            variant="ghost"
-            size="sm"
-            className="hidden h-10 gap-2 rounded-xl text-muted-foreground hover:text-foreground sm:inline-flex"
-          >
-            <ExternalLink className="h-4 w-4" />
-            {t('header.viewSite')}
-          </Button>
-        </Link>
 
         <LanguageSwitcher />
 
