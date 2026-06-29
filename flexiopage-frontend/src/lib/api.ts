@@ -1106,7 +1106,17 @@ export const storesApi = {
   deletePage: (storeId: string, pageId: string) =>
     api.delete(`/stores/${storeId}/pages/${pageId}`),
   // Orders
-  listOrders: (storeId: string, params?: { limit?: number; skip?: number }) =>
+  listOrders: (
+    storeId: string,
+    params?: {
+      limit?: number; skip?: number;
+      search?: string;
+      status?: 'all' | 'pending' | 'paid' | 'delivered' | 'cancelled';
+      confirmation?: string;
+      from?: string;
+      to?: string;
+    },
+  ) =>
     api.get<{ orders: unknown[]; total: number; limit: number; skip: number }>(`/stores/${storeId}/orders`, { params }),
   createOrder: (storeId: string, data: Record<string, unknown>) =>
     api.post<{ order: unknown }>(`/stores/${storeId}/orders`, data),

@@ -53,7 +53,16 @@ export async function listOrders(req: AuthRequest, res: Response): Promise<void>
   const store = req.store!;
   const limit = Math.min(parseInt(req.query.limit as string, 10) || 50, 100);
   const skip = parseInt(req.query.skip as string, 10) || 0;
-  const { orders, total } = await orderService.getOrdersByStore(store._id.toString(), { limit, skip });
+  const str = (k: string) => (typeof req.query[k] === 'string' && req.query[k] ? (req.query[k] as string) : undefined);
+  const { orders, total } = await orderService.getOrdersByStore(store._id.toString(), {
+    limit,
+    skip,
+    search: str('search'),
+    status: str('status') as 'pending' | 'paid' | 'delivered' | 'cancelled' | undefined,
+    confirmation: str('confirmation'),
+    from: str('from'),
+    to: str('to'),
+  });
   res.json({ orders, total, limit, skip });
 }
 

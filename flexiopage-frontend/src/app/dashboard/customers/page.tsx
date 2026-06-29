@@ -3,9 +3,10 @@
 import { useEffect, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { Card, CardContent } from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
 import { storesApi } from '@/lib/api';
 import { useScopedStoreId } from '@/lib/use-scoped-store';
-import { Users } from 'lucide-react';
+import { Users, Search } from 'lucide-react';
 import { Pagination } from '@/components/ui/pagination';
 
 interface StoreType {
@@ -30,6 +31,14 @@ export default function DashboardCustomersPage() {
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(20);
   const [loading, setLoading] = useState(true);
+  const [search, setSearch] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
+
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(search), 350);
+    return () => clearTimeout(t);
+  }, [search]);
+  useEffect(() => { setPage(1); }, [debouncedSearch, selectedStoreId]);
 
   useEffect(() => {
     storesApi.list().then((res) => {
@@ -50,7 +59,7 @@ export default function DashboardCustomersPage() {
     setLoading(true);
     const skip = (page - 1) * pageSize;
     storesApi
-      .listCustomers(selectedStoreId, { limit: pageSize, skip })
+      .listCustomers(selectedStoreId, { limit: pageSize, skip, search: debouncedSearch.trim() || undefined })
       .then((res) => {
         const data = res.data as { customers: CustomerType[]; total: number };
         setCustomers(data.customers);
@@ -61,7 +70,7 @@ export default function DashboardCustomersPage() {
         setTotal(0);
       })
       .finally(() => setLoading(false));
-  }, [selectedStoreId, page, pageSize]);
+  }, [selectedStoreId, page, pageSize, debouncedSearch]);
 
   return (
     <div className="space-y-5 sm:space-y-8">
@@ -88,6 +97,18 @@ export default function DashboardCustomersPage() {
               </button>
             ))}
           </div>
+        </div>
+      )}
+
+      {selectedStoreId && (
+        <div className="relative max-w-md">
+          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Rechercher un client (nom, email…)"
+            className="pl-9"
+          />
         </div>
       )}
 

@@ -214,9 +214,66 @@ export async function updateOrderFulfillment(
 
 export async function getOrdersByStore(
   storeId: string,
-  options?: { limit?: number; skip?: number }
+  options?: {
+    limit?: number;
+    skip?: number;
+    /** Recherche plein-texte : n° commande, nom, email, téléphone, ville, adresse. */
+    search?: string;
+    /** Filtre statut paiement/livraison. */
+    status?: 'all' | 'pending' | 'paid' | 'delivered' | 'cancelled';
+    /** Filtre statut de confirmation (call-center COD). */
+    confirmation?: string;
+    /** Bornes de date (ISO) sur createdAt. */
+    from?: string;
+    to?: string;
+  }
 ): Promise<{ orders: IOrder[]; total: number }> {
-  const filter = { storeId };
+  // $and pour combiner proprement statut + confirmation + dates + recherche
+  // sans collision de plusieurs $or.
+  const and: Record<string, unknown>[] = [];
+
+  switch (options?.status) {
+    case 'pending': and.push({ paymentStatus: 'pending' }); break;
+    case 'paid': and.push({ paymentStatus: 'paid' }); break;
+    case 'delivered': and.push({ 'delivery.externalStatus': 'delivered' }); break;
+    case 'cancelled':
+      and.push({ $or: [{ fulfillmentStatus: 'cancelled' }, { 'delivery.externalStatus': 'cancelled' }] });
+      break;
+  }
+
+  if (options?.confirmation && options.confirmation !== 'all') {
+    if (options.confirmation === 'pending') {
+      // « pending » inclut les commandes sans champ confirmationStatus.
+      and.push({ $or: [{ confirmationStatus: 'pending' }, { confirmationStatus: { $exists: false } }, { confirmationStatus: null }] });
+    } else {
+      and.push({ confirmationStatus: options.confirmation });
+    }
+  }
+
+  if (options?.from || options?.to) {
+    const range: Record<string, Date> = {};
+    if (options.from) { const d = new Date(options.from); if (!Number.isNaN(d.getTime())) range.$gte = d; }
+    if (options.to) { const d = new Date(options.to); if (!Number.isNaN(d.getTime())) range.$lte = d; }
+    if (Object.keys(range).length) and.push({ createdAt: range });
+  }
+
+  const q = options?.search?.trim();
+  if (q) {
+    const re = new RegExp(q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
+    and.push({
+      $or: [
+        { orderNumber: re },
+        { customerName: re },
+        { email: re },
+        { customerPhone: re },
+        { 'shippingAddress.city': re },
+        { 'shippingAddress.line1': re },
+      ],
+    });
+  }
+
+  const filter: Record<string, unknown> = and.length ? { storeId, $and: and } : { storeId };
+
   const [orders, total] = await Promise.all([
     Order.find(filter)
       .sort({ createdAt: -1 })

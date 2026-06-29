@@ -5,10 +5,11 @@ import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
 import { storesApi } from '@/lib/api';
 import { useScopedStoreId } from '@/lib/use-scoped-store';
 import { cn, formatCurrency, mediaUrl } from '@/lib/utils';
-import { Package, Plus, ImageIcon, Cloud } from 'lucide-react';
+import { Package, Plus, ImageIcon, Cloud, Search } from 'lucide-react';
 import { Pagination } from '@/components/ui/pagination';
 
 interface StoreType {
@@ -40,6 +41,15 @@ export default function DashboardProductsPage() {
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(20);
   const [loading, setLoading] = useState(true);
+  const [search, setSearch] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
+
+  // Debounce recherche (350ms) + retour page 1 sur changement de recherche/boutique.
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(search), 350);
+    return () => clearTimeout(t);
+  }, [search]);
+  useEffect(() => { setPage(1); }, [debouncedSearch, selectedStoreId]);
 
   useEffect(() => {
     storesApi.list().then((res) => {
@@ -60,7 +70,7 @@ export default function DashboardProductsPage() {
     setLoading(true);
     const skip = (page - 1) * pageSize;
     storesApi
-      .listProducts(selectedStoreId, { limit: pageSize, skip })
+      .listProducts(selectedStoreId, { limit: pageSize, skip, search: debouncedSearch.trim() || undefined })
       .then((res) => {
         const data = res.data as { products: ProductType[]; total: number };
         setProducts(data.products);
@@ -71,7 +81,7 @@ export default function DashboardProductsPage() {
         setTotal(0);
       })
       .finally(() => setLoading(false));
-  }, [selectedStoreId, page, pageSize]);
+  }, [selectedStoreId, page, pageSize, debouncedSearch]);
 
   const activeStore = stores.find((s) => s._id === selectedStoreId);
   const isDigitalStore = activeStore?.storeType === 'digital';
@@ -113,6 +123,18 @@ export default function DashboardProductsPage() {
               {s.name}
             </Button>
           ))}
+        </div>
+      )}
+
+      {selectedStoreId && (
+        <div className="relative max-w-md">
+          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Rechercher un produit (nom, SKU…)"
+            className="pl-9"
+          />
         </div>
       )}
 

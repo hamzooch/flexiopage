@@ -161,6 +161,8 @@ export default function DashboardOrdersPage() {
   const [pageSize, setPageSize] = useState(20);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
+  // Recherche debouncée → envoyée au serveur (évite une requête par frappe).
+  const [debouncedSearch, setDebouncedSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
   const [confirmFilter, setConfirmFilter] = useState<ConfirmFilter>('all');
   const [dayFilter, setDayFilter] = useState<DayFilter>('all');
@@ -178,6 +180,23 @@ export default function DashboardOrdersPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Calcule la plage de dates [from, to] (ISO) depuis les filtres date.
+  // Le custom range prime sur les chips préréglées.
+  const computeRange = useCallback((): { from?: string; to?: string } => {
+    if (customFrom || customTo) {
+      return {
+        from: customFrom ? new Date(`${customFrom}T00:00:00`).toISOString() : undefined,
+        to: customTo ? new Date(`${customTo}T23:59:59.999`).toISOString() : undefined,
+      };
+    }
+    if (dayFilter === 'all') return {};
+    const d = new Date();
+    if (dayFilter === 'today') d.setHours(0, 0, 0, 0);
+    else if (dayFilter === '7d') d.setDate(d.getDate() - 7);
+    else if (dayFilter === '30d') d.setDate(d.getDate() - 30);
+    return { from: d.toISOString() };
+  }, [dayFilter, customFrom, customTo]);
+
   const refreshOrders = useCallback(() => {
     if (!selectedStoreId) {
       setOrders([]);
@@ -188,7 +207,14 @@ export default function DashboardOrdersPage() {
     setLoading(true);
     const skip = (page - 1) * pageSize;
     return storesApi
-      .listOrders(selectedStoreId, { limit: pageSize, skip })
+      .listOrders(selectedStoreId, {
+        limit: pageSize,
+        skip,
+        search: debouncedSearch.trim() || undefined,
+        status: statusFilter !== 'all' ? statusFilter : undefined,
+        confirmation: confirmFilter !== 'all' ? confirmFilter : undefined,
+        ...computeRange(),
+      })
       .then((res) => {
         const data = res.data as { orders: OrderType[]; total: number };
         setOrders(data.orders);
@@ -199,9 +225,20 @@ export default function DashboardOrdersPage() {
         setTotal(0);
       })
       .finally(() => setLoading(false));
-  }, [selectedStoreId, page, pageSize]);
+  }, [selectedStoreId, page, pageSize, debouncedSearch, statusFilter, confirmFilter, computeRange]);
 
   useEffect(() => { void refreshOrders(); }, [refreshOrders]);
+
+  // Debounce de la recherche (350ms) avant l'appel serveur.
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(search), 350);
+    return () => clearTimeout(t);
+  }, [search]);
+
+  // Tout changement de filtre/recherche/boutique remet à la page 1.
+  useEffect(() => {
+    setPage(1);
+  }, [debouncedSearch, statusFilter, confirmFilter, dayFilter, customFrom, customTo, selectedStoreId]);
 
   // ── Stats over the loaded orders ─────────────────────────────────────
   const stats = useMemo(() => {
@@ -216,63 +253,10 @@ export default function DashboardOrdersPage() {
     return { total, paid, pending, delivered, revenue, currency };
   }, [orders]);
 
-  // ── Filter / search ──────────────────────────────────────────────────
-  const filteredOrders = useMemo(() => {
-    let list = orders;
-
-    // Custom range takes precedence over the preset chips. Either bound
-    // can be set alone; missing bound means "no limit on that side".
-    const fromMs = customFrom ? new Date(`${customFrom}T00:00:00`).getTime() : null;
-    const toMs = customTo ? new Date(`${customTo}T23:59:59.999`).getTime() : null;
-    if (fromMs !== null || toMs !== null) {
-      list = list.filter((o) => {
-        if (!o.createdAt) return false;
-        const t = new Date(o.createdAt).getTime();
-        if (fromMs !== null && t < fromMs) return false;
-        if (toMs !== null && t > toMs) return false;
-        return true;
-      });
-    } else if (dayFilter !== 'all') {
-      // Preset chip — `today` means since local midnight, not "last 24h".
-      const cutoff = new Date();
-      if (dayFilter === 'today') {
-        cutoff.setHours(0, 0, 0, 0);
-      } else if (dayFilter === '7d') {
-        cutoff.setDate(cutoff.getDate() - 7);
-      } else if (dayFilter === '30d') {
-        cutoff.setDate(cutoff.getDate() - 30);
-      }
-      const cutoffMs = cutoff.getTime();
-      list = list.filter((o) => o.createdAt && new Date(o.createdAt).getTime() >= cutoffMs);
-    }
-
-    if (statusFilter !== 'all') {
-      list = list.filter((o) => {
-        if (statusFilter === 'pending') return o.paymentStatus === 'pending';
-        if (statusFilter === 'paid') return o.paymentStatus === 'paid';
-        if (statusFilter === 'delivered') return o.delivery?.externalStatus === 'delivered';
-        if (statusFilter === 'cancelled')
-          return o.fulfillmentStatus === 'cancelled' || o.delivery?.externalStatus === 'cancelled';
-        return true;
-      });
-    }
-    if (confirmFilter !== 'all') {
-      list = list.filter((o) => (o.confirmationStatus || 'pending') === confirmFilter);
-    }
-    const q = search.trim().toLowerCase();
-    if (q) {
-      list = list.filter((o) => {
-        return (
-          o.orderNumber.toLowerCase().includes(q) ||
-          (o.customerName?.toLowerCase() || '').includes(q) ||
-          (o.customerPhone || '').includes(q) ||
-          (o.shippingAddress?.city?.toLowerCase() || '').includes(q) ||
-          (o.shippingAddress?.line1?.toLowerCase() || '').includes(q)
-        );
-      });
-    }
-    return list;
-  }, [orders, dayFilter, customFrom, customTo, statusFilter, confirmFilter, search]);
+  // Le filtrage (recherche, statut, confirmation, dates) est désormais fait
+  // CÔTÉ SERVEUR (cf. refreshOrders) → `orders` est déjà la page filtrée.
+  // On garde l'alias pour ne pas réécrire tout le JSX qui l'utilise.
+  const filteredOrders = orders;
 
   // Quick KPIs on confirmation buckets — used by the new toolbar row + KPI card.
   const confirmStats = useMemo(() => ({
