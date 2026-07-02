@@ -8,6 +8,7 @@ import { extractProductFromUrl, ImportError } from '../services/product-import.s
 import { persistRemoteImage } from '../services/storage.service';
 import { logger } from '../lib/logger';
 import { notifyRevalidate } from '../lib/revalidate';
+import { validateLogisticsSku } from '../lib/logistics';
 
 const MAX_IMPORT_IMAGES = 8;
 
@@ -34,6 +35,18 @@ export async function createProduct(req: AuthRequest, res: Response): Promise<vo
   }
   if (typeof body.price !== 'number' || body.price < 0) {
     res.status(400).json({ error: 'Valid price is required' });
+    return;
+  }
+  // SKU obligatoire quand la boutique est reliée à une logistique SKU-matchée
+  // (MogaDelivery, BestDelivery) et que le produit physique est publié.
+  const skuError = validateLogisticsSku(store, {
+    type: body.type || 'physical',
+    isPublished: body.isPublished ?? false,
+    sku: body.sku,
+    variants: body.variants,
+  });
+  if (skuError) {
+    res.status(422).json({ error: skuError, code: 'sku_required_for_logistics' });
     return;
   }
   const product = await productService.createProduct({
@@ -111,6 +124,17 @@ export async function importCreateProduct(req: AuthRequest, res: Response): Prom
     return;
   }
 
+  const skuError = validateLogisticsSku(store, {
+    type: body.type === 'digital' ? 'digital' : 'physical',
+    isPublished: body.isPublished ?? false,
+    sku: body.sku,
+    variants: body.variants,
+  });
+  if (skuError) {
+    res.status(422).json({ error: skuError, code: 'sku_required_for_logistics' });
+    return;
+  }
+
   // Rapatrie les images externes ; on ignore proprement celles qui échouent.
   const rawImages: string[] = Array.isArray(body.images)
     ? body.images
@@ -174,6 +198,23 @@ export async function updateProduct(req: AuthRequest, res: Response): Promise<vo
   const store = req.store!;
   const productId = req.params.productId;
   const body = req.body;
+  // Màj partielle : on comble les champs absents du body avec l'existant avant
+  // de vérifier la règle SKU logistique (sinon on ne peut pas juger l'état final).
+  const existing = await productService.getProductById(productId, store._id.toString());
+  if (!existing) {
+    res.status(404).json({ error: 'Product not found' });
+    return;
+  }
+  const skuError = validateLogisticsSku(store, {
+    type: body.type ?? existing.type,
+    isPublished: body.isPublished ?? existing.isPublished,
+    sku: body.sku !== undefined ? body.sku : existing.sku,
+    variants: body.variants !== undefined ? body.variants : existing.variants,
+  });
+  if (skuError) {
+    res.status(422).json({ error: skuError, code: 'sku_required_for_logistics' });
+    return;
+  }
   const updated = await productService.updateProduct(productId, store._id.toString(), {
     name: body.name,
     description: unescapeMarkdown(body.description),

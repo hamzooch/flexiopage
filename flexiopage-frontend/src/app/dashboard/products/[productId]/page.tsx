@@ -32,7 +32,7 @@ import { useConfirm } from '@/components/ui/confirm-dialog';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { storesApi } from '@/lib/api';
+import { storesApi, extractApiError } from '@/lib/api';
 import { cn, publicStoreUrl } from '@/lib/utils';
 import { ProfitCalculator, EMPTY_PROFIT_INPUTS, type ProfitInputs } from '@/components/dashboard/ProfitCalculator';
 import { TagsInput } from '@/components/dashboard/tags-input';
@@ -145,6 +145,8 @@ export default function EditProductPage() {
   const [codForm, setCodForm] = useState<CodFormSettings>({});
   const [codFormDirty, setCodFormDirty] = useState(false);
   const [storeSettings, setStoreSettings] = useState<Record<string, unknown>>({});
+  // Boutique reliée à une logistique qui matche par SKU (MogaDelivery…) → SKU imposé.
+  const [logisticsActive, setLogisticsActive] = useState(false);
 
   const [loading, setLoading] = useState(true);
   const [status, setStatus] = useState<SaveStatus>('idle');
@@ -218,12 +220,23 @@ export default function EditProductPage() {
           slug?: string;
           customDomain?: string;
           customDomainVerified?: boolean;
+          markets?: Array<{ delivery?: { provider?: string; enabled?: boolean } }>;
+          integrations?: { delivery?: { provider?: string; enabled?: boolean } };
           settings?: {
             currency?: string;
             codForm?: CodFormSettings;
             storefront?: { productPage?: { style?: { ratingStripStars?: number; ratingStripReviews?: number } } };
           };
         } }).store;
+        // Logistique SKU-matchée active ? → on impose le SKU (voir backend
+        // lib/logistics.ts). Même règle côté serveur ; ici c'est juste l'indice.
+        const SKU_PROVIDERS = new Set(['mogadelivery', 'bestdelivery']);
+        const logi =
+          (s?.markets || []).some(
+            (m) => m.delivery?.enabled !== false && !!m.delivery?.provider && SKU_PROVIDERS.has(m.delivery.provider),
+          ) ||
+          !!(s?.integrations?.delivery?.enabled && s.integrations.delivery.provider && SKU_PROVIDERS.has(s.integrations.delivery.provider));
+        setLogisticsActive(logi);
         if (s?.settings?.currency) setCurrency(s.settings.currency);
         if (s?.slug) setStoreSlug(s.slug);
         setStoreCustomDomain(s?.customDomain || undefined);
@@ -323,8 +336,10 @@ export default function EditProductPage() {
       pristineRef.current = snapshot;
       setStatus('saved');
       window.setTimeout(() => setStatus('idle'), 2200);
-    } catch {
-      setError('La sauvegarde a échoué. Réessaie.');
+    } catch (err) {
+      // Remonte le message backend (ex. SKU obligatoire pour la logistique)
+      // au lieu d'un générique — sinon le vendeur ne sait pas quoi corriger.
+      setError(extractApiError(err, 'La sauvegarde a échoué. Réessaie.'));
       setStatus('error');
     }
   }
@@ -742,7 +757,10 @@ export default function EditProductPage() {
                     />
                   </div>
                   <div className="space-y-1.5">
-                    <Label htmlFor="sku">SKU (référence interne)</Label>
+                    <Label htmlFor="sku">
+                      SKU (référence interne)
+                      {logisticsActive && <span className="ml-1 text-destructive">*</span>}
+                    </Label>
                     <Input
                       id="sku"
                       value={sku}
@@ -750,6 +768,13 @@ export default function EditProductPage() {
                       placeholder="TSHIRT-RED-M"
                       className="font-mono text-xs"
                     />
+                    {logisticsActive && !sku.trim() && (
+                      <p className="text-xs text-amber-600">
+                        Votre boutique est reliée à une société de livraison qui identifie chaque article
+                        par son SKU. Un SKU est obligatoire pour publier ce produit — sinon la commande
+                        ne pourra pas être préparée ni livrée.
+                      </p>
+                    )}
                   </div>
                   <div className="space-y-1.5">
                     <Label htmlFor="barcode">Code-barres (EAN/UPC)</Label>

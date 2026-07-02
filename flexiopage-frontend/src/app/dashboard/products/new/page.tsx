@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { storesApi } from '@/lib/api';
+import { storesApi, extractApiError } from '@/lib/api';
 import { Plus, Trash2, ImagePlus, Loader2, Star, ArrowUp, ArrowDown, Sparkles, Upload, X, Download, Video, Key, Crown, Wrench, FileText, Eye, EyeOff } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { CollectionsPicker } from '@/components/dashboard/collections-picker';
@@ -362,8 +362,9 @@ export default function NewProductPage() {
       }
       router.push(`/dashboard/products?storeId=${storeId}`);
       router.refresh();
-    } catch {
-      setError('Failed to create product');
+    } catch (err) {
+      // Remonte le message backend (ex. SKU obligatoire pour la logistique).
+      setError(extractApiError(err, 'Failed to create product'));
     } finally {
       setSaving(false);
     }
