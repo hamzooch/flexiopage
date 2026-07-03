@@ -125,3 +125,42 @@ export async function notifyTeamMemberRemoved(args: {
     meta: { memberEmail: args.memberEmail },
   });
 }
+
+/** Le bot a atteint sa limite de messages incluse → on passe en mode facturé
+ *  (prélèvement du solde IA par message). Notif une fois par période. */
+export async function notifyBotLimitReached(args: {
+  userId: mongoose.Types.ObjectId | string;
+  storeId: mongoose.Types.ObjectId | string;
+  channel: string;
+  limit: number;
+}) {
+  const canal = args.channel === 'whatsapp' ? 'WhatsApp' : 'Messenger';
+  return createNotification({
+    userId: args.userId,
+    storeId: args.storeId,
+    type: 'bot.limit_reached',
+    title: `Limite du chatbot ${canal} atteinte`,
+    body: `Tu as atteint ta limite de ${args.limit} messages inclus ce mois-ci. Les messages suivants sont désormais décomptés de ton solde IA.`,
+    link: '/dashboard/apps/whatsapp-bot',
+    meta: { channel: args.channel, limit: args.limit },
+  });
+}
+
+/** Le solde IA est épuisé → le bot ne peut plus répondre aux messages en
+ *  dépassement. Notif une fois par période. */
+export async function notifyBotBalanceEmpty(args: {
+  userId: mongoose.Types.ObjectId | string;
+  storeId: mongoose.Types.ObjectId | string;
+  channel: string;
+}) {
+  const canal = args.channel === 'whatsapp' ? 'WhatsApp' : 'Messenger';
+  return createNotification({
+    userId: args.userId,
+    storeId: args.storeId,
+    type: 'bot.balance_empty',
+    title: `Chatbot ${canal} en pause — solde IA épuisé`,
+    body: `Ton solde IA est épuisé, le chatbot ${canal} ne peut plus répondre aux messages au-delà de ta limite. Recharge ton solde IA pour le réactiver.`,
+    link: '/dashboard/wallet',
+    meta: { channel: args.channel },
+  });
+}

@@ -81,6 +81,10 @@ router.patch('/stores/:storeId/delivery-config', requireAdminWrite, adminExtras.
 router.get('/store-limits', adminExtras.getStoreLimits);
 router.patch('/users/:userId/store-limit', requireAdminWrite, adminExtras.setUserStoreLimit);
 
+// ── Limites de messages chatbot (plafond admin ; l'owner ajuste dessous) ──
+router.get('/stores/:storeId/bot-limits', adminExtras.getStoreBotLimits);
+router.patch('/stores/:storeId/bot-limits', requireAdminWrite, adminExtras.setStoreBotLimits);
+
 // ── Delivery / webhooks dashboard (cross-store) ──
 router.get('/delivery/overview', adminExtras.getDeliveryOverview);
 router.get('/delivery/logs', adminExtras.getWebhookLogs);

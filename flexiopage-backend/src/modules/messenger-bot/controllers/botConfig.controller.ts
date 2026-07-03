@@ -43,9 +43,18 @@ export async function updateConfig(req: AuthRequest, res: Response): Promise<voi
     res.status(400).json({ error: 'Validation échouée', details: parsed.error.flatten() });
     return;
   }
+  const channel = getChannel(req);
+  const updates: Record<string, unknown> = { ...parsed.data };
+  // L'owner règle sa limite de messages MAIS elle est bornée au plafond
+  // `messages_limit_max` fixé par l'admin.
+  if (typeof updates.messages_limit === 'number') {
+    const current = await BotConfig.findOne({ vendor_id: storeId, channel }).select('messages_limit_max').lean();
+    const cap = current?.messages_limit_max ?? 1000;
+    updates.messages_limit = Math.min(updates.messages_limit as number, cap);
+  }
   const config = await BotConfig.findOneAndUpdate(
-    { vendor_id: storeId, channel: getChannel(req) },
-    { $set: parsed.data },
+    { vendor_id: storeId, channel },
+    { $set: updates },
     { new: true },
   );
   if (!config) {

@@ -129,6 +129,21 @@ export interface IBotConfig extends Document {
   conversations_used_this_month: number;
   month_reset_date?: Date;
 
+  /**
+   * Limite de MESSAGES/mois (canal courant). Réglée par l'owner MAIS bornée par
+   * `messages_limit_max` (plafond fixé par l'admin). Jusqu'à cette limite, les
+   * messages sont inclus ; AU-DELÀ, chaque message est prélevé du solde IA
+   * (tokens) — cf. botMetering.service. La limite mensuelle réelle vient de
+   * BotUsage.messages_count (ledger par période).
+   */
+  messages_limit: number;
+  /** Plafond max que l'owner peut se donner — contrôlé par l'admin. */
+  messages_limit_max: number;
+  /** Période "YYYY-MM" où on a déjà notifié le passage en mode payant (dédup). */
+  over_limit_notified_period?: string;
+  /** Période "YYYY-MM" où on a déjà notifié le solde IA épuisé (dédup). */
+  ai_empty_notified_period?: string;
+
   total_conversations: number;
   total_orders_created: number;
   total_tokens_consumed: number;
@@ -212,6 +227,12 @@ const BotConfigSchema = new Schema<IBotConfig>(
     // the authoritative ledger.
     conversations_used_this_month: { type: Number, default: 0 },
     month_reset_date: { type: Date },
+
+    // Limite de messages/mois (owner ≤ messages_limit_max fixé par l'admin).
+    messages_limit: { type: Number, default: 1000, min: 0 },
+    messages_limit_max: { type: Number, default: 1000, min: 0 },
+    over_limit_notified_period: { type: String },
+    ai_empty_notified_period: { type: String },
 
     total_conversations: { type: Number, default: 0 },
     total_orders_created: { type: Number, default: 0 },

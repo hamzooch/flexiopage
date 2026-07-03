@@ -30,6 +30,7 @@ import { detectDialect } from '../utils/languageDetector';
 import { claudeTools } from '../tools/claudeTools';
 import { HISTORY_WINDOW, VISION_SUPPORTED_MIME } from '../config/messengerBot.config';
 import { mediaFallbackMessage, imagePromptHint } from '../utils/mediaFallback';
+import { enforceMessageLimit } from '../services/botMetering.service';
 import type { IBotConfig, BotLanguage } from '../models/BotConfig.model';
 import { MetaApiError } from '../services/metaErrors';
 import { sendEmail } from '../../../services/email.service';
@@ -102,7 +103,7 @@ export async function processIncomingMessage(job: IncomingMessageJob): Promise<P
     throw new Error('BotConfig ou Conversation introuvable');
   }
 
-  const vendor = await Store.findById(config.vendor_id).select('name').lean();
+  const vendor = await Store.findById(config.vendor_id).select('name ownerId').lean();
   const catalog = await catalogService.getCatalog(config);
 
   // Historique (fenêtre), du plus ancien au plus récent.
@@ -136,6 +137,28 @@ export async function processIncomingMessage(job: IncomingMessageJob): Promise<P
   let totalCost = 0;
   let lastModel = '';
   let replyText = '';
+
+  // ── Metering : limite de messages + facturation au dépassement ───────
+  // AVANT tout traitement (Claude ou repli média). Jusqu'à `messages_limit` =
+  // inclus ; au-delà, chaque message est prélevé du solde IA (tokens) et le
+  // vendeur est notifié. Si le solde IA est épuisé → on ne répond pas (message
+  // non compté), le vendeur est notifié pour recharger.
+  if (vendor?.ownerId) {
+    const period = currentPeriod();
+    const usage = await BotUsage.findOne({ vendor_id: config.vendor_id, period })
+      .select('messages_count')
+      .lean();
+    const meter = await enforceMessageLimit({
+      config,
+      storeOwnerId: String(vendor.ownerId),
+      storeId: String(config.vendor_id),
+      period,
+      usedBefore: usage?.messages_count || 0,
+    });
+    if (!meter.allowed) {
+      return { replyText: '', toolsUsed: [], tokensInput: 0, tokensOutput: 0, costUsd: 0 };
+    }
+  }
 
   // ── Médias entrants (WhatsApp) ───────────────────────────────────────
   // Image → vision Claude (avec repli auto) ; audio/document/sticker/vidéo →

@@ -23,6 +23,7 @@ export type AuditAction =
   | 'store.commission_override'
   | 'store.delivery_config'
   | 'store.delivery_redispatch'
+  | 'store.bot_limit'
   | 'complaint.update'
   | 'complaint.assign'
   | 'settings.ai_pricing'

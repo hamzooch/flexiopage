@@ -40,6 +40,9 @@ export const updateConfigSchema = z.object({
   notify_on_new_order: z.boolean().optional(),
   notification_email: z.string().email().optional().or(z.literal('')),
   notification_whatsapp: z.string().max(40).optional(),
+  // Limite de messages/mois choisie par l'owner. Bornée côté contrôleur au
+  // plafond `messages_limit_max` fixé par l'admin.
+  messages_limit: z.number().int().min(0).max(1_000_000).optional(),
 });
 
 export type UpdateConfigInput = z.infer<typeof updateConfigSchema>;

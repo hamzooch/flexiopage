@@ -15,6 +15,7 @@ import { Wallet } from '../models/Wallet.model';
 import { Complaint } from '../models/Complaint.model';
 import { Product } from '../models/Product.model';
 import { WebhookLog } from '../models/WebhookLog.model';
+import { BotConfig } from '../modules/messenger-bot/models/BotConfig.model';
 import { dispatchOrder } from '../services/delivery.service';
 import { listAudit } from '../services/audit-log.service';
 import { logAudit } from '../services/audit-log.service';
@@ -852,6 +853,81 @@ export async function setUserStoreLimit(req: AuthRequest, res: Response): Promis
       storeLimit: user.storeLimit ?? null,
       currentStores,
     },
+  });
+}
+
+/**
+ * GET /api/admin/stores/:storeId/bot-limits — limites de messages du/des bot(s)
+ * de la boutique (un doc par canal Messenger/WhatsApp).
+ */
+export async function getStoreBotLimits(req: AuthRequest, res: Response): Promise<void> {
+  const { storeId } = req.params;
+  if (!mongoose.isValidObjectId(storeId)) { res.status(400).json({ error: 'Invalid storeId' }); return; }
+  const bots = await BotConfig.find({ vendor_id: storeId })
+    .select('channel messages_limit messages_limit_max conversations_limit')
+    .lean();
+  res.json({
+    bots: bots.map((b) => ({
+      channel: b.channel,
+      messages_limit: b.messages_limit ?? null,
+      messages_limit_max: b.messages_limit_max ?? null,
+    })),
+  });
+}
+
+/**
+ * PATCH /api/admin/stores/:storeId/bot-limits — body {
+ *   messages_limit_max: number,   // plafond (obligatoire), entier 0–1_000_000
+ *   messages_limit?: number,      // optionnel : force aussi la limite courante
+ *   channel?: 'messenger'|'whatsapp'  // optionnel : cible un seul canal
+ * }
+ * Applique le plafond admin ; la limite courante de l'owner est re-bornée au
+ * nouveau plafond. Sans `channel`, s'applique à tous les bots de la boutique.
+ */
+export async function setStoreBotLimits(req: AuthRequest, res: Response): Promise<void> {
+  const { storeId } = req.params;
+  if (!mongoose.isValidObjectId(storeId)) { res.status(400).json({ error: 'Invalid storeId' }); return; }
+
+  const body = (req.body || {}) as { messages_limit_max?: unknown; messages_limit?: unknown; channel?: unknown };
+  const cap = Number(body.messages_limit_max);
+  if (!Number.isInteger(cap) || cap < 0 || cap > 1_000_000) {
+    res.status(400).json({ error: 'messages_limit_max doit être un entier 0–1 000 000.' });
+    return;
+  }
+  let forcedLimit: number | undefined;
+  if (body.messages_limit !== undefined && body.messages_limit !== null && body.messages_limit !== '') {
+    const n = Number(body.messages_limit);
+    if (!Number.isInteger(n) || n < 0 || n > 1_000_000) {
+      res.status(400).json({ error: 'messages_limit doit être un entier 0–1 000 000.' });
+      return;
+    }
+    forcedLimit = Math.min(n, cap);
+  }
+  const filter: Record<string, unknown> = { vendor_id: storeId };
+  if (body.channel === 'messenger' || body.channel === 'whatsapp') filter.channel = body.channel;
+
+  const bots = await BotConfig.find(filter).select('channel messages_limit messages_limit_max');
+  if (!bots.length) { res.status(404).json({ error: 'Aucun bot pour cette boutique.' }); return; }
+
+  for (const b of bots) {
+    b.messages_limit_max = cap;
+    // Limite courante : soit forcée par l'admin, soit re-bornée au plafond.
+    b.messages_limit = forcedLimit !== undefined ? forcedLimit : Math.min(b.messages_limit ?? cap, cap);
+    await b.save();
+  }
+
+  await logAudit({
+    action: 'store.bot_limit',
+    req,
+    targetId: storeId,
+    targetType: 'store',
+    summary: `Plafond messages bot → ${cap}${forcedLimit !== undefined ? ` (limite forcée ${forcedLimit})` : ''} (${body.channel || 'tous canaux'})`,
+    metadata: { messages_limit_max: cap, messages_limit: forcedLimit ?? null, channel: body.channel || 'all' },
+  });
+
+  res.json({
+    ok: true,
+    bots: bots.map((b) => ({ channel: b.channel, messages_limit: b.messages_limit, messages_limit_max: b.messages_limit_max })),
   });
 }
 
