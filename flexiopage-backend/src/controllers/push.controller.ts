@@ -40,6 +40,19 @@ export async function unregisterToken(req: AuthRequest, res: Response): Promise<
   res.json({ ok: true });
 }
 
+/** POST /api/push/test — envoie une notification de test aux appareils du
+ *  vendeur (pour valider token + FCM + son sans passer de commande). */
+export async function sendTest(req: AuthRequest, res: Response): Promise<void> {
+  const { sendToUser } = await import('../services/push.service');
+  const result = await sendToUser(req.user!._id, {
+    title: 'Test FlexioPage 🔔',
+    body: 'Si tu entends le son, tout est bien configuré 🤑',
+    link: '/dashboard/orders',
+    data: { type: 'test' },
+  });
+  res.json({ ok: true, sent: result.sent });
+}
+
 /** PATCH /api/push/sound — body { sound } : change le son de notification. */
 export async function setSound(req: AuthRequest, res: Response): Promise<void> {
   const { sound } = (req.body || {}) as { sound?: unknown };

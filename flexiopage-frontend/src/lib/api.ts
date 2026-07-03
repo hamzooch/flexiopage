@@ -1533,4 +1533,6 @@ export const pushApi = {
     api.get<{ sounds: Array<{ key: string; label: string }>; default: string; selected: string }>('/push/sounds'),
   setSound: (sound: string) =>
     api.patch<{ ok: boolean; sound: string }>('/push/sound', { sound }),
+  test: () =>
+    api.post<{ ok: boolean; sent: number }>('/push/test'),
 };

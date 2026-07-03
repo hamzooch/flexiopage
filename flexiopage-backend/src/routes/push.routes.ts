@@ -9,5 +9,6 @@ router.get('/sounds', push.getSounds);
 router.post('/register', push.registerToken);
 router.post('/unregister', push.unregisterToken);
 router.patch('/sound', push.setSound);
+router.post('/test', push.sendTest);
 
 export default router;

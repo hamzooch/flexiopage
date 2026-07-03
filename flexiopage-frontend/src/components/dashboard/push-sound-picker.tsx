@@ -3,18 +3,21 @@
 import { useEffect, useState } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { pushApi } from '@/lib/api';
-import { BellRing, Check, Loader2 } from 'lucide-react';
+import { BellRing, Check, Loader2, Send } from 'lucide-react';
 
 /**
- * Sélecteur du son de notification push (app mobile). 3 sons proposés ; le
- * choix est stocké côté backend et appliqué à chaque push (canal Android /
- * sound iOS). Visible dans les réglages ; sans effet tant que l'app mobile
- * n'est pas installée, mais le choix est mémorisé.
+ * Gestion des notifications push (app mobile) :
+ *   - choix du son (parmi ceux proposés) ;
+ *   - bouton « Tester » qui envoie une notif de test sur les appareils
+ *     enregistrés → valide token + FCM + son sans passer de commande.
+ * Le choix du son est stocké côté backend et appliqué à chaque push.
  */
 export function PushSoundPicker() {
   const [sounds, setSounds] = useState<Array<{ key: string; label: string }>>([]);
   const [selected, setSelected] = useState<string>('');
   const [saving, setSaving] = useState<string | null>(null);
+  const [testing, setTesting] = useState(false);
+  const [testMsg, setTestMsg] = useState<{ kind: 'ok' | 'warn'; text: string } | null>(null);
 
   useEffect(() => {
     pushApi.getSounds()
@@ -33,45 +36,81 @@ export function PushSoundPicker() {
     try {
       await pushApi.setSound(key);
     } catch {
-      setSelected(prev); // rollback si l'appel échoue
+      setSelected(prev);
     } finally {
       setSaving(null);
     }
   }
 
-  if (!sounds.length) return null;
+  async function test() {
+    setTesting(true);
+    setTestMsg(null);
+    try {
+      const res = await pushApi.test();
+      if (res.data.sent > 0) {
+        setTestMsg({ kind: 'ok', text: `Notification envoyée ✓ — regarde ton téléphone 📱 (${res.data.sent} appareil${res.data.sent > 1 ? 's' : ''}).` });
+      } else {
+        setTestMsg({ kind: 'warn', text: "Aucun appareil enregistré. Ouvre l'app mobile FlexioPage, connecte-toi et autorise les notifications, puis reviens ici." });
+      }
+    } catch {
+      setTestMsg({ kind: 'warn', text: 'Échec de l’envoi du test. Réessaie.' });
+    } finally {
+      setTesting(false);
+    }
+  }
 
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="flex items-center gap-2"><BellRing className="h-4 w-4" /> Son des notifications</CardTitle>
-        <CardDescription>Choisis le son joué sur ton téléphone à chaque nouvelle commande (app mobile).</CardDescription>
+        <CardTitle className="flex items-center gap-2"><BellRing className="h-4 w-4" /> Notifications mobiles</CardTitle>
+        <CardDescription>Son joué sur ton téléphone à chaque nouvelle commande (app mobile), et test de la configuration.</CardDescription>
       </CardHeader>
-      <CardContent className="grid gap-2 sm:grid-cols-3">
-        {sounds.map((s) => {
-          const active = selected === s.key;
-          return (
-            <button
-              key={s.key}
-              type="button"
-              onClick={() => pick(s.key)}
-              disabled={!!saving}
-              className={
-                'flex items-center justify-between rounded-xl border px-4 py-3 text-sm font-medium transition-colors ' +
-                (active
-                  ? 'border-primary bg-primary/5 text-foreground'
-                  : 'border-border/60 text-muted-foreground hover:bg-muted/40')
-              }
-            >
-              {s.label}
-              {saving === s.key ? (
-                <Loader2 className="h-4 w-4 animate-spin text-primary" />
-              ) : active ? (
-                <Check className="h-4 w-4 text-primary" />
-              ) : null}
-            </button>
-          );
-        })}
+      <CardContent className="space-y-4">
+        {sounds.length > 0 && (
+          <div className="grid gap-2 sm:grid-cols-3">
+            {sounds.map((s) => {
+              const active = selected === s.key;
+              return (
+                <button
+                  key={s.key}
+                  type="button"
+                  onClick={() => pick(s.key)}
+                  disabled={!!saving}
+                  className={
+                    'flex items-center justify-between rounded-xl border px-4 py-3 text-sm font-medium transition-colors ' +
+                    (active
+                      ? 'border-primary bg-primary/5 text-foreground'
+                      : 'border-border/60 text-muted-foreground hover:bg-muted/40')
+                  }
+                >
+                  {s.label}
+                  {saving === s.key ? (
+                    <Loader2 className="h-4 w-4 animate-spin text-primary" />
+                  ) : active ? (
+                    <Check className="h-4 w-4 text-primary" />
+                  ) : null}
+                </button>
+              );
+            })}
+          </div>
+        )}
+
+        <div className="flex flex-wrap items-center gap-3">
+          <button
+            type="button"
+            onClick={test}
+            disabled={testing}
+            className="inline-flex h-10 items-center gap-2 rounded-lg bg-gradient-to-br from-primary to-fuchsia-600 px-4 text-sm font-semibold text-white shadow-sm transition-opacity disabled:opacity-60"
+          >
+            {testing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+            Tester la notification
+          </button>
+          {testMsg && (
+            <span className={testMsg.kind === 'ok' ? 'text-xs font-medium text-emerald-600' : 'text-xs font-medium text-amber-600'}>
+              {testMsg.text}
+            </span>
+          )}
+        </div>
       </CardContent>
     </Card>
   );
