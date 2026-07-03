@@ -15,6 +15,7 @@ import crypto from 'crypto';
 import * as soap from 'soap';
 import type { IOrder } from '../models/Order.model';
 import { Order } from '../models/Order.model';
+import { Product } from '../models/Product.model';
 import type { IStore } from '../models/Store.model';
 import { logActivity } from './activity-log.service';
 import { logWebhook } from '../models/WebhookLog.model';
@@ -130,7 +131,33 @@ class MogaDeliveryProvider implements DeliveryProviderImpl {
    * - `store_id` at root identifies the seller
    * - `line_items[].sku` is what MogaDelivery uses to match its own products
    */
-  private buildBody(order: IOrder, store: IStore, storeIdMD: string): Record<string, unknown> {
+  /**
+   * Public storefront URL for a product, so MogaDelivery's confirmation agents
+   * can open the product page. Prefers the product's own `productUrl`; falls
+   * back to the canonical storefront route `/store/{storeSlug}/product/{slug}`
+   * on the main frontend (works for every store, custom domains included).
+   */
+  private buildProductUrl(
+    store: IStore,
+    product?: { slug?: string; productUrl?: string }
+  ): string {
+    if (product?.productUrl && /^https?:\/\//i.test(product.productUrl)) {
+      return product.productUrl;
+    }
+    if (!store?.slug || !product?.slug) return '';
+    const front = (process.env.FRONTEND_URL || 'https://flexiopage.com')
+      .split(',')[0]
+      .trim()
+      .replace(/\/+$/, '');
+    return `${front}/store/${store.slug}/product/${product.slug}`;
+  }
+
+  private buildBody(
+    order: IOrder,
+    store: IStore,
+    storeIdMD: string,
+    productUrlById: Map<string, string> = new Map()
+  ): Record<string, unknown> {
     const ship = order.shippingAddress || {};
     const country = ship.country || store.settings?.country || '';
     const phone = order.customerPhone || order.paymentPhone || '';
@@ -174,6 +201,8 @@ class MogaDeliveryProvider implements DeliveryProviderImpl {
         name: it.name,
         quantity: it.quantity,
         price: it.price,
+        // Public storefront URL so MD's confirmation agents can view the product.
+        product_url: productUrlById.get(it.productId.toString()) || '',
       })),
 
       // Useful extras (MogaDelivery accepts unknown fields)
@@ -202,7 +231,24 @@ class MogaDeliveryProvider implements DeliveryProviderImpl {
 
   async dispatch({ order, store }: { order: IOrder; store: IStore }): Promise<DispatchResult> {
     const { secret, url, storeIdMD, source } = this.getConfig(order, store);
-    const requestBody = this.buildBody(order, store, storeIdMD);
+
+    // Resolve a public storefront URL per product so MD's confirmation agents
+    // can open the product page. One lookup for all line items.
+    const productUrlById = new Map<string, string>();
+    try {
+      const productIds = (order.items || []).map((it) => it.productId);
+      const products = await Product.find({ _id: { $in: productIds } })
+        .select('slug productUrl')
+        .lean();
+      for (const p of products as Array<{ _id: any; slug?: string; productUrl?: string }>) {
+        const url2 = this.buildProductUrl(store, p);
+        if (url2) productUrlById.set(String(p._id), url2);
+      }
+    } catch {
+      /* non-fatal: dispatch still works without product_url */
+    }
+
+    const requestBody = this.buildBody(order, store, storeIdMD, productUrlById);
     const rawBody = JSON.stringify(requestBody);
     const signature = crypto.createHmac('sha256', this.hmacKey(secret)).update(rawBody).digest('hex');
     // Garde-trace : on stocke le payload exact qu'on transmet AVANT l'appel.
@@ -634,10 +680,30 @@ export async function applyDeliveryWebhook(args: {
   const impl = getDeliveryProvider(args.provider);
   if (!impl) return { ok: false, error: 'Unknown provider' };
 
-  // First parse without signature check to find the order
-  const parsedNoCheck = await impl
-    .parseWebhook(args.payload, args.headers)
-    .catch(() => null);
+  // Premier parse : sert à retrouver la commande. Note : parseWebhook applique
+  // DÉJÀ la signature quand un secret plateforme (env) est posé — donc une
+  // mauvaise signature échoue ici. On journalise ce rejet en `inbound/error`
+  // au lieu de le laisser disparaître silencieusement : sans ça, un webhook MD
+  // à signature invalide n'apparaît nulle part et on croit à tort que « MD
+  // n'a rien envoyé ». On remonte aussi le vrai motif (signature vs payload).
+  let parsedNoCheck: WebhookResult | null = null;
+  try {
+    parsedNoCheck = await impl.parseWebhook(args.payload, args.headers);
+  } catch (err) {
+    const message = (err as Error).message || 'Invalid webhook payload';
+    const isSignature = /signature/i.test(message);
+    const p = args.payload as Record<string, unknown>;
+    void logWebhook({
+      orderNumber: typeof p.order_id === 'string' ? p.order_id : undefined,
+      direction: 'inbound',
+      event: typeof p.status === 'string' ? p.status : 'unknown',
+      status: 'error',
+      signatureValid: isSignature ? false : undefined,
+      error: message,
+      responseBody: args.payload,
+    });
+    return { ok: false, error: message };
+  }
   if (!parsedNoCheck) return { ok: false, error: 'Invalid webhook payload' };
 
   // Find the order by externalId or orderNumber
