@@ -170,7 +170,10 @@ export function buildCatalogBlock(catalog: CatalogProduct[], currency: string): 
     .map((p, i) => {
       const stock = typeof p.stock === 'number' ? (p.stock > 0 ? `en stock (${p.stock})` : 'RUPTURE') : 'stock inconnu';
       const desc = p.description ? ` — ${p.description.slice(0, 120)}` : '';
-      return `${i + 1}. ${p.name} : ${p.price} ${currency} [${stock}]${desc}`;
+      // Lien de la fiche produit : à ENVOYER au client qui demande des détails
+      // (caractéristiques, photos, description complète).
+      const link = p.landing_url ? ` — 🔗 fiche produit : ${p.landing_url}` : '';
+      return `${i + 1}. ${p.name} : ${p.price} ${currency} [${stock}]${desc}${link}`;
     })
     .join('\n');
 }

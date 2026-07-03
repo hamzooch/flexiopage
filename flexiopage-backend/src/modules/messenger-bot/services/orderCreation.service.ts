@@ -41,6 +41,10 @@ export interface CreateOrderOutcome {
   total?: number;
   currency?: string;
   shippingFee?: number;
+  /** Produits RÉELLEMENT enregistrés (noms résolus depuis le catalogue). Claude
+   *  DOIT confirmer avec ces noms — pas de mémoire — pour éviter tout écart
+   *  entre le message de confirmation et la commande créée. */
+  items?: Array<{ name: string; quantity: number; price: number }>;
 }
 
 function currentPeriod(): string {
@@ -183,6 +187,7 @@ export class OrderCreationService {
       total: order.total,
       currency,
       shippingFee,
+      items: resolved.map((r) => ({ name: r.product.name, quantity: r.quantity, price: r.product.price })),
     };
   }
 }

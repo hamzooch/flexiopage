@@ -11,28 +11,28 @@ type LangGroup = 'ar' | 'fr' | 'en' | 'darija';
 const FALLBACK: Record<LangGroup, Record<IncomingMediaType, string>> = {
   fr: {
     image: "J'ai bien reçu ton image mais je n'ai pas pu l'ouvrir. Tu peux me décrire en quelques mots ce qu'elle montre ?",
-    audio: "Je ne peux pas encore écouter les messages vocaux 🙏. Tu peux m'écrire ta demande ?",
+    audio: "Merci 🙏 ! Je ne peux pas écouter les vocaux — écris-moi ta demande en message texte et je m'en occupe tout de suite 😊",
     document: "Je ne peux pas encore lire les documents. Tu peux me résumer en texte ce dont tu as besoin ?",
     sticker: "😊 Dis-moi en quoi je peux t'aider !",
     video: "Je ne peux pas encore regarder les vidéos. Tu peux m'expliquer en texte ?",
   },
   en: {
     image: "I got your image but couldn't open it. Could you tell me in a few words what it shows?",
-    audio: "I can't listen to voice messages yet 🙏. Could you type your request?",
+    audio: "Thanks 🙏! I can't listen to voice notes — please send your request as a text message and I'll help right away 😊",
     document: "I can't read documents yet. Could you summarize what you need in text?",
     sticker: '😊 Tell me how I can help!',
     video: "I can't watch videos yet. Could you explain in text?",
   },
   ar: {
     image: 'وصلتني الصورة لكن ما قدرتش نفتحها. ممكن توصفلي بالكلام شنو كاينة فيها؟',
-    audio: 'ما زال ما نقدرش نسمع الرسائل الصوتية 🙏. ممكن تكتبلي طلبك؟',
+    audio: 'شكرا 🙏! ما نقدرش نسمع الرسائل الصوتية — اكتبلي طلبك برسالة نصية ونعاونك دغيا 😊',
     document: 'ما زال ما نقدرش نقرا الملفات. ممكن تلخصلي بالكتابة شنو محتاج؟',
     sticker: '😊 قوليا كيفاش نقدر نعاونك!',
     video: 'ما زال ما نقدرش نشوف الفيديوهات. ممكن تشرحلي بالكتابة؟',
   },
   darija: {
     image: 'وصلاتني التصويرة ولكن ما قدرتش نحلها. واش تقدر توصفلي بالكلمات شنو كاين فيها؟',
-    audio: 'مازال ما كنقدرش نسمع الرسائل الصوتية 🙏. واش تقدر تكتبلي طلبك؟',
+    audio: 'شكرا 🙏! ما كنقدرش نسمع الرسائل الصوتية — كتب ليا طلبك برسالة نصية وغادي نعاونك دابا 😊',
     document: 'مازال ما كنقدرش نقرا الوثائق. واش تقدر تلخصلي بالكتابة شنو بغيتي؟',
     sticker: '😊 قولي كيفاش نقدر نعاونك!',
     video: 'مازال ما كنقدرش نتفرج فالفيديوهات. واش تقدر تشرحلي بالكتابة؟',
