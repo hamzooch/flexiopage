@@ -13,7 +13,7 @@
  * by storesApi.listOrders().
  */
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { storesApi } from '@/lib/api';
 import { useScopedStoreId } from '@/lib/use-scoped-store';
@@ -40,7 +40,6 @@ import {
   RotateCcw,
   Banknote,
   X,
-  Filter,
   Store as StoreIcon,
   TrendingUp,
   PhoneCall,
@@ -48,6 +47,7 @@ import {
   PhoneIncoming,
   PhoneMissed,
   Check,
+  MoreHorizontal,
 } from 'lucide-react';
 import { PageHeader } from '@/components/dashboard/page-header';
 import { Pagination } from '@/components/ui/pagination';
@@ -149,6 +149,54 @@ const PAYMENT_BADGE: Record<string, { label: string; cls: string }> = {
   refunded: { label: 'Remboursée', cls: 'bg-slate-500/10 text-slate-700 ring-slate-500/20' },
   manual:   { label: 'Manuelle',   cls: 'bg-slate-500/10 text-slate-700 ring-slate-500/20' },
 };
+
+/**
+ * STATUT UNIFIÉ — un seul statut de cycle de vie, le plus parlant pour le
+ * vendeur, dérivé des 4 dimensions (confirmation, paiement, dispatch, livraison).
+ * L'état terminal gagne. `stripe` = couleur de la barre latérale de la carte.
+ */
+type StageKey =
+  | 'to_confirm' | 'no_answer' | 'callback' | 'confirmed' | 'dispatch_failed'
+  | 'assigned' | 'picked_up' | 'in_transit' | 'delivered' | 'returned' | 'cancelled';
+
+const STAGE: Record<StageKey, {
+  label: string;
+  icon: React.ComponentType<{ className?: string }>;
+  cls: string;     // badge (fond + texte + ring)
+  stripe: string;  // barre latérale + point (couleur pleine)
+}> = {
+  to_confirm:      { label: 'À confirmer',     icon: PhoneCall,     cls: 'bg-slate-500/10 text-slate-700 ring-slate-500/20',     stripe: 'bg-slate-400' },
+  no_answer:       { label: 'Ne décroche pas', icon: PhoneMissed,   cls: 'bg-amber-500/10 text-amber-700 ring-amber-500/20',     stripe: 'bg-amber-500' },
+  callback:        { label: 'À rappeler',      icon: PhoneIncoming, cls: 'bg-sky-500/10 text-sky-700 ring-sky-500/20',           stripe: 'bg-sky-500' },
+  confirmed:       { label: 'Confirmée',       icon: CheckCircle2,  cls: 'bg-teal-500/10 text-teal-700 ring-teal-500/20',         stripe: 'bg-teal-500' },
+  dispatch_failed: { label: 'Échec dispatch',  icon: AlertTriangle, cls: 'bg-red-500/10 text-red-700 ring-red-500/20',           stripe: 'bg-red-500' },
+  assigned:        { label: 'Assignée',        icon: UserIcon,      cls: 'bg-blue-500/10 text-blue-700 ring-blue-500/20',         stripe: 'bg-blue-500' },
+  picked_up:       { label: 'Récupérée',       icon: Package,       cls: 'bg-violet-500/10 text-violet-700 ring-violet-500/20',   stripe: 'bg-violet-500' },
+  in_transit:      { label: 'En livraison',    icon: Truck,         cls: 'bg-indigo-500/10 text-indigo-700 ring-indigo-500/20',   stripe: 'bg-indigo-500' },
+  delivered:       { label: 'Livrée',          icon: CheckCircle2,  cls: 'bg-emerald-500/10 text-emerald-700 ring-emerald-500/20', stripe: 'bg-emerald-500' },
+  returned:        { label: 'Retournée',       icon: RotateCcw,     cls: 'bg-rose-500/10 text-rose-700 ring-rose-500/20',         stripe: 'bg-rose-500' },
+  cancelled:       { label: 'Annulée',         icon: X,             cls: 'bg-rose-500/10 text-rose-700 ring-rose-500/20',         stripe: 'bg-rose-400' },
+};
+
+function computeStage(o: OrderType): StageKey {
+  const dk = (o.delivery?.externalStatus || '').toLowerCase();
+  const conf = o.confirmationStatus || 'pending';
+  // États terminaux d'abord.
+  if (o.fulfillmentStatus === 'cancelled' || dk === 'cancelled' || conf === 'declined') return 'cancelled';
+  if (dk === 'returned') return 'returned';
+  if (dk === 'delivered' || o.fulfillmentStatus === 'fulfilled') return 'delivered';
+  // En cours de livraison (déjà dispatchée).
+  if (dk === 'in_transit') return 'in_transit';
+  if (dk === 'picked_up') return 'picked_up';
+  if (dk === 'assigned' || dk === 'pending') return 'assigned';
+  if (dk === 'failed') return 'dispatch_failed';
+  if (o.delivery?.error) return 'dispatch_failed';
+  // Avant dispatch : piloté par la confirmation d'appel (funnel COD).
+  if (conf === 'no_answer') return 'no_answer';
+  if (conf === 'callback') return 'callback';
+  if (conf === 'confirmed') return 'confirmed';
+  return 'to_confirm';
+}
 
 export default function DashboardOrdersPage() {
   const searchParams = useSearchParams();
@@ -346,11 +394,11 @@ export default function DashboardOrdersPage() {
         />
       </section>
 
-      {/* ── Filter toolbar — single elegant card ─────────────── */}
-      <div className="rounded-2xl border border-border/60 bg-card shadow-sm">
-        {/* Row 1 — search + active count + reset */}
-        <div className="flex flex-wrap items-center gap-3 border-b border-border/40 p-3">
-          <div className="relative min-w-[240px] flex-1">
+      {/* ── Filter toolbar — barre unique, compacte et pro ───── */}
+      <div className="rounded-2xl border border-border/60 bg-card p-2.5 shadow-sm">
+        <div className="flex flex-wrap items-center gap-2">
+          {/* Recherche */}
+          <div className="relative min-w-[220px] flex-1">
             <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <Input
               value={search}
@@ -369,162 +417,59 @@ export default function DashboardOrdersPage() {
               </button>
             )}
           </div>
-          <div className="flex items-center gap-1.5 text-xs">
-            <Filter className="h-3.5 w-3.5 text-muted-foreground" />
-            <span className="text-muted-foreground">
-              {activeFiltersCount === 0
-                ? 'Aucun filtre'
-                : `${activeFiltersCount} filtre${activeFiltersCount > 1 ? 's' : ''}`}
-            </span>
-            {activeFiltersCount > 0 && (
-              <button
-                type="button"
-                onClick={resetFilters}
-                className="ml-1 rounded-md px-1.5 py-0.5 text-[11px] font-medium text-primary hover:bg-primary/10"
-              >
-                Réinitialiser
-              </button>
-            )}
-          </div>
-        </div>
 
-        {/* Row 2 — period chips + custom range */}
-        <div className="flex flex-wrap items-center gap-2 border-b border-border/40 p-3">
-          <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-            Période
-          </span>
-          {(['all', 'today', '7d', '30d'] as DayFilter[]).map((d) => (
-            <Chip
-              key={d}
-              active={dayFilter === d && !customFrom && !customTo}
-              onClick={() => {
-                setDayFilter(d);
-                setCustomFrom('');
-                setCustomTo('');
-              }}
+          {/* Période (préréglages + plage personnalisée dans le menu) */}
+          <PeriodFilter
+            dayFilter={dayFilter}
+            customFrom={customFrom}
+            customTo={customTo}
+            onPreset={(d) => { setDayFilter(d); setCustomFrom(''); setCustomTo(''); }}
+            onCustom={(from, to) => { setCustomFrom(from); setCustomTo(to); setDayFilter('all'); }}
+            onClear={() => { setDayFilter('all'); setCustomFrom(''); setCustomTo(''); }}
+          />
+
+          {/* Statut */}
+          <FilterSelect
+            label="Statut"
+            value={statusFilter}
+            onChange={(v) => setStatusFilter(v as StatusFilter)}
+            options={[
+              { value: 'all', label: 'Tous', count: stats.total },
+              { value: 'pending', label: 'En attente', count: stats.pending, dot: 'bg-amber-500' },
+              { value: 'paid', label: 'Payées', count: stats.paid, dot: 'bg-emerald-500' },
+              { value: 'delivered', label: 'Livrées', count: stats.delivered, dot: 'bg-indigo-500' },
+              { value: 'cancelled', label: 'Annulées', dot: 'bg-rose-500' },
+            ]}
+          />
+
+          {/* Confirmation d'appel (funnel COD) */}
+          <FilterSelect
+            icon={PhoneCall}
+            label="Confirmation"
+            value={confirmFilter}
+            onChange={(v) => setConfirmFilter(v as ConfirmFilter)}
+            options={[
+              { value: 'all', label: 'Tous' },
+              { value: 'pending', label: 'À confirmer', count: confirmStats.pending, dot: 'bg-slate-400' },
+              { value: 'confirmed', label: 'Confirmées', count: confirmStats.confirmed, dot: 'bg-emerald-500' },
+              { value: 'no_answer', label: 'Ne décroche pas', count: confirmStats.no_answer, dot: 'bg-amber-500' },
+              { value: 'callback', label: 'À rappeler', count: confirmStats.callback, dot: 'bg-sky-500' },
+              { value: 'declined', label: 'Refusées', count: confirmStats.declined, dot: 'bg-rose-500' },
+            ]}
+          />
+
+          {/* Réinitialiser — visible seulement si un filtre est actif */}
+          {activeFiltersCount > 0 && (
+            <button
+              type="button"
+              onClick={resetFilters}
+              className="inline-flex h-10 items-center gap-1.5 rounded-lg px-2.5 text-xs font-medium text-primary transition-colors hover:bg-primary/10"
             >
-              {d === 'all' ? 'Toutes' : d === 'today' ? "Aujourd'hui" : d === '7d' ? '7 jours' : '30 jours'}
-            </Chip>
-          ))}
-          <div className="ml-auto flex items-center gap-1.5 rounded-lg border border-border/60 bg-background px-2 py-1">
-            <Calendar className="h-3 w-3 text-muted-foreground" />
-            <span className="text-[10px] font-medium text-muted-foreground">Du</span>
-            <input
-              type="date"
-              value={customFrom}
-              max={customTo || undefined}
-              onChange={(e) => {
-                setCustomFrom(e.target.value);
-                if (e.target.value) setDayFilter('all');
-              }}
-              className="h-6 rounded bg-transparent text-xs outline-none"
-            />
-            <span className="text-[10px] font-medium text-muted-foreground">au</span>
-            <input
-              type="date"
-              value={customTo}
-              min={customFrom || undefined}
-              onChange={(e) => {
-                setCustomTo(e.target.value);
-                if (e.target.value) setDayFilter('all');
-              }}
-              className="h-6 rounded bg-transparent text-xs outline-none"
-            />
-            {(customFrom || customTo) && (
-              <button
-                type="button"
-                onClick={() => { setCustomFrom(''); setCustomTo(''); }}
-                className="ml-0.5 rounded-md px-1 text-[10px] text-muted-foreground hover:bg-muted hover:text-foreground"
-                title="Effacer"
-              >
-                ×
-              </button>
-            )}
-          </div>
-        </div>
-
-        {/* Row 3 — status chips with counts */}
-        <div className="flex flex-wrap items-center gap-2 border-b border-border/40 p-3">
-          <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-            Statut
-          </span>
-          <Chip active={statusFilter === 'all'} onClick={() => setStatusFilter('all')}>
-            Tous <span className="ml-1 text-[10px] opacity-70">{stats.total}</span>
-          </Chip>
-          <Chip
-            active={statusFilter === 'pending'}
-            onClick={() => setStatusFilter('pending')}
-            dot="bg-amber-500"
-          >
-            En attente <span className="ml-1 text-[10px] opacity-70">{stats.pending}</span>
-          </Chip>
-          <Chip
-            active={statusFilter === 'paid'}
-            onClick={() => setStatusFilter('paid')}
-            dot="bg-emerald-500"
-          >
-            Payées <span className="ml-1 text-[10px] opacity-70">{stats.paid}</span>
-          </Chip>
-          <Chip
-            active={statusFilter === 'delivered'}
-            onClick={() => setStatusFilter('delivered')}
-            dot="bg-indigo-500"
-          >
-            Livrées <span className="ml-1 text-[10px] opacity-70">{stats.delivered}</span>
-          </Chip>
-          <Chip
-            active={statusFilter === 'cancelled'}
-            onClick={() => setStatusFilter('cancelled')}
-            dot="bg-rose-500"
-          >
-            Annulées
-          </Chip>
-        </div>
-
-        {/* Row 4 — confirmation chips (the call-confirmation workflow) */}
-        <div className="flex flex-wrap items-center gap-2 p-3">
-          <span className="inline-flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-            <PhoneCall className="h-3 w-3" />
-            Confirmation
-          </span>
-          <Chip active={confirmFilter === 'all'} onClick={() => setConfirmFilter('all')}>
-            Tous
-          </Chip>
-          <Chip
-            active={confirmFilter === 'pending'}
-            onClick={() => setConfirmFilter('pending')}
-            dot="bg-slate-400"
-          >
-            À confirmer <span className="ml-1 text-[10px] opacity-70">{confirmStats.pending}</span>
-          </Chip>
-          <Chip
-            active={confirmFilter === 'confirmed'}
-            onClick={() => setConfirmFilter('confirmed')}
-            dot="bg-emerald-500"
-          >
-            Confirmées <span className="ml-1 text-[10px] opacity-70">{confirmStats.confirmed}</span>
-          </Chip>
-          <Chip
-            active={confirmFilter === 'no_answer'}
-            onClick={() => setConfirmFilter('no_answer')}
-            dot="bg-amber-500"
-          >
-            Ne décroche pas <span className="ml-1 text-[10px] opacity-70">{confirmStats.no_answer}</span>
-          </Chip>
-          <Chip
-            active={confirmFilter === 'callback'}
-            onClick={() => setConfirmFilter('callback')}
-            dot="bg-sky-500"
-          >
-            À rappeler <span className="ml-1 text-[10px] opacity-70">{confirmStats.callback}</span>
-          </Chip>
-          <Chip
-            active={confirmFilter === 'declined'}
-            onClick={() => setConfirmFilter('declined')}
-            dot="bg-rose-500"
-          >
-            Refusées <span className="ml-1 text-[10px] opacity-70">{confirmStats.declined}</span>
-          </Chip>
+              <X className="h-3.5 w-3.5" />
+              Réinitialiser
+              <span className="rounded-full bg-primary/15 px-1.5 text-[10px] font-bold">{activeFiltersCount}</span>
+            </button>
+          )}
         </div>
       </div>
 
@@ -582,33 +527,211 @@ export default function DashboardOrdersPage() {
   );
 }
 
-// ─── Filter chip — used in the toolbar ─────────────────────────────────
-function Chip({
-  active,
-  onClick,
-  children,
-  dot,
+// ─── Filtre compact type « select » — bouton + menu déroulant ───────────
+// Remplace les longues rangées de chips par un dropdown pro : le libellé du
+// filtre + la valeur active en pastille, un menu avec pastilles couleur +
+// compteurs. Se ferme au clic extérieur.
+function FilterSelect({
+  icon: Icon,
+  label,
+  value,
+  options,
+  onChange,
 }: {
-  active: boolean;
-  onClick: () => void;
-  children: React.ReactNode;
-  /** Optional colored dot before the label (status indicator). */
-  dot?: string;
+  icon?: React.ComponentType<{ className?: string }>;
+  label: string;
+  value: string;
+  options: Array<{ value: string; label: string; count?: number; dot?: string }>;
+  onChange: (v: string) => void;
 }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const onDoc = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener('mousedown', onDoc);
+    return () => document.removeEventListener('mousedown', onDoc);
+  }, [open]);
+
+  const current = options.find((o) => o.value === value);
+  const active = value !== 'all';
+
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={cn(
-        'inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-xs font-medium transition-all',
-        active
-          ? 'border-primary bg-primary/10 text-primary shadow-sm'
-          : 'border-border/60 text-muted-foreground hover:border-primary/30 hover:bg-muted hover:text-foreground'
+    <div ref={ref} className="relative">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        aria-haspopup="menu"
+        aria-expanded={open}
+        className={cn(
+          'inline-flex h-10 items-center gap-1.5 rounded-lg border px-3 text-sm transition-colors',
+          active
+            ? 'border-primary/40 bg-primary/5 text-foreground'
+            : 'border-border/60 text-muted-foreground hover:bg-muted/40',
+        )}
+      >
+        {Icon && <Icon className="h-3.5 w-3.5 shrink-0" />}
+        <span className="font-medium">{label}</span>
+        {active && current && (
+          <span className="inline-flex items-center gap-1 rounded-md bg-primary/10 px-1.5 py-0.5 text-[11px] font-semibold text-primary">
+            {current.dot && <span className={cn('h-1.5 w-1.5 rounded-full', current.dot)} />}
+            {current.label}
+          </span>
+        )}
+        <ChevronDown className={cn('h-3.5 w-3.5 shrink-0 transition-transform', open && 'rotate-180')} />
+      </button>
+
+      {open && (
+        <div role="menu" className="absolute right-0 z-30 mt-1 w-56 rounded-xl border border-border/60 bg-card p-1 shadow-lg">
+          {options.map((o) => {
+            const sel = o.value === value;
+            return (
+              <button
+                key={o.value}
+                type="button"
+                role="menuitemradio"
+                aria-checked={sel}
+                onClick={() => { onChange(o.value); setOpen(false); }}
+                className={cn(
+                  'flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-xs font-medium transition-colors',
+                  sel ? 'bg-primary/10 text-primary' : 'text-foreground hover:bg-muted/70',
+                )}
+              >
+                <span className={cn('h-2 w-2 shrink-0 rounded-full', o.dot || 'bg-transparent')} />
+                <span className="flex-1">{o.label}</span>
+                {typeof o.count === 'number' && (
+                  <span className="text-[11px] tabular-nums opacity-60">{o.count}</span>
+                )}
+                {sel && <Check className="h-3.5 w-3.5 shrink-0" />}
+              </button>
+            );
+          })}
+        </div>
       )}
-    >
-      {dot && <span className={cn('h-1.5 w-1.5 rounded-full', dot)} />}
-      {children}
-    </button>
+    </div>
+  );
+}
+
+// ─── Filtre Période — préréglages + plage personnalisée dans un menu ─────
+function PeriodFilter({
+  dayFilter,
+  customFrom,
+  customTo,
+  onPreset,
+  onCustom,
+  onClear,
+}: {
+  dayFilter: DayFilter;
+  customFrom: string;
+  customTo: string;
+  onPreset: (d: DayFilter) => void;
+  onCustom: (from: string, to: string) => void;
+  onClear: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const onDoc = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener('mousedown', onDoc);
+    return () => document.removeEventListener('mousedown', onDoc);
+  }, [open]);
+
+  const hasCustom = !!(customFrom || customTo);
+  const active = dayFilter !== 'all' || hasCustom;
+  const presets: Array<{ v: DayFilter; l: string }> = [
+    { v: 'all', l: 'Toutes' },
+    { v: 'today', l: "Aujourd'hui" },
+    { v: '7d', l: '7 jours' },
+    { v: '30d', l: '30 jours' },
+  ];
+  const valueLabel = hasCustom
+    ? 'Personnalisé'
+    : presets.find((p) => p.v === dayFilter)?.l || 'Toutes';
+
+  return (
+    <div ref={ref} className="relative">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        aria-haspopup="menu"
+        aria-expanded={open}
+        className={cn(
+          'inline-flex h-10 items-center gap-1.5 rounded-lg border px-3 text-sm transition-colors',
+          active
+            ? 'border-primary/40 bg-primary/5 text-foreground'
+            : 'border-border/60 text-muted-foreground hover:bg-muted/40',
+        )}
+      >
+        <Calendar className="h-3.5 w-3.5 shrink-0" />
+        <span className="font-medium">Période</span>
+        {active && (
+          <span className="rounded-md bg-primary/10 px-1.5 py-0.5 text-[11px] font-semibold text-primary">
+            {valueLabel}
+          </span>
+        )}
+        <ChevronDown className={cn('h-3.5 w-3.5 shrink-0 transition-transform', open && 'rotate-180')} />
+      </button>
+
+      {open && (
+        <div role="menu" className="absolute right-0 z-30 mt-1 w-64 rounded-xl border border-border/60 bg-card p-2 shadow-lg">
+          <div className="grid grid-cols-2 gap-1">
+            {presets.map((p) => {
+              const sel = !hasCustom && dayFilter === p.v;
+              return (
+                <button
+                  key={p.v}
+                  type="button"
+                  onClick={() => { onPreset(p.v); setOpen(false); }}
+                  className={cn(
+                    'rounded-lg px-2 py-1.5 text-xs font-medium transition-colors',
+                    sel ? 'bg-primary/10 text-primary' : 'text-foreground hover:bg-muted/70',
+                  )}
+                >
+                  {p.l}
+                </button>
+              );
+            })}
+          </div>
+
+          <div className="my-2 h-px bg-border/60" />
+          <p className="px-1 pb-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+            Plage personnalisée
+          </p>
+          <div className="flex items-center gap-1.5 px-1">
+            <input
+              type="date"
+              value={customFrom}
+              max={customTo || undefined}
+              onChange={(e) => onCustom(e.target.value, customTo)}
+              className="h-8 min-w-0 flex-1 rounded-md border border-border/60 bg-background px-2 text-xs outline-none focus:border-primary focus:ring-1 focus:ring-primary"
+            />
+            <span className="text-[10px] text-muted-foreground">au</span>
+            <input
+              type="date"
+              value={customTo}
+              min={customFrom || undefined}
+              onChange={(e) => onCustom(customFrom, e.target.value)}
+              className="h-8 min-w-0 flex-1 rounded-md border border-border/60 bg-background px-2 text-xs outline-none focus:border-primary focus:ring-1 focus:ring-primary"
+            />
+          </div>
+
+          {active && (
+            <button
+              type="button"
+              onClick={() => { onClear(); setOpen(false); }}
+              className="mt-2 w-full rounded-lg px-2 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted/70"
+            >
+              Effacer la période
+            </button>
+          )}
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -656,6 +779,147 @@ function KpiCard({
   );
 }
 
+// ─── Menu ⋯ de changement de statut ─────────────────────────────────────
+// Regroupe TOUTES les actions de statut (confirmation d'appel, dispatch,
+// paiement, annulation) dans un dropdown, pour désencombrer la carte : sur
+// la carte on ne montre plus que LE statut unifié, et on agit via ce menu.
+function StatusMenuItem({
+  icon: Icon, label, onClick, danger, busy,
+}: {
+  icon: React.ComponentType<{ className?: string }>;
+  label: string;
+  onClick: () => void;
+  danger?: boolean;
+  busy?: boolean;
+}) {
+  return (
+    <button
+      type="button"
+      role="menuitem"
+      disabled={busy}
+      onClick={onClick}
+      className={cn(
+        'flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-xs font-medium transition-colors disabled:opacity-50',
+        danger ? 'text-red-700 hover:bg-red-500/10' : 'text-foreground hover:bg-muted/70',
+      )}
+    >
+      <Icon className={cn('h-3.5 w-3.5 shrink-0', danger ? 'text-red-600' : 'text-muted-foreground')} />
+      {label}
+    </button>
+  );
+}
+
+function StatusMenu({
+  order,
+  storeId,
+  onChanged,
+}: {
+  order: OrderType;
+  storeId: string;
+  onChanged: () => void | Promise<void>;
+}) {
+  const [open, setOpen] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  const prompt = usePrompt();
+
+  useEffect(() => {
+    if (!open) return;
+    const onDoc = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener('mousedown', onDoc);
+    return () => document.removeEventListener('mousedown', onDoc);
+  }, [open]);
+
+  if (!storeId) return null;
+
+  const conf = order.confirmationStatus || 'pending';
+  const dk = (order.delivery?.externalStatus || '').toLowerCase();
+  const isPaid = order.paymentStatus === 'paid';
+  const isDispatched = !!order.delivery?.externalId;
+  const hasErr = !!order.delivery?.error;
+  const isFulfilled = order.fulfillmentStatus === 'fulfilled';
+  const isCancelled = order.fulfillmentStatus === 'cancelled';
+  const isMoving = isDispatched && MOVING_STATES.has(dk);
+
+  async function run(fn: () => Promise<unknown>) {
+    setBusy(true);
+    try {
+      await fn();
+      await onChanged();
+      setOpen(false);
+    } catch {
+      // L'erreur détaillée reste visible dans le panneau déplié (bloc actions).
+      // Ici on garde le menu ouvert pour laisser réessayer.
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const setConf = (c: 'confirmed' | 'callback' | 'no_answer' | 'declined') =>
+    run(() => storesApi.setOrderConfirmation(storeId, order._id, { confirmationStatus: c }));
+  const dispatch = () =>
+    run(() => storesApi.dispatchOrder(storeId, order._id, hasErr ? { retry: true } : {}));
+  const markPaid = () =>
+    run(() => storesApi.manualOrderStatus(storeId, order._id, { paymentStatus: 'paid', force: isMoving }));
+  const markFulfilled = () =>
+    run(() => storesApi.manualOrderStatus(storeId, order._id, { fulfillmentStatus: 'fulfilled', paymentStatus: isPaid ? undefined : 'paid', force: isMoving }));
+  const cancel = async () => {
+    const reason = await prompt({
+      title: 'Annuler la commande',
+      description: 'La raison sera gardée dans l\'historique de la commande.',
+      defaultValue: isMoving ? 'Annulation manuelle après dispatch' : 'Annulation manuelle',
+      placeholder: 'Ex: Client a changé d\'avis, double commande…',
+      multiline: true,
+      confirmLabel: 'Annuler la commande',
+      tone: 'destructive',
+    });
+    if (reason === null) return;
+    await run(() => storesApi.manualOrderStatus(storeId, order._id, { fulfillmentStatus: 'cancelled', reason, force: isMoving }));
+  };
+
+  return (
+    <div ref={ref} className="relative shrink-0" onClick={(e) => e.stopPropagation()}>
+      <button
+        type="button"
+        aria-label="Changer le statut"
+        aria-haspopup="menu"
+        aria-expanded={open}
+        onClick={() => setOpen((v) => !v)}
+        className={cn(
+          'grid h-8 w-8 place-items-center rounded-lg transition-colors',
+          open ? 'bg-muted text-foreground' : 'text-muted-foreground hover:bg-muted/60 hover:text-foreground',
+        )}
+      >
+        {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <MoreHorizontal className="h-4 w-4" />}
+      </button>
+
+      {open && (
+        <div
+          role="menu"
+          className="absolute right-0 top-[calc(100%+4px)] z-30 w-56 rounded-xl border border-border/60 bg-card p-1 shadow-lg"
+        >
+          <p className="px-2.5 pb-1 pt-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Confirmation client</p>
+          {conf !== 'confirmed' && <StatusMenuItem icon={CheckCircle2} label="Confirmer" onClick={() => setConf('confirmed')} busy={busy} />}
+          {conf !== 'callback' && <StatusMenuItem icon={PhoneIncoming} label="À rappeler" onClick={() => setConf('callback')} busy={busy} />}
+          {conf !== 'no_answer' && <StatusMenuItem icon={PhoneMissed} label="Ne décroche pas" onClick={() => setConf('no_answer')} busy={busy} />}
+          {conf !== 'declined' && <StatusMenuItem icon={PhoneOff} label="Refuser" onClick={() => setConf('declined')} danger busy={busy} />}
+
+          <div className="my-1 h-px bg-border/60" />
+          <p className="px-2.5 pb-1 pt-0.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Traitement</p>
+          {(!isDispatched || hasErr) && (
+            <StatusMenuItem icon={Truck} label={hasErr ? 'Renvoyer au transporteur' : 'Envoyer au transporteur'} onClick={dispatch} busy={busy} />
+          )}
+          {!isPaid && <StatusMenuItem icon={Banknote} label="Marquer payée" onClick={markPaid} busy={busy} />}
+          {!isFulfilled && <StatusMenuItem icon={CheckCircle2} label="Marquer livrée" onClick={markFulfilled} busy={busy} />}
+          {!isCancelled && <StatusMenuItem icon={X} label="Annuler la commande" onClick={cancel} danger busy={busy} />}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── Order Card (expandable) ────────────────────────────────────────────
 function OrderCard({
   order: o,
@@ -673,7 +937,6 @@ function OrderCard({
   const payment = PAYMENT_BADGE[o.paymentStatus] || { label: o.paymentStatus, cls: 'bg-slate-500/10 text-slate-700 ring-slate-500/20' };
   const deliveryKey = (o.delivery?.externalStatus || '').toLowerCase();
   const delivery = DELIVERY_BADGE[deliveryKey];
-  const DeliveryIcon = delivery?.icon;
   const totalQty = o.items.reduce((sum, it) => sum + (it.quantity || 0), 0);
 
   // Customer initials for the avatar — uses the customer name when present,
@@ -734,20 +997,32 @@ function OrderCard({
     }
   }
 
+  const stage = STAGE[computeStage(o)];
+  const StageIcon = stage.icon;
+
   return (
     <li
       className={cn(
-        'overflow-hidden rounded-2xl border bg-card transition-all',
+        'relative overflow-hidden rounded-2xl border bg-card transition-all',
         expanded
           ? 'border-primary/40 shadow-md shadow-primary/5'
           : 'border-border/60 hover:border-primary/30 hover:shadow-md'
       )}
     >
-      {/* Header — always visible */}
-      <button
-        type="button"
+      {/* Barre latérale — couleur = statut de la commande, repérable d'un
+          coup d'œil même en scrollant vite une longue liste. */}
+      <span className={cn('absolute inset-y-0 left-0 w-1.5', stage.stripe)} aria-hidden />
+
+      {/* Header — always visible. `div role=button` (pas `button`) pour
+          pouvoir imbriquer le menu ⋯ et le lien téléphone sans HTML invalide. */}
+      <div
+        role="button"
+        tabIndex={0}
         onClick={onToggle}
-        className="flex w-full items-center gap-3 p-3.5 text-left transition-colors hover:bg-muted/20 sm:gap-4 sm:p-4"
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onToggle(); }
+        }}
+        className="flex w-full cursor-pointer items-center gap-3 py-3.5 pl-5 pr-3.5 text-left transition-colors hover:bg-muted/20 sm:gap-4 sm:py-4 sm:pl-6 sm:pr-4"
       >
         {/* Customer avatar — initials in colored gradient */}
         <div
@@ -811,45 +1086,23 @@ function OrderCard({
             </div>
           </div>
 
-          {/* Badges row — confirmation + payment + method + delivery */}
-          <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
-            {(() => {
-              const c = CONFIRMATION_BADGE[o.confirmationStatus || 'pending'];
-              const CIcon = c.icon;
-              return (
-                <span className={cn('inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[10px] font-semibold ring-1', c.cls)}>
-                  <CIcon className="h-3 w-3" />
-                  {c.label}
-                </span>
-              );
-            })()}
-            <span className={cn('inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[10px] font-semibold ring-1', payment.cls)}>
-              <span className={cn('h-1.5 w-1.5 rounded-full', payment.cls.includes('emerald') ? 'bg-emerald-500' : payment.cls.includes('amber') ? 'bg-amber-500' : payment.cls.includes('rose') ? 'bg-rose-500' : 'bg-slate-500')} />
-              {payment.label}
+          {/* Statut unifié — LE statut de la commande, en grand + bien coloré.
+              Le paiement reste en indicateur secondaire (c'est l'argent). */}
+          <div className="mt-2.5 flex flex-wrap items-center gap-2">
+            <span className={cn('inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-xs font-bold ring-1', stage.cls)}>
+              <StageIcon className="h-3.5 w-3.5" />
+              {stage.label}
             </span>
-            {o.paymentMethod && (
-              <span className="inline-flex items-center gap-1 rounded-md bg-muted/60 px-2 py-0.5 text-[10px] font-medium text-muted-foreground">
-                {o.paymentMethod === 'cod' ? 'COD' : o.paymentMethod.toUpperCase()}
-              </span>
-            )}
-            {o.delivery?.error ? (
-              <span className="inline-flex items-center gap-1 rounded-md bg-red-500/10 px-2 py-0.5 text-[10px] font-semibold text-red-700 ring-1 ring-red-500/20" title={o.delivery.error}>
-                <AlertTriangle className="h-3 w-3" />
-                Échec dispatch
-              </span>
-            ) : delivery && DeliveryIcon ? (
-              <span className={cn('inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[10px] font-semibold ring-1', delivery.cls)}>
-                <DeliveryIcon className="h-3 w-3" />
-                {delivery.label}
-              </span>
-            ) : (
-              <span className="inline-flex items-center gap-1 rounded-md bg-muted/40 px-2 py-0.5 text-[10px] font-medium text-muted-foreground">
-                <Hourglass className="h-3 w-3" />
-                Non dispatchée
-              </span>
-            )}
+            <span className="inline-flex items-center gap-1.5 text-[11px] font-medium text-muted-foreground">
+              <span className={cn('h-1.5 w-1.5 rounded-full', o.paymentStatus === 'paid' ? 'bg-emerald-500' : o.paymentStatus === 'refunded' ? 'bg-slate-400' : o.paymentStatus === 'failed' ? 'bg-rose-500' : 'bg-amber-500')} />
+              {payment.label}
+              {o.paymentMethod === 'cod' && <span className="rounded bg-muted/70 px-1 py-px text-[9px] font-semibold uppercase text-muted-foreground">COD</span>}
+            </span>
           </div>
         </div>
+
+        {/* Menu ⋯ — change le statut (confirmation / dispatch / paiement / annulation) */}
+        <StatusMenu order={o} storeId={storeId} onChanged={onChanged} />
 
         {/* Expand chevron */}
         <ChevronDown
@@ -858,7 +1111,7 @@ function OrderCard({
             expanded && 'rotate-180 text-primary'
           )}
         />
-      </button>
+      </div>
 
       {/* Quick-confirm strip — visible UNIQUEMENT pour les commandes en
           attente de confirmation (pending). Permet à l'agent de cliquer
