@@ -1534,5 +1534,5 @@ export const pushApi = {
   setSound: (sound: string) =>
     api.patch<{ ok: boolean; sound: string }>('/push/sound', { sound }),
   test: () =>
-    api.post<{ ok: boolean; sent: number }>('/push/test'),
+    api.post<{ ok: boolean; diagnostic: 'ok' | 'no_device' | 'expo_error' | 'unknown'; tokens: number; sent: number; removed: number; errors: string[] }>('/push/test'),
 };

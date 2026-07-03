@@ -46,11 +46,15 @@ export function PushSoundPicker() {
     setTesting(true);
     setTestMsg(null);
     try {
-      const res = await pushApi.test();
-      if (res.data.sent > 0) {
-        setTestMsg({ kind: 'ok', text: `Notification envoyée ✓ — regarde ton téléphone 📱 (${res.data.sent} appareil${res.data.sent > 1 ? 's' : ''}).` });
+      const d = (await pushApi.test()).data;
+      if (d.diagnostic === 'ok') {
+        setTestMsg({ kind: 'ok', text: `Notification envoyée ✓ — regarde ton téléphone 📱 (${d.sent} appareil${d.sent > 1 ? 's' : ''}). Si rien n'arrive, la clé FCM manque côté serveur.` });
+      } else if (d.diagnostic === 'no_device') {
+        setTestMsg({ kind: 'warn', text: "Aucun appareil enregistré. Ouvre l'app mobile FlexioPage, connecte-toi et AUTORISE les notifications, puis reviens tester ici." });
+      } else if (d.diagnostic === 'expo_error') {
+        setTestMsg({ kind: 'warn', text: `Appareil enregistré (${d.tokens}) mais Expo/FCM refuse : ${d.errors.join(' · ')}. → c'est la clé FCM à configurer dans EAS.` });
       } else {
-        setTestMsg({ kind: 'warn', text: "Aucun appareil enregistré. Ouvre l'app mobile FlexioPage, connecte-toi et autorise les notifications, puis reviens ici." });
+        setTestMsg({ kind: 'warn', text: 'Envoi effectué mais statut incertain. Réessaie.' });
       }
     } catch {
       setTestMsg({ kind: 'warn', text: 'Échec de l’envoi du test. Réessaie.' });

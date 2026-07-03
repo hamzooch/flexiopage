@@ -89,11 +89,22 @@ const EXPO_ENDPOINT = 'https://exp.host/--/api/v2/push/send';
  * Envoie une push à TOUS les appareils du vendeur, avec son son préféré.
  * Purge les tokens signalés `DeviceNotRegistered` par Expo. Ne throw jamais.
  */
-export async function sendToUser(userId: string | { toString(): string }, payload: PushPayload): Promise<{ sent: number }> {
+export interface SendResult {
+  /** Nombre d'appareils enregistrés pour ce vendeur. */
+  tokens: number;
+  /** Messages acceptés par Expo (status ok). */
+  sent: number;
+  /** Messages rejetés pour cause de token mort (purgés). */
+  removed: number;
+  /** Autres erreurs Expo/FCM (ex. clé FCM absente) — remontées pour diagnostic. */
+  errors: string[];
+}
+
+export async function sendToUser(userId: string | { toString(): string }, payload: PushPayload): Promise<SendResult> {
   try {
     const user = await User.findById(String(userId)).select('expoPushTokens pushSoundPreference').lean();
     const tokens = (user?.expoPushTokens || []).filter(isExpoPushToken);
-    if (!tokens.length) return { sent: 0 };
+    if (!tokens.length) return { tokens: 0, sent: 0, removed: 0, errors: [] };
 
     const messages = buildExpoMessages(tokens, user?.pushSoundPreference, payload);
     const res = await axios.post(EXPO_ENDPOINT, messages, {
@@ -101,19 +112,25 @@ export async function sendToUser(userId: string | { toString(): string }, payloa
       timeout: 8000,
     });
 
-    // Récupère les tokens morts pour les retirer (les tickets sont dans l'ordre).
-    const tickets: Array<{ status?: string; details?: { error?: string } }> = res.data?.data || [];
+    // Tickets Expo (même ordre que les messages) : ok / error.
+    const tickets: Array<{ status?: string; message?: string; details?: { error?: string } }> = res.data?.data || [];
     const dead: string[] = [];
+    const errors: string[] = [];
+    let ok = 0;
     tickets.forEach((t, i) => {
-      if (t?.status === 'error' && t.details?.error === 'DeviceNotRegistered') dead.push(messages[i].to);
+      if (t?.status === 'ok') { ok++; return; }
+      if (t?.details?.error === 'DeviceNotRegistered') { dead.push(messages[i].to); return; }
+      // Autres erreurs (InvalidCredentials/MismatchSenderId = clé FCM KO, etc.)
+      errors.push(t?.details?.error ? `${t.details.error}: ${t.message || ''}`.trim() : (t?.message || 'erreur Expo inconnue'));
     });
     if (dead.length) {
       await User.updateOne({ _id: String(userId) }, { $pull: { expoPushTokens: { $in: dead } } });
       logger.info({ userId: String(userId), removed: dead.length }, '[push] tokens morts purgés');
     }
-    return { sent: messages.length - dead.length };
+    if (errors.length) logger.warn({ userId: String(userId), errors }, '[push] erreurs Expo/FCM');
+    return { tokens: tokens.length, sent: ok, removed: dead.length, errors };
   } catch (err) {
     logger.warn({ err: (err as Error).message }, '[push] envoi échoué (non-fatal)');
-    return { sent: 0 };
+    return { tokens: 0, sent: 0, removed: 0, errors: [(err as Error).message] };
   }
 }

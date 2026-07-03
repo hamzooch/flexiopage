@@ -50,7 +50,18 @@ export async function sendTest(req: AuthRequest, res: Response): Promise<void> {
     link: '/dashboard/orders',
     data: { type: 'test' },
   });
-  res.json({ ok: true, sent: result.sent });
+  // Diagnostic explicite pour le vendeur.
+  let diagnostic: string;
+  if (result.tokens === 0) {
+    diagnostic = 'no_device';
+  } else if (result.errors.length) {
+    diagnostic = 'expo_error';
+  } else if (result.sent > 0) {
+    diagnostic = 'ok';
+  } else {
+    diagnostic = 'unknown';
+  }
+  res.json({ ok: true, diagnostic, ...result });
 }
 
 /** PATCH /api/push/sound — body { sound } : change le son de notification. */
