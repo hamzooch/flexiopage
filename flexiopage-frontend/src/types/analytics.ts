@@ -1,9 +1,10 @@
 /**
  * Shape mirrors the backend `StoreAnalyticsRich` payload returned by
- * GET /api/stores/:storeId/analytics/rich?range=<today|yesterday|7d|30d|90d|12m|custom>.
+ * GET /api/stores/:storeId/analytics/rich?range=<today|yesterday|7d|30d|90d|12m|all|custom>.
  * When range='custom', the caller must also send `from` + `to` (YYYY-MM-DD).
+ * range='all' = tous les temps (de la 1re commande à aujourd'hui).
  */
-export type RangeKey = 'today' | 'yesterday' | '7d' | '30d' | '90d' | '12m' | 'custom';
+export type RangeKey = 'today' | 'yesterday' | '7d' | '30d' | '90d' | '12m' | 'all' | 'custom';
 
 export interface KpiValue {
   value: number;
@@ -40,7 +41,7 @@ export interface StoreAnalyticsRich {
     totalOrders: number;
     totalCustomers: number;
   };
-  timeseries: Array<{ date: string; revenue: number; orders: number; paid: number }>;
+  timeseries: Array<{ date: string; revenue: number; sales: number; orders: number; paid: number }>;
   topProducts: Array<{
     productId: string;
     name: string;

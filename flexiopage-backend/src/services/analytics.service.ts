@@ -43,7 +43,7 @@ export interface StoreAnalytics {
   productViewsThisMonth?: number;
 }
 
-export type RangeKey = 'today' | 'yesterday' | '7d' | '30d' | '90d' | '12m' | 'custom';
+export type RangeKey = 'today' | 'yesterday' | '7d' | '30d' | '90d' | '12m' | 'all' | 'custom';
 
 export interface CustomRange {
   /** Inclusive start date — interpreted as local midnight. */
@@ -162,8 +162,8 @@ export interface StoreAnalyticsRich {
     totalOrders: number;
     totalCustomers: number;
   };
-  /** Revenue + orders bucketed by day (or month for 12m). */
-  timeseries: Array<{ date: string; revenue: number; orders: number; paid: number }>;
+  /** Revenue (paid) + sales (all orders) + orders bucketed by day (or month for 12m). */
+  timeseries: Array<{ date: string; revenue: number; sales: number; orders: number; paid: number }>;
   /** Top products by paid revenue in window. */
   topProducts: Array<{
     productId: string;
@@ -200,14 +200,14 @@ function pctDelta(curr: number, prev: number): number | null {
   return ((curr - prev) / prev) * 100;
 }
 
-function emptyBucket(from: Date, to: Date, bucket: 'day' | 'month'): Map<string, { revenue: number; orders: number; paid: number }> {
-  const out = new Map<string, { revenue: number; orders: number; paid: number }>();
+function emptyBucket(from: Date, to: Date, bucket: 'day' | 'month'): Map<string, { revenue: number; sales: number; orders: number; paid: number }> {
+  const out = new Map<string, { revenue: number; sales: number; orders: number; paid: number }>();
   const cursor = new Date(from);
   while (cursor <= to) {
     const key = bucket === 'day'
       ? cursor.toISOString().slice(0, 10)
       : `${cursor.getFullYear()}-${String(cursor.getMonth() + 1).padStart(2, '0')}`;
-    out.set(key, { revenue: 0, orders: 0, paid: 0 });
+    out.set(key, { revenue: 0, sales: 0, orders: 0, paid: 0 });
     if (bucket === 'day') cursor.setDate(cursor.getDate() + 1);
     else cursor.setMonth(cursor.getMonth() + 1);
   }
@@ -281,7 +281,21 @@ export async function getStoreAnalyticsRich(
   custom?: CustomRange
 ): Promise<StoreAnalyticsRich> {
   const storeObjectId = new mongoose.Types.ObjectId(storeId);
-  const w = resolveRange(range, new Date(), range === 'custom' ? custom : undefined);
+  let w: RangeWindow;
+  if (range === 'all') {
+    // « Tous les temps » : de la 1re commande de la boutique à aujourd'hui.
+    // On réutilise la logique 'custom' (buckets mensuels pour les longues
+    // fenêtres). Sans commande, on retombe sur la fenêtre du jour (vide).
+    const firstOrder = await Order.findOne({ storeId: storeObjectId })
+      .sort({ createdAt: 1 })
+      .select('createdAt')
+      .lean();
+    const now = new Date();
+    const from = firstOrder?.createdAt ? new Date(firstOrder.createdAt) : now;
+    w = resolveRange('custom', now, { from, to: now });
+  } else {
+    w = resolveRange(range, new Date(), range === 'custom' ? custom : undefined);
+  }
 
   const baseMatch = { storeId: storeObjectId };
   const inWindow = { ...baseMatch, createdAt: { $gte: w.from, $lte: w.to } };
@@ -366,7 +380,10 @@ export async function getStoreAnalyticsRich(
             : { $dateToString: { date: '$createdAt', format: '%Y-%m' } },
           orders: { $sum: 1 },
           paid: { $sum: { $cond: [{ $eq: ['$paymentStatus', 'paid'] }, 1, 0] } },
+          // `revenue` = encaissé (payé). `sales` = valeur de TOUTES les commandes
+          // (tout statut) — c'est la courbe utile en COD, alignée sur le KPI.
           revenue: { $sum: { $cond: [{ $eq: ['$paymentStatus', 'paid'] }, '$total', 0] } },
+          sales: { $sum: '$total' },
         },
       },
     ]),
@@ -424,8 +441,8 @@ export async function getStoreAnalyticsRich(
 
   // Build the dense timeseries — fill empty buckets with zeroes.
   const seriesMap = emptyBucket(w.from, w.to, w.bucket);
-  for (const row of seriesRaw as Array<{ _id: string; orders: number; paid: number; revenue: number }>) {
-    if (seriesMap.has(row._id)) seriesMap.set(row._id, { revenue: row.revenue, orders: row.orders, paid: row.paid });
+  for (const row of seriesRaw as Array<{ _id: string; orders: number; paid: number; revenue: number; sales: number }>) {
+    if (seriesMap.has(row._id)) seriesMap.set(row._id, { revenue: row.revenue, sales: row.sales, orders: row.orders, paid: row.paid });
   }
   const timeseries = Array.from(seriesMap.entries()).map(([date, v]) => ({ date, ...v }));
 

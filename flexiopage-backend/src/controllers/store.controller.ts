@@ -176,10 +176,10 @@ export async function getStoreAnalyticsController(req: AuthRequest, res: Respons
   res.json(analytics);
 }
 
-/** GET /api/stores/:storeId/analytics/rich?range=7d|30d|90d|12m|custom[&from=YYYY-MM-DD&to=YYYY-MM-DD] — full dashboard payload. */
+/** GET /api/stores/:storeId/analytics/rich?range=7d|30d|90d|12m|all|custom[&from=YYYY-MM-DD&to=YYYY-MM-DD] — full dashboard payload. */
 export async function getStoreAnalyticsRichController(req: AuthRequest, res: Response): Promise<void> {
   const store = req.store!;
-  const allowed: RangeKey[] = ['today', 'yesterday', '7d', '30d', '90d', '12m', 'custom'];
+  const allowed: RangeKey[] = ['today', 'yesterday', '7d', '30d', '90d', '12m', 'all', 'custom'];
   const raw = String(req.query.range || '30d');
   const range = (allowed as string[]).includes(raw) ? (raw as RangeKey) : '30d';
   let custom: { from: Date; to: Date } | undefined;

@@ -76,12 +76,14 @@ const RANGE_LABELS: Record<RangeKey, string> = {
   '30d': '30 jours',
   '90d': '90 jours',
   '12m': '12 mois',
+  all: 'Tous les temps',
   custom: 'Personnalisé',
 };
 
 /** Preset chips shown on the overview — kept short on purpose. The seller
- *  reaches for longer windows (90j / 12m) via the "Personnaliser" picker. */
-const QUICK_RANGES: ReadonlyArray<Exclude<RangeKey, 'custom' | '90d' | '12m'>> = ['today', 'yesterday', '7d', '30d'];
+ *  reaches for longer windows (90j / 12m) via the "Personnaliser" picker.
+ *  'all' = tous les temps (depuis la 1re commande de la boutique). */
+const QUICK_RANGES: ReadonlyArray<Exclude<RangeKey, 'custom' | '90d' | '12m'>> = ['today', 'yesterday', '7d', '30d', 'all'];
 
 function todayISO(): string {
   const d = new Date();
@@ -780,19 +782,22 @@ function ActionRow({
 function RevenueChart({
   timeseries, currency, loading,
 }: {
-  timeseries: Array<{ date: string; revenue: number; orders: number; paid: number }>;
+  timeseries: Array<{ date: string; revenue: number; sales: number; orders: number; paid: number }>;
   currency: string;
   loading?: boolean;
 }) {
+  // On trace `sales` (valeur de TOUTES les commandes), pas `revenue` (payé) :
+  // en COD le payé reste ~0 jusqu'à livraison → la courbe paraissait vide et
+  // ne bougeait pas. `sales` est aligné sur le KPI « Revenu total ».
   const data = timeseries.length > 0 ? timeseries : [];
-  const maxRev = Math.max(1, ...data.map((d) => d.revenue));
-  const totalRev = data.reduce((a, d) => a + d.revenue, 0);
   const totalOrders = data.reduce((a, d) => a + d.orders, 0);
+  const maxRev = Math.max(1, ...data.map((d) => d.sales));
+  const totalRev = data.reduce((a, d) => a + d.sales, 0);
   const w = 480, h = 100;
   const stepX = data.length > 1 ? w / (data.length - 1) : w;
   const pts = data.map((d, i) => ({
     x: i * stepX,
-    y: h - (d.revenue / maxRev) * (h - 8) - 4,
+    y: h - (d.sales / maxRev) * (h - 8) - 4,
   }));
   const linePath = pts.map((p, i) => `${i === 0 ? 'M' : 'L'} ${p.x.toFixed(1)} ${p.y.toFixed(1)}`).join(' ');
   const areaPath = `${linePath} L ${w.toFixed(1)} ${h} L 0 ${h} Z`;
@@ -814,9 +819,9 @@ function RevenueChart({
         </Link>
       </div>
       <div className="bg-gradient-to-br from-primary/[0.02] to-transparent p-4">
-        {data.length === 0 ? (
+        {data.length === 0 || totalOrders === 0 ? (
           <div className="grid h-[100px] place-items-center text-xs text-muted-foreground">
-            Pas encore de données — passe ta 1<sup>re</sup> commande pour voir le graphique.
+            Aucune commande sur cette période.
           </div>
         ) : (
           <svg viewBox={`0 0 ${w} ${h}`} className="h-[100px] w-full" preserveAspectRatio="none">
