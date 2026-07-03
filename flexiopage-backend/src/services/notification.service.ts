@@ -48,13 +48,14 @@ export async function notifyOrderCreated(args: {
   customerName?: string;
 }) {
   const who = args.customerName?.trim() || 'Nouveau client';
-  return createNotification({
+  const link = `/dashboard/orders?storeId=${args.storeId}`;
+  const notif = await createNotification({
     userId: args.userId,
     storeId: args.storeId,
     type: 'order.created',
     title: `Commande ${args.orderNumber}`,
     body: `${who} · ${args.total} ${args.currency}`,
-    link: `/dashboard/orders?storeId=${args.storeId}`,
+    link,
     meta: {
       orderId: args.orderId,
       orderNumber: args.orderNumber,
@@ -62,6 +63,20 @@ export async function notifyOrderCreated(args: {
       currency: args.currency,
     },
   });
+  // Push mobile (Expo) — best-effort, jamais bloquant. Utilise le son choisi
+  // par le vendeur. Import différé pour éviter tout cycle de dépendances.
+  try {
+    const { sendToUser } = await import('./push.service');
+    await sendToUser(args.userId, {
+      title: `Nouvelle commande ${args.orderNumber}`,
+      body: `${who} · ${args.total} ${args.currency}`,
+      link,
+      data: { type: 'order.created', orderId: args.orderId, orderNumber: args.orderNumber },
+    });
+  } catch {
+    /* non-fatal */
+  }
+  return notif;
 }
 
 export async function notifyOrderStatusChanged(args: {

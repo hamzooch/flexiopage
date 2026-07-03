@@ -12,6 +12,7 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { PushSoundPicker } from '@/components/dashboard/push-sound-picker';
 import { Label } from '@/components/ui/label';
 import { useAuthStore } from '@/stores/auth-store';
 import { useRouter } from 'next/navigation';
@@ -150,6 +151,9 @@ export default function SettingsPage() {
           />
         </CardContent>
       </Card>
+
+      {/* Son des notifications push (app mobile) */}
+      <PushSoundPicker />
 
       {/* Tarification */}
       <Card>

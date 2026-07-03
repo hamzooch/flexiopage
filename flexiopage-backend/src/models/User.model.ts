@@ -65,6 +65,10 @@ export interface IUser extends Document {
    * Géré depuis /admin/store-limits.
    */
   storeLimit?: number;
+  /** Tokens de push Expo des appareils du vendeur (multi-device). */
+  expoPushTokens?: string[];
+  /** Son de notification choisi par le vendeur (clé du catalogue push.service). */
+  pushSoundPreference?: string;
   /**
    * Seller's country (ISO 3166-1 alpha-2, e.g. 'TN', 'DZ', 'FR'). Drives the
    * default wallet currency and is shown on the profile.
@@ -114,6 +118,8 @@ const UserSchema = new Schema<IUser>(
     suspendedReason: { type: String },
     suspendedAt: { type: Date },
     storeLimit: { type: Number, min: 0 },
+    expoPushTokens: { type: [String], default: undefined },
+    pushSoundPreference: { type: String },
     country: { type: String, trim: true, uppercase: true, maxlength: 2 },
     currency: { type: String, trim: true, uppercase: true, maxlength: 3 },
     lastLoginAt: { type: Date },

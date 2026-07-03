@@ -5,6 +5,7 @@ import { Sidebar } from '@/components/dashboard/sidebar';
 import { Header } from '@/components/dashboard/header';
 import { AuthGuard } from '@/components/dashboard/auth-guard';
 import { EmailVerificationBanner } from '@/components/dashboard/email-verification-banner';
+import { PushRegistration } from '@/components/push-registration';
 import { isRtl, useLangStore } from '@/lib/i18n';
 
 export default function DashboardLayout({
@@ -26,6 +27,7 @@ export default function DashboardLayout({
 
   return (
     <AuthGuard>
+      <PushRegistration />
       <div className="flex min-h-screen bg-background">
         <Sidebar
           mobileOpen={mobileNavOpen}

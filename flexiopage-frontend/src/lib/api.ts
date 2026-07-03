@@ -1522,3 +1522,15 @@ export const whatsappBotApi = {
       conversionRate: number; conversationsUsedThisMonth: number | null; conversationsLimit: number | null;
     }>(wb(storeId, '/stats/overview')),
 };
+
+// Push mobile (Expo) — enregistrement du token de l'appareil + son de notif.
+export const pushApi = {
+  register: (token: string, sound?: string) =>
+    api.post<{ ok: boolean }>('/push/register', { token, sound }),
+  unregister: (token: string) =>
+    api.post<{ ok: boolean }>('/push/unregister', { token }),
+  getSounds: () =>
+    api.get<{ sounds: Array<{ key: string; label: string }>; default: string; selected: string }>('/push/sounds'),
+  setSound: (sound: string) =>
+    api.patch<{ ok: boolean; sound: string }>('/push/sound', { sound }),
+};
