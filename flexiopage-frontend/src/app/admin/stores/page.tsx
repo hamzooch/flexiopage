@@ -8,6 +8,7 @@ import { cn, storeAbsoluteUrl } from '@/lib/utils';
 import { Loader2, Cloud, Package, ExternalLink, Search, X, Download } from 'lucide-react';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
+import { BotLimitDialog } from '@/components/admin/bot-limit-dialog';
 
 type TypeFilter = 'all' | 'physical' | 'digital';
 type StatusFilter = 'all' | 'live' | 'draft';
@@ -186,13 +187,16 @@ export default function AdminStoresPage() {
                         </span>
                       </td>
                       <td className="py-3 text-right">
-                        <Link
-                          href={storeAbsoluteUrl(s.slug)}
-                          target="_blank"
-                          className="inline-flex items-center gap-1 text-xs text-primary hover:underline"
-                        >
-                          Voir <ExternalLink className="h-3 w-3" />
-                        </Link>
+                        <div className="inline-flex items-center gap-2">
+                          <BotLimitDialog storeId={s._id} storeName={s.name} />
+                          <Link
+                            href={storeAbsoluteUrl(s.slug)}
+                            target="_blank"
+                            className="inline-flex items-center gap-1 text-xs text-primary hover:underline"
+                          >
+                            Voir <ExternalLink className="h-3 w-3" />
+                          </Link>
+                        </div>
                       </td>
                     </tr>
                   );

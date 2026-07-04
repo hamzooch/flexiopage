@@ -648,6 +648,17 @@ export const adminApi = {
       data,
     ),
 
+  // ── Limites de messages du chatbot (par boutique / canal) ──
+  getStoreBotLimits: (storeId: string) =>
+    api.get<{ bots: Array<{ channel: string; messages_limit: number | null; messages_limit_max: number | null }> }>(
+      `/admin/stores/${storeId}/bot-limits`,
+    ),
+  setStoreBotLimits: (storeId: string, data: { messages_limit_max: number; messages_limit?: number; channel?: 'messenger' | 'whatsapp' }) =>
+    api.patch<{ ok: boolean; bots: Array<{ channel: string; messages_limit: number | null; messages_limit_max: number | null }> }>(
+      `/admin/stores/${storeId}/bot-limits`,
+      data,
+    ),
+
   // ── Reports ──
   reports: (params?: { months?: number }) =>
     api.get<{ months: AdminReportRow[] }>('/admin/reports', { params }),
