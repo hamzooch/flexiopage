@@ -1,18 +1,20 @@
 'use client';
 
 import { useState } from 'react';
-import { adminApi } from '@/lib/api';
+import { adminApi, type AdminBotLimit } from '@/lib/api';
 import { Dialog, DialogContent, DialogHeader, DialogBody, DialogFooter } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { MessageSquare, Loader2 } from 'lucide-react';
 
-type Bot = { channel: string; messages_limit: number | null; messages_limit_max: number | null };
+type Bot = AdminBotLimit;
 
 /**
- * Éditeur admin des limites de messages du chatbot d'une boutique.
- * Plafond (messages_limit_max) = max que l'owner peut se donner.
- * Limite imposée (messages_limit, optionnel) = valeur forcée maintenant.
- * Vide / 0 = illimité (le bot n'est jamais coupé — metering OPT-IN).
+ * Éditeur admin des limites du chatbot d'une boutique.
+ * - Quota conversations/mois (conversations_limit) = ce qui COUPE réellement le
+ *   bot une fois atteint (défaut 50). C'est la limite à monter pour débloquer.
+ * - Plafond (messages_limit_max) = max de messages que l'owner peut se donner.
+ * - Limite imposée messages (messages_limit, optionnel) = valeur forcée ; vide/0
+ *   = illimité (metering OPT-IN, le bot n'est jamais coupé par les messages).
  */
 export function BotLimitDialog({
   storeId,
@@ -29,6 +31,7 @@ export function BotLimitDialog({
   const [bots, setBots] = useState<Bot[] | null>(null);
   const [cap, setCap] = useState<string>('');
   const [limit, setLimit] = useState<string>('');
+  const [convLimit, setConvLimit] = useState<string>('');
   const [msg, setMsg] = useState<string>('');
 
   async function load() {
@@ -42,6 +45,7 @@ export function BotLimitDialog({
       const first = list[0];
       setCap(first?.messages_limit_max != null ? String(first.messages_limit_max) : '');
       setLimit(first?.messages_limit != null ? String(first.messages_limit) : '');
+      setConvLimit(first?.conversations_limit != null ? String(first.conversations_limit) : '');
     } catch {
       setBots([]);
     } finally {
@@ -60,11 +64,19 @@ export function BotLimitDialog({
       setMsg('Le plafond doit être un entier entre 0 et 1 000 000.');
       return;
     }
+    if (convLimit.trim() !== '') {
+      const cN = Number(convLimit);
+      if (!Number.isInteger(cN) || cN < 0 || cN > 1_000_000) {
+        setMsg('Les conversations/mois doivent être un entier entre 0 et 1 000 000.');
+        return;
+      }
+    }
     setSaving(true);
     setMsg('');
     try {
-      const data: { messages_limit_max: number; messages_limit?: number } = { messages_limit_max: capN };
+      const data: { messages_limit_max: number; messages_limit?: number; conversations_limit?: number } = { messages_limit_max: capN };
       if (limit.trim() !== '') data.messages_limit = Number(limit);
+      if (convLimit.trim() !== '') data.conversations_limit = Number(convLimit);
       const res = await adminApi.setStoreBotLimits(storeId, data);
       setBots(res.data.bots || []);
       setMsg('✓ Enregistré.');
@@ -102,14 +114,33 @@ export function BotLimitDialog({
               <>
                 <div className="rounded-lg border border-border/60 bg-muted/20 p-3 text-xs">
                   <p className="mb-1 font-semibold text-muted-foreground">Bots actuels :</p>
-                  {bots.map((b) => (
-                    <div key={b.channel} className="flex justify-between">
-                      <span className="capitalize">{b.channel}</span>
-                      <span className="tabular-nums text-muted-foreground">
-                        limite {b.messages_limit ?? '∞'} · plafond {b.messages_limit_max ?? '∞'}
-                      </span>
-                    </div>
-                  ))}
+                  {bots.map((b) => {
+                    const capped = b.conversations_limit != null && b.conversations_used_this_month >= b.conversations_limit;
+                    return (
+                      <div key={b.channel} className="flex justify-between gap-2">
+                        <span className="capitalize">{b.channel}</span>
+                        <span className="tabular-nums text-muted-foreground">
+                          <span className={capped ? 'font-semibold text-amber-600' : ''}>
+                            {b.conversations_used_this_month}/{b.conversations_limit ?? '∞'} conv.{capped ? ' ⚠️' : ''}
+                          </span>
+                          {' · '}msg {b.messages_limit ?? '∞'}/{b.messages_limit_max ?? '∞'}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold text-muted-foreground">Conversations / mois (quota qui coupe le bot)</label>
+                  <input
+                    type="number" min={0} value={convLimit}
+                    onChange={(e) => setConvLimit(e.target.value)}
+                    placeholder="ex. 1000"
+                    className="h-10 w-full rounded-lg border border-border/60 bg-background px-3 text-sm outline-none focus:border-primary focus:ring-1 focus:ring-primary"
+                  />
+                  <p className="text-[11px] text-muted-foreground">
+                    <strong>C’est cette limite qui bloque réellement le bot</strong> une fois atteinte (défaut 50/mois). Monte-la pour débloquer le vendeur.
+                  </p>
                 </div>
 
                 <div className="space-y-1.5">

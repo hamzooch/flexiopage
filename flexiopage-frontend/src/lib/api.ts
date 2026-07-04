@@ -652,14 +652,12 @@ export const adminApi = {
   listBotLimits: () =>
     api.get<{ items: AdminBotLimitStore[] }>('/admin/bot-limits'),
   getStoreBotLimits: (storeId: string) =>
-    api.get<{ bots: Array<{ channel: string; messages_limit: number | null; messages_limit_max: number | null }> }>(
-      `/admin/stores/${storeId}/bot-limits`,
-    ),
-  setStoreBotLimits: (storeId: string, data: { messages_limit_max: number; messages_limit?: number; channel?: 'messenger' | 'whatsapp' }) =>
-    api.patch<{ ok: boolean; bots: Array<{ channel: string; messages_limit: number | null; messages_limit_max: number | null }> }>(
-      `/admin/stores/${storeId}/bot-limits`,
-      data,
-    ),
+    api.get<{ bots: AdminBotLimit[] }>(`/admin/stores/${storeId}/bot-limits`),
+  setStoreBotLimits: (
+    storeId: string,
+    data: { messages_limit_max: number; messages_limit?: number; conversations_limit?: number; channel?: 'messenger' | 'whatsapp' },
+  ) =>
+    api.patch<{ ok: boolean; bots: AdminBotLimit[] }>(`/admin/stores/${storeId}/bot-limits`, data),
 
   // ── Reports ──
   reports: (params?: { months?: number }) =>
@@ -856,12 +854,20 @@ export interface AdminStoreLimitUser {
   currentStores: number;
 }
 
+export interface AdminBotLimit {
+  channel: string;
+  messages_limit: number | null;
+  messages_limit_max: number | null;
+  conversations_limit: number | null;
+  conversations_used_this_month: number;
+}
+
 export interface AdminBotLimitStore {
   _id: string;
   name: string;
   slug: string;
   owner: { name: string; email: string } | null;
-  bots: Array<{ channel: string; messages_limit: number | null; messages_limit_max: number | null }>;
+  bots: AdminBotLimit[];
 }
 
 export interface AdminHealth {

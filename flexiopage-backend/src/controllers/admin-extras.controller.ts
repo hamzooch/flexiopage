@@ -864,13 +864,15 @@ export async function getStoreBotLimits(req: AuthRequest, res: Response): Promis
   const { storeId } = req.params;
   if (!mongoose.isValidObjectId(storeId)) { res.status(400).json({ error: 'Invalid storeId' }); return; }
   const bots = await BotConfig.find({ vendor_id: storeId })
-    .select('channel messages_limit messages_limit_max conversations_limit')
+    .select('channel messages_limit messages_limit_max conversations_limit conversations_used_this_month')
     .lean();
   res.json({
     bots: bots.map((b) => ({
       channel: b.channel,
       messages_limit: b.messages_limit ?? null,
       messages_limit_max: b.messages_limit_max ?? null,
+      conversations_limit: b.conversations_limit ?? null,
+      conversations_used_this_month: b.conversations_used_this_month ?? 0,
     })),
   });
 }
@@ -882,10 +884,10 @@ export async function getStoreBotLimits(req: AuthRequest, res: Response): Promis
  */
 export async function listBotLimits(_req: AuthRequest, res: Response): Promise<void> {
   const bots = await BotConfig.find({})
-    .select('vendor_id channel messages_limit messages_limit_max')
+    .select('vendor_id channel messages_limit messages_limit_max conversations_limit conversations_used_this_month')
     .lean();
 
-  const byStore = new Map<string, Array<{ channel: string; messages_limit: number | null; messages_limit_max: number | null }>>();
+  const byStore = new Map<string, Array<{ channel: string; messages_limit: number | null; messages_limit_max: number | null; conversations_limit: number | null; conversations_used_this_month: number }>>();
   for (const b of bots) {
     const sid = String(b.vendor_id);
     if (!byStore.has(sid)) byStore.set(sid, []);
@@ -893,6 +895,8 @@ export async function listBotLimits(_req: AuthRequest, res: Response): Promise<v
       channel: b.channel,
       messages_limit: b.messages_limit ?? null,
       messages_limit_max: b.messages_limit_max ?? null,
+      conversations_limit: b.conversations_limit ?? null,
+      conversations_used_this_month: b.conversations_used_this_month ?? 0,
     });
   }
 
@@ -933,7 +937,7 @@ export async function setStoreBotLimits(req: AuthRequest, res: Response): Promis
   const { storeId } = req.params;
   if (!mongoose.isValidObjectId(storeId)) { res.status(400).json({ error: 'Invalid storeId' }); return; }
 
-  const body = (req.body || {}) as { messages_limit_max?: unknown; messages_limit?: unknown; channel?: unknown };
+  const body = (req.body || {}) as { messages_limit_max?: unknown; messages_limit?: unknown; conversations_limit?: unknown; channel?: unknown };
   const cap = Number(body.messages_limit_max);
   if (!Number.isInteger(cap) || cap < 0 || cap > 1_000_000) {
     res.status(400).json({ error: 'messages_limit_max doit être un entier 0–1 000 000.' });
@@ -948,16 +952,27 @@ export async function setStoreBotLimits(req: AuthRequest, res: Response): Promis
     }
     forcedLimit = Math.min(n, cap);
   }
+  // Quota de conversations/mois (le champ qui coupe réellement le bot). Optionnel.
+  let convLimit: number | undefined;
+  if (body.conversations_limit !== undefined && body.conversations_limit !== null && body.conversations_limit !== '') {
+    const n = Number(body.conversations_limit);
+    if (!Number.isInteger(n) || n < 0 || n > 1_000_000) {
+      res.status(400).json({ error: 'conversations_limit doit être un entier 0–1 000 000.' });
+      return;
+    }
+    convLimit = n;
+  }
   const filter: Record<string, unknown> = { vendor_id: storeId };
   if (body.channel === 'messenger' || body.channel === 'whatsapp') filter.channel = body.channel;
 
-  const bots = await BotConfig.find(filter).select('channel messages_limit messages_limit_max');
+  const bots = await BotConfig.find(filter).select('channel messages_limit messages_limit_max conversations_limit conversations_used_this_month');
   if (!bots.length) { res.status(404).json({ error: 'Aucun bot pour cette boutique.' }); return; }
 
   for (const b of bots) {
     b.messages_limit_max = cap;
     // Limite courante : soit forcée par l'admin, soit re-bornée au plafond.
     b.messages_limit = forcedLimit !== undefined ? forcedLimit : Math.min(b.messages_limit ?? cap, cap);
+    if (convLimit !== undefined) b.conversations_limit = convLimit;
     await b.save();
   }
 
@@ -966,13 +981,19 @@ export async function setStoreBotLimits(req: AuthRequest, res: Response): Promis
     req,
     targetId: storeId,
     targetType: 'store',
-    summary: `Plafond messages bot → ${cap}${forcedLimit !== undefined ? ` (limite forcée ${forcedLimit})` : ''} (${body.channel || 'tous canaux'})`,
-    metadata: { messages_limit_max: cap, messages_limit: forcedLimit ?? null, channel: body.channel || 'all' },
+    summary: `Plafond messages bot → ${cap}${forcedLimit !== undefined ? ` (limite forcée ${forcedLimit})` : ''}${convLimit !== undefined ? ` · conversations → ${convLimit}` : ''} (${body.channel || 'tous canaux'})`,
+    metadata: { messages_limit_max: cap, messages_limit: forcedLimit ?? null, conversations_limit: convLimit ?? null, channel: body.channel || 'all' },
   });
 
   res.json({
     ok: true,
-    bots: bots.map((b) => ({ channel: b.channel, messages_limit: b.messages_limit, messages_limit_max: b.messages_limit_max })),
+    bots: bots.map((b) => ({
+      channel: b.channel,
+      messages_limit: b.messages_limit,
+      messages_limit_max: b.messages_limit_max,
+      conversations_limit: b.conversations_limit ?? null,
+      conversations_used_this_month: b.conversations_used_this_month ?? 0,
+    })),
   });
 }
 

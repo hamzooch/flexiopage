@@ -290,11 +290,20 @@ export default function AdminStoreLimitsPage() {
                       {s.owner?.name || '—'}{s.owner?.email ? ` · ${s.owner.email}` : ''}
                     </div>
                     <div className="mt-1 flex flex-wrap gap-1.5">
-                      {s.bots.map((b) => (
-                        <span key={b.channel} className="rounded-full border bg-muted/30 px-2 py-0.5 text-[11px] tabular-nums text-muted-foreground">
-                          <span className="capitalize">{b.channel}</span> · limite {b.messages_limit ?? '∞'} · plafond {b.messages_limit_max ?? '∞'}
-                        </span>
-                      ))}
+                      {s.bots.map((b) => {
+                        const capped = b.conversations_limit != null && b.conversations_used_this_month >= b.conversations_limit;
+                        return (
+                          <span
+                            key={b.channel}
+                            className={cn(
+                              'rounded-full border px-2 py-0.5 text-[11px] tabular-nums',
+                              capped ? 'border-amber-500/40 bg-amber-500/10 text-amber-700' : 'bg-muted/30 text-muted-foreground',
+                            )}
+                          >
+                            <span className="capitalize">{b.channel}</span> · {b.conversations_used_this_month}/{b.conversations_limit ?? '∞'} conv.{capped ? ' ⚠️' : ''} · msg {b.messages_limit ?? '∞'}/{b.messages_limit_max ?? '∞'}
+                          </span>
+                        );
+                      })}
                     </div>
                   </div>
                   <BotLimitDialog storeId={s._id} storeName={s.name} onSaved={load} />
