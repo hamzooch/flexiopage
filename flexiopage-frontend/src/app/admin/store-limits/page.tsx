@@ -51,6 +51,7 @@ export default function AdminStoreLimitsPage() {
 
   const [search, setSearch] = useState('');
   const [botSearch, setBotSearch] = useState('');
+  const [tab, setTab] = useState<'stores' | 'chatbot'>('stores');
 
   const load = useCallback(async () => {
     setRefreshing(true);
@@ -157,9 +158,35 @@ export default function AdminStoreLimitsPage() {
         </Button>
       </div>
 
+      {/* Onglets */}
+      <nav role="tablist" className="inline-flex rounded-2xl border border-border/60 bg-card p-1 shadow-sm overflow-x-auto">
+        {([
+          { id: 'stores', label: 'Limites boutiques', icon: Store },
+          { id: 'chatbot', label: 'Limites chatbot', icon: MessageSquare },
+        ] as const).map((t) => {
+          const isActive = tab === t.id;
+          return (
+            <button
+              key={t.id}
+              role="tab"
+              aria-selected={isActive}
+              onClick={() => setTab(t.id)}
+              className={cn(
+                'inline-flex items-center gap-2 rounded-xl px-3.5 py-2 text-sm font-medium transition-all whitespace-nowrap sm:px-4',
+                isActive ? 'gradient-brand text-white shadow-md shadow-primary/30' : 'text-muted-foreground hover:text-foreground',
+              )}
+            >
+              <t.icon className="h-4 w-4" />
+              <span>{t.label}</span>
+            </button>
+          );
+        })}
+      </nav>
+
       {error && <p className="rounded-md bg-rose-500/10 px-3 py-2 text-xs text-rose-700">{error}</p>}
 
-      {/* ── Limites de boutiques : tous les vendeurs ── */}
+      {/* ── Onglet : Limites de boutiques (tous les vendeurs) ── */}
+      {tab === 'stores' && (
       <Card>
         <CardHeader>
           <div className="flex flex-wrap items-center justify-between gap-3">
@@ -250,8 +277,10 @@ export default function AdminStoreLimitsPage() {
           )}
         </CardContent>
       </Card>
+      )}
 
-      {/* ── Limites messages chatbot ── */}
+      {/* ── Onglet : Limites messages chatbot ── */}
+      {tab === 'chatbot' && (
       <Card>
         <CardHeader>
           <div className="flex flex-wrap items-center justify-between gap-3">
@@ -313,6 +342,7 @@ export default function AdminStoreLimitsPage() {
           )}
         </CardContent>
       </Card>
+      )}
     </div>
   );
 }
