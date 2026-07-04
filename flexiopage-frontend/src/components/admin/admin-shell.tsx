@@ -57,7 +57,7 @@ const SECTIONS: { title: string; items: NavItem[] }[] = [
     items: [
       { href: '/admin/users',      label: 'Utilisateurs', icon: Users },
       { href: '/admin/stores',     label: 'Boutiques',    icon: Store },
-      { href: '/admin/store-limits', label: 'Limites boutiques', icon: Store },
+      { href: '/admin/store-limits', label: 'Limites', icon: Store },
       { href: '/admin/wallets',    label: 'Wallets',      icon: Wallet },
       { href: '/admin/complaints', label: 'Réclamations', icon: MessageSquare },
     ],
@@ -280,7 +280,7 @@ function labelFromPath(path: string): string {
   const map: Record<string, string> = {
     users: 'Utilisateurs',
     stores: 'Boutiques',
-    'store-limits': 'Limites boutiques',
+    'store-limits': 'Limites',
     orders: 'Commandes',
     wallets: 'Wallets',
     pricing: 'Tarifs AI',

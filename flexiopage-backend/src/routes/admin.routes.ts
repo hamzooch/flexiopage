@@ -82,6 +82,7 @@ router.get('/store-limits', adminExtras.getStoreLimits);
 router.patch('/users/:userId/store-limit', requireAdminWrite, adminExtras.setUserStoreLimit);
 
 // ── Limites de messages chatbot (plafond admin ; l'owner ajuste dessous) ──
+router.get('/bot-limits', adminExtras.listBotLimits);
 router.get('/stores/:storeId/bot-limits', adminExtras.getStoreBotLimits);
 router.patch('/stores/:storeId/bot-limits', requireAdminWrite, adminExtras.setStoreBotLimits);
 

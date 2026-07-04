@@ -649,6 +649,8 @@ export const adminApi = {
     ),
 
   // ── Limites de messages du chatbot (par boutique / canal) ──
+  listBotLimits: () =>
+    api.get<{ items: AdminBotLimitStore[] }>('/admin/bot-limits'),
   getStoreBotLimits: (storeId: string) =>
     api.get<{ bots: Array<{ channel: string; messages_limit: number | null; messages_limit_max: number | null }> }>(
       `/admin/stores/${storeId}/bot-limits`,
@@ -852,6 +854,14 @@ export interface AdminStoreLimitUser {
   role: 'owner' | 'superadmin' | 'admin' | 'supervisor' | 'user';
   storeLimit: number | null;
   currentStores: number;
+}
+
+export interface AdminBotLimitStore {
+  _id: string;
+  name: string;
+  slug: string;
+  owner: { name: string; email: string } | null;
+  bots: Array<{ channel: string; messages_limit: number | null; messages_limit_max: number | null }>;
 }
 
 export interface AdminHealth {

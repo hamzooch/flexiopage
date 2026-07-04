@@ -876,6 +876,51 @@ export async function getStoreBotLimits(req: AuthRequest, res: Response): Promis
 }
 
 /**
+ * GET /api/admin/bot-limits — liste de toutes les boutiques ayant au moins un
+ * bot (Messenger/WhatsApp), avec leurs limites de messages par canal. Sert la
+ * vue « Limites chatbot » de la page admin des limites (aperçu global).
+ */
+export async function listBotLimits(_req: AuthRequest, res: Response): Promise<void> {
+  const bots = await BotConfig.find({})
+    .select('vendor_id channel messages_limit messages_limit_max')
+    .lean();
+
+  const byStore = new Map<string, Array<{ channel: string; messages_limit: number | null; messages_limit_max: number | null }>>();
+  for (const b of bots) {
+    const sid = String(b.vendor_id);
+    if (!byStore.has(sid)) byStore.set(sid, []);
+    byStore.get(sid)!.push({
+      channel: b.channel,
+      messages_limit: b.messages_limit ?? null,
+      messages_limit_max: b.messages_limit_max ?? null,
+    });
+  }
+
+  const storeIds = [...byStore.keys()].filter((id) => mongoose.isValidObjectId(id));
+  const stores = storeIds.length
+    ? await Store.find({ _id: { $in: storeIds } })
+        .select('name slug ownerId')
+        .populate('ownerId', 'name email')
+        .lean()
+    : [];
+
+  const items = stores
+    .map((s) => {
+      const owner = s.ownerId as unknown as { name?: string; email?: string } | null;
+      return {
+        _id: String(s._id),
+        name: s.name,
+        slug: s.slug,
+        owner: owner ? { name: owner.name || '', email: owner.email || '' } : null,
+        bots: byStore.get(String(s._id)) || [],
+      };
+    })
+    .sort((a, b) => a.name.localeCompare(b.name));
+
+  res.json({ items });
+}
+
+/**
  * PATCH /api/admin/stores/:storeId/bot-limits — body {
  *   messages_limit_max: number,   // plafond (obligatoire), entier 0–1_000_000
  *   messages_limit?: number,      // optionnel : force aussi la limite courante

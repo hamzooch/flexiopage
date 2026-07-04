@@ -14,7 +14,15 @@ type Bot = { channel: string; messages_limit: number | null; messages_limit_max:
  * Limite imposée (messages_limit, optionnel) = valeur forcée maintenant.
  * Vide / 0 = illimité (le bot n'est jamais coupé — metering OPT-IN).
  */
-export function BotLimitDialog({ storeId, storeName }: { storeId: string; storeName: string }) {
+export function BotLimitDialog({
+  storeId,
+  storeName,
+  onSaved,
+}: {
+  storeId: string;
+  storeName: string;
+  onSaved?: () => void;
+}) {
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -60,6 +68,7 @@ export function BotLimitDialog({ storeId, storeName }: { storeId: string; storeN
       const res = await adminApi.setStoreBotLimits(storeId, data);
       setBots(res.data.bots || []);
       setMsg('✓ Enregistré.');
+      onSaved?.();
     } catch {
       setMsg('Échec de l’enregistrement.');
     } finally {
