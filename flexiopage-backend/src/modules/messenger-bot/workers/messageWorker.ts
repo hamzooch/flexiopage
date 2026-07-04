@@ -144,19 +144,25 @@ export async function processIncomingMessage(job: IncomingMessageJob): Promise<P
   // vendeur est notifié. Si le solde IA est épuisé → on ne répond pas (message
   // non compté), le vendeur est notifié pour recharger.
   if (vendor?.ownerId) {
-    const period = currentPeriod();
-    const usage = await BotUsage.findOne({ vendor_id: config.vendor_id, period })
-      .select('messages_count')
-      .lean();
-    const meter = await enforceMessageLimit({
-      config,
-      storeOwnerId: String(vendor.ownerId),
-      storeId: String(config.vendor_id),
-      period,
-      usedBefore: usage?.messages_count || 0,
-    });
-    if (!meter.allowed) {
-      return { replyText: '', toolsUsed: [], tokensInput: 0, tokensOutput: 0, costUsd: 0 };
+    // Fail-open absolu : toute erreur du metering NE DOIT JAMAIS empêcher le bot
+    // de répondre (un bug de facturation ne coupe pas un bot en prod).
+    try {
+      const period = currentPeriod();
+      const usage = await BotUsage.findOne({ vendor_id: config.vendor_id, period })
+        .select('messages_count')
+        .lean();
+      const meter = await enforceMessageLimit({
+        config,
+        storeOwnerId: String(vendor.ownerId),
+        storeId: String(config.vendor_id),
+        period,
+        usedBefore: usage?.messages_count || 0,
+      });
+      if (!meter.allowed) {
+        return { replyText: '', toolsUsed: [], tokensInput: 0, tokensOutput: 0, costUsd: 0 };
+      }
+    } catch (err) {
+      logger.warn({ err: (err as Error).message, vendorId: String(config.vendor_id) }, '[bot] metering en échec — fail-open, le bot répond');
     }
   }
 

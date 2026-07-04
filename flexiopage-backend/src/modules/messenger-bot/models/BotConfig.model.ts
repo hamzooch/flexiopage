@@ -228,8 +228,9 @@ const BotConfigSchema = new Schema<IBotConfig>(
     conversations_used_this_month: { type: Number, default: 0 },
     month_reset_date: { type: Date },
 
-    // Limite de messages/mois (owner ≤ messages_limit_max fixé par l'admin).
-    messages_limit: { type: Number, default: 1000, min: 0 },
+    // Limite de messages/mois — OPT-IN : non définie = illimité (le bot répond
+    // toujours). N'est active que si l'owner/admin pose une valeur > 0.
+    messages_limit: { type: Number, min: 0 },
     messages_limit_max: { type: Number, default: 1000, min: 0 },
     over_limit_notified_period: { type: String },
     ai_empty_notified_period: { type: String },

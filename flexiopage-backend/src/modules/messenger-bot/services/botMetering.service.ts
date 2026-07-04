@@ -70,7 +70,13 @@ export async function enforceMessageLimit(args: {
   usedBefore: number;
 }): Promise<MeterResult> {
   const { config, storeOwnerId, storeId, period, usedBefore } = args;
-  const limit = Math.max(0, config.messages_limit ?? 1000);
+  const limit = config.messages_limit;
+
+  // Métrage OPT-IN : sans limite explicite (> 0), le bot répond TOUJOURS et
+  // n'est jamais facturé. Évite qu'une limite par défaut coupe un bot en prod.
+  if (limit == null || !Number.isFinite(limit) || limit <= 0) {
+    return { allowed: true, billed: false, reason: 'included', chargedTokens: 0 };
+  }
 
   // Le message entrant est le n°(usedBefore + 1). Inclus tant que usedBefore < limit.
   if (usedBefore < limit) {
@@ -95,7 +101,10 @@ export async function enforceMessageLimit(args: {
       );
       return { allowed: false, billed: false, reason: 'ai_balance_empty', chargedTokens: 0 };
     }
-    throw err;
+    // Erreur inattendue (DB, wallet…) → FAIL-OPEN : on ne coupe jamais le bot
+    // pour un bug de facturation. On laisse répondre.
+    logger.warn({ err: (err as Error).message }, '[bot-metering] débit échoué — fail-open (le bot répond)');
+    return { allowed: true, billed: false, reason: 'included', chargedTokens: 0 };
   }
 
   // Prélèvement OK → premier dépassement de la période : on prévient le vendeur.
