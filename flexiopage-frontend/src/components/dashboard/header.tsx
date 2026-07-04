@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button';
 import { useAuthStore, readPersistedUser } from '@/stores/auth-store';
 import { useStoreStore } from '@/stores/store-store';
 import { storesApi } from '@/lib/api';
-import { cn } from '@/lib/utils';
+import { cn, logoutRedirectPath } from '@/lib/utils';
 import { WalletBadges } from '@/components/dashboard/wallet-badges';
 import { NotificationsBell } from '@/components/dashboard/notifications-bell';
 import { LanguageSwitcher } from '@/components/dashboard/language-switcher';
@@ -106,7 +106,8 @@ export function Header({ onOpenMobileNav }: Props = {}) {
     useStoreStore.getState().clearCurrentStore();
     // `replace` pour évincer le dashboard de l'historique — sans ça, la flèche
     // retour ramène sur une page protégée qui re-redirige sur /login.
-    router.replace('/');
+    // Web → landing ; app mobile → /login direct (pas de site marketing).
+    router.replace(logoutRedirectPath());
     router.refresh();
   }
 

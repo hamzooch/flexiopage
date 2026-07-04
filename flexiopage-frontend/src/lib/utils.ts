@@ -131,3 +131,20 @@ export function mediaUrl(url?: string | null): string | undefined {
   const apiBase = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000').replace(/\/$/, '');
   return `${apiBase}${url.startsWith('/') ? '' : '/'}${url}`;
 }
+
+/**
+ * True si on tourne DANS l'app mobile FlexioPage (WebView native), détectée
+ * via le marqueur `FlexioPageApp` posé sur le user-agent par WebShell.
+ */
+export function isMobileApp(): boolean {
+  return typeof navigator !== 'undefined' && /FlexioPageApp/i.test(navigator.userAgent);
+}
+
+/**
+ * Destination après déconnexion : la landing marketing sur le WEB, mais
+ * directement `/login` dans l'app mobile — le vendeur ne doit jamais voir le
+ * site marketing ni la landing dans l'app.
+ */
+export function logoutRedirectPath(): string {
+  return isMobileApp() ? '/login' : '/';
+}

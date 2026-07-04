@@ -15,6 +15,7 @@ import { Button } from '@/components/ui/button';
 import { PushSoundPicker } from '@/components/dashboard/push-sound-picker';
 import { Label } from '@/components/ui/label';
 import { useAuthStore } from '@/stores/auth-store';
+import { logoutRedirectPath } from '@/lib/utils';
 import { useRouter } from 'next/navigation';
 import {
   Globe,
@@ -76,7 +77,8 @@ export default function SettingsPage() {
 
   function handleLogout() {
     logout();
-    router.replace('/');
+    // Web → landing ; app mobile → /login direct (pas de site marketing).
+    router.replace(logoutRedirectPath());
   }
 
   return (
