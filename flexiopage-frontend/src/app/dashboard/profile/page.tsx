@@ -58,6 +58,7 @@ interface UserDoc {
   createdAt?: string;
   country?: string;
   currency?: string;
+  whatsapp?: string;
 }
 
 interface StoreDoc {
@@ -98,6 +99,8 @@ export default function ProfilePage() {
 
   const [user, setUser] = useState<UserDoc | null>(null);
   const [name, setName] = useState('');
+  const [whatsapp, setWhatsapp] = useState('');
+  const [whatsappError, setWhatsappError] = useState('');
   const [avatar, setAvatar] = useState('');
   const [avatarEditing, setAvatarEditing] = useState(false);
   const [country, setCountry] = useState('');
@@ -154,6 +157,7 @@ export default function ProfilePage() {
         const u = (profileRes.data as { user: UserDoc }).user;
         setUser(u);
         setName(u.name || '');
+        setWhatsapp(u.whatsapp || '');
         setAvatar(u.avatar || '');
         setCountry(u.country || '');
         setCurrency(u.currency || '');
@@ -249,15 +253,23 @@ export default function ProfilePage() {
     e.preventDefault();
     const trimmedName = name.trim();
     const trimmedAvatar = avatar.trim();
+    const cleanWhatsapp = whatsapp.replace(/\s+/g, '');
     const nameChanged = trimmedName && trimmedName !== user?.name;
     const avatarChanged = trimmedAvatar !== (user?.avatar || '');
-    if (!nameChanged && !avatarChanged) return;
+    const whatsappChanged = cleanWhatsapp !== (user?.whatsapp || '');
+    setWhatsappError('');
+    if (whatsappChanged && cleanWhatsapp && !/^\+[1-9]\d{6,14}$/.test(cleanWhatsapp)) {
+      setWhatsappError('Numéro WhatsApp invalide. Format international attendu, ex : +212600000000');
+      return;
+    }
+    if (!nameChanged && !avatarChanged && !whatsappChanged) return;
     setSavingName(true);
     setNameSaved(false);
     try {
-      const payload: { name?: string; avatar?: string } = {};
+      const payload: { name?: string; avatar?: string; whatsapp?: string } = {};
       if (nameChanged) payload.name = trimmedName;
       if (avatarChanged) payload.avatar = trimmedAvatar;
+      if (whatsappChanged) payload.whatsapp = cleanWhatsapp;
       await usersApi.updateProfile(payload);
       if (authUser && token) {
         setAuth({
@@ -266,7 +278,8 @@ export default function ProfilePage() {
           ...(avatarChanged ? { avatar: trimmedAvatar } : {}),
         }, token);
       }
-      setUser((u) => (u ? { ...u, ...(nameChanged ? { name: trimmedName } : {}), ...(avatarChanged ? { avatar: trimmedAvatar } : {}) } : u));
+      setUser((u) => (u ? { ...u, ...(nameChanged ? { name: trimmedName } : {}), ...(avatarChanged ? { avatar: trimmedAvatar } : {}), ...(whatsappChanged ? { whatsapp: cleanWhatsapp } : {}) } : u));
+      if (whatsappChanged) setWhatsapp(cleanWhatsapp);
       setAvatarEditing(false);
       setNameSaved(true);
       window.setTimeout(() => setNameSaved(false), 2200);
@@ -780,6 +793,23 @@ export default function ProfilePage() {
                 />
               </div>
 
+              <div>
+                <Label htmlFor="whatsapp">Numéro WhatsApp</Label>
+                <Input
+                  id="whatsapp"
+                  type="tel"
+                  value={whatsapp}
+                  onChange={(e) => { setWhatsapp(e.target.value); if (whatsappError) setWhatsappError(''); }}
+                  placeholder="+212600000000"
+                  className="mt-1"
+                />
+                {whatsappError ? (
+                  <p className="mt-1 text-[11px] text-destructive">{whatsappError}</p>
+                ) : (
+                  <p className="mt-1 text-[11px] text-muted-foreground">Format international avec indicatif pays.</p>
+                )}
+              </div>
+
               {/* Avatar — direct upload (→ Cloudinary via backend) plus a
                   manual URL fallback for sellers who already host their image. */}
               <div>
@@ -838,7 +868,7 @@ export default function ProfilePage() {
               <div className="flex items-center gap-3 pt-2">
                 <Button
                   type="submit"
-                  disabled={savingName || !name.trim() || (name === user?.name && avatar === (user?.avatar || ''))}
+                  disabled={savingName || !name.trim() || (name === user?.name && avatar === (user?.avatar || '') && whatsapp.replace(/\s+/g, '') === (user?.whatsapp || ''))}
                 >
                   {savingName ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Enregistrer'}
                 </Button>

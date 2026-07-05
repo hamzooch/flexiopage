@@ -1,12 +1,20 @@
 import { Request, Response } from 'express';
 import * as authService from '../services/auth.service';
+/** WhatsApp au format international E.164 : + suivi de 7 à 15 chiffres. */
+const WHATSAPP_RE = /^\+[1-9]\d{6,14}$/;
+
 export async function register(req: Request, res: Response): Promise<void> {
-  const { email, password, name } = req.body;
-  if (!email || !password || !name) {
-    res.status(400).json({ error: 'Email, password and name are required' });
+  const { email, password, name, whatsapp } = req.body;
+  if (!email || !password || !name || !whatsapp) {
+    res.status(400).json({ error: 'Email, mot de passe, nom et numéro WhatsApp sont requis' });
     return;
   }
-  const result = await authService.register({ email, password, name });
+  const whatsappTrimmed = String(whatsapp).replace(/\s+/g, '');
+  if (!WHATSAPP_RE.test(whatsappTrimmed)) {
+    res.status(400).json({ error: 'Numéro WhatsApp invalide. Format international attendu, ex : +212600000000' });
+    return;
+  }
+  const result = await authService.register({ email, password, name, whatsapp: whatsappTrimmed });
   res.status(201).json(result);
 }
 

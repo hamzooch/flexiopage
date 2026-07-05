@@ -80,6 +80,11 @@ export interface IUser extends Document {
    * has any transaction.
    */
   currency?: string;
+  /**
+   * Numéro WhatsApp du vendeur au format international (E.164, ex '+212600000000').
+   * Saisi obligatoirement à l'inscription ; affiché dans le dashboard admin.
+   */
+  whatsapp?: string;
   /** Tracked at successful login — handy for the admin user-detail screen. */
   lastLoginAt?: Date;
   lastLoginIp?: string;
@@ -122,6 +127,7 @@ const UserSchema = new Schema<IUser>(
     pushSoundPreference: { type: String },
     country: { type: String, trim: true, uppercase: true, maxlength: 2 },
     currency: { type: String, trim: true, uppercase: true, maxlength: 3 },
+    whatsapp: { type: String, trim: true, maxlength: 20 },
     lastLoginAt: { type: Date },
     lastLoginIp: { type: String },
     passwordResetAt: { type: Date },

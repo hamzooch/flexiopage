@@ -35,16 +35,28 @@ export async function updateProfile(req: AuthRequest, res: Response): Promise<vo
     res.status(401).json({ error: 'Not authenticated' });
     return;
   }
-  const { name, avatar, country, currency } = req.body as {
+  const { name, avatar, country, currency, whatsapp } = req.body as {
     name?: string;
     avatar?: string;
     country?: string;
     currency?: string;
+    whatsapp?: string;
   };
 
-  const updates: { name?: string; avatar?: string; country?: string; currency?: string } = {};
+  const updates: { name?: string; avatar?: string; country?: string; currency?: string; whatsapp?: string } = {};
   if (typeof name === 'string') updates.name = name.trim();
   if (typeof avatar === 'string') updates.avatar = avatar;
+
+  // Numéro WhatsApp — format international E.164 (+ suivi de 7 à 15 chiffres).
+  // Permet aux comptes créés avant l'ajout du champ de renseigner leur numéro.
+  if (typeof whatsapp === 'string') {
+    const wa = whatsapp.replace(/\s+/g, '');
+    if (wa && !/^\+[1-9]\d{6,14}$/.test(wa)) {
+      res.status(400).json({ error: 'Numéro WhatsApp invalide. Format international attendu, ex : +212600000000', code: 'invalid_whatsapp' });
+      return;
+    }
+    updates.whatsapp = wa || undefined;
+  }
 
   // Country / currency — country picks the default currency, but the seller
   // can override (e.g. Tunisian seller targeting France in EUR).

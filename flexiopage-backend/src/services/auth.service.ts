@@ -66,6 +66,8 @@ export interface RegisterInput {
   email: string;
   password: string;
   name: string;
+  /** Numéro WhatsApp au format international (E.164). Obligatoire au signup. */
+  whatsapp: string;
 }
 
 export interface LoginInput {
@@ -99,6 +101,7 @@ export async function register(input: RegisterInput): Promise<AuthResult> {
     email: input.email.toLowerCase().trim(),
     password: hashed,
     name: input.name.trim(),
+    whatsapp: input.whatsapp.trim(),
     emailVerified: !verificationEnabled,
   });
   await Subscription.create({

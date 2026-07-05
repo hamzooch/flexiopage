@@ -485,11 +485,12 @@ export async function listUsers(req: AuthRequest, res: Response): Promise<void> 
     filter.$or = [
       { email: { $regex: search, $options: 'i' } },
       { name: { $regex: search, $options: 'i' } },
+      { whatsapp: { $regex: search, $options: 'i' } },
     ];
   }
   const [users, total] = await Promise.all([
     User.find(filter)
-      .select('email name role emailVerified createdAt')
+      .select('email name role emailVerified createdAt whatsapp')
       .sort({ createdAt: -1 })
       .limit(limit)
       .skip(skip)
@@ -741,7 +742,7 @@ export async function creditWallet(req: AuthRequest, res: Response): Promise<voi
 export async function getUserDetail(req: AuthRequest, res: Response): Promise<void> {
   const { userId } = req.params;
   const user = await User.findById(userId)
-    .select('email name role avatar emailVerified suspended suspendedReason suspendedAt lastLoginAt lastLoginIp passwordResetAt createdAt updatedAt')
+    .select('email name role avatar emailVerified suspended suspendedReason suspendedAt lastLoginAt lastLoginIp passwordResetAt createdAt updatedAt whatsapp')
     .lean();
   if (!user) {
     res.status(404).json({ error: 'User not found' });

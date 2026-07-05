@@ -93,7 +93,7 @@ export function extractApiError(err: unknown, fallback: string): string {
 
 // Auth
 export const authApi = {
-  register: (data: { email: string; password: string; name: string }) =>
+  register: (data: { email: string; password: string; name: string; whatsapp: string }) =>
     api.post<{ user: unknown; token: string }>('/auth/register', data),
   login: (data: { email: string; password: string }) =>
     api.post<{ user: unknown; token: string }>('/auth/login', data),
@@ -123,7 +123,7 @@ export const supportApi = {
 // Users
 export const usersApi = {
   getProfile: () => api.get<{ user: unknown; subscription: unknown }>('/users/profile'),
-  updateProfile: (data: { name?: string; avatar?: string; country?: string; currency?: string }) =>
+  updateProfile: (data: { name?: string; avatar?: string; country?: string; currency?: string; whatsapp?: string }) =>
     api.patch<{ user: unknown; walletCurrencyUpdated?: boolean; walletCurrencyPinned?: boolean }>('/users/profile', data),
   changePassword: (data: { currentPassword: string; newPassword: string }) =>
     api.post<{ ok: boolean }>('/users/change-password', data),
@@ -414,6 +414,7 @@ export interface AdminUser {
   passwordResetAt?: string;
   createdAt?: string;
   storeCount?: number;
+  whatsapp?: string;
 }
 export interface AdminUserDetail {
   user: AdminUser;

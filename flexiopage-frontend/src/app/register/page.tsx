@@ -3,7 +3,7 @@
 import { useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { ArrowRight, Eye, EyeOff, Lock, Mail, ShieldCheck, Sparkles, Truck, User } from 'lucide-react';
+import { ArrowRight, Eye, EyeOff, Lock, Mail, Phone, ShieldCheck, Sparkles, Truck, User } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { authApi } from '@/lib/api';
 import { useAuthStore } from '@/stores/auth-store';
@@ -16,6 +16,7 @@ export default function RegisterPage() {
   const setAuth = useAuthStore((s) => s.setAuth);
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
+  const [whatsapp, setWhatsapp] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
@@ -26,9 +27,14 @@ export default function RegisterPage() {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError('');
+    const whatsappClean = whatsapp.replace(/\s+/g, '');
+    if (!/^\+[1-9]\d{6,14}$/.test(whatsappClean)) {
+      setError('Numéro WhatsApp invalide. Format international attendu, ex : +212600000000');
+      return;
+    }
     setLoading(true);
     try {
-      const { data } = await authApi.register({ email, password, name });
+      const { data } = await authApi.register({ email, password, name, whatsapp: whatsappClean });
       const d = data as { user: { _id: string; email: string; name: string }; token: string };
       setAuth(d.user, d.token);
       // `replace` pour évincer /register de l'historique : sinon la flèche
@@ -115,6 +121,17 @@ export default function RegisterPage() {
                 value={email}
                 onChange={setEmail}
                 icon={<Mail className="h-4 w-4" />}
+              />
+
+              <Field
+                id="whatsapp"
+                label="Numéro WhatsApp"
+                type="tel"
+                autoComplete="tel"
+                placeholder="+212600000000"
+                value={whatsapp}
+                onChange={setWhatsapp}
+                icon={<Phone className="h-4 w-4" />}
               />
 
               <div>

@@ -32,6 +32,7 @@ import {
   Check,
   AlertTriangle,
   Mail,
+  Phone,
   Calendar,
   MapPin,
   ExternalLink,
@@ -294,6 +295,16 @@ export default function AdminUserDetailPage() {
             <h1 className="mt-2 truncate text-3xl font-bold tracking-tight sm:text-4xl">{u.name || '—'}</h1>
             <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-muted-foreground">
               <span className="inline-flex items-center gap-1.5"><Mail className="h-3.5 w-3.5" />{u.email}</span>
+              {u.whatsapp && (
+                <a
+                  href={`https://wa.me/${u.whatsapp.replace(/[^\d]/g, '')}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1.5 text-emerald-600 hover:underline"
+                >
+                  <Phone className="h-3.5 w-3.5" />{u.whatsapp}
+                </a>
+              )}
               {u.createdAt && <span className="inline-flex items-center gap-1.5"><Calendar className="h-3.5 w-3.5" />Inscrit {new Date(u.createdAt).toLocaleDateString()}</span>}
               {u.lastLoginAt && <span className="inline-flex items-center gap-1.5"><Clock className="h-3.5 w-3.5" />Dernière connexion {new Date(u.lastLoginAt).toLocaleString()}</span>}
               {u.lastLoginIp && <span className="inline-flex items-center gap-1.5"><MapPin className="h-3.5 w-3.5" />IP {u.lastLoginIp}</span>}

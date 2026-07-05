@@ -9,7 +9,7 @@ import { Button } from '@/components/ui/button';
 import { adminApi, extractApiError, type AdminUser, type StaffRole } from '@/lib/api';
 import { useAuthStore } from '@/stores/auth-store';
 import {
-  Search, Loader2, Crown, Mail, Store as StoreIcon, BadgeCheck, Ban, Clock, ChevronRight,
+  Search, Loader2, Crown, Mail, Phone, Store as StoreIcon, BadgeCheck, Ban, Clock, ChevronRight,
   Plus, X, ShieldCheck, ShieldAlert, Eye, AlertCircle, CheckCircle2, Download, Power, BadgeCheck as BadgeCheckIcon,
 } from 'lucide-react';
 import { Pagination } from '@/components/ui/pagination';
@@ -243,6 +243,12 @@ export default function AdminUsersPage() {
                           <Mail className="h-3 w-3 shrink-0" />
                           <span className="truncate">{u.email}</span>
                         </span>
+                        {u.whatsapp && (
+                          <span className="inline-flex shrink-0 items-center gap-1">
+                            <Phone className="h-3 w-3" />
+                            <span className="tabular-nums">{u.whatsapp}</span>
+                          </span>
+                        )}
                         <span className="inline-flex shrink-0 items-center gap-1"><StoreIcon className="h-3 w-3" />{u.storeCount || 0}</span>
                         {u.lastLoginAt && (
                           <span className="hidden items-center gap-1 sm:inline-flex">
