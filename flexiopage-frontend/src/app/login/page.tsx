@@ -176,6 +176,12 @@ function LoginInner() {
                 }
               />
 
+              <div className="-mt-2 text-right">
+                <Link href="/forgot-password" className="text-sm font-medium text-muted-foreground underline-offset-4 hover:text-foreground hover:underline">
+                  Mot de passe oublié ?
+                </Link>
+              </div>
+
               <Button
                 type="submit"
                 disabled={loading}

@@ -28,6 +28,8 @@ const RESERVED_TOP_LEVEL = new Set([
   'login',
   'register',
   'verify-email',
+  'forgot-password',
+  'reset-password',
   'dashboard',
   'admin',
   'preview',

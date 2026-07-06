@@ -109,6 +109,12 @@ export const authApi = {
   /** Renvoie un nouveau mail de vérification au seller connecté (throttle 1/min). */
   resendVerification: () =>
     api.post<{ ok: true }>('/auth/resend-verification'),
+  /** Mot de passe oublié — envoie un lien de reset (réponse toujours ok). */
+  forgotPassword: (data: { email: string }) =>
+    api.post<{ ok: true }>('/auth/forgot-password', data),
+  /** Applique le nouveau mot de passe depuis le token reçu par mail. */
+  resetPassword: (data: { token: string; newPassword: string }) =>
+    api.post<{ ok: true }>('/auth/reset-password', data),
 };
 
 // Public support — formulaire de contact ouvert (pas d'auth requise).

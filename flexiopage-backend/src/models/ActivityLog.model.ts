@@ -10,6 +10,7 @@ export type ActivityType =
   | 'user.signup'
   | 'user.link.google'
   | 'user.email.verified'
+  | 'user.password.reset'
   | 'order.created'
   | 'order.paid'
   | 'order.status_changed'

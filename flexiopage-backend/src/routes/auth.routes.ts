@@ -20,6 +20,10 @@ router.post('/verify-email', authRateLimiter, authController.verifyEmail);
 // Renvoyer le mail de vérification. Auth required pour éviter qu'un
 // inconnu spam Resend en envoyant des mails à toutes nos adresses.
 router.post('/resend-verification', authMiddleware, authController.resendVerification);
+// Mot de passe oublié (self-service) — endpoints publics, rate-limités comme
+// /login. forgot-password est anti-énumération (répond toujours ok).
+router.post('/forgot-password', authRateLimiter, sanitizeMiddleware, authController.forgotPassword);
+router.post('/reset-password', authRateLimiter, sanitizeMiddleware, authController.resetPassword);
 router.get('/me', authMiddleware, async (req, res) => {
   const user = (req as import('../middleware/auth.middleware').AuthRequest).user;
   // Pousse les toggles plateforme avec le user pour que le frontend dashboard

@@ -6,7 +6,7 @@ import { User, IUser } from '../models/User.model';
 import { Subscription } from '../models/Subscription.model';
 import { getSettings } from '../models/Settings.model';
 import { logActivity } from './activity-log.service';
-import { sendVerificationEmail } from './email.service';
+import { sendVerificationEmail, sendPasswordResetEmail } from './email.service';
 
 // ─────────────────────────────────────────────────────────────────────
 // Email verification helpers
@@ -430,5 +430,99 @@ export async function resendVerification(userId: string): Promise<{ ok: true }> 
     throw err;
   }
   await issueVerificationToken(user);
+  return { ok: true };
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// Password reset (self-service « mot de passe oublié »)
+// ─────────────────────────────────────────────────────────────────────
+const PASSWORD_RESET_TTL_MS = 60 * 60 * 1000; // 1 h — plus court qu'un lien de vérif
+const PASSWORD_RESET_COOLDOWN_MS = 60 * 1000; // 1 min anti-spam
+
+/**
+ * Demande de réinitialisation. Enumeration-safe : renvoie toujours { ok: true }
+ * même si l'email n'existe pas, pour ne pas révéler quels comptes existent.
+ * Génère un token (hashé en DB), l'envoie par mail. Throttle 1/min par compte.
+ */
+export async function requestPasswordReset(rawEmail: string): Promise<{ ok: true }> {
+  const email = String(rawEmail || '').toLowerCase().trim();
+  if (!email) return { ok: true };
+  const user = await User.findOne({ email })
+    .select('+password +passwordResetLastSentAt');
+  // Compte inexistant → on ne dit rien (anti-énumération).
+  if (!user) return { ok: true };
+  // Compte Google-only sans mot de passe local → rien à réinitialiser, mais
+  // on reste discret côté réponse.
+  if (!user.password) return { ok: true };
+  // Throttle : si un lien a été envoyé il y a moins d'1 min, on n'en renvoie
+  // pas (mais on répond ok pour ne pas signaler l'existence du compte).
+  if (
+    user.passwordResetLastSentAt &&
+    Date.now() - user.passwordResetLastSentAt.getTime() < PASSWORD_RESET_COOLDOWN_MS
+  ) {
+    return { ok: true };
+  }
+  const { raw, hash } = generateVerificationToken();
+  user.passwordResetTokenHash = hash;
+  user.passwordResetTokenExpiresAt = new Date(Date.now() + PASSWORD_RESET_TTL_MS);
+  user.passwordResetLastSentAt = new Date();
+  await user.save();
+  try {
+    await sendPasswordResetEmail({ to: user.email, name: user.name, token: raw });
+  } catch (err) {
+    console.error('[auth] password reset email send failed', err);
+  }
+  return { ok: true };
+}
+
+/**
+ * Applique un nouveau mot de passe à partir d'un token de reset valide.
+ * Rehash sha256 du token reçu → recherche → contrôle d'expiration → hash du
+ * nouveau mot de passe (bcrypt 12) → invalidation du token.
+ */
+export async function resetPassword(
+  rawToken: string,
+  newPassword: string,
+): Promise<{ ok: true }> {
+  if (!rawToken || typeof rawToken !== 'string') {
+    const err = new Error('Token manquant.') as Error & { statusCode?: number; code?: string };
+    err.statusCode = 400;
+    err.code = 'invalid_token';
+    throw err;
+  }
+  if (!newPassword || typeof newPassword !== 'string' || newPassword.length < 8) {
+    const err = new Error('Le mot de passe doit faire au moins 8 caractères.') as Error & { statusCode?: number; code?: string };
+    err.statusCode = 400;
+    err.code = 'weak_password';
+    throw err;
+  }
+  const hash = crypto.createHash('sha256').update(rawToken).digest('hex');
+  const user = await User.findOne({ passwordResetTokenHash: hash })
+    .select('+password +passwordResetTokenHash +passwordResetTokenExpiresAt');
+  if (!user) {
+    const err = new Error('Lien invalide ou déjà utilisé.') as Error & { statusCode?: number; code?: string };
+    err.statusCode = 400;
+    err.code = 'invalid_token';
+    throw err;
+  }
+  if (
+    user.passwordResetTokenExpiresAt &&
+    user.passwordResetTokenExpiresAt.getTime() < Date.now()
+  ) {
+    const err = new Error('Ce lien a expiré. Demande-en un nouveau.') as Error & { statusCode?: number; code?: string };
+    err.statusCode = 400;
+    err.code = 'token_expired';
+    throw err;
+  }
+  user.password = await bcrypt.hash(newPassword, SALT_ROUNDS);
+  user.passwordResetAt = new Date();
+  user.passwordResetTokenHash = undefined;
+  user.passwordResetTokenExpiresAt = undefined;
+  await user.save();
+  void logActivity({
+    type: 'user.password.reset',
+    message: `Mot de passe réinitialisé : ${user.email}`,
+    userId: user._id,
+  });
   return { ok: true };
 }

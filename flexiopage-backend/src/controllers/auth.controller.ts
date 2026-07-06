@@ -106,6 +106,49 @@ export async function resendVerification(req: Request, res: Response): Promise<v
   }
 }
 
+/**
+ * POST /api/auth/forgot-password — public. Body: { email }.
+ * Envoie un lien de réinitialisation si le compte existe. Réponse toujours
+ * { ok: true } (anti-énumération : ne révèle pas si l'email existe).
+ */
+export async function forgotPassword(req: Request, res: Response): Promise<void> {
+  const { email } = req.body as { email?: string };
+  if (!email || typeof email !== 'string') {
+    res.status(400).json({ error: 'Email requis.' });
+    return;
+  }
+  try {
+    const result = await authService.requestPasswordReset(email);
+    res.json(result);
+  } catch (err) {
+    // On ne veut pas fuiter d'info : en cas d'erreur interne on répond ok.
+    console.error('[auth] forgotPassword error', err);
+    res.json({ ok: true });
+  }
+}
+
+/**
+ * POST /api/auth/reset-password — public. Body: { token, newPassword }.
+ * Applique le nouveau mot de passe si le token est valide et non expiré.
+ */
+export async function resetPassword(req: Request, res: Response): Promise<void> {
+  const { token, newPassword } = req.body as { token?: string; newPassword?: string };
+  if (!token || typeof token !== 'string' || !newPassword || typeof newPassword !== 'string') {
+    res.status(400).json({ error: 'Token et nouveau mot de passe requis.' });
+    return;
+  }
+  try {
+    const result = await authService.resetPassword(token, newPassword);
+    res.json(result);
+  } catch (err) {
+    const e = err as Error & { statusCode?: number; code?: string };
+    res.status(e.statusCode || 500).json({
+      error: e.message || 'Réinitialisation échouée.',
+      code: e.code,
+    });
+  }
+}
+
 export async function googleSignIn(req: Request, res: Response): Promise<void> {
   const { credential } = req.body as { credential?: string };
   if (!credential || typeof credential !== 'string') {

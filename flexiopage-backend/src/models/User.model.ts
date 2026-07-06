@@ -104,6 +104,15 @@ export interface IUser extends Document {
   emailVerificationTokenExpiresAt?: Date;
   /** Anti-spam : timestamp du dernier renvoi, pour throttler à 1 mail/min. */
   emailVerificationLastSentAt?: Date;
+  /**
+   * Token « mot de passe oublié » (self-service). Hashé sha256 comme le token
+   * de vérification email. Mis à null une fois le mot de passe réinitialisé.
+   */
+  passwordResetTokenHash?: string;
+  /** Expiration du token de reset (1 h après envoi). */
+  passwordResetTokenExpiresAt?: Date;
+  /** Anti-spam : timestamp du dernier envoi de lien de reset (throttle 1/min). */
+  passwordResetLastSentAt?: Date;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -134,6 +143,9 @@ const UserSchema = new Schema<IUser>(
     emailVerificationTokenHash: { type: String, select: false, index: true },
     emailVerificationTokenExpiresAt: { type: Date, select: false },
     emailVerificationLastSentAt: { type: Date, select: false },
+    passwordResetTokenHash: { type: String, select: false, index: true },
+    passwordResetTokenExpiresAt: { type: Date, select: false },
+    passwordResetLastSentAt: { type: Date, select: false },
   },
   { timestamps: true }
 );
