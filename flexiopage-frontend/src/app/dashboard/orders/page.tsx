@@ -48,6 +48,7 @@ import {
   PhoneMissed,
   Check,
   MoreHorizontal,
+  Printer,
 } from 'lucide-react';
 import { PageHeader } from '@/components/dashboard/page-header';
 import { Pagination } from '@/components/ui/pagination';
@@ -306,6 +307,22 @@ export default function DashboardOrdersPage() {
   // On garde l'alias pour ne pas réécrire tout le JSX qui l'utilise.
   const filteredOrders = orders;
 
+  // Commandes « à livrer » de la vue courante : confirmées, non annulées, pas
+  // encore livrées, avec une adresse physique → éligibles au bordereau (lot).
+  const deliverableIds = useMemo(
+    () =>
+      filteredOrders
+        .filter(
+          (o) =>
+            o.confirmationStatus === 'confirmed' &&
+            o.fulfillmentStatus !== 'cancelled' &&
+            o.fulfillmentStatus !== 'fulfilled' &&
+            !!o.shippingAddress,
+        )
+        .map((o) => o._id),
+    [filteredOrders],
+  );
+
   // Quick KPIs on confirmation buckets — used by the new toolbar row + KPI card.
   const confirmStats = useMemo(() => ({
     pending:   orders.filter((o) => !o.confirmationStatus || o.confirmationStatus === 'pending').length,
@@ -479,7 +496,20 @@ export default function DashboardOrdersPage() {
           <span className="text-xs font-medium text-muted-foreground">
             <strong className="text-foreground">{filteredOrders.length}</strong> commande{filteredOrders.length > 1 ? 's' : ''} affichée{filteredOrders.length > 1 ? 's' : ''}
           </span>
-          <span className="text-[11px] text-muted-foreground">Plus récentes en premier</span>
+          <div className="flex items-center gap-3">
+            {deliverableIds.length > 0 && (
+              <a
+                href={`/bordereau?storeId=${selectedStoreId}&ids=${deliverableIds.join(',')}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1.5 rounded-md border border-border/70 bg-card px-2.5 py-1 text-[11px] font-semibold text-foreground hover:bg-muted"
+                title="Imprimer les bordereaux des commandes confirmées à livrer"
+              >
+                <Printer className="h-3.5 w-3.5" /> Bordereaux à livrer ({deliverableIds.length})
+              </a>
+            )}
+            <span className="text-[11px] text-muted-foreground">Plus récentes en premier</span>
+          </div>
         </div>
       )}
 

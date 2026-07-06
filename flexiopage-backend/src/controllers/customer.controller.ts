@@ -1,6 +1,8 @@
 import { Response } from 'express';
 import { AuthRequest } from '../middleware/auth.middleware';
 import { Customer } from '../models/Customer.model';
+import { Order } from '../models/Order.model';
+import { getCustomerReliability } from '../services/customerReliability.service';
 
 export async function listCustomers(req: AuthRequest, res: Response): Promise<void> {
   const store = req.store!;
@@ -17,4 +19,32 @@ export async function listCustomers(req: AuthRequest, res: Response): Promise<vo
     Customer.countDocuments(filter),
   ]);
   res.json({ customers, total, limit, skip });
+}
+
+/**
+ * Fiabilité d'un client (score de retours) pour l'agent de confirmation.
+ * Deux modes :
+ *   - `?orderId=` : on lit le téléphone sur la commande de la boutique et on
+ *     exclut cette commande des compteurs (mode principal, appelé depuis le
+ *     détail d'une commande à confirmer).
+ *   - `?phone=`   : recherche libre par numéro.
+ */
+export async function getReliability(req: AuthRequest, res: Response): Promise<void> {
+  const store = req.store!;
+  const orderId = String(req.query.orderId || '').trim();
+  let phone = String(req.query.phone || '').trim();
+
+  if (!phone && orderId) {
+    const order = await Order.findOne({ _id: orderId, storeId: store._id })
+      .select('customerPhone')
+      .lean();
+    if (!order) {
+      res.status(404).json({ error: 'Commande introuvable.' });
+      return;
+    }
+    phone = order.customerPhone || '';
+  }
+
+  const reliability = await getCustomerReliability(store._id, phone, orderId || undefined);
+  res.json({ reliability });
 }

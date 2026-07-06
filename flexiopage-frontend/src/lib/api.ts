@@ -1190,6 +1190,13 @@ export const storesApi = {
   // Customers
   listCustomers: (storeId: string, params?: { limit?: number; skip?: number; search?: string }) =>
     api.get<{ customers: unknown[]; total: number; limit: number; skip: number }>(`/stores/${storeId}/customers`, { params }),
+  /**
+   * Fiabilité d'un client (score de retours COD) pour l'agent de confirmation.
+   * Passer `orderId` (le tel est lu sur la commande, elle-même exclue des
+   * compteurs) ou `phone` pour une recherche libre.
+   */
+  getCustomerReliability: (storeId: string, params: { orderId?: string; phone?: string }) =>
+    api.get<{ reliability: import('@/types/reliability').CustomerReliability }>(`/stores/${storeId}/customers/reliability`, { params }),
   // Suppliers
   listSuppliers: (storeId: string, params?: { limit?: number; skip?: number; search?: string; includeArchived?: boolean }) =>
     api.get<{ suppliers: import('@/types/supplier').Supplier[]; total: number; limit: number; skip: number }>(`/stores/${storeId}/suppliers`, { params }),

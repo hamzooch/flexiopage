@@ -21,6 +21,7 @@
     "migrate:to-cloudinary": "tsx scripts/migrate-to-cloudinary.ts",
     "migrate:stores-to-markets": "tsx scripts/migrate-stores-to-markets.ts",
     "migrate:products-to-pricing": "tsx scripts/migrate-products-to-pricing.ts",
+    "backfill:phone-key": "tsx scripts/backfill-order-phone-key.ts",
     "test": "vitest run",
     "test:watch": "vitest"
   },

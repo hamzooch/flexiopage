@@ -3,6 +3,7 @@ import { Order, IOrder } from '../models/Order.model';
 import { Customer } from '../models/Customer.model';
 import { Product } from '../models/Product.model';
 import { logActivity } from './activity-log.service';
+import { phoneKey } from '../utils/phone';
 
 /** Random opaque 32-char URL-safe token used as the customer download key. */
 function generateDownloadToken(): string {
@@ -156,6 +157,7 @@ export async function createOrder(input: CreateOrderInput): Promise<IOrder> {
     email: input.email,
     customerName: input.customerName,
     customerPhone: input.customerPhone,
+    customerPhoneKey: phoneKey(input.customerPhone),
     shippingAddress: input.shippingAddress,
     items,
     subtotal: input.subtotal,
