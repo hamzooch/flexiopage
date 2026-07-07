@@ -24,6 +24,7 @@ const config: Config = {
         sidebar: {
           DEFAULT: 'hsl(var(--sidebar))',
           foreground: 'hsl(var(--sidebar-foreground))',
+          strong: 'hsl(var(--sidebar-strong))',
           muted: 'hsl(var(--sidebar-muted))',
           border: 'hsl(var(--sidebar-border))',
           active: 'hsl(var(--sidebar-active))',

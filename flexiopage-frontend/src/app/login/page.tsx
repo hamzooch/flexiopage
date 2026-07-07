@@ -34,7 +34,7 @@ export default function LoginPage() {
 }
 
 function LoginFallback() {
-  return <div className="min-h-screen bg-background" />;
+  return <div className="min-h-screen bg-sidebar" />;
 }
 
 function LoginInner() {
@@ -89,7 +89,7 @@ function LoginInner() {
   }
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-screen bg-sidebar text-sidebar-foreground">
       <div className="grid min-h-screen lg:grid-cols-[1fr_1.1fr]">
         {/* ── FORM PANEL ────────────────────────────────────────────── */}
         {/* `justify-start` au lieu de `justify-center` : avant, le formulaire
@@ -98,15 +98,15 @@ function LoginInner() {
             un padding confortable, lecture immédiate du logo + form. */}
         <div className="flex flex-col px-6 pb-10 pt-8 sm:px-10 sm:pt-10 lg:px-16 lg:pt-14">
           <div className="mx-auto w-full max-w-md animate-fade-in-up">
-            <Link href="/" className="inline-flex" aria-label="FlexioPage — accueil">
+            <Link href="/" className="flex justify-center" aria-label="FlexioPage — accueil">
               <BrandLogo variant="color" width={150} priority />
             </Link>
 
             <div className="mt-6 sm:mt-8">
-              <h1 className="text-balance text-3xl font-bold tracking-tight sm:text-4xl">
+              <h1 className="text-balance text-3xl font-bold tracking-tight text-sidebar-strong sm:text-4xl">
                 Bon retour <span className="gradient-brand-text">👋</span>
               </h1>
-              <p className="mt-2 text-sm text-muted-foreground sm:text-base">
+              <p className="mt-2 text-sm text-sidebar-foreground sm:text-base">
                 Connecte-toi pour gérer ta boutique et tes commandes.
               </p>
             </div>
@@ -124,10 +124,10 @@ function LoginInner() {
                   }}
                 />
               </div>
-              <div className="my-5 flex items-center gap-3 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-                <span className="h-px flex-1 bg-border" />
+              <div className="my-5 flex items-center gap-3 text-[11px] font-semibold uppercase tracking-wider text-sidebar-foreground">
+                <span className="h-px flex-1 bg-sidebar-border" />
                 ou avec ton email
-                <span className="h-px flex-1 bg-border" />
+                <span className="h-px flex-1 bg-sidebar-border" />
               </div>
             </GoogleOAuthWrapper>
 
@@ -169,7 +169,7 @@ function LoginInner() {
                     aria-label={showPassword ? 'Cacher' : 'Afficher'}
                     aria-pressed={showPassword}
                     tabIndex={-1}
-                    className="grid h-8 w-8 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                    className="grid h-8 w-8 place-items-center rounded-md text-sidebar-foreground transition-colors hover:bg-sidebar-muted hover:text-sidebar-strong"
                   >
                     {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                   </button>
@@ -177,7 +177,7 @@ function LoginInner() {
               />
 
               <div className="-mt-2 text-right">
-                <Link href="/forgot-password" className="text-sm font-medium text-muted-foreground underline-offset-4 hover:text-foreground hover:underline">
+                <Link href="/forgot-password" className="text-sm font-medium text-sidebar-foreground underline-offset-4 hover:text-sidebar-strong hover:underline">
                   Mot de passe oublié ?
                 </Link>
               </div>
@@ -195,20 +195,20 @@ function LoginInner() {
                 )}
               </Button>
 
-              <p className="text-center text-sm text-muted-foreground">
+              <p className="text-center text-sm text-sidebar-foreground">
                 Pas encore de compte ?{' '}
-                <Link href="/register" className="font-semibold text-foreground underline-offset-4 hover:underline">
+                <Link href="/register" className="font-semibold text-sidebar-strong underline-offset-4 hover:underline">
                   Crée-en un
                 </Link>
               </p>
 
-              <p className="text-center text-xs text-muted-foreground">
+              <p className="text-center text-xs text-sidebar-foreground">
                 En continuant, tu acceptes nos{' '}
-                <Link href="/terms-of-service" className="underline underline-offset-4 hover:text-foreground">
+                <Link href="/terms-of-service" className="underline underline-offset-4 hover:text-sidebar-strong">
                   conditions d’utilisation
                 </Link>{' '}
                 et notre{' '}
-                <Link href="/privacy-policy" className="underline underline-offset-4 hover:text-foreground">
+                <Link href="/privacy-policy" className="underline underline-offset-4 hover:text-sidebar-strong">
                   politique de confidentialité
                 </Link>
                 .
@@ -252,12 +252,12 @@ function Field({
 }) {
   return (
     <div className="space-y-1.5">
-      <label htmlFor={id} className="text-sm font-medium text-foreground/90">
+      <label htmlFor={id} className="text-sm font-medium text-sidebar-strong/90">
         {label}
       </label>
-      <div className="group relative flex h-12 items-center rounded-xl border border-input bg-card transition-all focus-within:border-primary focus-within:ring-4 focus-within:ring-primary/15">
+      <div className="group relative flex h-12 items-center rounded-xl border border-sidebar-border bg-sidebar-muted/50 transition-all focus-within:border-primary/60 focus-within:bg-sidebar-muted focus-within:ring-4 focus-within:ring-primary/15">
         {icon && (
-          <span className="grid h-12 w-11 shrink-0 place-items-center text-muted-foreground group-focus-within:text-primary">
+          <span className="grid h-12 w-11 shrink-0 place-items-center text-sidebar-foreground group-focus-within:text-primary">
             {icon}
           </span>
         )}
@@ -270,7 +270,7 @@ function Field({
           autoComplete={autoComplete}
           minLength={minLength}
           required
-          className="h-full flex-1 bg-transparent pr-3 text-sm text-foreground outline-none placeholder:text-muted-foreground/60"
+          className="h-full flex-1 bg-transparent pr-3 text-sm text-sidebar-strong outline-none placeholder:text-sidebar-foreground/50"
         />
         {trailing && <span className="pr-1.5">{trailing}</span>}
       </div>
@@ -284,43 +284,43 @@ function Field({
 // ──────────────────────────────────────────────────────────────────────
 function BrandPanel() {
   return (
-    <div className="relative hidden overflow-hidden lg:block">
-      {/* Layered gradient backdrop */}
-      <div className="absolute inset-0 gradient-brand" aria-hidden />
-      <div className="absolute inset-0 bg-[radial-gradient(circle_at_30%_20%,rgba(255,255,255,0.25),transparent_55%)]" aria-hidden />
-      <div className="absolute -bottom-20 -right-20 h-[420px] w-[420px] rounded-full bg-white/10 blur-3xl" aria-hidden />
-      <div className="absolute -top-20 -left-10 h-[320px] w-[320px] rounded-full bg-white/15 blur-3xl" aria-hidden />
+    <div className="relative hidden overflow-hidden bg-sidebar lg:block">
+      {/* Fond « Midnight » : halo orange + grille fine + orbes flottants */}
+      <div className="absolute inset-0 bg-[radial-gradient(circle_at_30%_18%,hsl(var(--primary)/0.22),transparent_55%)]" aria-hidden />
+      <div className="absolute inset-0 opacity-[0.05] [background-image:linear-gradient(rgba(255,255,255,1)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,1)_1px,transparent_1px)] [background-size:38px_38px]" aria-hidden />
+      <div className="absolute -bottom-24 -right-24 h-[420px] w-[420px] rounded-full bg-primary/20 blur-3xl animate-float" aria-hidden />
+      <div className="absolute -top-24 -left-16 h-[340px] w-[340px] rounded-full bg-amber-500/15 blur-3xl animate-float-slow" aria-hidden />
 
       <div className="relative flex h-full flex-col justify-between p-12 text-white xl:p-16">
-        <div className="flex items-center gap-2 text-sm font-medium text-white/90">
-          <span className="h-1.5 w-1.5 rounded-full bg-white" />
+        <div className="flex items-center gap-2 text-sm font-medium text-sidebar-foreground">
+          <span className="h-1.5 w-1.5 rounded-full gradient-brand animate-chrome-glow" />
           FlexioPage SaaS
         </div>
 
         <div className="space-y-8">
-          {/* F. mark on a soft glass tile */}
-          <div className="grid h-24 w-24 place-items-center rounded-3xl bg-white/15 backdrop-blur-md ring-1 ring-white/30 shadow-2xl">
+          {/* F. mark sur une tuile verre sombre */}
+          <div className="grid h-24 w-24 place-items-center rounded-3xl bg-sidebar-muted/70 backdrop-blur-md ring-1 ring-white/10 shadow-2xl">
             <BrandLogo variant="icon" width={64} />
           </div>
 
           <div>
-            <h2 className="text-balance text-4xl font-extrabold leading-tight tracking-tight xl:text-5xl">
-              Crée ta boutique en un clic.
+            <h2 className="text-balance text-4xl font-extrabold leading-tight tracking-tight text-white xl:text-5xl">
+              Crée ta boutique <span className="gradient-brand-text">en un clic.</span>
             </h2>
-            <p className="mt-4 max-w-md text-balance text-base leading-relaxed text-white/85 xl:text-lg">
+            <p className="mt-4 max-w-md text-balance text-base leading-relaxed text-sidebar-foreground xl:text-lg">
               Génère tes landing pages avec l&apos;IA, accepte le paiement à la livraison et
               dispatche tes commandes automatiquement.
             </p>
           </div>
 
           <ul className="space-y-3 text-sm">
-            <Perk icon={<Sparkles className="h-4 w-4" />} text="Landing pages générées par IA" />
-            <Perk icon={<Truck className="h-4 w-4" />} text="Livraison auto MogaDelivery" />
-            <Perk icon={<ShieldCheck className="h-4 w-4" />} text="Paiement à la livraison sécurisé" />
+            <Perk d={0} icon={<Sparkles className="h-4 w-4" />} text="Landing pages générées par IA" />
+            <Perk d={100} icon={<Truck className="h-4 w-4" />} text="Livraison auto MogaDelivery" />
+            <Perk d={200} icon={<ShieldCheck className="h-4 w-4" />} text="Paiement à la livraison sécurisé" />
           </ul>
         </div>
 
-        <p className="text-xs text-white/70">
+        <p className="text-xs text-sidebar-foreground/70">
           © {new Date().getFullYear()} FlexioPage — Tu paies seulement quand tu vends.
         </p>
       </div>
@@ -328,13 +328,13 @@ function BrandPanel() {
   );
 }
 
-function Perk({ icon, text }: { icon: React.ReactNode; text: string }) {
+function Perk({ icon, text, d }: { icon: React.ReactNode; text: string; d: number }) {
   return (
-    <li className="flex items-center gap-3">
-      <span className="grid h-7 w-7 shrink-0 place-items-center rounded-lg bg-white/15 ring-1 ring-white/30">
+    <li className="flex items-center gap-3 animate-chrome-item" style={{ animationDelay: `${d}ms` }}>
+      <span className="grid h-7 w-7 shrink-0 place-items-center rounded-lg bg-primary/15 text-orange-300 ring-1 ring-primary/25">
         {icon}
       </span>
-      <span className="text-white/95">{text}</span>
+      <span className="text-sidebar-strong">{text}</span>
     </li>
   );
 }

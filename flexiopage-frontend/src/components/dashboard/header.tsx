@@ -112,41 +112,46 @@ export function Header({ onOpenMobileNav }: Props = {}) {
   }
 
   return (
-    <header className="sticky top-0 z-20 flex h-16 items-center justify-between gap-4 border-b border-border/60 bg-background/80 px-4 backdrop-blur-xl sm:px-6">
+    <header className="sticky top-0 z-20 flex h-16 items-center justify-between gap-4 border-b border-sidebar-border bg-sidebar/85 px-4 text-sidebar-foreground backdrop-blur-xl sm:px-6">
+      {/* Ligne d'accent animée en bas de la navbar. */}
+      <span aria-hidden className="pointer-events-none absolute inset-x-0 bottom-0 h-px overflow-hidden">
+        <span className="block h-full w-1/3 gradient-brand animate-chrome-sheen" />
+      </span>
+
       {/* Title + breadcrumb */}
       <div className="flex min-w-0 items-center gap-2">
         <button
           type="button"
           onClick={onOpenMobileNav}
-          className="grid h-10 w-10 place-items-center rounded-xl text-muted-foreground transition-all hover:bg-muted hover:text-foreground md:hidden"
+          className="grid h-10 w-10 place-items-center rounded-xl text-sidebar-foreground transition-all hover:bg-sidebar-muted hover:text-sidebar-strong md:hidden"
           aria-label={t('header.openMenu')}
         >
           <Menu className="h-5 w-5" />
         </button>
         <div className="min-w-0">
-          <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+          <div className="flex items-center gap-1.5 text-xs text-sidebar-foreground">
             <span>{t('header.dashboard')}</span>
             {segments.length > 1 && (
               <>
-                <span className="text-muted-foreground/40">/</span>
-                <span className="truncate text-foreground/70">{title}</span>
+                <span className="text-sidebar-foreground/40">/</span>
+                <span className="truncate text-sidebar-foreground">{title}</span>
               </>
             )}
           </div>
-          <h1 className="truncate text-lg font-semibold tracking-tight">{title}</h1>
+          <h1 className="truncate text-lg font-semibold tracking-tight text-sidebar-strong">{title}</h1>
         </div>
       </div>
 
       {/* Search */}
       <div className="hidden flex-1 max-w-md md:block">
         <div className="group relative">
-          <Search className="pointer-events-none absolute start-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground transition-colors group-focus-within:text-primary" />
+          <Search className="pointer-events-none absolute start-3 top-1/2 h-4 w-4 -translate-y-1/2 text-sidebar-foreground transition-colors group-focus-within:text-primary" />
           <input
             type="search"
             placeholder={t('header.searchPlaceholder')}
-            className="h-10 w-full rounded-xl border border-border/70 bg-muted/40 ps-10 pe-12 text-sm placeholder:text-muted-foreground/70 transition-all focus:border-primary/40 focus:bg-background focus:outline-none focus:ring-4 focus:ring-primary/10"
+            className="h-10 w-full rounded-xl border border-sidebar-border bg-sidebar-muted/50 ps-10 pe-12 text-sm text-sidebar-strong placeholder:text-sidebar-foreground/60 transition-all focus:border-primary/50 focus:bg-sidebar-muted focus:outline-none focus:ring-4 focus:ring-primary/15"
           />
-          <kbd className="pointer-events-none absolute end-2.5 top-1/2 hidden -translate-y-1/2 items-center gap-1 rounded-md border border-border/60 bg-background px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground sm:inline-flex">
+          <kbd className="pointer-events-none absolute end-2.5 top-1/2 hidden -translate-y-1/2 items-center gap-1 rounded-md border border-sidebar-border bg-sidebar px-1.5 py-0.5 text-[10px] font-medium text-sidebar-foreground sm:inline-flex">
             ⌘K
           </kbd>
         </div>
@@ -158,14 +163,14 @@ export function Header({ onOpenMobileNav }: Props = {}) {
             the store picker so the seller can change scope. */}
         <Link
           href="/select-store"
-          className="hidden h-10 items-center gap-2 rounded-xl border border-border/70 bg-card/60 px-3 text-sm transition-all hover:border-primary/40 hover:bg-card sm:inline-flex"
+          className="hidden h-10 items-center gap-2 rounded-xl border border-sidebar-border bg-sidebar-muted/50 px-3 text-sm text-sidebar-strong transition-all hover:border-primary/50 hover:bg-sidebar-muted sm:inline-flex"
           title={t('header.switchStore')}
         >
           <StoreIcon className="h-4 w-4 text-primary" />
           <span className="max-w-[140px] truncate font-medium">
             {activeStoreName || t('header.chooseStore')}
           </span>
-          <Repeat className="h-3 w-3 text-muted-foreground" />
+          <Repeat className="h-3 w-3 text-sidebar-foreground" />
         </Link>
 
         <WalletBadges />

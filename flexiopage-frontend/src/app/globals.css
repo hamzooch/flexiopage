@@ -42,12 +42,19 @@ body {
     --ring: 22 92% 52%;
     --radius: 0.75rem;
 
-    --sidebar: 0 0% 100%;
-    --sidebar-foreground: 215 16% 47%;
-    --sidebar-muted: 30 33% 96%;
-    --sidebar-active: 22 92% 52%;
+    /*
+     * Chrome « Midnight slate » — sidebar + navbar sur une surface bleu-nuit
+     * ardoise, volontairement sombre DANS LES DEUX thèmes (light + dark) pour
+     * un rendu SaaS pro, avec l'orange de la marque en accent lumineux. Ces
+     * tokens sont donc identiques en clair et en sombre (pas de surcharge .dark).
+     */
+    --sidebar: 222 47% 11%;              /* #0F172A slate-900 */
+    --sidebar-strong: 210 40% 98%;       /* texte actif / titres — quasi blanc */
+    --sidebar-foreground: 215 20% 65%;   /* texte inactif — slate-400 */
+    --sidebar-muted: 217 33% 17%;        /* hover / actif bg — slate-800 */
+    --sidebar-active: 22 92% 52%;        /* accent orange marque */
     --sidebar-active-foreground: 0 0% 100%;
-    --sidebar-border: 30 20% 90%;
+    --sidebar-border: 216 28% 20%;
 
     --gradient-from: 40 100% 56%;
     --gradient-via: 28 95% 55%;
@@ -118,6 +125,47 @@ body {
   }
   .ring-glow {
     box-shadow: 0 0 0 4px hsl(var(--primary) / 0.15);
+  }
+
+  /* ── Chrome « Midnight » : animations sidebar + navbar ─────────────── */
+
+  /* Entrée en cascade des items de nav (une seule fois, au montage du layout). */
+  @keyframes chrome-item-in {
+    from { opacity: 0; transform: translateX(-8px); }
+    to   { opacity: 1; transform: none; }
+  }
+  .animate-chrome-item {
+    animation: chrome-item-in 0.4s cubic-bezier(0.22, 1, 0.36, 1) both;
+  }
+
+  /* Halo pulsé discret derrière la pastille active. */
+  @keyframes chrome-glow {
+    0%, 100% { opacity: 0.55; }
+    50%      { opacity: 1; }
+  }
+  .animate-chrome-glow { animation: chrome-glow 3s ease-in-out infinite; }
+
+  /* Balayage lumineux sur la barre d'accent de la navbar. */
+  @keyframes chrome-sheen {
+    0%   { transform: translateX(-100%); }
+    60%, 100% { transform: translateX(100%); }
+  }
+  .animate-chrome-sheen { animation: chrome-sheen 5s ease-in-out infinite; }
+
+  /* Orbes flottants du hero d'authentification (fond « Midnight »). */
+  @keyframes chrome-float {
+    0%, 100% { transform: translate(0, 0) scale(1); }
+    50%      { transform: translate(18px, -22px) scale(1.06); }
+  }
+  .animate-float      { animation: chrome-float 11s ease-in-out infinite; }
+  .animate-float-slow { animation: chrome-float 16s ease-in-out infinite reverse; }
+
+  @media (prefers-reduced-motion: reduce) {
+    .animate-chrome-item,
+    .animate-chrome-glow,
+    .animate-chrome-sheen,
+    .animate-float,
+    .animate-float-slow { animation: none !important; }
   }
 }
 
