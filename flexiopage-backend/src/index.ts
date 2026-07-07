@@ -20,7 +20,9 @@ import storeRoutes from './routes/store.routes';
 import publicRoutes from './routes/public.routes';
 import jobsRoutes from './routes/jobs.routes';
 import webhooksRoutes from './routes/webhooks.routes';
+import telegramRoutes from './routes/telegram.routes';
 import paymentRoutes from './routes/payment.routes';
+import { setupTelegramWebhook } from './services/telegram.service';
 import { registerMessengerBot } from './modules/messenger-bot';
 import walletRoutes from './routes/wallet.routes';
 import adminRoutes from './routes/admin.routes';
@@ -196,6 +198,7 @@ app.use('/api/jobs', jobsRoutes);
 app.use('/api/payment', paymentRoutes);
 // Payment provider webhooks (CinetPay, Flutterwave, mock dev)
 app.use('/api/webhooks', webhooksRoutes);
+app.use('/api/telegram', telegramRoutes);
 // Public storefront API (no auth)
 app.use('/api/public', publicRoutes);
 // Messenger Bot module (API vendeur /api/messenger-bot + webhook /webhook/messenger)
@@ -213,6 +216,8 @@ async function start() {
   app.listen(PORT, () => {
     logger.info({ port: PORT }, `FlexioPage API running on http://localhost:${PORT}`);
   });
+  // Configure le webhook du bot Telegram vendeur (no-op si non configuré / URL locale).
+  void setupTelegramWebhook();
 }
 
 start().catch((err) => {

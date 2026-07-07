@@ -22,7 +22,7 @@ interface CreateArgs {
 }
 
 export async function createNotification(args: CreateArgs) {
-  return Notification.create({
+  const notif = await Notification.create({
     userId: args.userId,
     storeId: args.storeId,
     type: args.type,
@@ -32,6 +32,16 @@ export async function createNotification(args: CreateArgs) {
     meta: args.meta,
     read: false,
   });
+  // Fan-out vers le bot Telegram vendeur (best-effort, jamais bloquant). Couvre
+  // TOUS les types de notif (commande, livraison, solde, équipe). Import différé
+  // pour éviter tout cycle de dépendances.
+  try {
+    const { sendToUser } = await import('./telegram.service');
+    await sendToUser(args.userId, { title: args.title, body: args.body, link: args.link });
+  } catch {
+    /* non-fatal */
+  }
+  return notif;
 }
 
 // ─── Event-specific helpers ────────────────────────────────────────────
