@@ -236,7 +236,9 @@ export function Sidebar({ mobileOpen = false, onMobileClose }: Props) {
             className="flex items-center"
             aria-label={t('sidebar.brandAria')}
           >
-            <BrandLogo variant="color" width={130} priority />
+            {/* Logo en blanc : le mot « page » est noir dans le PNG et
+                disparaîtrait sur le fond Midnight. */}
+            <BrandLogo variant="color" width={130} priority className="brightness-0 invert" />
           </Link>
           <button
             type="button"

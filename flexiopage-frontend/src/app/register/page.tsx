@@ -61,7 +61,8 @@ export default function RegisterPage() {
         <div className="flex flex-col px-6 pb-10 pt-8 sm:px-10 sm:pt-10 lg:px-16 lg:pt-14">
           <div className="mx-auto w-full max-w-md animate-fade-in-up">
             <Link href="/" className="flex justify-center" aria-label="FlexioPage — accueil">
-              <BrandLogo variant="color" width={150} priority />
+              {/* Blanc : le mot « page » du logo est noir → invisible sur le fond Midnight. */}
+              <BrandLogo variant="color" width={150} priority className="brightness-0 invert" />
             </Link>
 
             <div className="mt-6 sm:mt-8">
