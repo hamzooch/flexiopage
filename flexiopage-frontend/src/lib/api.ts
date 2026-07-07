@@ -144,6 +144,13 @@ export const usersApi = {
   },
 };
 
+// Telegram — bot vendeur (notifications). Endpoints au niveau utilisateur.
+export const telegramApi = {
+  status: () => api.get<{ configured: boolean; linked: boolean; username: string | null }>('/telegram/status'),
+  link: () => api.post<{ deepLink: string }>('/telegram/link', {}),
+  unlink: () => api.post<{ ok: boolean }>('/telegram/unlink', {}),
+};
+
 // Team — seller invites staff (managers, confirmation agents)
 export type TeamRole = 'manager' | 'confirmation_agent';
 

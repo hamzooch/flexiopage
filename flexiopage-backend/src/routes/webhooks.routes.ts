@@ -10,6 +10,7 @@ import { finalizePaidOrder } from '../services/order-finalize.service';
 import { applyDeliveryWebhook } from '../services/delivery.service';
 import { Order, type PaymentProvider } from '../models/Order.model';
 import { logPayment } from '../models/PaymentLog.model';
+import { receiveTelegramWebhook } from '../controllers/telegram.controller';
 
 const router = Router();
 
@@ -152,5 +153,9 @@ router.post('/mogadelivery', async (req: Request, res: Response): Promise<void> 
     res.status(500).json({ error: 'Webhook processing failed' });
   }
 });
+
+// Bot Telegram vendeur — Telegram poste les updates ici (secret vérifié dans
+// le controller via l'en-tête X-Telegram-Bot-Api-Secret-Token).
+router.post('/telegram', (req, res) => receiveTelegramWebhook(req, res));
 
 export default router;

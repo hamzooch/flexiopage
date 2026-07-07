@@ -85,6 +85,21 @@ export interface IUser extends Document {
    * Saisi obligatoirement à l'inscription ; affiché dans le dashboard admin.
    */
   whatsapp?: string;
+  /**
+   * Liaison au bot Telegram vendeur (notifications). Renseigné quand le vendeur
+   * fait `/start <token>` sur le bot plateforme. `enabled=false` = notifications
+   * coupées via /stop sans délier le compte.
+   */
+  telegram?: {
+    chatId: string;
+    username?: string;
+    firstName?: string;
+    linkedAt: Date;
+    enabled: boolean;
+  };
+  /** Token éphémère à usage unique pour le deep-link de liaison Telegram. */
+  telegramLinkToken?: string;
+  telegramLinkTokenExpiresAt?: Date;
   /** Tracked at successful login — handy for the admin user-detail screen. */
   lastLoginAt?: Date;
   lastLoginIp?: string;
@@ -137,6 +152,17 @@ const UserSchema = new Schema<IUser>(
     country: { type: String, trim: true, uppercase: true, maxlength: 2 },
     currency: { type: String, trim: true, uppercase: true, maxlength: 3 },
     whatsapp: { type: String, trim: true, maxlength: 20 },
+    // Pas de `default` dans ce sous-doc : sinon Mongoose matérialiserait
+    // `telegram: {}` sur tous les users. `enabled` est posé à la liaison.
+    telegram: {
+      chatId: { type: String, index: true },
+      username: { type: String },
+      firstName: { type: String },
+      linkedAt: { type: Date },
+      enabled: { type: Boolean },
+    },
+    telegramLinkToken: { type: String, index: true },
+    telegramLinkTokenExpiresAt: { type: Date },
     lastLoginAt: { type: Date },
     lastLoginIp: { type: String },
     passwordResetAt: { type: Date },
