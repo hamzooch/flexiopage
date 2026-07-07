@@ -223,8 +223,14 @@ export function Sidebar({ mobileOpen = false, onMobileClose }: Props) {
           mobileOpen ? 'translate-x-0' : '-translate-x-full rtl:translate-x-full md:translate-x-0 md:rtl:translate-x-0'
         )}
       >
+        {/* Ambiance : halo orange discret en haut du rail. */}
+        <div
+          aria-hidden
+          className="pointer-events-none absolute inset-x-0 top-0 -z-10 h-44 bg-gradient-to-b from-primary/10 via-primary/[0.04] to-transparent"
+        />
+
         {/* Logo + close (mobile) */}
-        <div className="flex shrink-0 items-center justify-between border-b border-sidebar-border/60 px-5 py-4">
+        <div className="relative flex shrink-0 items-center justify-between border-b border-sidebar-border/60 px-5 py-4">
           <Link
             href="/dashboard"
             className="flex items-center"
@@ -235,7 +241,7 @@ export function Sidebar({ mobileOpen = false, onMobileClose }: Props) {
           <button
             type="button"
             onClick={onMobileClose}
-            className="grid h-8 w-8 place-items-center rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground md:hidden"
+            className="grid h-8 w-8 place-items-center rounded-lg text-sidebar-foreground transition-colors hover:bg-sidebar-muted hover:text-sidebar-strong md:hidden"
             aria-label={t('sidebar.closeMenu')}
           >
             <X className="h-4 w-4" />
@@ -244,13 +250,13 @@ export function Sidebar({ mobileOpen = false, onMobileClose }: Props) {
 
         {/* Sections */}
         <nav className="flex-1 space-y-5 overflow-y-auto px-3 py-4">
-          {sections.map((section) => (
+          {sections.map((section, sIdx) => (
             <div key={section.titleKey}>
-              <div className="px-3 pb-1.5 text-[11px] font-bold uppercase tracking-wider text-muted-foreground/60">
+              <div className="px-3 pb-1.5 text-[11px] font-bold uppercase tracking-wider text-sidebar-foreground/50">
                 {t(section.titleKey)}
               </div>
               <ul className="space-y-0.5">
-                {section.items.map((item) => {
+                {section.items.map((item, iIdx) => {
                   // Items can carry ?tab=… in their href (e.g. /dashboard/profile?tab=stores).
                   // Strip it before comparing to the pathname, then check the
                   // tab separately so the right sub-link lights up.
@@ -275,30 +281,42 @@ export function Sidebar({ mobileOpen = false, onMobileClose }: Props) {
                   // sidebar avec leur logo gradient.
                   const showInstalled = item.href === '/dashboard/apps' && installedApps.length > 0;
                   return (
-                    <li key={item.href}>
+                    <li
+                      key={item.href}
+                      className="animate-chrome-item"
+                      style={{ animationDelay: `${(sIdx * 3 + iIdx) * 25}ms` }}
+                    >
                       <Link
                         href={item.href}
                         onClick={onMobileClose}
                         className={cn(
-                          'group relative flex items-center gap-3 rounded-lg px-3 py-2.5 text-[15px] font-medium transition-colors',
+                          'group relative flex items-center gap-3 rounded-xl px-3 py-2.5 text-[15px] font-medium transition-all duration-200',
                           isActive
-                            ? 'bg-primary/10 text-primary'
-                            : 'text-foreground/70 hover:bg-sidebar-muted hover:text-foreground'
+                            ? 'bg-sidebar-muted text-sidebar-strong shadow-sm shadow-black/25'
+                            : 'text-sidebar-foreground hover:translate-x-0.5 hover:bg-sidebar-muted/60 hover:text-sidebar-strong'
                         )}
                       >
                         {isActive && (
-                          <span className="absolute -start-3 top-1/2 h-5 w-1 -translate-y-1/2 rounded-e-full gradient-brand" />
+                          <>
+                            <span className="absolute -start-3 top-1/2 h-6 w-1 -translate-y-1/2 rounded-e-full gradient-brand" />
+                            <span className="absolute -start-3 top-1/2 h-6 w-1 -translate-y-1/2 rounded-e-full gradient-brand blur-[3px] animate-chrome-glow" />
+                          </>
                         )}
-                        <item.icon className="h-[18px] w-[18px] shrink-0" />
+                        <item.icon
+                          className={cn(
+                            'h-[18px] w-[18px] shrink-0 transition-transform duration-200 group-hover:scale-110',
+                            isActive && 'text-sidebar-active'
+                          )}
+                        />
                         <span className="truncate">{t(item.labelKey)}</span>
                         {showInstalled && (
-                          <span className="ms-auto rounded-full bg-emerald-500/10 px-1.5 py-0.5 text-[9px] font-semibold text-emerald-700">
+                          <span className="ms-auto rounded-full bg-emerald-500/15 px-1.5 py-0.5 text-[9px] font-semibold text-emerald-300">
                             {installedApps.length}
                           </span>
                         )}
                       </Link>
                       {showInstalled && (
-                        <ul className="ms-3 mt-0.5 space-y-0.5 border-s border-border/40 ps-2.5">
+                        <ul className="ms-3 mt-0.5 space-y-0.5 border-s border-sidebar-border ps-2.5">
                           {installedApps.map((app) => {
                             const SubIcon = app.icon;
                             const subActive = pathname === app.href.split('?')[0];
@@ -308,10 +326,10 @@ export function Sidebar({ mobileOpen = false, onMobileClose }: Props) {
                                   href={app.href}
                                   onClick={onMobileClose}
                                   className={cn(
-                                    'group flex items-center gap-2 rounded-md px-2 py-1.5 text-[13px] transition-colors',
+                                    'group flex items-center gap-2 rounded-md px-2 py-1.5 text-[13px] transition-all duration-200',
                                     subActive
-                                      ? 'bg-primary/8 text-primary font-medium'
-                                      : 'text-foreground/65 hover:bg-sidebar-muted hover:text-foreground'
+                                      ? 'bg-sidebar-muted text-sidebar-strong font-medium'
+                                      : 'text-sidebar-foreground hover:translate-x-0.5 hover:bg-sidebar-muted/60 hover:text-sidebar-strong'
                                   )}
                                 >
                                   <span className={cn(
@@ -356,17 +374,17 @@ export function Sidebar({ mobileOpen = false, onMobileClose }: Props) {
           <Link
             href="/dashboard/profile"
             onClick={onMobileClose}
-            className="flex items-center gap-3 rounded-lg p-2 transition-colors hover:bg-sidebar-muted"
+            className="group flex items-center gap-3 rounded-xl p-2 transition-colors hover:bg-sidebar-muted"
           >
-            <div className="grid h-11 w-11 shrink-0 place-items-center rounded-full gradient-brand text-sm font-bold text-white shadow-sm">
+            <div className="grid h-11 w-11 shrink-0 place-items-center rounded-full gradient-brand text-sm font-bold text-white shadow-md shadow-black/30 ring-2 ring-white/10 transition-transform duration-200 group-hover:scale-105">
               {user ? initials : 'U'}
             </div>
             <div className="min-w-0 flex-1 leading-tight">
-              <div className="truncate text-[15px] font-semibold text-foreground">
-                {user ? displayName : <span className="inline-block h-3.5 w-24 animate-pulse rounded bg-muted" />}
+              <div className="truncate text-[15px] font-semibold text-sidebar-strong">
+                {user ? displayName : <span className="inline-block h-3.5 w-24 animate-pulse rounded bg-sidebar-muted" />}
               </div>
-              <div className="truncate text-xs text-muted-foreground">
-                {user ? user.email : <span className="inline-block h-3 w-28 animate-pulse rounded bg-muted/70" />}
+              <div className="truncate text-xs text-sidebar-foreground">
+                {user ? user.email : <span className="inline-block h-3 w-28 animate-pulse rounded bg-sidebar-muted/70" />}
               </div>
             </div>
           </Link>

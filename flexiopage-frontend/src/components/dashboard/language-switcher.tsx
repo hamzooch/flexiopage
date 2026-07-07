@@ -39,12 +39,12 @@ export function LanguageSwitcher() {
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
-        className="inline-flex h-10 items-center gap-1.5 rounded-xl border border-border/70 bg-card/60 px-2.5 text-sm transition-all hover:border-primary/40 hover:bg-card"
+        className="inline-flex h-10 items-center gap-1.5 rounded-xl border border-sidebar-border bg-sidebar-muted/50 px-2.5 text-sm text-sidebar-strong transition-all hover:border-primary/50 hover:bg-sidebar-muted"
         aria-haspopup="listbox"
         aria-expanded={open}
         title={active.label}
       >
-        <Languages className="h-4 w-4 text-muted-foreground" />
+        <Languages className="h-4 w-4 text-sidebar-foreground" />
         <span className="text-base leading-none">{active.flag}</span>
         <span className="hidden text-xs font-semibold uppercase tracking-wider sm:inline">{active.code}</span>
       </button>
