@@ -37,11 +37,16 @@ import {
   ExternalLink,
   Copy,
   Check,
+  ShieldCheck,
+  ShieldAlert,
+  Shield,
+  Printer,
 } from 'lucide-react';
 import { storesApi, extractApiError } from '@/lib/api';
 import { useScopedStoreId } from '@/lib/use-scoped-store';
 import { formatCurrency, formatDate, cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
+import type { CustomerReliability, ReliabilityBadge } from '@/types/reliability';
 
 type ConfirmationStatus = 'pending' | 'confirmed' | 'no_answer' | 'callback' | 'declined';
 type PaymentStatus = 'pending' | 'paid' | 'failed' | 'refunded' | 'manual';
@@ -173,6 +178,23 @@ export default function OrderDetailPage() {
   }, [storeId, orderId]);
 
   useEffect(() => { void fetchOrder(); }, [fetchOrder]);
+
+  // Fiabilité client (score de retours) — chargé en parallèle pour aider
+  // l'agent de confirmation. N'interrompt jamais l'affichage de la commande.
+  const [reliability, setReliability] = useState<CustomerReliability | null>(null);
+  const [relLoading, setRelLoading] = useState(false);
+  useEffect(() => {
+    if (!storeId || !orderId) return;
+    let cancelled = false;
+    setRelLoading(true);
+    setReliability(null);
+    storesApi
+      .getCustomerReliability(storeId, { orderId })
+      .then((res) => { if (!cancelled) setReliability(res.data.reliability); })
+      .catch(() => { if (!cancelled) setReliability(null); })
+      .finally(() => { if (!cancelled) setRelLoading(false); });
+    return () => { cancelled = true; };
+  }, [storeId, orderId]);
 
   // Auto-clear the inline action message after a short delay so it doesn't
   // pile up on a screen the seller might keep open.
@@ -307,6 +329,17 @@ export default function OrderDetailPage() {
           </div>
         </div>
         <div className="flex flex-wrap items-center gap-1.5">
+          {order.shippingAddress && (
+            <a
+              href={`/bordereau?storeId=${storeId}&ids=${order._id}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="mr-1 inline-flex items-center gap-1.5 rounded-md border border-border/70 bg-card px-2.5 py-1 text-[11px] font-semibold text-foreground hover:bg-muted"
+              title="Ouvrir le bordereau de livraison (impression / PDF)"
+            >
+              <Printer className="h-3.5 w-3.5" /> Bordereau
+            </a>
+          )}
           <span className={cn('inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold ring-1 ring-inset', paymentBadge.cls)}>
             <CreditCard className="h-3 w-3" /> {paymentBadge.label}
           </span>
@@ -538,6 +571,9 @@ export default function OrderDetailPage() {
             </div>
           </section>
 
+          {/* Fiabilité client — aide l'agent avant de confirmer. */}
+          <ReliabilityPanel loading={relLoading} data={reliability} />
+
           {/* Confirmation call (COD) */}
           <section className="rounded-2xl border border-border/60 bg-card p-4">
             <h2 className="mb-3 flex items-center gap-1.5 text-sm font-semibold">
@@ -610,5 +646,150 @@ function Pill({ children }: { children: React.ReactNode }) {
     <span className="inline-flex items-center rounded-full bg-muted/60 px-2 py-0.5 text-[10px] font-medium text-foreground/80">
       {children}
     </span>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// Fiabilité client — panneau d'aide à la décision pour l'agent de
+// confirmation COD. Système « conseil seulement » : on informe, on ne
+// bloque pas. Cf. backend customerReliability.service.ts.
+// ─────────────────────────────────────────────────────────────────────
+
+const REL_BADGE: Record<ReliabilityBadge, {
+  label: string;
+  advice: string;
+  icon: typeof ShieldCheck;
+  card: string;
+  chip: string;
+}> = {
+  reliable: {
+    label: 'Client fiable',
+    advice: 'Aucun historique de retour. Confirmation standard.',
+    icon: ShieldCheck,
+    card: 'border-emerald-200 bg-emerald-50/60 dark:border-emerald-900/50 dark:bg-emerald-950/20',
+    chip: 'bg-emerald-100 text-emerald-800 ring-emerald-200 dark:bg-emerald-900/40 dark:text-emerald-200 dark:ring-emerald-800',
+  },
+  watch: {
+    label: 'À surveiller',
+    advice: 'Incident(s) passé(s). Bien reconfirmer l’adresse et la disponibilité du client.',
+    icon: Shield,
+    card: 'border-amber-200 bg-amber-50/60 dark:border-amber-900/50 dark:bg-amber-950/20',
+    chip: 'bg-amber-100 text-amber-800 ring-amber-200 dark:bg-amber-900/40 dark:text-amber-200 dark:ring-amber-800',
+  },
+  risky: {
+    label: 'Risque élevé',
+    advice: 'Retours répétés. Insister sur la confirmation — envisager un acompte ou un contact vidéo avant expédition.',
+    icon: ShieldAlert,
+    card: 'border-red-200 bg-red-50/60 dark:border-red-900/50 dark:bg-red-950/20',
+    chip: 'bg-red-100 text-red-800 ring-red-200 dark:bg-red-900/40 dark:text-red-200 dark:ring-red-800',
+  },
+};
+
+/** Libellé court de l'issue d'une commande passée. */
+function orderOutcome(o: CustomerReliability['store']['orders'][number]): { text: string; tone: string } {
+  if (o.isReturn) return { text: 'Retourné', tone: 'text-red-700 dark:text-red-300' };
+  if (o.deliveryStatus === 'delivered' || o.fulfillmentStatus === 'fulfilled')
+    return { text: 'Livré', tone: 'text-emerald-700 dark:text-emerald-300' };
+  if (o.confirmationStatus === 'declined') return { text: 'Refusé (appel)', tone: 'text-red-700 dark:text-red-300' };
+  if (o.fulfillmentStatus === 'cancelled') return { text: 'Annulé', tone: 'text-muted-foreground' };
+  return { text: 'En cours', tone: 'text-muted-foreground' };
+}
+
+function ReliabilityPanel({ loading, data }: { loading: boolean; data: CustomerReliability | null }) {
+  if (loading && !data) {
+    return (
+      <section className="rounded-2xl border border-border/60 bg-card p-4">
+        <div className="flex items-center gap-2 text-xs text-muted-foreground">
+          <Loader2 className="h-3.5 w-3.5 animate-spin" /> Analyse de la fiabilité client…
+        </div>
+      </section>
+    );
+  }
+  if (!data) return null;
+
+  // Pas de numéro exploitable → note discrète, pas de faux « fiable ».
+  if (!data.phoneKey) {
+    return (
+      <section className="rounded-2xl border border-border/60 bg-card p-4 text-xs text-muted-foreground">
+        <Shield className="mr-1.5 inline h-3.5 w-3.5" /> Fiabilité indisponible (numéro absent ou invalide).
+      </section>
+    );
+  }
+
+  const b = REL_BADGE[data.badge];
+  const Icon = b.icon;
+  const s = data.store;
+  const p = data.platform;
+  const platformExtra = Math.max(0, p.returned - s.returned); // retours vus ailleurs sur la plateforme
+
+  return (
+    <section className={cn('rounded-2xl border p-4', b.card)}>
+      <div className="mb-2 flex items-center justify-between gap-2">
+        <h2 className="flex items-center gap-1.5 text-sm font-semibold">
+          <Icon className="h-4 w-4" /> Fiabilité client
+        </h2>
+        <span className={cn('inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold ring-1 ring-inset', b.chip)}>
+          {b.label} · {data.score}/100
+        </span>
+      </div>
+
+      <p className="mb-3 text-xs text-foreground/80">{b.advice}</p>
+
+      {/* Compteurs */}
+      <div className="grid grid-cols-3 gap-2 text-center">
+        <div className="rounded-lg bg-background/60 p-2">
+          <div className="text-base font-semibold tabular-nums">{s.returned}</div>
+          <div className="text-[10px] text-muted-foreground">Retours (boutique)</div>
+        </div>
+        <div className="rounded-lg bg-background/60 p-2">
+          <div className="text-base font-semibold tabular-nums">{Math.round(p.returnRate * 100)}%</div>
+          <div className="text-[10px] text-muted-foreground">Taux de retour</div>
+        </div>
+        <div className="rounded-lg bg-background/60 p-2">
+          <div className="text-base font-semibold tabular-nums">{p.returned}</div>
+          <div className="text-[10px] text-muted-foreground">Retours (plateforme)</div>
+        </div>
+      </div>
+
+      {platformExtra > 0 && (
+        <div className="mt-2 flex items-center gap-1.5 rounded-lg bg-background/60 px-2 py-1.5 text-[11px] text-foreground/80">
+          <AlertTriangle className="h-3.5 w-3.5 text-amber-600" />
+          {platformExtra} retour(s) supplémentaire(s) signalé(s) chez d’autres vendeurs FlexioPage.
+        </div>
+      )}
+
+      {data.reasons.length > 0 && (
+        <ul className="mt-3 space-y-0.5 text-[11px] text-foreground/70">
+          {data.reasons.map((r, i) => (
+            <li key={i} className="flex items-start gap-1.5">
+              <span className="mt-1 h-1 w-1 shrink-0 rounded-full bg-current opacity-50" /> {r}
+            </li>
+          ))}
+        </ul>
+      )}
+
+      {/* Historique de la boutique */}
+      {s.orders.length > 0 && (
+        <details className="mt-3 group">
+          <summary className="cursor-pointer list-none text-[11px] font-medium text-muted-foreground hover:text-foreground">
+            Historique boutique ({s.orders.length}) ▾
+          </summary>
+          <ul className="mt-1.5 space-y-1">
+            {s.orders.slice(0, 8).map((o) => {
+              const out = orderOutcome(o);
+              return (
+                <li key={o._id} className="flex items-center justify-between gap-2 rounded-md bg-background/50 px-2 py-1 text-[11px]">
+                  <Link href={`/dashboard/orders/${o._id}`} className="font-medium hover:underline">
+                    #{o.orderNumber}
+                  </Link>
+                  <span className="text-muted-foreground">{formatDate(o.createdAt)}</span>
+                  <span className={cn('font-semibold', out.tone)}>{out.text}</span>
+                </li>
+              );
+            })}
+          </ul>
+        </details>
+      )}
+    </section>
   );
 }

@@ -50,6 +50,13 @@ export interface IOrder extends Document {
   email: string;
   customerName?: string;
   customerPhone?: string;
+  /**
+   * Clé d'agrégation « fiabilité client » (cf. utils/phone.ts) : derniers
+   * chiffres significatifs de customerPhone. Indexée pour retrouver
+   * rapidement TOUTES les commandes d'un même numéro (dans la boutique et,
+   * pour le signal plateforme, cross-boutiques). Sert au score de retours.
+   */
+  customerPhoneKey?: string;
   shippingAddress?: {
     line1?: string;
     line2?: string;
@@ -181,6 +188,7 @@ const OrderSchema = new Schema<IOrder>(
     email: { type: String, required: true },
     customerName: { type: String },
     customerPhone: { type: String },
+    customerPhoneKey: { type: String },
     shippingAddress: {
       line1: { type: String },
       line2: { type: String },
@@ -257,4 +265,7 @@ OrderSchema.index({ storeId: 1 });
 OrderSchema.index({ storeId: 1, orderNumber: 1 }, { unique: true });
 OrderSchema.index({ downloadToken: 1 }, { sparse: true, unique: true });
 OrderSchema.index({ storeId: 1, createdAt: -1 });
+// Fiabilité client : historique par numéro (boutique) + signal plateforme.
+OrderSchema.index({ storeId: 1, customerPhoneKey: 1 });
+OrderSchema.index({ customerPhoneKey: 1 });
 export const Order = mongoose.model<IOrder>('Order', OrderSchema);

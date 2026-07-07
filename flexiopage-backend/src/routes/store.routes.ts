@@ -88,6 +88,8 @@ router.post('/:storeId/media', mediaController.uploadSingle, mediaController.upl
 router.get('/:storeId/media', mediaController.listMedia);
 
 router.get('/:storeId/customers', customerController.listCustomers);
+// Fiabilité client (score de retours) — aide l'agent de confirmation COD.
+router.get('/:storeId/customers/reliability', customerController.getReliability);
 
 // Collections (groups of products with their own storefront page).
 router.get('/:storeId/collections', collectionController.listCollections);
