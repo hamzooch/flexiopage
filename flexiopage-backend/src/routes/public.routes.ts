@@ -23,7 +23,7 @@ import { notifyOrderCreated } from '../services/notification.service';
 import { pushOrderToSheets } from '../services/sheets.service';
 import { resolveBundlePricing } from '../lib/bundle';
 import { resolveMarketForRequest, resolveProductPricing } from '../lib/market';
-import { recordEvent } from '../services/tracking.service';
+import { recordEvent, deviceFromUserAgent } from '../services/tracking.service';
 import mongoose from 'mongoose';
 
 /**
@@ -155,6 +155,9 @@ router.post('/track', (req: Request, res: Response): void => {
       productId: body.productId && mongoose.Types.ObjectId.isValid(body.productId) ? body.productId : undefined,
       type,
       sessionId: body.sessionId,
+      // Classé côté serveur depuis l'UA du beacon — pas de PII stockée, juste
+      // la classe mobile/desktop pour le split visiteurs de la vue d'ensemble.
+      device: deviceFromUserAgent(req.headers['user-agent']),
     });
   }
   res.status(204).end();
@@ -1077,6 +1080,7 @@ router.post('/checkout/cod', async (req: Request, res: Response): Promise<void> 
       sessionId: body.sessionId,
       value: subtotal,
       currency: store.settings?.currency || 'USD',
+      device: deviceFromUserAgent(req.headers['user-agent']),
     });
   }
 

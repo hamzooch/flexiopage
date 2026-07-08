@@ -40,6 +40,8 @@ import {
   CheckCircle2,
   CalendarRange,
   Percent,
+  Smartphone,
+  Monitor,
 } from 'lucide-react';
 import { useAuthStore } from '@/stores/auth-store';
 import { useStoreStore } from '@/stores/store-store';
@@ -483,6 +485,59 @@ export default function DashboardOverviewPage() {
       {/* ── Funnel mini ─────────────────────────────────────── */}
       {activeStore && analytics && (
         <FunnelStrip funnel={analytics.funnel} pageViews={analytics.kpis.pageViews.value} />
+      )}
+
+      {/* ── Visiteurs par appareil (mobile vs desktop/web) ──── */}
+      {activeStore && analytics && (
+        <section className="rounded-2xl border border-border/60 bg-card p-4 sm:p-5">
+          <div className="mb-3 flex items-center gap-2">
+            <Activity className="h-4 w-4 text-primary" />
+            <h2 className="text-sm font-semibold">Visiteurs par appareil</h2>
+          </div>
+          {(() => {
+            const d = analytics.devices ?? { mobile: 0, desktop: 0, unknown: 0 };
+            const detected = d.mobile + d.desktop;
+            if (detected === 0) {
+              return (
+                <p className="text-xs text-muted-foreground">
+                  Pas encore de donnée appareil — les visites seront classées mobile / desktop dès le prochain trafic
+                  {d.unknown ? ` (${d.unknown} visite(s) enregistrée(s) avant l’activation de la mesure)` : ''}.
+                </p>
+              );
+            }
+            const mPct = Math.round((d.mobile / detected) * 100);
+            const dPct = 100 - mPct;
+            return (
+              <>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="rounded-xl border border-border/50 bg-muted/20 p-3">
+                    <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                      <Smartphone className="h-4 w-4 text-emerald-600" /> Mobile
+                    </div>
+                    <div className="mt-1 text-2xl font-bold tabular-nums">{d.mobile}</div>
+                    <div className="text-[11px] text-muted-foreground">{mPct}% des visiteurs</div>
+                  </div>
+                  <div className="rounded-xl border border-border/50 bg-muted/20 p-3">
+                    <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                      <Monitor className="h-4 w-4 text-indigo-600" /> Desktop / Web
+                    </div>
+                    <div className="mt-1 text-2xl font-bold tabular-nums">{d.desktop}</div>
+                    <div className="text-[11px] text-muted-foreground">{dPct}% des visiteurs</div>
+                  </div>
+                </div>
+                <div className="mt-3 flex h-2 overflow-hidden rounded-full bg-muted">
+                  <div className="bg-emerald-500" style={{ width: `${mPct}%` }} />
+                  <div className="bg-indigo-500" style={{ width: `${dPct}%` }} />
+                </div>
+                {d.unknown > 0 && (
+                  <p className="mt-2 text-[11px] text-muted-foreground">
+                    + {d.unknown} non détecté(s) (visites antérieures à la mesure).
+                  </p>
+                )}
+              </>
+            );
+          })()}
+        </section>
       )}
 
       {/* ── Stores list (slim) ──────────────────────────────── */}
