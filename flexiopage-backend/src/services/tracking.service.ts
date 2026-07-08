@@ -19,6 +19,19 @@ export interface RecordEventInput {
   sessionId: string;
   value?: number;
   currency?: string;
+  device?: 'mobile' | 'desktop';
+}
+
+/**
+ * Classe un User-Agent en 'mobile' | 'desktop'. Volontairement simple : on ne
+ * garde que la distinction téléphone/tablette vs ordinateur. Les tablettes sont
+ * comptées comme « mobile ». Retourne undefined si l'UA est vide/illisible.
+ */
+export function deviceFromUserAgent(ua?: string): 'mobile' | 'desktop' | undefined {
+  if (!ua || typeof ua !== 'string') return undefined;
+  const s = ua.toLowerCase();
+  const isMobile = /(android|iphone|ipad|ipod|iemobile|blackberry|bb10|windows phone|opera mini|mobile|tablet|silk|kindle|webos)/.test(s);
+  return isMobile ? 'mobile' : 'desktop';
 }
 
 /**
@@ -50,6 +63,7 @@ export async function recordEvent(input: RecordEventInput): Promise<void> {
       productId: input.productId || undefined,
       type: input.type,
       sessionId: String(input.sessionId).slice(0, 64),
+      device: input.device,
       value: typeof input.value === 'number' ? input.value : undefined,
       currency: input.currency,
     });

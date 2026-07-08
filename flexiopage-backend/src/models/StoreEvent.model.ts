@@ -22,6 +22,12 @@ export interface IStoreEvent extends Document {
   type: StoreEventType;
   /** Anonymous visitor session id (correlates add_to_cart -> purchase). */
   sessionId: string;
+  /**
+   * Type d'appareil du visiteur, classé côté serveur depuis le User-Agent au
+   * moment de l'ingestion. On ne stocke PAS l'UA brut (pas de PII), juste la
+   * classe. Absent sur les events antérieurs à cette feature.
+   */
+  device?: 'mobile' | 'desktop';
   /** Order value — only set on `purchase`. */
   value?: number;
   currency?: string;
@@ -34,6 +40,7 @@ const StoreEventSchema = new Schema<IStoreEvent>(
     productId: { type: Schema.Types.ObjectId, ref: 'Product' },
     type: { type: String, enum: ['page_view', 'product_view', 'add_to_cart', 'purchase'], required: true },
     sessionId: { type: String, required: true, index: true },
+    device: { type: String, enum: ['mobile', 'desktop'] },
     value: { type: Number },
     currency: { type: String },
   },

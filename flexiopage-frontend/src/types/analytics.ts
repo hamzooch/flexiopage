@@ -50,6 +50,8 @@ export interface StoreAnalyticsRich {
     revenue: number;
   }>;
   paymentBreakdown: Array<{ provider: string; orders: number; revenue: number }>;
+  /** Visiteurs distincts par appareil sur la fenêtre (unknown = non détecté). */
+  devices: { mobile: number; desktop: number; unknown: number };
   funnel: {
     created: number;
     paid: number;

@@ -174,6 +174,11 @@ export interface StoreAnalyticsRich {
   }>;
   /** Paid-orders breakdown by payment provider (Wave/OM/MTN/Moov/Card). */
   paymentBreakdown: Array<{ provider: string; orders: number; revenue: number }>;
+  /**
+   * Visiteurs distincts (sessions) par appareil sur la fenêtre. `unknown` =
+   * events antérieurs à la capture du device (ou User-Agent illisible).
+   */
+  devices: { mobile: number; desktop: number; unknown: number };
   /** Fulfillment funnel for the window. */
   funnel: {
     created: number;
@@ -318,6 +323,7 @@ export async function getStoreAnalyticsRich(
     recentRaw,
     windowViews,
     prevViews,
+    deviceAgg,
   ] = await Promise.all([
     // All-time totals (any status).
     Order.aggregate([
@@ -430,6 +436,13 @@ export async function getStoreAnalyticsRich(
       { $match: { storeId: storeObjectId, type: { $in: ['page_view', 'product_view'] }, createdAt: { $gte: w.prevFrom, $lte: w.prevTo } } },
       { $group: { _id: '$type', count: { $sum: 1 } } },
     ]),
+    // Visiteurs distincts par appareil sur la fenêtre : on déduplique par
+    // session, puis on compte les sessions par device.
+    StoreEvent.aggregate<{ _id: string | null; visitors: number }>([
+      { $match: { storeId: storeObjectId, createdAt: { $gte: w.from, $lte: w.to } } },
+      { $group: { _id: { device: '$device', session: '$sessionId' } } },
+      { $group: { _id: '$_id.device', visitors: { $sum: 1 } } },
+    ]),
   ]);
 
   const t = totals[0] || { orders: 0, revenue: 0, sales: 0, customers: 0, currency: storeCurrency };
@@ -471,6 +484,14 @@ export async function getStoreAnalyticsRich(
   const curViews = sumByType(windowViews);
   const prvViews = sumByType(prevViews);
 
+  // Visiteurs par appareil (sessions distinctes). device null/absent → unknown.
+  const devices = { mobile: 0, desktop: 0, unknown: 0 };
+  for (const row of deviceAgg as Array<{ _id: string | null; visitors: number }>) {
+    if (row._id === 'mobile') devices.mobile = row.visitors;
+    else if (row._id === 'desktop') devices.desktop = row.visitors;
+    else devices.unknown += row.visitors;
+  }
+
   const refundRate = a.paid === 0 ? 0 : (a.refunded / Math.max(a.paid + a.refunded, 1)) * 100;
   const prevRefundRate = p.paid === 0 ? 0 : (p.refunded / Math.max(p.paid + p.refunded, 1)) * 100;
   const fulfillmentRate = a.paid === 0 ? 0 : (a.fulfilled / a.paid) * 100;
@@ -511,6 +532,7 @@ export async function getStoreAnalyticsRich(
       orders: r.orders,
       revenue: r.revenue,
     })),
+    devices,
     funnel: { created: a.orders, paid: a.paid, fulfilled: a.fulfilled, refunded: a.refunded },
     recentOrders: (recentRaw as Array<{
       _id: mongoose.Types.ObjectId; orderNumber: string; email: string; customerName?: string;
