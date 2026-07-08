@@ -199,6 +199,66 @@ function computeStage(o: OrderType): StageKey {
   return 'to_confirm';
 }
 
+// ─── Stepper de progression (Confirmation → Expédition → Livraison) ─────────
+// Dérive 3 étapes du statut unifié. Les états terminaux « morts » (annulée /
+// retournée) s'affichent en une seule pastille rouge à la place du stepper.
+function OrderStepper({ order }: { order: OrderType }) {
+  const key = computeStage(order);
+  if (key === 'cancelled' || key === 'returned') {
+    const s = STAGE[key];
+    return (
+      <span className={cn('inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-bold ring-1', s.cls)}>
+        <s.icon className="h-3.5 w-3.5" /> {s.label}
+      </span>
+    );
+  }
+  const confActive = key === 'to_confirm' || key === 'no_answer' || key === 'callback';
+  const delivered = key === 'delivered';
+
+  type StepState = 'done' | 'current' | 'todo';
+  interface Step { label: string; state: StepState; tone?: string }
+
+  const step1: Step = confActive
+    ? { label: STAGE[key].label, state: 'current', tone: STAGE[key].stripe }
+    : { label: 'Confirmée', state: 'done' };
+  const step2: Step =
+    key === 'dispatch_failed' ? { label: 'Échec dispatch', state: 'current', tone: 'bg-red-500' }
+    : key === 'confirmed'     ? { label: 'À expédier',     state: 'current', tone: 'bg-indigo-500' }
+    : (key === 'assigned' || key === 'picked_up' || key === 'in_transit')
+                              ? { label: 'Expédiée',       state: 'current', tone: 'bg-indigo-500' }
+    : delivered               ? { label: 'Expédiée',       state: 'done' }
+                              : { label: 'Expédiée',       state: 'todo' };
+  const step3: Step = delivered
+    ? { label: 'Livrée', state: 'current', tone: 'bg-emerald-500' }
+    : { label: 'Livrée', state: 'todo' };
+
+  const pill = (s: Step) => (
+    <span
+      className={cn(
+        'inline-flex items-center rounded-full px-2.5 py-1 text-[11px] font-bold ring-1 transition-colors',
+        s.state === 'done' && 'bg-emerald-500/10 text-emerald-700 ring-emerald-500/30',
+        s.state === 'current' && cn('text-white ring-transparent shadow-sm', s.tone),
+        s.state === 'todo' && 'text-muted-foreground ring-border/70',
+      )}
+    >
+      {s.label}
+    </span>
+  );
+  const bar = (leftDone: boolean) => (
+    <span className={cn('h-0.5 w-3.5 shrink-0 rounded-full sm:w-5', leftDone ? 'bg-emerald-500' : 'bg-border')} aria-hidden />
+  );
+
+  return (
+    <div className="flex flex-wrap items-center gap-1.5">
+      {pill(step1)}
+      {bar(step1.state === 'done')}
+      {pill(step2)}
+      {bar(step2.state === 'done')}
+      {pill(step3)}
+    </div>
+  );
+}
+
 export default function DashboardOrdersPage() {
   const searchParams = useSearchParams();
   const storeIdParam = searchParams.get('storeId');
@@ -408,11 +468,44 @@ export default function DashboardOrdersPage() {
           icon={Banknote}
           tint="fuchsia"
           hint="Payées + livrées"
+          hero
         />
       </section>
 
-      {/* ── Filter toolbar — barre unique, compacte et pro ───── */}
-      <div className="rounded-2xl border border-border/60 bg-card p-2.5 shadow-sm">
+      {/* ── Filter toolbar — onglets de statut + recherche & filtres ───── */}
+      <div className="space-y-2.5 rounded-2xl border border-border/60 bg-card p-2.5 shadow-sm">
+        {/* Onglets de statut (avec compteurs) — remplace l'ancien menu Statut */}
+        <div className="flex gap-1.5 overflow-x-auto">
+          {([
+            { value: 'all',       label: 'Toutes',     count: stats.total },
+            { value: 'pending',   label: 'En attente', count: stats.pending },
+            { value: 'paid',      label: 'Payées',     count: stats.paid },
+            { value: 'delivered', label: 'Livrées',    count: stats.delivered },
+            { value: 'cancelled', label: 'Annulées' },
+          ] as { value: StatusFilter; label: string; count?: number }[]).map((t) => {
+            const active = statusFilter === t.value;
+            return (
+              <button
+                key={t.value}
+                type="button"
+                onClick={() => setStatusFilter(t.value)}
+                className={cn(
+                  'inline-flex flex-none items-center gap-1.5 rounded-lg px-3 py-1.5 text-[13px] font-semibold transition-colors',
+                  active ? 'bg-primary/10 text-primary' : 'text-muted-foreground hover:bg-muted hover:text-foreground',
+                )}
+              >
+                {t.label}
+                {typeof t.count === 'number' && (
+                  <span className={cn('rounded-full px-1.5 text-[10px] font-bold tabular-nums', active ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground')}>
+                    {t.count}
+                  </span>
+                )}
+              </button>
+            );
+          })}
+        </div>
+
+        {/* Recherche + filtres secondaires */}
         <div className="flex flex-wrap items-center gap-2">
           {/* Recherche */}
           <div className="relative min-w-[220px] flex-1">
@@ -443,20 +536,6 @@ export default function DashboardOrdersPage() {
             onPreset={(d) => { setDayFilter(d); setCustomFrom(''); setCustomTo(''); }}
             onCustom={(from, to) => { setCustomFrom(from); setCustomTo(to); setDayFilter('all'); }}
             onClear={() => { setDayFilter('all'); setCustomFrom(''); setCustomTo(''); }}
-          />
-
-          {/* Statut */}
-          <FilterSelect
-            label="Statut"
-            value={statusFilter}
-            onChange={(v) => setStatusFilter(v as StatusFilter)}
-            options={[
-              { value: 'all', label: 'Tous', count: stats.total },
-              { value: 'pending', label: 'En attente', count: stats.pending, dot: 'bg-amber-500' },
-              { value: 'paid', label: 'Payées', count: stats.paid, dot: 'bg-emerald-500' },
-              { value: 'delivered', label: 'Livrées', count: stats.delivered, dot: 'bg-indigo-500' },
-              { value: 'cancelled', label: 'Annulées', dot: 'bg-rose-500' },
-            ]}
           />
 
           {/* Confirmation d'appel (funnel COD) */}
@@ -772,12 +851,14 @@ function KpiCard({
   hint,
   icon: Icon,
   tint,
+  hero,
 }: {
   label: string;
   value: number | string;
   hint?: string;
   icon: React.ComponentType<{ className?: string }>;
   tint: 'indigo' | 'amber' | 'emerald' | 'fuchsia';
+  hero?: boolean;
 }) {
   const tintMap: Record<string, { bg: string; text: string; border: string; accent: string }> = {
     indigo:  { bg: 'bg-indigo-500/10',  text: 'text-indigo-700',  border: 'border-indigo-500/20',  accent: 'from-indigo-500 to-violet-500' },
@@ -787,7 +868,10 @@ function KpiCard({
   };
   const c = tintMap[tint];
   return (
-    <div className="group relative overflow-hidden rounded-2xl border border-border/60 bg-card p-4 transition-all hover:border-primary/30 hover:shadow-md">
+    <div className={cn(
+      'group relative overflow-hidden rounded-2xl border p-4 transition-all hover:-translate-y-0.5 hover:shadow-md',
+      hero ? 'border-primary/30 bg-gradient-to-b from-primary/[0.06] to-transparent' : 'border-border/60 bg-card hover:border-primary/30',
+    )}>
       {/* Top accent bar — subtle brand mark */}
       <div className={cn('absolute inset-x-0 top-0 h-0.5 bg-gradient-to-r opacity-70', c.accent)} aria-hidden />
       <div className="flex items-start justify-between gap-3">
@@ -1028,7 +1112,6 @@ function OrderCard({
   }
 
   const stage = STAGE[computeStage(o)];
-  const StageIcon = stage.icon;
 
   return (
     <li
@@ -1118,11 +1201,8 @@ function OrderCard({
 
           {/* Statut unifié — LE statut de la commande, en grand + bien coloré.
               Le paiement reste en indicateur secondaire (c'est l'argent). */}
-          <div className="mt-2.5 flex flex-wrap items-center gap-2">
-            <span className={cn('inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-xs font-bold ring-1', stage.cls)}>
-              <StageIcon className="h-3.5 w-3.5" />
-              {stage.label}
-            </span>
+          <div className="mt-2.5 flex flex-wrap items-center gap-2.5">
+            <OrderStepper order={o} />
             <span className="inline-flex items-center gap-1.5 text-[11px] font-medium text-muted-foreground">
               <span className={cn('h-1.5 w-1.5 rounded-full', o.paymentStatus === 'paid' ? 'bg-emerald-500' : o.paymentStatus === 'refunded' ? 'bg-slate-400' : o.paymentStatus === 'failed' ? 'bg-rose-500' : 'bg-amber-500')} />
               {payment.label}
