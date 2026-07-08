@@ -22,6 +22,7 @@
     "migrate:stores-to-markets": "tsx scripts/migrate-stores-to-markets.ts",
     "migrate:products-to-pricing": "tsx scripts/migrate-products-to-pricing.ts",
     "backfill:phone-key": "tsx scripts/backfill-order-phone-key.ts",
+    "test:md-webhook": "tsx scripts/test-md-webhook-parse.ts",
     "test": "vitest run",
     "test:watch": "vitest"
   },

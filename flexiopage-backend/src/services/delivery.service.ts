@@ -13,7 +13,7 @@
  */
 import crypto from 'crypto';
 import * as soap from 'soap';
-import type { IOrder } from '../models/Order.model';
+import type { IOrder, ConfirmationStatus } from '../models/Order.model';
 import { Order } from '../models/Order.model';
 import { Product } from '../models/Product.model';
 import type { IStore } from '../models/Store.model';
@@ -44,6 +44,12 @@ export interface WebhookResult {
     | 'returned'
     | 'cancelled'
     | 'failed';
+  /**
+   * Statut de confirmation (centre d'appel MogaDelivery) quand il est présent
+   * dans le payload. `undefined` = pas de valeur d'appel reconnue → on NE
+   * touche PAS le confirmationStatus côté FlexioPage.
+   */
+  confirmation?: ConfirmationStatus;
   raw?: Record<string, unknown>;
 }
 
@@ -404,42 +410,72 @@ class MogaDeliveryProvider implements DeliveryProviderImpl {
       }
     }
 
-    const externalId = String(payload.delivery_id || payload.id || '');
-    const status = String(payload.status || '').toLowerCase();
-    // MogaDelivery has two consecutive enums: OrderStatus (call-center phase,
-    // before shipping) and ShippingStatus (logistics phase). We collapse them
-    // both into our linear pipeline. See integration spec doc.
-    const map: Record<string, WebhookResult['status']> = {
-      // OrderStatus (pre-shipping)
-      pending: 'pending',
-      created: 'pending',
-      notreachable: 'pending',     // buyer unreachable — still actionable, not terminal
-      not_reachable: 'pending',
-      callback: 'pending',          // agent will retry — keep pending
-      confirmed: 'assigned',        // order validated, ready for fulfillment
+    const externalId = String(payload.delivery_id ?? payload.deliveryId ?? payload.id ?? '');
 
-      // ShippingStatus (post-shipping)
-      assigned: 'assigned',
-      accepted: 'assigned',
-      prepared: 'assigned',         // packed, awaiting courier pickup
-      picked: 'picked_up',
-      picked_up: 'picked_up',
-      collected: 'picked_up',
-      in_transit: 'in_transit',
-      ongoing: 'in_transit',
-      out_for_delivery: 'in_transit',
-      reprogrammed: 'in_transit',   // delivery rescheduled — still en route
-      delivered: 'delivered',
-      returned: 'returned',
-      cancelled: 'cancelled',
-      canceled: 'cancelled',
-      failed: 'failed',
+    // MogaDelivery envoie DEUX enums (centre d'appel "OrderStatus" + logistique
+    // "ShippingStatus") et, selon la version/config, ils arrivent sous des noms
+    // de champ variables (status, order_status, shipping_status, statut…). On lit
+    // donc plusieurs clés candidates pour CHAQUE enum plutôt que le seul
+    // `payload.status` — sinon tout retombait sur "pending" (d'où « seul Livré
+    // remonte »). On accepte aussi les valeurs françaises.
+    const pick = (...keys: string[]): string => {
+      for (const k of keys) {
+        const v = (payload as Record<string, unknown>)[k];
+        if (typeof v === 'string' && v.trim()) return v.trim().toLowerCase();
+        if (typeof v === 'number') return String(v);
+      }
+      return '';
     };
-    const orderIdField = payload.order_id ?? payload.external_order_id ?? payload.id;
+    const shippingRaw = pick(
+      'shipping_status', 'shippingStatus', 'delivery_status', 'deliveryStatus',
+      'tracking_status', 'statut_livraison', 'livraison', 'status', 'statut', 'state', 'etat',
+    );
+    const orderRaw = pick(
+      'order_status', 'orderStatus', 'call_status', 'callStatus',
+      'confirmation_status', 'confirmationStatus', 'statut_commande', 'statut_confirmation', 'statut_appel',
+    );
+
+    // Livraison → pipeline normalisé (EN + FR). Valeur inconnue → 'pending'.
+    const deliveryMap: Record<string, WebhookResult['status']> = {
+      pending: 'pending', created: 'pending', new: 'pending', nouveau: 'pending', en_attente: 'pending',
+      notreachable: 'pending', not_reachable: 'pending', callback: 'pending',
+      confirmed: 'assigned', confirme: 'assigned', assigned: 'assigned', accepted: 'assigned',
+      prepared: 'assigned', valide: 'assigned',
+      picked: 'picked_up', picked_up: 'picked_up', collected: 'picked_up',
+      ramasse: 'picked_up', ramassage: 'picked_up', collecte: 'picked_up',
+      in_transit: 'in_transit', ongoing: 'in_transit', out_for_delivery: 'in_transit',
+      reprogrammed: 'in_transit', en_cours: 'in_transit', encours: 'in_transit',
+      en_transit: 'in_transit', en_livraison: 'in_transit',
+      delivered: 'delivered', livre: 'delivered', 'livré': 'delivered', livree: 'delivered', 'livrée': 'delivered',
+      returned: 'returned', retour: 'returned', retourne: 'returned', 'retourné': 'returned', 'retournée': 'returned',
+      cancelled: 'cancelled', canceled: 'cancelled', annule: 'cancelled', 'annulé': 'cancelled', annulee: 'cancelled', 'annulée': 'cancelled',
+      failed: 'failed', echec: 'failed', 'échec': 'failed', echoue: 'failed',
+    };
+
+    // Centre d'appel → confirmationStatus. On ne mappe PAS 'cancelled' ici pour
+    // ne pas transformer une annulation logistique en « refusé » de confirmation.
+    const confirmMap: Record<string, ConfirmationStatus> = {
+      pending: 'pending', created: 'pending', new: 'pending', nouveau: 'pending', en_attente: 'pending',
+      confirmed: 'confirmed', confirme: 'confirmed', 'confirmé': 'confirmed', valid: 'confirmed', valide: 'confirmed', 'validé': 'confirmed', validated: 'confirmed', ok: 'confirmed',
+      no_answer: 'no_answer', noanswer: 'no_answer', notreachable: 'no_answer', not_reachable: 'no_answer', unreachable: 'no_answer', injoignable: 'no_answer', pas_de_reponse: 'no_answer', sans_reponse: 'no_answer',
+      callback: 'callback', call_back: 'callback', rappel: 'callback', a_rappeler: 'callback', reprogramme: 'callback', 'reprogrammé': 'callback', reprogrammed: 'callback', reporte: 'callback', 'reporté': 'callback',
+      declined: 'declined', refused: 'declined', refuse: 'declined', 'refusé': 'declined', rejected: 'declined', rejete: 'declined', 'rejeté': 'declined',
+    };
+
+    const deliveryStatus = deliveryMap[shippingRaw || orderRaw] || 'pending';
+    // Confirmation : depuis le champ centre d'appel ; sinon depuis un champ unique
+    // SEULEMENT si sa valeur est explicitement une valeur d'appel (jamais un
+    // statut purement logistique comme delivered/cancelled).
+    const confirmSrc = orderRaw || (confirmMap[shippingRaw] ? shippingRaw : '');
+    const confirmation = confirmMap[confirmSrc];
+
+    const orderIdField =
+      payload.order_id ?? payload.external_order_id ?? payload.orderId ?? payload.reference ?? payload.id;
     return {
       externalId,
-      orderId: typeof orderIdField === 'string' ? orderIdField : undefined,
-      status: map[status] || 'pending',
+      orderId: orderIdField != null ? String(orderIdField) : undefined,
+      status: deliveryStatus,
+      confirmation: confirmation || undefined,
       raw: payload,
     };
   }
@@ -758,6 +794,26 @@ export async function applyDeliveryWebhook(args: {
     lastSyncedAt: new Date(),
   };
   order.fulfillmentStatus = mapToFulfillment(parsedNoCheck.status);
+
+  // ── Synchro du statut de confirmation (centre d'appel MogaDelivery) ──────
+  // On ne l'applique QUE si MD a renvoyé une valeur d'appel reconnue, pour ne
+  // jamais écraser une confirmation posée à la main par l'agent avec un simple
+  // événement logistique. Pas d'auto-annulation/restock ici (géré par le
+  // fulfillmentStatus + l'endpoint manuel) — on synchronise le libellé.
+  const previousConfirmation = order.confirmationStatus;
+  const confirmationChanged =
+    !!parsedNoCheck.confirmation && parsedNoCheck.confirmation !== previousConfirmation;
+  if (confirmationChanged) {
+    order.confirmationStatus = parsedNoCheck.confirmation;
+    order.confirmedAt = new Date();
+    order.statusHistory = order.statusHistory || [];
+    order.statusHistory.push({
+      at: new Date(),
+      confirmationStatus: parsedNoCheck.confirmation,
+      note: "Synchro MogaDelivery (centre d'appel)",
+    });
+  }
+
   // For COD orders, the courier collects the cash on delivery → at that point
   // the order is effectively `paid`. Flip the paymentStatus so analytics and
   // dashboards show the right state.
@@ -780,6 +836,31 @@ export async function applyDeliveryWebhook(args: {
       });
     } catch (err) {
       console.error('[delivery webhook] notification failed (non-fatal):', (err as Error).message);
+    }
+  }
+
+  // Notification dédiée quand le statut de confirmation change côté MD.
+  if (store?.ownerId && confirmationChanged && parsedNoCheck.confirmation) {
+    const CONF_LABEL: Record<ConfirmationStatus, string> = {
+      pending: 'à confirmer',
+      confirmed: 'confirmée',
+      no_answer: 'sans réponse',
+      callback: 'à rappeler',
+      declined: 'refusée',
+    };
+    try {
+      const { createNotification } = await import('./notification.service');
+      await createNotification({
+        userId: store.ownerId,
+        storeId: order.storeId,
+        type: 'order.status_changed',
+        title: `Commande ${order.orderNumber} — appel : ${CONF_LABEL[parsedNoCheck.confirmation]}`,
+        body: 'Statut de confirmation mis à jour par MogaDelivery (centre d\'appel).',
+        link: `/dashboard/orders?storeId=${order.storeId}`,
+        meta: { orderId: order._id.toString(), confirmationStatus: parsedNoCheck.confirmation },
+      });
+    } catch (err) {
+      console.error('[delivery webhook] confirmation notif failed (non-fatal):', (err as Error).message);
     }
   }
 
