@@ -17,6 +17,7 @@ import type { Metadata } from 'next';
 import { mediaUrl, storeAbsoluteUrl } from '@/lib/utils';
 import { WhatsappButton, type WhatsappConfig } from '@/components/storefront/whatsapp-button';
 import { NewsletterPopup, type NewsletterConfig } from '@/components/storefront/newsletter-popup';
+import { SalesPopup, type SalesPopupConfig } from '@/components/storefront/sales-popup';
 import { LocaleBootstrap } from '@/components/storefront/locale-bootstrap';
 
 interface Props {
@@ -42,6 +43,7 @@ interface StoreLite {
   settings?: {
     whatsapp?: WhatsappConfig;
     newsletter?: NewsletterConfig;
+    salesPopup?: SalesPopupConfig;
     language?: string;
     seoTitle?: string;
     seoDescription?: string;
@@ -151,6 +153,10 @@ export default async function StoreLayout({ children, params }: Props) {
         storeSlug={storeSlug}
         storeName={store?.name}
         config={store?.settings?.newsletter}
+      />
+      <SalesPopup
+        storeSlug={storeSlug}
+        config={store?.settings?.salesPopup}
       />
     </>
   );

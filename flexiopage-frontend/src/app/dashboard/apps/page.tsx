@@ -36,7 +36,20 @@ import {
   ArrowLeft,
   Plug,
   Bot,
+  ShoppingBag,
+  Plus,
+  Trash2,
 } from 'lucide-react';
+
+interface SalesPopupSettings {
+  enabled?: boolean;
+  mode?: 'real' | 'fake' | 'hybrid';
+  position?: 'bottom-right' | 'bottom-left' | 'top-right' | 'top-left';
+  initialDelaySeconds?: number;
+  intervalSeconds?: number;
+  accentColor?: string;
+  fakeEvents?: Array<{ name: string; city?: string; product: string; minutesAgo?: number }>;
+}
 
 interface StoreDoc {
   _id: string;
@@ -45,9 +58,12 @@ interface StoreDoc {
   integrations?: {
     googleSheets?: { enabled?: boolean; webhookUrl?: string; lastSyncAt?: string; lastError?: string };
   };
+  settings?: {
+    salesPopup?: SalesPopupSettings;
+  };
 }
 
-type AppId = 'google-sheets' | 'mailchimp' | 'slack' | 'zapier' | 'discord' | 'messenger-bot' | 'whatsapp-bot';
+type AppId = 'google-sheets' | 'mailchimp' | 'slack' | 'zapier' | 'discord' | 'messenger-bot' | 'whatsapp-bot' | 'sales-popup';
 
 interface AppDef {
   id: AppId;
@@ -76,6 +92,15 @@ const APPS: AppDef[] = [
     category: 'Automation',
     icon: MessageSquare,
     accent: 'from-green-500 to-emerald-600',
+    available: true,
+  },
+  {
+    id: 'sales-popup',
+    name: 'Sales Popup',
+    description: 'Preuve sociale : petite notif qui affiche les achats récents à chaque visiteur de ta boutique.',
+    category: 'Marketing',
+    icon: ShoppingBag,
+    accent: 'from-pink-500 to-rose-600',
     available: true,
   },
   {
@@ -206,7 +231,10 @@ export default function AppsPage() {
         {openApp === 'google-sheets' && (
           <GoogleSheetsApp store={activeStore} onSaved={refreshStores} />
         )}
-        {openApp !== 'google-sheets' && (
+        {openApp === 'sales-popup' && (
+          <SalesPopupApp store={activeStore} onSaved={refreshStores} />
+        )}
+        {openApp !== 'google-sheets' && openApp !== 'sales-popup' && (
           <ComingSoonApp app={APPS.find((a) => a.id === openApp)!} />
         )}
       </div>
@@ -221,6 +249,8 @@ export default function AppsPage() {
         return botStatus.messengerBot;
       case 'whatsapp-bot':
         return botStatus.whatsappBot;
+      case 'sales-popup':
+        return !!activeStore.settings?.salesPopup?.enabled;
       default:
         return false;
     }
@@ -559,6 +589,261 @@ function GoogleSheetsApp({ store, onSaved }: { store: StoreDoc; onSaved: () => P
             </span>
           )}
         </div>
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// SALES POPUP APP
+// ─────────────────────────────────────────────────────────────────────
+function SalesPopupApp({ store, onSaved }: { store: StoreDoc; onSaved: () => Promise<void> }) {
+  const sp = store.settings?.salesPopup || {};
+  const [enabled, setEnabled] = useState(!!sp.enabled);
+  const [mode, setMode] = useState<SalesPopupSettings['mode']>(sp.mode || 'hybrid');
+  const [position, setPosition] = useState<SalesPopupSettings['position']>(sp.position || 'bottom-left');
+  const [initialDelay, setInitialDelay] = useState<number>(sp.initialDelaySeconds ?? 10);
+  const [interval, setIntervalVal] = useState<number>(sp.intervalSeconds ?? 25);
+  const [accentColor, setAccentColor] = useState<string>(sp.accentColor || '#e11d48');
+  const [fakeEvents, setFakeEvents] = useState(sp.fakeEvents || []);
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+
+  const updateEvent = (idx: number, patch: Partial<{ name: string; city: string; product: string; minutesAgo: number }>) => {
+    setFakeEvents((prev) => prev.map((e, i) => (i === idx ? { ...e, ...patch } : e)));
+  };
+
+  const addEvent = () => {
+    setFakeEvents((prev) => [...prev, { name: '', city: '', product: '', minutesAgo: undefined }]);
+  };
+
+  const removeEvent = (idx: number) => {
+    setFakeEvents((prev) => prev.filter((_, i) => i !== idx));
+  };
+
+  async function handleSave() {
+    setSaving(true);
+    setSaved(false);
+    try {
+      // Trim empty rows so we don't persist blank templates.
+      const cleaned = fakeEvents
+        .map((e) => ({
+          name: (e.name || '').trim(),
+          city: (e.city || '').trim() || undefined,
+          product: (e.product || '').trim(),
+          minutesAgo: e.minutesAgo && e.minutesAgo > 0 ? Math.floor(e.minutesAgo) : undefined,
+        }))
+        .filter((e) => e.name && e.product);
+
+      await storesApi.update(store._id, {
+        settings: {
+          ...(store.settings || {}),
+          salesPopup: {
+            enabled,
+            mode,
+            position,
+            initialDelaySeconds: Math.max(0, initialDelay),
+            intervalSeconds: Math.max(5, interval),
+            accentColor: accentColor.trim() || undefined,
+            fakeEvents: cleaned,
+          },
+        },
+      });
+      await onSaved();
+      setSaved(true);
+      window.setTimeout(() => setSaved(false), 2000);
+    } finally { setSaving(false); }
+  }
+
+  return (
+    <div className="space-y-6">
+      <header className="rounded-3xl border border-border/60 bg-card p-6">
+        <div className="flex items-start gap-4">
+          <div className="grid h-12 w-12 place-items-center rounded-2xl bg-gradient-to-br from-pink-500 to-rose-600 text-white shadow-md">
+            <ShoppingBag className="h-6 w-6" />
+          </div>
+          <div className="flex-1">
+            <h1 className="text-2xl font-bold tracking-tight">Sales Popup</h1>
+            <p className="text-sm text-muted-foreground">
+              Affiche une petite notif « <b>Ahmed de Casablanca vient d&apos;acheter …</b> » à chaque visiteur.
+              Les vraies commandes sont anonymisées côté serveur ; tu peux aussi saisir des exemples pour les premiers jours.
+            </p>
+          </div>
+        </div>
+      </header>
+
+      <div className="rounded-2xl border border-border/60 bg-card p-5 space-y-5">
+        <label className="flex cursor-pointer items-center justify-between gap-4 rounded-xl border border-border/60 bg-muted/20 p-4 hover:bg-muted/30">
+          <div>
+            <div className="text-sm font-medium">Activer les popups d&apos;achats</div>
+            <div className="text-xs text-muted-foreground">Désactivable à tout moment.</div>
+          </div>
+          <button
+            type="button"
+            role="switch"
+            aria-checked={enabled}
+            onClick={() => setEnabled(!enabled)}
+            className={cn(
+              'relative inline-flex h-6 w-11 shrink-0 rounded-full transition-colors',
+              enabled ? 'bg-primary' : 'bg-muted-foreground/30'
+            )}
+          >
+            <span className={cn(
+              'absolute top-0.5 h-5 w-5 rounded-full bg-white shadow-md transition-transform',
+              enabled ? 'translate-x-[22px]' : 'translate-x-0.5'
+            )} />
+          </button>
+        </label>
+
+        <div className="grid gap-4 sm:grid-cols-2">
+          <div>
+            <Label>Source des notifications</Label>
+            <select
+              value={mode}
+              onChange={(e) => setMode(e.target.value as SalesPopupSettings['mode'])}
+              className="mt-1.5 h-11 w-full rounded-md border border-input bg-background px-3 text-sm"
+            >
+              <option value="hybrid">Auto (vraies commandes, sinon exemples)</option>
+              <option value="real">Vraies commandes uniquement</option>
+              <option value="fake">Exemples uniquement</option>
+            </select>
+            <p className="mt-1 text-[11px] text-muted-foreground">
+              Les vraies commandes sont anonymisées : prénom + ville seulement.
+            </p>
+          </div>
+          <div>
+            <Label>Position à l&apos;écran</Label>
+            <select
+              value={position}
+              onChange={(e) => setPosition(e.target.value as SalesPopupSettings['position'])}
+              className="mt-1.5 h-11 w-full rounded-md border border-input bg-background px-3 text-sm"
+            >
+              <option value="bottom-left">Bas gauche</option>
+              <option value="bottom-right">Bas droite</option>
+              <option value="top-left">Haut gauche</option>
+              <option value="top-right">Haut droite</option>
+            </select>
+          </div>
+          <div>
+            <Label htmlFor="sp-initial">Délai avant la 1ère popup (secondes)</Label>
+            <Input
+              id="sp-initial"
+              type="number"
+              min={0}
+              value={initialDelay}
+              onChange={(e) => setInitialDelay(parseInt(e.target.value, 10) || 0)}
+              className="mt-1.5 h-11"
+            />
+          </div>
+          <div>
+            <Label htmlFor="sp-interval">Intervalle entre 2 popups (secondes)</Label>
+            <Input
+              id="sp-interval"
+              type="number"
+              min={5}
+              value={interval}
+              onChange={(e) => setIntervalVal(parseInt(e.target.value, 10) || 5)}
+              className="mt-1.5 h-11"
+            />
+          </div>
+          <div className="sm:col-span-2">
+            <Label htmlFor="sp-color">Couleur d&apos;accent</Label>
+            <div className="mt-1.5 flex items-center gap-2">
+              <input
+                id="sp-color"
+                type="color"
+                value={accentColor}
+                onChange={(e) => setAccentColor(e.target.value)}
+                className="h-11 w-14 cursor-pointer rounded-md border border-input bg-background p-1"
+              />
+              <Input
+                value={accentColor}
+                onChange={(e) => setAccentColor(e.target.value)}
+                placeholder="#e11d48"
+                className="h-11 flex-1 font-mono text-xs"
+              />
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Fake events editor — only useful when mode is 'fake' or 'hybrid' */}
+      {mode !== 'real' && (
+        <div className="rounded-2xl border border-border/60 bg-card p-5 space-y-4">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <h4 className="text-sm font-semibold">Exemples de commandes</h4>
+              <p className="text-xs text-muted-foreground">
+                Utilisés {mode === 'fake' ? 'exclusivement' : 'en complément quand la boutique a peu de commandes'}.
+              </p>
+            </div>
+            <Button size="sm" variant="outline" onClick={addEvent} className="gap-1.5">
+              <Plus className="h-4 w-4" />
+              Ajouter
+            </Button>
+          </div>
+          {fakeEvents.length === 0 ? (
+            <p className="rounded-lg border border-dashed border-border/70 bg-muted/20 p-4 text-center text-xs text-muted-foreground">
+              Aucun exemple pour l&apos;instant. Clique « Ajouter » pour créer ton premier.
+            </p>
+          ) : (
+            <div className="space-y-3">
+              {fakeEvents.map((ev, i) => (
+                <div key={i} className="grid gap-2 rounded-xl border border-border/60 bg-background p-3 sm:grid-cols-[1fr_1fr_1.2fr_100px_auto]">
+                  <Input
+                    placeholder="Prénom (Ahmed)"
+                    value={ev.name}
+                    onChange={(e) => updateEvent(i, { name: e.target.value })}
+                    className="h-10 text-xs"
+                  />
+                  <Input
+                    placeholder="Ville (Casablanca)"
+                    value={ev.city || ''}
+                    onChange={(e) => updateEvent(i, { city: e.target.value })}
+                    className="h-10 text-xs"
+                  />
+                  <Input
+                    placeholder="Produit acheté"
+                    value={ev.product}
+                    onChange={(e) => updateEvent(i, { product: e.target.value })}
+                    className="h-10 text-xs"
+                  />
+                  <Input
+                    type="number"
+                    min={0}
+                    placeholder="min"
+                    value={ev.minutesAgo ?? ''}
+                    onChange={(e) => updateEvent(i, { minutesAgo: parseInt(e.target.value, 10) || 0 })}
+                    className="h-10 text-xs"
+                    title="Minutes écoulées depuis l'achat (optionnel)"
+                  />
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => removeEvent(i)}
+                    className="h-10 w-10 shrink-0 p-0 text-muted-foreground hover:text-destructive"
+                    aria-label="Supprimer"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      <div className="flex flex-wrap items-center gap-2">
+        <Button onClick={handleSave} disabled={saving} className="gap-2">
+          {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+          Enregistrer
+        </Button>
+        {saved && (
+          <span className="inline-flex items-center gap-1 text-xs font-medium text-emerald-600">
+            <Check className="h-3.5 w-3.5" strokeWidth={3} />
+            Réglages sauvegardés
+          </span>
+        )}
       </div>
     </div>
   );

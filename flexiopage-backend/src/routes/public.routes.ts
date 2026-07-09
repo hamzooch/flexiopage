@@ -23,7 +23,7 @@ import { notifyOrderCreated } from '../services/notification.service';
 import { pushOrderToSheets } from '../services/sheets.service';
 import { resolveBundlePricing } from '../lib/bundle';
 import { resolveMarketForRequest, resolveProductPricing } from '../lib/market';
-import { recordEvent, deviceFromUserAgent } from '../services/tracking.service';
+import { recordEvent, deviceFromUserAgent, classifySource } from '../services/tracking.service';
 import mongoose from 'mongoose';
 
 /**
@@ -142,6 +142,10 @@ router.post('/track', (req: Request, res: Response): void => {
     productId?: string;
     type?: string;
     sessionId?: string;
+    /** Hint client — soit `utm_source` de l'URL, soit un raccourci "facebook"
+     *  poussé explicitement. On le passe à `classifySource` comme fallback
+     *  du Referer côté serveur. */
+    source?: string;
   };
   const type =
     body.type === 'add_to_cart' ? 'add_to_cart'
@@ -150,6 +154,9 @@ router.post('/track', (req: Request, res: Response): void => {
     : null;
   const validStore = body.storeId && mongoose.Types.ObjectId.isValid(body.storeId);
   if (type && validStore && body.sessionId) {
+    // Classe la source du trafic : utm_source client > Referer serveur > direct.
+    // Ne stocke JAMAIS l'URL brute (potentielle PII) — juste la catégorie.
+    const source = classifySource(body.source || (req.headers.referer as string | undefined));
     void recordEvent({
       storeId: body.storeId!,
       productId: body.productId && mongoose.Types.ObjectId.isValid(body.productId) ? body.productId : undefined,
@@ -158,6 +165,7 @@ router.post('/track', (req: Request, res: Response): void => {
       // Classé côté serveur depuis l'UA du beacon — pas de PII stockée, juste
       // la classe mobile/desktop pour le split visiteurs de la vue d'ensemble.
       device: deviceFromUserAgent(req.headers['user-agent']),
+      source,
     });
   }
   res.status(204).end();
@@ -534,6 +542,77 @@ router.post('/stores/:storeSlug/subscribe', async (req: Request, res: Response):
     const msg = (err as Error).message || 'Subscribe failed';
     res.status(400).json({ error: msg });
   }
+});
+
+/**
+ * GET /api/public/stores/:storeSlug/sales-popup-events — feeds the
+ * "Sales Popup" storefront widget with a rotating list of purchase
+ * notifications. Real orders are anonymized (first name + city only)
+ * before leaving the server. Falls back to the seller-authored fake
+ * events list in 'fake' mode or when 'hybrid' has too few real orders.
+ */
+router.get('/stores/:storeSlug/sales-popup-events', async (req: Request, res: Response): Promise<void> => {
+  const store = await storeService.getStoreBySlug(req.params.storeSlug);
+  if (!store) {
+    res.status(404).json({ error: 'Store not found' });
+    return;
+  }
+  const cfg = store.settings?.salesPopup;
+  if (!cfg?.enabled) {
+    res.json({ events: [] });
+    return;
+  }
+
+  const mode = cfg.mode || 'hybrid';
+  const fake = (cfg.fakeEvents || []).filter((e) => e?.name && e?.product);
+
+  /**
+   * Real orders anonymized for social-proof display. We keep only the first
+   * word of `customerName` (or a placeholder), the city (never the full
+   * address, never phone/email), the primary item name and how long ago
+   * it happened. Confirmed COD or paid — pending orders would misrepresent
+   * activity to visitors.
+   */
+  async function fetchRealEvents() {
+    const since = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+    const orders = await Order.find({
+      storeId: store!._id,
+      createdAt: { $gte: since },
+      $or: [{ paymentStatus: 'paid' }, { confirmationStatus: 'confirmed' }],
+    })
+      .sort({ createdAt: -1 })
+      .limit(20)
+      .select('customerName shippingAddress items createdAt')
+      .lean();
+
+    return orders
+      .map((o) => {
+        const firstName = (o.customerName || '').trim().split(/\s+/)[0] || 'Un client';
+        const city = o.shippingAddress?.city?.trim() || undefined;
+        const product = o.items?.[0]?.name?.trim();
+        if (!product) return null;
+        const minutesAgo = Math.max(
+          1,
+          Math.round((Date.now() - new Date(o.createdAt).getTime()) / 60000),
+        );
+        return { name: firstName, city, product, minutesAgo };
+      })
+      .filter((e): e is { name: string; city: string | undefined; product: string; minutesAgo: number } => !!e);
+  }
+
+  let events: Array<{ name: string; city?: string; product: string; minutesAgo?: number }> = [];
+
+  if (mode === 'fake') {
+    events = fake;
+  } else if (mode === 'real') {
+    events = await fetchRealEvents();
+  } else {
+    // hybrid — real wins, fake fills the gap when the store has too little history
+    const real = await fetchRealEvents();
+    events = real.length >= 3 ? real : [...real, ...fake];
+  }
+
+  res.json({ events });
 });
 
 /**

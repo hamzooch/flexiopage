@@ -143,10 +143,33 @@ export interface IStore extends Document {
       successMessage?: string;    // overrides default "Merci, ton code est"
     };
     /**
-     * Floating WhatsApp button shown on every storefront page. Lets the
-     * buyer open a wa.me chat with the seller in one tap. Replaces the
-     * previous in-store chatbot — same goal, simpler UX.
+     * Social-proof "Sales Popup" — small toast that surfaces on the
+     * storefront ("Ahmed from Casablanca just bought Product X"). By
+     * default we rotate anonymized real orders; sellers with an empty
+     * order log can seed a list of fake events shown as fallback.
      */
+    salesPopup?: {
+      enabled?: boolean;
+      /** 'real' = only anonymized real orders. 'fake' = only seeded events.
+       *  'hybrid' (default) = real when the store has enough orders,
+       *  otherwise fake — lets fresh stores get social proof from day 1. */
+      mode?: 'real' | 'fake' | 'hybrid';
+      position?: 'bottom-right' | 'bottom-left' | 'top-right' | 'top-left';
+      /** Wait N seconds before the first popup appears. */
+      initialDelaySeconds?: number;
+      /** Delay between two popups (each one auto-dismisses ~5s after showing). */
+      intervalSeconds?: number;
+      /** Accent color for the icon/badge (hex). Falls back to the theme primary. */
+      accentColor?: string;
+      /** Seller-authored events used in 'fake' or as hybrid fallback. */
+      fakeEvents?: Array<{
+        name: string;      // "Ahmed"
+        city?: string;     // "Casablanca"
+        product: string;   // product name
+        /** Optional minutes-ago hint; the storefront picks a random one when empty. */
+        minutesAgo?: number;
+      }>;
+    };
     whatsapp?: {
       enabled?: boolean;          // default false
       /** E.164 phone (e.g. "+216551234"). Required when enabled. */
@@ -473,6 +496,15 @@ export interface IStore extends Document {
     /** Plafond absolu, exprimé dans la devise de la commande. */
     cap?: number;
   };
+  /**
+   * Objectifs commerciaux définis par le seller. Utilisés par la vue
+   * d'ensemble pour afficher une jauge de progression sur le mois courant.
+   * Un champ vide = pas d'objectif → aucun widget affiché.
+   */
+  goals?: {
+    /** Chiffre d'affaires visé sur le mois (devise = store currency). */
+    monthlyRevenue?: number;
+  };
   createdAt: Date;
   updatedAt: Date;
 }
@@ -559,6 +591,27 @@ const StoreSchema = new Schema<IStore>(
         rewardCouponCode: { type: String, trim: true, uppercase: true },
         dismissalDays: { type: Number, default: 7, min: 0 },
         successMessage: { type: String, trim: true },
+      },
+      salesPopup: {
+        enabled: { type: Boolean, default: false },
+        mode: { type: String, enum: ['real', 'fake', 'hybrid'], default: 'hybrid' },
+        position: {
+          type: String,
+          enum: ['bottom-right', 'bottom-left', 'top-right', 'top-left'],
+          default: 'bottom-left',
+        },
+        initialDelaySeconds: { type: Number, default: 10, min: 0 },
+        intervalSeconds: { type: Number, default: 25, min: 5 },
+        accentColor: { type: String, trim: true },
+        fakeEvents: [
+          {
+            _id: false,
+            name: { type: String, required: true, trim: true },
+            city: { type: String, trim: true },
+            product: { type: String, required: true, trim: true },
+            minutesAgo: { type: Number, min: 0 },
+          },
+        ],
       },
       whatsapp: {
         enabled: { type: Boolean, default: false },
@@ -779,6 +832,9 @@ const StoreSchema = new Schema<IStore>(
     commission: {
       rate: { type: Number, min: 0, max: 1 },
       cap: { type: Number, min: 0 },
+    },
+    goals: {
+      monthlyRevenue: { type: Number, min: 0 },
     },
   },
   { timestamps: true }
