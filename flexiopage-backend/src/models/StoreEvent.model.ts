@@ -16,6 +16,23 @@ import mongoose, { Document, Schema } from 'mongoose';
  */
 export type StoreEventType = 'page_view' | 'product_view' | 'add_to_cart' | 'purchase';
 
+/**
+ * Source de trafic classée à l'ingestion : d'où vient le visiteur.
+ * On ne stocke jamais le Referer brut ni les paramètres UTM (pas de PII).
+ * Absent sur les events antérieurs à cette feature.
+ */
+export type StoreEventSource =
+  | 'facebook'
+  | 'instagram'
+  | 'tiktok'
+  | 'google'
+  | 'youtube'
+  | 'twitter'
+  | 'snapchat'
+  | 'whatsapp'
+  | 'direct'
+  | 'other';
+
 export interface IStoreEvent extends Document {
   storeId: mongoose.Types.ObjectId;
   productId?: mongoose.Types.ObjectId;
@@ -28,6 +45,8 @@ export interface IStoreEvent extends Document {
    * classe. Absent sur les events antérieurs à cette feature.
    */
   device?: 'mobile' | 'desktop';
+  /** Origine du trafic (classée côté serveur — pas d'URL brute stockée). */
+  source?: StoreEventSource;
   /** Order value — only set on `purchase`. */
   value?: number;
   currency?: string;
@@ -41,6 +60,10 @@ const StoreEventSchema = new Schema<IStoreEvent>(
     type: { type: String, enum: ['page_view', 'product_view', 'add_to_cart', 'purchase'], required: true },
     sessionId: { type: String, required: true, index: true },
     device: { type: String, enum: ['mobile', 'desktop'] },
+    source: {
+      type: String,
+      enum: ['facebook', 'instagram', 'tiktok', 'google', 'youtube', 'twitter', 'snapchat', 'whatsapp', 'direct', 'other'],
+    },
     value: { type: Number },
     currency: { type: String },
   },

@@ -29,6 +29,30 @@ export function getSessionId(): string {
 
 export type StoreEventType = 'page_view' | 'product_view' | 'add_to_cart';
 
+const SOURCE_KEY = 'flexio_src';
+
+/**
+ * Source d'arrivée du visiteur. Priorité :
+ *   1. utm_source de l'URL courante (pub Meta/TikTok/Google)
+ *   2. valeur mémorisée à la 1ère visite (localStorage — évite d'écraser
+ *      "facebook" par "direct" quand le visiteur navigue en interne)
+ *   3. undefined → le backend retombera sur le Referer, puis 'direct'.
+ */
+function resolveSource(): string | undefined {
+  if (typeof window === 'undefined') return undefined;
+  try {
+    const utm = new URLSearchParams(window.location.search).get('utm_source');
+    if (utm) {
+      localStorage.setItem(SOURCE_KEY, utm);
+      return utm;
+    }
+    const stored = localStorage.getItem(SOURCE_KEY);
+    return stored || undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 /** Fire-and-forget — never throws, never blocks the storefront. */
 export function trackStoreEvent(input: {
   storeId?: string;
@@ -43,6 +67,7 @@ export function trackStoreEvent(input: {
     productId: input.productId,
     type: input.type,
     sessionId,
+    source: resolveSource(),
   });
   try {
     if (navigator.sendBeacon) {

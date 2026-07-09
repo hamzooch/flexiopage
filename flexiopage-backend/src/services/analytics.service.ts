@@ -153,6 +153,18 @@ export interface StoreAnalyticsRich {
     productViews: { value: number; previous: number; deltaPct: number | null };
     /** Taux de conversion = commandes créées / visites (page_view) × 100. */
     conversionRate: { value: number; previous: number; deltaPct: number | null };
+    /**
+     * Taux de confirmation COD = commandes confirmées (via appel télé-vente)
+     * / commandes créées. Métrique clé du dropshipping MENA/Maghreb :
+     * une bonne fiche produit + un bon script d'appel devraient dépasser 50%.
+     */
+    codConfirmationRate: { value: number; previous: number; deltaPct: number | null };
+    /**
+     * Taux de livraison = commandes livrées / commandes confirmées. Reflète
+     * la qualité du coursier + la véracité des adresses. Sous 70% = signal
+     * fort qu'il faut changer de transporteur ou ré-appeler pour valider.
+     */
+    codDeliveryRate: { value: number; previous: number; deltaPct: number | null };
   };
   /** All-time aggregates (no window filter). */
   totals: {
@@ -161,6 +173,19 @@ export interface StoreAnalyticsRich {
     totalSales: number;
     totalOrders: number;
     totalCustomers: number;
+  };
+  /**
+   * Objectif du mois configuré par le seller + progression réelle depuis le
+   * 1er du mois courant. Absent quand aucun objectif n'est défini — le
+   * frontend n'affiche alors pas de widget objectif.
+   */
+  monthlyGoal?: {
+    target: number;
+    current: number;
+    /** Pourcentage 0..∞ (peut dépasser 100 quand l'objectif est atteint). */
+    progressPct: number;
+    /** Nombre de jours restants dans le mois courant (jour courant inclus). */
+    daysLeft: number;
   };
   /** Revenue (paid) + sales (all orders) + orders bucketed by day (or month for 12m). */
   timeseries: Array<{ date: string; revenue: number; sales: number; orders: number; paid: number }>;
@@ -179,6 +204,18 @@ export interface StoreAnalyticsRich {
    * events antérieurs à la capture du device (ou User-Agent illisible).
    */
   devices: { mobile: number; desktop: number; unknown: number };
+  /**
+   * Sources de trafic (sessions distinctes) sur la fenêtre. Classées à
+   * l'ingestion depuis utm_source ou le Referer. `unknown` = events
+   * antérieurs à la capture de source.
+   */
+  trafficSources: Array<{ source: string; visitors: number }>;
+  /**
+   * Ventes agrégées par heure du jour (0..23), toutes commandes de la
+   * fenêtre confondues. Sert au widget "à quelle heure vends-tu ?" — permet
+   * au seller de programmer ses pubs Meta / TikTok sur les heures fortes.
+   */
+  hourlySales: Array<{ hour: number; orders: number; sales: number }>;
   /** Fulfillment funnel for the window. */
   funnel: {
     created: number;
@@ -203,6 +240,40 @@ export interface StoreAnalyticsRich {
 function pctDelta(curr: number, prev: number): number | null {
   if (prev === 0) return curr === 0 ? 0 : null;
   return ((curr - prev) / prev) * 100;
+}
+
+/**
+ * Progression du chiffre d'affaires du mois courant vs l'objectif fixé par
+ * le seller dans `store.settings.goals.monthlyRevenue`. Utilise `sales`
+ * (toutes commandes, tout statut) car en COD, le "payé" arrive après
+ * livraison — sinon la jauge sous-évalue la vraie activité du mois.
+ * Retourne `undefined` quand aucun objectif n'est défini.
+ */
+async function computeMonthlyGoal(storeObjectId: mongoose.Types.ObjectId) {
+  const store = await Store.findById(storeObjectId).select('goals').lean();
+  const target = store?.goals?.monthlyRevenue;
+  if (!target || target <= 0) return undefined;
+
+  const now = new Date();
+  const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+  const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+
+  const agg = await Order.aggregate([
+    { $match: { storeId: storeObjectId, createdAt: { $gte: startOfMonth } } },
+    { $group: { _id: null, sales: { $sum: '$total' } } },
+  ]);
+  const current = agg[0]?.sales || 0;
+
+  // Jours restants inclut aujourd'hui — donne au seller une échéance qui
+  // reste "1 jour restant" jusqu'à la fin de la journée du dernier jour.
+  const daysLeft = Math.max(1, Math.ceil((endOfMonth.getTime() - now.getTime() + 24 * 3600 * 1000) / (24 * 3600 * 1000)));
+
+  return {
+    target,
+    current,
+    progressPct: (current / target) * 100,
+    daysLeft,
+  };
 }
 
 function emptyBucket(from: Date, to: Date, bucket: 'day' | 'month'): Map<string, { revenue: number; sales: number; orders: number; paid: number }> {
@@ -324,6 +395,8 @@ export async function getStoreAnalyticsRich(
     windowViews,
     prevViews,
     deviceAgg,
+    trafficSourcesRaw,
+    hourlySalesRaw,
   ] = await Promise.all([
     // All-time totals (any status).
     Order.aggregate([
@@ -350,12 +423,14 @@ export async function getStoreAnalyticsRich(
           paid: { $sum: { $cond: [{ $eq: ['$paymentStatus', 'paid'] }, 1, 0] } },
           refunded: { $sum: { $cond: [{ $eq: ['$paymentStatus', 'refunded'] }, 1, 0] } },
           fulfilled: { $sum: { $cond: [{ $eq: ['$fulfillmentStatus', 'fulfilled'] }, 1, 0] } },
+          codConfirmed: { $sum: { $cond: [{ $eq: ['$confirmationStatus', 'confirmed'] }, 1, 0] } },
+          codDelivered: { $sum: { $cond: [{ $and: [{ $eq: ['$confirmationStatus', 'confirmed'] }, { $eq: ['$fulfillmentStatus', 'fulfilled'] }] }, 1, 0] } },
           revenue: { $sum: { $cond: [{ $eq: ['$paymentStatus', 'paid'] }, '$total', 0] } },
           sales: { $sum: '$total' },
           uniqueCustomers: { $addToSet: '$email' },
         },
       },
-      { $project: { orders: 1, paid: 1, refunded: 1, fulfilled: 1, revenue: 1, sales: 1, uniqueCustomers: { $size: '$uniqueCustomers' } } },
+      { $project: { orders: 1, paid: 1, refunded: 1, fulfilled: 1, codConfirmed: 1, codDelivered: 1, revenue: 1, sales: 1, uniqueCustomers: { $size: '$uniqueCustomers' } } },
     ]),
     // Previous-window aggregate for delta comparison.
     Order.aggregate([
@@ -367,12 +442,14 @@ export async function getStoreAnalyticsRich(
           paid: { $sum: { $cond: [{ $eq: ['$paymentStatus', 'paid'] }, 1, 0] } },
           refunded: { $sum: { $cond: [{ $eq: ['$paymentStatus', 'refunded'] }, 1, 0] } },
           fulfilled: { $sum: { $cond: [{ $eq: ['$fulfillmentStatus', 'fulfilled'] }, 1, 0] } },
+          codConfirmed: { $sum: { $cond: [{ $eq: ['$confirmationStatus', 'confirmed'] }, 1, 0] } },
+          codDelivered: { $sum: { $cond: [{ $and: [{ $eq: ['$confirmationStatus', 'confirmed'] }, { $eq: ['$fulfillmentStatus', 'fulfilled'] }] }, 1, 0] } },
           revenue: { $sum: { $cond: [{ $eq: ['$paymentStatus', 'paid'] }, '$total', 0] } },
           sales: { $sum: '$total' },
           uniqueCustomers: { $addToSet: '$email' },
         },
       },
-      { $project: { orders: 1, paid: 1, refunded: 1, fulfilled: 1, revenue: 1, sales: 1, uniqueCustomers: { $size: '$uniqueCustomers' } } },
+      { $project: { orders: 1, paid: 1, refunded: 1, fulfilled: 1, codConfirmed: 1, codDelivered: 1, revenue: 1, sales: 1, uniqueCustomers: { $size: '$uniqueCustomers' } } },
     ]),
     // Pending-payment count is a snapshot, not a window aggregate.
     Order.countDocuments({ ...baseMatch, paymentStatus: 'pending' }),
@@ -443,11 +520,36 @@ export async function getStoreAnalyticsRich(
       { $group: { _id: { device: '$device', session: '$sessionId' } } },
       { $group: { _id: '$_id.device', visitors: { $sum: 1 } } },
     ]),
+    // Sources de trafic sur la fenêtre : sessions distinctes par source
+    // classée. On prend la 1re source vue par session (min createdAt) pour
+    // ne pas double-compter — quelqu'un qui vient de Facebook puis re-visite
+    // en direct compte comme Facebook.
+    StoreEvent.aggregate<{ _id: string | null; visitors: number }>([
+      { $match: { storeId: storeObjectId, createdAt: { $gte: w.from, $lte: w.to } } },
+      { $sort: { createdAt: 1 } },
+      { $group: { _id: '$sessionId', source: { $first: '$source' } } },
+      { $group: { _id: '$source', visitors: { $sum: 1 } } },
+      { $sort: { visitors: -1 } },
+    ]),
+    // Ventes par heure du jour (0..23), toutes commandes de la fenêtre.
+    // Timezone: on utilise UTC — suffisant pour l'analyse relative (les
+    // heures fortes restent stables), et évite d'exposer la TZ du seller.
+    Order.aggregate<{ _id: number; orders: number; sales: number }>([
+      { $match: inWindow },
+      {
+        $group: {
+          _id: { $hour: '$createdAt' },
+          orders: { $sum: 1 },
+          sales: { $sum: '$total' },
+        },
+      },
+      { $sort: { _id: 1 } },
+    ]),
   ]);
 
   const t = totals[0] || { orders: 0, revenue: 0, sales: 0, customers: 0, currency: storeCurrency };
-  const a = windowAgg[0] || { orders: 0, paid: 0, refunded: 0, fulfilled: 0, revenue: 0, sales: 0, uniqueCustomers: 0 };
-  const p = prevAgg[0] || { orders: 0, paid: 0, refunded: 0, fulfilled: 0, revenue: 0, sales: 0, uniqueCustomers: 0 };
+  const a = windowAgg[0] || { orders: 0, paid: 0, refunded: 0, fulfilled: 0, codConfirmed: 0, codDelivered: 0, revenue: 0, sales: 0, uniqueCustomers: 0 };
+  const p = prevAgg[0] || { orders: 0, paid: 0, refunded: 0, fulfilled: 0, codConfirmed: 0, codDelivered: 0, revenue: 0, sales: 0, uniqueCustomers: 0 };
   // Always trust the store settings — order currency may be stale if the
   // seller changed their store currency after past orders were placed.
   const currency: string = storeCurrency;
@@ -492,10 +594,34 @@ export async function getStoreAnalyticsRich(
     else devices.unknown += row.visitors;
   }
 
+  // Sources de trafic — regroupe les null/absents dans 'unknown' pour rester
+  // lisible (les vieux events avant la feature n'ont pas de source).
+  const trafficSources: Array<{ source: string; visitors: number }> = [];
+  let unknownVisitors = 0;
+  for (const row of trafficSourcesRaw as Array<{ _id: string | null; visitors: number }>) {
+    if (!row._id) unknownVisitors += row.visitors;
+    else trafficSources.push({ source: row._id, visitors: row.visitors });
+  }
+  if (unknownVisitors > 0) trafficSources.push({ source: 'unknown', visitors: unknownVisitors });
+
+  // Ventes par heure — dense 0..23 pour que le graphe garde sa forme même
+  // sans commande sur certains créneaux.
+  const hourlyMap = new Map<number, { orders: number; sales: number }>();
+  for (let h = 0; h < 24; h++) hourlyMap.set(h, { orders: 0, sales: 0 });
+  for (const row of hourlySalesRaw as Array<{ _id: number; orders: number; sales: number }>) {
+    hourlyMap.set(row._id, { orders: row.orders, sales: row.sales });
+  }
+  const hourlySales = Array.from(hourlyMap.entries()).map(([hour, v]) => ({ hour, ...v }));
+
   const refundRate = a.paid === 0 ? 0 : (a.refunded / Math.max(a.paid + a.refunded, 1)) * 100;
   const prevRefundRate = p.paid === 0 ? 0 : (p.refunded / Math.max(p.paid + p.refunded, 1)) * 100;
   const fulfillmentRate = a.paid === 0 ? 0 : (a.fulfilled / a.paid) * 100;
   const prevFulfillmentRate = p.paid === 0 ? 0 : (p.fulfilled / p.paid) * 100;
+  // COD funnel : appelée & confirmée / créée ; livrée / confirmée.
+  const codConfirmationRate = a.orders === 0 ? 0 : (a.codConfirmed / a.orders) * 100;
+  const prevCodConfirmationRate = p.orders === 0 ? 0 : (p.codConfirmed / p.orders) * 100;
+  const codDeliveryRate = a.codConfirmed === 0 ? 0 : (a.codDelivered / a.codConfirmed) * 100;
+  const prevCodDeliveryRate = p.codConfirmed === 0 ? 0 : (p.codDelivered / p.codConfirmed) * 100;
   const aov = a.paid === 0 ? 0 : a.revenue / a.paid;
   const prevAov = p.paid === 0 ? 0 : p.revenue / p.paid;
   // Taux de conversion visites → commandes (1ʳᵉ marche du tunnel). On garde
@@ -523,8 +649,11 @@ export async function getStoreAnalyticsRich(
       pageViews: { value: curViews.pageViews, previous: prvViews.pageViews, deltaPct: pctDelta(curViews.pageViews, prvViews.pageViews) },
       productViews: { value: curViews.productViews, previous: prvViews.productViews, deltaPct: pctDelta(curViews.productViews, prvViews.productViews) },
       conversionRate: { value: conversionRate, previous: prevConversionRate, deltaPct: pctDelta(conversionRate, prevConversionRate) },
+      codConfirmationRate: { value: codConfirmationRate, previous: prevCodConfirmationRate, deltaPct: pctDelta(codConfirmationRate, prevCodConfirmationRate) },
+      codDeliveryRate: { value: codDeliveryRate, previous: prevCodDeliveryRate, deltaPct: pctDelta(codDeliveryRate, prevCodDeliveryRate) },
     },
     totals: { totalRevenue: t.revenue, totalSales: t.sales, totalOrders: t.orders, totalCustomers: t.customers },
+    monthlyGoal: await computeMonthlyGoal(storeObjectId),
     timeseries,
     topProducts,
     paymentBreakdown: (paymentBreakdownRaw as Array<{ _id: string; orders: number; revenue: number }>).map((r) => ({
@@ -533,6 +662,8 @@ export async function getStoreAnalyticsRich(
       revenue: r.revenue,
     })),
     devices,
+    trafficSources,
+    hourlySales,
     funnel: { created: a.orders, paid: a.paid, fulfilled: a.fulfilled, refunded: a.refunded },
     recentOrders: (recentRaw as Array<{
       _id: mongoose.Types.ObjectId; orderNumber: string; email: string; customerName?: string;

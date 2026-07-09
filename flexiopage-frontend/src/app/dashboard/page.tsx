@@ -42,6 +42,16 @@ import {
   Percent,
   Smartphone,
   Monitor,
+  CreditCard,
+  Rocket,
+  XCircle,
+  Banknote,
+  Target,
+  PhoneCall,
+  PackageCheck,
+  Pencil,
+  Globe2,
+  Clock,
 } from 'lucide-react';
 import { useAuthStore } from '@/stores/auth-store';
 import { useStoreStore } from '@/stores/store-store';
@@ -58,6 +68,7 @@ interface StoreType {
   isPublished?: boolean;
   storeType?: 'physical' | 'digital';
   settings?: { currency?: string };
+  goals?: { monthlyRevenue?: number };
 }
 
 interface ProductLite {
@@ -389,13 +400,18 @@ export default function DashboardOverviewPage() {
       {/* ── No-store fallback ─────────────────────────────────── */}
       {!loadingStores && stores.length === 0 && <EmptyState />}
 
-      {/* ── KPI cards (4) — 2 colonnes en mobile pour que les chiffres
-            restent lisibles, 4 colonnes à partir de sm: pour scanner
-            l'ensemble d'un coup d'œil. ── */}
+      {/* ── Draft banner — la #1 raison "mon dash est vide" ────
+            Placé juste avant les KPIs pour être vu tout de suite. ── */}
+      {activeStore && activeStore.isPublished === false && (
+        <DraftBanner storeId={activeStore._id} storeName={activeStore.name} />
+      )}
+
+      {/* ── KPI cards (5 principaux) — 2 col en mobile pour lire les
+            chiffres, 5 col en desktop pour tout scanner d'un coup. ── */}
       {activeStore && (
-        <section className="grid grid-cols-2 gap-2 sm:grid-cols-3 sm:gap-3 lg:grid-cols-5">
+        <section className="grid grid-cols-2 gap-2 sm:gap-3 lg:grid-cols-5">
           <KpiCard
-            label="Revenu total"
+            label="Revenu créé"
             value={<KpiMoney amount={k?.sales.value ?? 0} currency={currency} />}
             deltaPct={k?.sales.deltaPct ?? null}
             previousValue={formatCurrency(k?.sales.previous ?? 0, currency)}
@@ -407,7 +423,7 @@ export default function DashboardOverviewPage() {
             label="Commandes"
             value={String(k?.orders.value ?? 0)}
             deltaPct={k?.orders.deltaPct ?? null}
-            previousValue={`${k?.orders.previous ?? 0} avant`}
+            previousValue={String(k?.orders.previous ?? 0)}
             icon={ShoppingCart}
             tone="amber"
             loading={loadingAnalytics && !analytics}
@@ -422,10 +438,10 @@ export default function DashboardOverviewPage() {
             loading={loadingAnalytics && !analytics}
           />
           <KpiCard
-            label="Visiteurs"
+            label="Vues de pages"
             value={String(k?.pageViews.value ?? 0)}
             deltaPct={k?.pageViews.deltaPct ?? null}
-            previousValue={`${k?.pageViews.previous ?? 0} avant`}
+            previousValue={String(k?.pageViews.previous ?? 0)}
             icon={Eye}
             tone="indigo"
             loading={loadingAnalytics && !analytics}
@@ -434,10 +450,45 @@ export default function DashboardOverviewPage() {
             label="Taux de conversion"
             value={`${(k?.conversionRate.value ?? 0).toFixed(2)}%`}
             deltaPct={k?.conversionRate.deltaPct ?? null}
-            previousValue={`${(k?.conversionRate.previous ?? 0).toFixed(2)}% avant`}
+            previousValue={`${(k?.conversionRate.previous ?? 0).toFixed(2)}%`}
             icon={Percent}
             tone="rose"
             loading={loadingAnalytics && !analytics}
+          />
+        </section>
+      )}
+
+      {/* ── Quality strip — 4 métriques "santé business" en petit,
+            à côté des KPIs primaires pour ne pas surcharger. Ces
+            données étaient déjà calculées côté backend mais jamais
+            affichées. ── */}
+      {activeStore && analytics && (
+        <QualityStrip
+          revenue={k?.revenue.value ?? 0}
+          uniqueCustomers={k?.uniqueCustomers.value ?? 0}
+          fulfillmentRate={k?.fulfillmentRate.value ?? 0}
+          refundRate={k?.refundRate.value ?? 0}
+          currency={currency}
+        />
+      )}
+
+      {/* ── Goal + COD funnel — 2 colonnes desktop pour aligner la
+            jauge d'objectif à côté du triage COD, qui sont les 2
+            leviers principaux pour scaler en dropshipping. ── */}
+      {activeStore && analytics && (
+        <section className="grid gap-4 lg:grid-cols-[minmax(0,360px)_minmax(0,1fr)]">
+          <MonthlyGoalCard
+            store={activeStore}
+            goal={analytics.monthlyGoal}
+            currency={currency}
+            onSaved={loadActiveStoreData}
+          />
+          <CodFunnelCard
+            confirmationRate={k?.codConfirmationRate.value ?? 0}
+            deliveryRate={k?.codDeliveryRate.value ?? 0}
+            created={analytics.funnel.created}
+            paid={analytics.funnel.paid}
+            fulfilled={analytics.funnel.fulfilled}
           />
         </section>
       )}
@@ -485,6 +536,26 @@ export default function DashboardOverviewPage() {
       {/* ── Funnel mini ─────────────────────────────────────── */}
       {activeStore && analytics && (
         <FunnelStrip funnel={analytics.funnel} pageViews={analytics.kpis.pageViews.value} />
+      )}
+
+      {/* ── Payment methods breakdown ─────────────────────────
+            Data was already computed but never rendered. Utile pour
+            décider où pousser (Wave / Orange / COD / Stripe). ── */}
+      {activeStore && analytics && (
+        <PaymentBreakdownCard
+          items={analytics.paymentBreakdown}
+          currency={currency}
+        />
+      )}
+
+      {/* ── Traffic sources + sales by hour ───────────────────
+            Deux blocs "d'où viennent tes clients" + "à quelle
+            heure ils achètent" — indispensables pour cibler la pub. ── */}
+      {activeStore && analytics && (
+        <section className="grid gap-4 lg:grid-cols-2">
+          <TrafficSourcesCard items={analytics.trafficSources} />
+          <SalesByHourCard items={analytics.hourlySales} currency={currency} />
+        </section>
       )}
 
       {/* ── Visiteurs par appareil (mobile vs desktop/web) ──── */}
@@ -982,6 +1053,16 @@ const PAYMENT_BADGE: Record<string, string> = {
   refunded: 'bg-rose-500/10 text-rose-700',
   failed: 'bg-rose-500/10 text-rose-700',
   cancelled: 'bg-muted text-muted-foreground',
+  manual: 'bg-indigo-500/10 text-indigo-700',
+};
+
+const PAYMENT_LABEL_FR: Record<string, string> = {
+  paid: 'payé',
+  pending: 'en attente',
+  refunded: 'remboursé',
+  failed: 'échoué',
+  cancelled: 'annulé',
+  manual: 'manuel',
 };
 
 function RecentOrdersCard({
@@ -1042,7 +1123,7 @@ function RecentOrdersCard({
                         PAYMENT_BADGE[o.paymentStatus] || 'bg-muted text-muted-foreground'
                       )}
                     >
-                      {o.paymentStatus}
+                      {PAYMENT_LABEL_FR[o.paymentStatus] || o.paymentStatus}
                     </span>
                   </div>
                   <div className="text-[10px] text-muted-foreground">
@@ -1116,6 +1197,621 @@ function FunnelStrip({
             </div>
           );
         })}
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// Monthly revenue goal — jauge de progression sur le mois courant.
+// Le seller peut saisir/modifier son objectif inline (PATCH sur le
+// store) sans changer de page.
+// ─────────────────────────────────────────────────────────────────────
+
+function MonthlyGoalCard({
+  store, goal, currency, onSaved,
+}: {
+  store: StoreType;
+  goal?: { target: number; current: number; progressPct: number; daysLeft: number };
+  currency: string;
+  onSaved: () => void | Promise<void>;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [value, setValue] = useState<string>(String(store.goals?.monthlyRevenue ?? ''));
+  const [saving, setSaving] = useState(false);
+
+  async function save() {
+    const num = Number(value);
+    if (!Number.isFinite(num) || num < 0) return;
+    setSaving(true);
+    try {
+      await storesApi.update(store._id, {
+        goals: { monthlyRevenue: num > 0 ? num : undefined },
+      });
+      await onSaved();
+      setEditing(false);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  // Pas d'objectif fixé → carte d'incitation, pas de jauge.
+  if (!goal) {
+    return (
+      <div className="flex flex-col justify-between overflow-hidden rounded-2xl border border-border/60 bg-gradient-to-br from-primary/5 via-fuchsia-500/5 to-card p-4">
+        <div className="flex items-start gap-3">
+          <div className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-gradient-to-br from-primary to-fuchsia-600 text-white shadow-sm">
+            <Target className="h-4 w-4" />
+          </div>
+          <div className="min-w-0 flex-1">
+            <h3 className="text-sm font-bold">Fixe-toi un objectif</h3>
+            <p className="text-[11px] text-muted-foreground">
+              Un chiffre d&apos;affaires cible sur le mois pour te motiver et mesurer ta progression.
+            </p>
+          </div>
+        </div>
+        {editing ? (
+          <GoalInput value={value} onChange={setValue} onSave={save} onCancel={() => setEditing(false)} saving={saving} currency={currency} />
+        ) : (
+          <Button size="sm" className="mt-3 w-full gap-1.5 gradient-brand text-white" onClick={() => setEditing(true)}>
+            <Target className="h-3.5 w-3.5" />
+            Définir mon objectif
+          </Button>
+        )}
+      </div>
+    );
+  }
+
+  const pct = Math.min(200, goal.progressPct);
+  const clampedPct = Math.min(100, pct);
+  const reached = goal.progressPct >= 100;
+  const dailyRequired = goal.daysLeft > 0 ? Math.max(0, goal.target - goal.current) / goal.daysLeft : 0;
+
+  return (
+    <div className="overflow-hidden rounded-2xl border border-border/60 bg-card p-4">
+      <div className="flex items-start gap-3">
+        <div className={cn(
+          'grid h-9 w-9 shrink-0 place-items-center rounded-xl text-white shadow-sm',
+          reached ? 'bg-gradient-to-br from-emerald-500 to-teal-600' : 'bg-gradient-to-br from-primary to-fuchsia-600'
+        )}>
+          <Target className="h-4 w-4" />
+        </div>
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-1.5">
+            <h3 className="text-sm font-bold">Objectif du mois</h3>
+            <button
+              type="button"
+              onClick={() => setEditing(true)}
+              className="text-muted-foreground hover:text-foreground"
+              aria-label="Modifier l'objectif"
+            >
+              <Pencil className="h-3 w-3" />
+            </button>
+          </div>
+          <p className="text-[11px] text-muted-foreground">
+            {reached
+              ? `🎉 Objectif atteint (${pct.toFixed(0)}%)`
+              : `${goal.daysLeft} jour${goal.daysLeft > 1 ? 's' : ''} restant${goal.daysLeft > 1 ? 's' : ''}`}
+          </p>
+        </div>
+      </div>
+
+      {editing ? (
+        <div className="mt-3">
+          <GoalInput value={value} onChange={setValue} onSave={save} onCancel={() => setEditing(false)} saving={saving} currency={currency} />
+        </div>
+      ) : (
+        <>
+          <div className="mt-3 flex items-baseline justify-between gap-2">
+            <span className="text-2xl font-extrabold tracking-tight">
+              {formatCurrency(goal.current, currency)}
+            </span>
+            <span className="text-xs text-muted-foreground">
+              / {formatCurrency(goal.target, currency)}
+            </span>
+          </div>
+          <div className="mt-2 h-2 overflow-hidden rounded-full bg-muted">
+            <div
+              className={cn(
+                'h-full rounded-full bg-gradient-to-r transition-all',
+                reached ? 'from-emerald-500 to-teal-600' : 'from-primary to-fuchsia-600'
+              )}
+              style={{ width: `${clampedPct}%` }}
+            />
+          </div>
+          {!reached && dailyRequired > 0 && (
+            <p className="mt-2 text-[11px] text-muted-foreground">
+              À rythme : <span className="font-semibold text-foreground">{formatCurrency(dailyRequired, currency)}</span> / jour pour finir dans les temps.
+            </p>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
+function GoalInput({
+  value, onChange, onSave, onCancel, saving, currency,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  onSave: () => void;
+  onCancel: () => void;
+  saving: boolean;
+  currency: string;
+}) {
+  return (
+    <div className="flex items-center gap-2">
+      <div className="relative flex-1">
+        <input
+          type="number"
+          min={0}
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          onKeyDown={(e) => { if (e.key === 'Enter') onSave(); if (e.key === 'Escape') onCancel(); }}
+          placeholder="0"
+          autoFocus
+          className="h-9 w-full rounded-md border border-input bg-background pl-3 pr-12 text-sm focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
+        />
+        <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[10px] font-semibold text-muted-foreground">
+          {currency}
+        </span>
+      </div>
+      <Button size="sm" onClick={onSave} disabled={saving} className="h-9 gap-1.5">
+        {saving ? <Activity className="h-3.5 w-3.5 animate-pulse" /> : <CheckCircle2 className="h-3.5 w-3.5" />}
+        OK
+      </Button>
+      <button type="button" onClick={onCancel} className="text-xs text-muted-foreground hover:text-foreground">
+        Annuler
+      </button>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// COD funnel — spécifique dropshipping MENA / Afrique de l'Ouest :
+// commande créée → appel confirmé → livrée. Les 2 taux clés à suivre.
+// ─────────────────────────────────────────────────────────────────────
+
+function CodFunnelCard({
+  confirmationRate, deliveryRate, created, paid, fulfilled,
+}: {
+  confirmationRate: number;
+  deliveryRate: number;
+  created: number;
+  paid: number;
+  fulfilled: number;
+}) {
+  const confirmationTone = confirmationRate >= 50 ? 'emerald' : confirmationRate >= 30 ? 'amber' : 'rose';
+  const deliveryTone = deliveryRate >= 70 ? 'emerald' : deliveryRate >= 50 ? 'amber' : 'rose';
+
+  return (
+    <div className="overflow-hidden rounded-2xl border border-border/60 bg-card p-4">
+      <div className="mb-3 flex items-center justify-between">
+        <div>
+          <h3 className="text-sm font-bold">Suivi cash-on-delivery</h3>
+          <p className="text-[10px] text-muted-foreground">
+            Les 2 taux qui décident si tu peux scaler la pub
+          </p>
+        </div>
+      </div>
+      <div className="grid gap-3 sm:grid-cols-2">
+        <CodStat
+          icon={PhoneCall}
+          label="Taux de confirmation"
+          value={`${confirmationRate.toFixed(0)}%`}
+          hint={`${paid + fulfilled >= created ? created : paid + fulfilled} confirmées / ${created} créées`}
+          tone={confirmationTone}
+          benchmark="≥ 50% = OK"
+        />
+        <CodStat
+          icon={PackageCheck}
+          label="Taux de livraison"
+          value={`${deliveryRate.toFixed(0)}%`}
+          hint={`${fulfilled} livrées / ${paid + fulfilled >= created ? created : paid + fulfilled} confirmées`}
+          tone={deliveryTone}
+          benchmark="≥ 70% = OK"
+        />
+      </div>
+    </div>
+  );
+}
+
+const COD_TONE: Record<'emerald' | 'amber' | 'rose', { bg: string; text: string; bar: string }> = {
+  emerald: { bg: 'bg-emerald-500/10', text: 'text-emerald-700', bar: 'from-emerald-500 to-teal-600' },
+  amber:   { bg: 'bg-amber-500/10',   text: 'text-amber-700',   bar: 'from-amber-500 to-orange-600' },
+  rose:    { bg: 'bg-rose-500/10',    text: 'text-rose-700',    bar: 'from-rose-500 to-pink-600' },
+};
+
+function CodStat({
+  icon: Icon, label, value, hint, tone, benchmark,
+}: {
+  icon: typeof PhoneCall;
+  label: string;
+  value: string;
+  hint: string;
+  tone: keyof typeof COD_TONE;
+  benchmark: string;
+}) {
+  const t = COD_TONE[tone];
+  const pct = Math.min(100, parseFloat(value));
+  return (
+    <div className="rounded-xl border border-border/40 bg-muted/20 p-3">
+      <div className="flex items-center gap-1.5">
+        <span className={cn('grid h-6 w-6 place-items-center rounded-md', t.bg, t.text)}>
+          <Icon className="h-3 w-3" />
+        </span>
+        <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">{label}</span>
+      </div>
+      <div className="mt-1.5 flex items-baseline justify-between gap-2">
+        <span className={cn('text-2xl font-extrabold tracking-tight', t.text)}>{value}</span>
+        <span className={cn('text-[10px] font-semibold', t.text)}>{benchmark}</span>
+      </div>
+      <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-muted">
+        <div className={cn('h-full bg-gradient-to-r transition-all', t.bar)} style={{ width: `${pct}%` }} />
+      </div>
+      <p className="mt-1.5 text-[10px] text-muted-foreground">{hint}</p>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// Draft banner — the store isn't published, alert the seller loudly
+// so they don't wonder why their dashboard is empty.
+// ─────────────────────────────────────────────────────────────────────
+
+function DraftBanner({ storeId, storeName }: { storeId: string; storeName: string }) {
+  return (
+    <div className="relative overflow-hidden rounded-2xl border border-amber-500/30 bg-gradient-to-r from-amber-500/10 via-orange-500/10 to-amber-500/5 p-4">
+      <div className="flex flex-wrap items-center gap-3">
+        <div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-gradient-to-br from-amber-500 to-orange-600 text-white shadow-md">
+          <Rocket className="h-5 w-5" />
+        </div>
+        <div className="min-w-0 flex-1">
+          <div className="text-sm font-bold">
+            <span className="text-amber-900 dark:text-amber-300">{storeName}</span> n&apos;est pas encore en ligne
+          </div>
+          <p className="text-[11px] text-muted-foreground sm:text-xs">
+            Tes visiteurs ne peuvent pas encore commander. Publie-la pour commencer à vendre.
+          </p>
+        </div>
+        <Link href={`/dashboard/stores/${storeId}`}>
+          <Button size="sm" className="h-9 gap-1.5 rounded-xl bg-gradient-to-br from-amber-500 to-orange-600 text-white shadow-sm hover:from-amber-600 hover:to-orange-700">
+            <Rocket className="h-3.5 w-3.5" />
+            Publier maintenant
+          </Button>
+        </Link>
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// Quality strip — 4 stats "santé business" (encaissé + qualité)
+// Data déjà calculée dans analytics.service, on l'expose enfin.
+// ─────────────────────────────────────────────────────────────────────
+
+function QualityStrip({
+  revenue, uniqueCustomers, fulfillmentRate, refundRate, currency,
+}: {
+  revenue: number;
+  uniqueCustomers: number;
+  fulfillmentRate: number;
+  refundRate: number;
+  currency: string;
+}) {
+  return (
+    <section className="grid grid-cols-2 gap-2 sm:grid-cols-4 sm:gap-3">
+      <MiniStat
+        icon={Banknote}
+        label="Revenu encaissé"
+        value={formatCurrency(revenue, currency)}
+        tone="emerald"
+        hint="Commandes payées seulement"
+      />
+      <MiniStat
+        icon={Users}
+        label="Clients uniques"
+        value={String(uniqueCustomers)}
+        tone="indigo"
+        hint="Emails distincts"
+      />
+      <MiniStat
+        icon={Truck}
+        label="Taux d'expédition"
+        value={`${fulfillmentRate.toFixed(0)}%`}
+        tone="violet"
+        hint="Payées → expédiées"
+      />
+      <MiniStat
+        icon={XCircle}
+        label="Taux de remb."
+        value={`${refundRate.toFixed(1)}%`}
+        tone={refundRate > 5 ? 'rose' : 'muted'}
+        hint="Remboursées / payées"
+      />
+    </section>
+  );
+}
+
+const MINI_TONE: Record<'emerald' | 'indigo' | 'violet' | 'rose' | 'muted', { icon: string; ring: string }> = {
+  emerald: { icon: 'text-emerald-600',  ring: 'ring-emerald-500/20' },
+  indigo:  { icon: 'text-indigo-600',   ring: 'ring-indigo-500/20' },
+  violet:  { icon: 'text-violet-600',   ring: 'ring-violet-500/20' },
+  rose:    { icon: 'text-rose-600',     ring: 'ring-rose-500/20' },
+  muted:   { icon: 'text-muted-foreground', ring: 'ring-border/40' },
+};
+
+function MiniStat({
+  icon: Icon, label, value, tone, hint,
+}: {
+  icon: typeof Truck;
+  label: string;
+  value: string;
+  tone: keyof typeof MINI_TONE;
+  hint?: string;
+}) {
+  const t = MINI_TONE[tone];
+  return (
+    <div className={cn('rounded-xl border border-border/60 bg-card p-3 ring-1', t.ring)}>
+      <div className="flex items-center gap-1.5">
+        <Icon className={cn('h-3.5 w-3.5', t.icon)} />
+        <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+          {label}
+        </span>
+      </div>
+      <div className="mt-1 truncate text-lg font-extrabold tracking-tight sm:text-xl">
+        {value}
+      </div>
+      {hint && (
+        <div className="text-[10px] text-muted-foreground">{hint}</div>
+      )}
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// Payment breakdown — la répartition des méthodes de paiement,
+// classée par CA. Donne au seller un signal direct sur où pousser.
+// ─────────────────────────────────────────────────────────────────────
+
+/** Convertit une clé provider brute ('wave', 'orange_money', 'cinetpay'…)
+ *  en libellé humain FR. Fallback = la clé, avec la 1re lettre en majuscule. */
+function providerLabel(raw: string): string {
+  const key = (raw || 'unknown').toLowerCase();
+  const map: Record<string, string> = {
+    wave: 'Wave',
+    orange_money: 'Orange Money',
+    mtn_momo: 'MTN Mobile Money',
+    moov_money: 'Moov Money',
+    cinetpay: 'CinetPay',
+    paydunya: 'PayDunya',
+    flutterwave: 'Flutterwave',
+    stripe: 'Stripe',
+    cod: 'Paiement à la livraison',
+    manual: 'Virement / manuel',
+    unknown: 'Non identifié',
+  };
+  return map[key] || key.charAt(0).toUpperCase() + key.slice(1);
+}
+
+function PaymentBreakdownCard({
+  items, currency,
+}: {
+  items: StoreAnalyticsRich['paymentBreakdown'];
+  currency: string;
+}) {
+  const totalRev = items.reduce((a, x) => a + x.revenue, 0);
+  const totalOrd = items.reduce((a, x) => a + x.orders, 0);
+
+  return (
+    <div className="overflow-hidden rounded-2xl border border-border/60 bg-card">
+      <div className="flex items-center justify-between border-b border-border/60 px-4 py-3">
+        <div className="flex items-center gap-2">
+          <CreditCard className="h-4 w-4 text-primary" />
+          <div>
+            <h3 className="text-sm font-bold">Moyens de paiement</h3>
+            <p className="text-[10px] text-muted-foreground">
+              {totalOrd > 0
+                ? `${totalOrd} paiement${totalOrd > 1 ? 's' : ''} · ${formatCurrency(totalRev, currency)}`
+                : 'Aucun paiement sur la période'}
+            </p>
+          </div>
+        </div>
+      </div>
+      {items.length === 0 ? (
+        <div className="p-6 text-center text-xs text-muted-foreground">
+          Aucun paiement encaissé pour l&apos;instant.
+        </div>
+      ) : (
+        <ul className="divide-y divide-border/60">
+          {items.map((row) => {
+            const pct = totalRev > 0 ? (row.revenue / totalRev) * 100 : 0;
+            return (
+              <li key={row.provider} className="px-4 py-3">
+                <div className="flex items-baseline justify-between gap-2">
+                  <span className="truncate text-xs font-semibold">{providerLabel(row.provider)}</span>
+                  <span className="text-xs font-bold tabular-nums">
+                    {formatCurrency(row.revenue, currency)}
+                  </span>
+                </div>
+                <div className="mt-1 flex items-center gap-2">
+                  <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-muted">
+                    <div
+                      className="h-full bg-gradient-to-r from-primary to-fuchsia-600"
+                      style={{ width: `${pct.toFixed(1)}%` }}
+                    />
+                  </div>
+                  <span className="w-16 shrink-0 text-right text-[10px] tabular-nums text-muted-foreground">
+                    {row.orders} · {pct.toFixed(0)}%
+                  </span>
+                </div>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// Traffic sources — d'où viennent les visiteurs (utm_source ou Referer,
+// classé côté serveur à l'ingestion).
+// ─────────────────────────────────────────────────────────────────────
+
+const SOURCE_LABEL_FR: Record<string, string> = {
+  facebook: 'Facebook',
+  instagram: 'Instagram',
+  tiktok: 'TikTok',
+  google: 'Google',
+  youtube: 'YouTube',
+  twitter: 'X / Twitter',
+  snapchat: 'Snapchat',
+  whatsapp: 'WhatsApp',
+  direct: 'Trafic direct',
+  other: 'Autres sites',
+  unknown: 'Non identifié',
+};
+
+const SOURCE_ACCENT: Record<string, string> = {
+  facebook:  'from-blue-500 to-indigo-600',
+  instagram: 'from-pink-500 to-rose-600',
+  tiktok:    'from-zinc-800 to-zinc-950',
+  google:    'from-red-500 to-orange-600',
+  youtube:   'from-red-600 to-rose-700',
+  twitter:   'from-sky-500 to-blue-600',
+  snapchat:  'from-yellow-400 to-amber-500',
+  whatsapp:  'from-emerald-500 to-green-600',
+  direct:    'from-slate-500 to-slate-700',
+  other:     'from-violet-500 to-purple-600',
+  unknown:   'from-muted-foreground to-muted-foreground',
+};
+
+function TrafficSourcesCard({ items }: { items: StoreAnalyticsRich['trafficSources'] }) {
+  const total = items.reduce((a, r) => a + r.visitors, 0);
+
+  return (
+    <div className="overflow-hidden rounded-2xl border border-border/60 bg-card">
+      <div className="flex items-center justify-between border-b border-border/60 px-4 py-3">
+        <div className="flex items-center gap-2">
+          <Globe2 className="h-4 w-4 text-primary" />
+          <div>
+            <h3 className="text-sm font-bold">Sources de trafic</h3>
+            <p className="text-[10px] text-muted-foreground">
+              {total > 0
+                ? `${total} visiteur${total > 1 ? 's' : ''} classé${total > 1 ? 's' : ''} sur la période`
+                : 'Aucun visiteur classé pour l\'instant'}
+            </p>
+          </div>
+        </div>
+      </div>
+      {items.length === 0 ? (
+        <div className="p-6 text-center text-xs text-muted-foreground">
+          Ajoute <code className="rounded bg-muted px-1 py-0.5 text-[10px]">?utm_source=facebook</code> à tes liens pub
+          pour voir tes visiteurs classés ici.
+        </div>
+      ) : (
+        <ul className="divide-y divide-border/60">
+          {items.map((row) => {
+            const pct = total > 0 ? (row.visitors / total) * 100 : 0;
+            const label = SOURCE_LABEL_FR[row.source] || row.source;
+            const accent = SOURCE_ACCENT[row.source] || SOURCE_ACCENT.other;
+            return (
+              <li key={row.source} className="flex items-center gap-3 px-4 py-2.5">
+                <span className={cn('h-6 w-6 shrink-0 rounded-md bg-gradient-to-br', accent)} aria-hidden />
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-baseline justify-between gap-2">
+                    <span className="truncate text-xs font-semibold">{label}</span>
+                    <span className="text-xs font-bold tabular-nums">{row.visitors}</span>
+                  </div>
+                  <div className="mt-1 flex items-center gap-2">
+                    <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-muted">
+                      <div className={cn('h-full bg-gradient-to-r', accent)} style={{ width: `${pct.toFixed(1)}%` }} />
+                    </div>
+                    <span className="w-8 shrink-0 text-right text-[10px] tabular-nums text-muted-foreground">
+                      {pct.toFixed(0)}%
+                    </span>
+                  </div>
+                </div>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// Sales by hour — barres verticales 0..23 (UTC). Dit au seller à quelle
+// heure il faut booster la pub Meta / TikTok.
+// ─────────────────────────────────────────────────────────────────────
+
+function SalesByHourCard({
+  items, currency,
+}: {
+  items: StoreAnalyticsRich['hourlySales'];
+  currency: string;
+}) {
+  const totalOrders = items.reduce((a, r) => a + r.orders, 0);
+  const maxOrders = Math.max(1, ...items.map((r) => r.orders));
+  const peak = items.reduce((best, r) => (r.orders > best.orders ? r : best), items[0] || { hour: 0, orders: 0, sales: 0 });
+
+  return (
+    <div className="overflow-hidden rounded-2xl border border-border/60 bg-card">
+      <div className="flex items-center justify-between border-b border-border/60 px-4 py-3">
+        <div className="flex items-center gap-2">
+          <Clock className="h-4 w-4 text-primary" />
+          <div>
+            <h3 className="text-sm font-bold">Ventes par heure</h3>
+            <p className="text-[10px] text-muted-foreground">
+              {totalOrders > 0
+                ? `Pic à ${String(peak.hour).padStart(2, '0')}h — ${peak.orders} commande${peak.orders > 1 ? 's' : ''}`
+                : 'Pas encore de commande sur la période'}
+            </p>
+          </div>
+        </div>
+      </div>
+      <div className="p-4">
+        {totalOrders === 0 ? (
+          <div className="grid h-[120px] place-items-center text-xs text-muted-foreground">
+            Aucune commande à segmenter.
+          </div>
+        ) : (
+          <>
+            <div className="flex h-[120px] items-end gap-[3px]">
+              {items.map((row) => {
+                const h = maxOrders > 0 ? (row.orders / maxOrders) * 100 : 0;
+                const isPeak = row.orders === peak.orders && row.orders > 0;
+                return (
+                  <div
+                    key={row.hour}
+                    className="group relative flex-1"
+                    title={`${String(row.hour).padStart(2, '0')}h — ${row.orders} commande${row.orders > 1 ? 's' : ''} · ${formatCurrency(row.sales, currency)}`}
+                  >
+                    <div
+                      className={cn(
+                        'w-full rounded-t transition-all',
+                        isPeak
+                          ? 'bg-gradient-to-t from-primary to-fuchsia-500'
+                          : 'bg-gradient-to-t from-primary/40 to-primary/70'
+                      )}
+                      style={{ height: `${Math.max(2, h)}%` }}
+                    />
+                  </div>
+                );
+              })}
+            </div>
+            <div className="mt-2 flex justify-between text-[9px] font-semibold text-muted-foreground">
+              <span>0h</span>
+              <span>6h</span>
+              <span>12h</span>
+              <span>18h</span>
+              <span>23h</span>
+            </div>
+          </>
+        )}
       </div>
     </div>
   );

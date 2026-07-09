@@ -1,5 +1,5 @@
 import mongoose from 'mongoose';
-import { StoreEvent, type StoreEventType } from '../models/StoreEvent.model';
+import { StoreEvent, type StoreEventType, type StoreEventSource } from '../models/StoreEvent.model';
 import { Product } from '../models/Product.model';
 
 export type TrackingRange = '7d' | '30d' | '90d';
@@ -20,6 +20,27 @@ export interface RecordEventInput {
   value?: number;
   currency?: string;
   device?: 'mobile' | 'desktop';
+  source?: StoreEventSource;
+}
+
+/**
+ * Classe une chaîne (Referer ou utm_source) en source normalisée.
+ * Ordre : on cherche les grandes plateformes par mots-clés, puis 'other',
+ * puis 'direct' si vide. On accepte aussi bien un domaine ("t.co",
+ * "facebook.com") qu'un utm_source ("fb_ads", "ig", "tiktok_ads").
+ */
+export function classifySource(raw?: string | null): StoreEventSource {
+  if (!raw) return 'direct';
+  const s = String(raw).toLowerCase();
+  if (/facebook|fb\.com|fbclid|\bfb\b|fb_/.test(s)) return 'facebook';
+  if (/instagram|\big\b|ig_/.test(s)) return 'instagram';
+  if (/tiktok|tt_|tiktok_ads/.test(s)) return 'tiktok';
+  if (/google\.|googleads|gclid|adwords|\bg_ads?\b/.test(s)) return 'google';
+  if (/youtube|youtu\.be/.test(s)) return 'youtube';
+  if (/twitter\.com|\bx\.com\b|t\.co|twitter_ads/.test(s)) return 'twitter';
+  if (/snapchat|snap_/.test(s)) return 'snapchat';
+  if (/whatsapp|wa\.me|whatsapp_/.test(s)) return 'whatsapp';
+  return 'other';
 }
 
 /**
@@ -64,6 +85,7 @@ export async function recordEvent(input: RecordEventInput): Promise<void> {
       type: input.type,
       sessionId: String(input.sessionId).slice(0, 64),
       device: input.device,
+      source: input.source,
       value: typeof input.value === 'number' ? input.value : undefined,
       currency: input.currency,
     });
