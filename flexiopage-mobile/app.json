@@ -1,0 +1,55 @@
+{
+  "expo": {
+    "name": "FlexioPage",
+    "slug": "flexiopage-mobile",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "light",
+    "scheme": "flexiopage",
+    "newArchEnabled": true,
+    "icon": "./assets/icon.png",
+    "splash": {
+      "image": "./assets/splash-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#ffffff"
+    },
+    "assetBundlePatterns": [
+      "**/*"
+    ],
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.flexiopage.mobile"
+    },
+    "android": {
+      "package": "com.flexiopage.mobile",
+      "googleServicesFile": "./google-services.json",
+      "permissions": ["android.permission.CAMERA"],
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#F56714"
+      }
+    },
+    "extra": {
+      "apiUrl": "https://api.flexiopage.com",
+      "webUrl": "https://flexiopage.com/dashboard",
+      "eas": {
+        "projectId": "4446ab9c-73a6-4668-a04f-85fd733e53fe"
+      }
+    },
+    "owner": "hamzooch",
+    "plugins": [
+      "expo-asset",
+      "expo-font",
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/adaptive-icon.png",
+          "color": "#f56714",
+          "sounds": [
+            "./assets/sounds/cash_register.wav"
+          ]
+        }
+      ]
+    ]
+  }
+}

@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "123211315993",
+    "project_id": "flexiopage-app",
+    "storage_bucket": "flexiopage-app.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:123211315993:android:31857713a347a47a86a388",
+        "android_client_info": {
+          "package_name": "com.flexiopage.mobile"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyA_xl1h_TnW1XsFtIHkyLItyg8BqgxqDMU"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

@@ -1,0 +1,27 @@
+# Expo
+.expo/
+dist/
+web-build/
+
+# Native
+*.orig.*
+*.jks
+*.p8
+*.p12
+*.key
+*.mobileprovision
+
+# Dependencies
+node_modules/
+
+# Misc
+npm-debug.*
+.DS_Store
+
+# Local env
+.env.local
+
+# Firebase — clé service account (SECRET, jamais commit). google-services.json
+# (config client, non secret) peut rester versionné.
+*firebase-adminsdk*.json
+service-account*.json

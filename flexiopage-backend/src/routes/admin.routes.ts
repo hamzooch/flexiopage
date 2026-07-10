@@ -18,6 +18,7 @@ import { sanitizeMiddleware } from '../middleware/validate';
 import * as admin from '../controllers/admin.controller';
 import * as adminExtras from '../controllers/admin-extras.controller';
 import * as complaint from '../controllers/complaint.controller';
+import * as payments from '../controllers/payments.controller';
 
 const router = Router();
 
@@ -91,5 +92,14 @@ router.get('/delivery/overview', adminExtras.getDeliveryOverview);
 router.get('/delivery/logs', adminExtras.getWebhookLogs);
 router.get('/stores/:storeId/delivery/fingerprint', adminExtras.getStoreDeliveryFingerprint);
 router.post('/stores/:storeId/orders/:orderId/redispatch', requireAdminWrite, adminExtras.redispatchOrder);
+
+// ── Payment gateways (Moneróo, etc.) ──
+router.get('/payments/config', payments.getPaymentConfig);
+router.post('/payments/config', requireAdminWrite, payments.updatePaymentConfig);
+router.get('/payments/transactions', payments.listPaymentTransactions);
+router.get('/payments/webhooks', payments.listWebhookLogs);
+router.get('/payments/stats', payments.getPaymentStats);
+router.post('/payments/test', requireAdminWrite, payments.testPaymentFlow);
+router.post('/payments/webhooks/:logId/retry', requireAdminWrite, payments.retryWebhook);
 
 export default router;
