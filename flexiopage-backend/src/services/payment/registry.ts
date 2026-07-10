@@ -9,16 +9,19 @@ import type { IOrder, PaymentProvider } from '../../models/Order.model';
 import type { Channel, InitPaymentResult, PaymentProviderImpl } from './types';
 import { CinetPayProvider } from './cinetpay.service';
 import { FlutterwaveProvider } from './flutterwave.service';
+import { MoneróoProvider } from './moneróo.service';
 import { MockProvider } from './mock.service';
 import type { Gateway } from './country-routing';
 
 const cinetpay = new CinetPayProvider();
 const flutterwave = new FlutterwaveProvider();
+const moneróo = new MoneróoProvider();
 const mock = new MockProvider();
 
 const PROVIDERS: Partial<Record<PaymentProvider, PaymentProviderImpl>> = {
   cinetpay,
   flutterwave,
+  moneróo,
   manual: mock,
 };
 
@@ -30,6 +33,7 @@ export function getProviderById(id: PaymentProvider): PaymentProviderImpl | null
 export function getProviderForGateway(gateway: Gateway): PaymentProviderImpl {
   if (gateway === 'cinetpay') return cinetpay.isConfigured() ? cinetpay : mock;
   if (gateway === 'flutterwave') return flutterwave.isConfigured() ? flutterwave : mock;
+  if (gateway === 'moneróo') return moneróo.isConfigured() ? moneróo : mock;
   return mock;
 }
 
@@ -40,6 +44,7 @@ export function getProviderForGateway(gateway: Gateway): PaymentProviderImpl {
 export function pickActiveProvider(): PaymentProviderImpl {
   if (cinetpay.isConfigured()) return cinetpay;
   if (flutterwave.isConfigured()) return flutterwave;
+  if (moneróo.isConfigured()) return moneróo;
   return mock;
 }
 
@@ -61,5 +66,5 @@ export async function initOrderPaymentWith(
 
 /** True when no real gateway is configured (dev simulator mode). */
 export function isMockMode(): boolean {
-  return !cinetpay.isConfigured() && !flutterwave.isConfigured();
+  return !cinetpay.isConfigured() && !flutterwave.isConfigured() && !moneróo.isConfigured();
 }

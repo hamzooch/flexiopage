@@ -20,7 +20,7 @@
 import type { Channel } from './types';
 
 export type PaymentMethodId = 'mobile_money' | 'card' | 'cod';
-export type Gateway = 'cinetpay' | 'flutterwave' | 'cod';
+export type Gateway = 'cinetpay' | 'flutterwave' | 'moneróo' | 'cod';
 export type StoreType = 'digital' | 'physical';
 
 export interface PaymentMethodOption {
@@ -42,12 +42,19 @@ const FLUTTERWAVE_COUNTRIES = new Set([
   'NG', 'GH', 'KE', 'ZA', 'UG', 'TZ', 'RW', 'ZM', 'MW',
 ]);
 
-type Zone = 'cinetpay' | 'flutterwave' | 'other';
+/** Moneróo coverage (Wave, MTN, Moov, OM, Cards across multiple African countries). */
+const MONERÓO_COUNTRIES = new Set([
+  'SN', 'CI', 'BJ', 'TG', 'BF', 'ML', 'CM', 'NE', 'GN', 'GW', 'CD', 'CG', 'GA', 'TD', // CFA + Moneróo
+  'NG', 'GH', 'KE', 'ZA', 'UG', 'TZ', 'RW', 'ZM', 'MW', // Flutterwave + Moneróo
+]);
+
+type Zone = 'cinetpay' | 'flutterwave' | 'moneróo' | 'other';
 
 export function zoneOf(country: string | undefined | null): Zone {
   const cc = (country || '').toUpperCase();
   if (CINETPAY_COUNTRIES.has(cc)) return 'cinetpay';
   if (FLUTTERWAVE_COUNTRIES.has(cc)) return 'flutterwave';
+  if (MONERÓO_COUNTRIES.has(cc)) return 'moneróo';
   return 'other';
 }
 
@@ -63,6 +70,9 @@ function onlineMethodsForZone(zone: Zone): PaymentMethodOption[] {
       { id: 'card', gateway: 'flutterwave', label: 'Carte bancaire', channel: 'card' },
       { id: 'mobile_money', gateway: 'flutterwave', label: 'Mobile Money', channel: 'all' },
     ];
+  }
+  if (zone === 'moneróo') {
+    return [{ id: 'mobile_money', gateway: 'moneróo', label: 'Mobile Money', channel: 'all' }];
   }
   // "Other": international card via Flutterwave as the only online fallback.
   return [{ id: 'card', gateway: 'flutterwave', label: 'Carte bancaire', channel: 'card' }];

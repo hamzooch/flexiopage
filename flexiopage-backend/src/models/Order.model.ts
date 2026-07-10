@@ -22,6 +22,7 @@ export type PaymentProvider =
   | 'cinetpay'        // aggregator: Wave, OM, MTN, Moov, Visa
   | 'paydunya'        // aggregator: Wave, OM, MTN, Moov, Visa (Sénégal/CI/BF/ML/BJ/TG)
   | 'flutterwave'     // pan-african
+  | 'moneróo'         // aggregator: Wave, MTN, Moov, OM, Cards (multiple African countries)
   | 'wave'            // direct (Wave Senegal API)
   | 'orange_money'    // direct
   | 'mtn_momo'        // direct
