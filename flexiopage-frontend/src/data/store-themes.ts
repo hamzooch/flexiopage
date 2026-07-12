@@ -694,9 +694,57 @@ const maison: StoreThemeTemplate = {
   }),
 };
 
+// ─────────────────────────────────────────────────────────────────────
+// 6. FORGE — Athleisure / Fitness & Sportswear (Gymshark-inspired)
+// Anthracite dark, cyan→lime neon gradient, geometric sans, ultra-modern.
+// Fullbleed hero with overlay, 4-column grid, overlay product cards,
+// glass nav, carousel testimonials. Premium athletic aesthetic.
+// ─────────────────────────────────────────────────────────────────────
+const forge: StoreThemeTemplate = {
+  id: 'forge',
+  name: 'Forge',
+  tagline: 'Athleisure · sportswear · premium',
+  description:
+    'Anthracite noir, gradient cyan→lime neon, géométrique sans-serif gras. Hero plein cadre, grille 4 colonnes dense, cartes overlay immersives, nav glass premium. Pour vêtements de sport, athleisure, fitness, marques de luxe sportif.',
+  niche: 'fashion',
+  nicheLabel: 'Mode & vêtements',
+  forStoreTypes: ['physical'],
+  theme: makeTheme({
+    templateId: 'forge',
+    primary: '#00d9ff',            // cyan neon — modern, tech-forward
+    primaryFg: '#0a0a0a',
+    accent: '#00ff7f',             // lime neon — complementary, energetic
+    background: '#0f0f0f',         // deep anthracite
+    surface: '#1a1a1a',
+    surfaceMuted: '#131313',
+    foreground: '#f0f0f0',
+    muted: '#8a8a8a',
+    border: '#2a2a2a',
+    gradientFrom: '#00d9ff',
+    gradientTo: '#00ff7f',
+    fontHeading: '"Space Grotesk", "Outfit", "Inter", sans-serif',
+    fontBody: '"Inter", system-ui, -apple-system, sans-serif',
+    fontDisplaySize: 'xlarge',
+    borderRadius: 'small',         // subtle radius, modern sharp feel
+    spacing: 'normal',
+    style: 'tech',                 // tech-forward aesthetic
+    layout: {
+      hero: 'fullbleed',           // bold, edge-to-edge
+      productCard: 'overlay',      // text over image, premium feel
+      gridColumns: 4,              // dense, athletic intensity
+      nav: 'glass',                // frosted backdrop, modern
+      testimonials: 'carousel',    // conversion-focused
+      footer: 'split',             // newsletter focus
+    },
+    pattern: 'grid',               // tech grid pattern
+    shadow: 'glow',                // neon-like highlights
+    dark: true,
+  }),
+};
+
 export const STORE_THEME_TEMPLATES: StoreThemeTemplate[] = [
   // Physical stores
-  maison, nova, carthago, volt, atelier, bloom,
+  maison, nova, carthago, volt, atelier, bloom, forge,
   // Digital stores
   pulse, sage, studio, lumen,
   // Universal / multi-type
