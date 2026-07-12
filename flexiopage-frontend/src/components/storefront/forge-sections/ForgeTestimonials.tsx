@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { cn } from '@/lib/utils';
 
-interface Testimonial {
+export interface Testimonial {
   quote: string;
   author: string;
   role: string;
@@ -11,7 +11,7 @@ interface Testimonial {
   image?: string;
 }
 
-interface ForgeTestimonialsProps {
+export interface ForgeTestimonialsProps {
   title: string;
   subtitle: string;
   testimonials: Testimonial[];

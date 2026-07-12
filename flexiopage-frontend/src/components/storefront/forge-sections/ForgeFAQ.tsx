@@ -4,12 +4,12 @@ import { useState } from 'react';
 import { cn } from '@/lib/utils';
 import { ChevronDown } from 'lucide-react';
 
-interface FAQItem {
+export interface FAQItem {
   question: string;
   answer: string;
 }
 
-interface ForgeFAQProps {
+export interface ForgeFAQProps {
   title: string;
   subtitle: string;
   items: FAQItem[];

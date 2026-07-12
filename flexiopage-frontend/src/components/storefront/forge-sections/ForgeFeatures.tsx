@@ -2,13 +2,13 @@
 
 import { cn } from '@/lib/utils';
 
-interface Feature {
+export interface Feature {
   icon: string;
   title: string;
   description: string;
 }
 
-interface ForgeFeaturesProps {
+export interface ForgeFeaturesProps {
   title: string;
   subtitle: string;
   features: Feature[];

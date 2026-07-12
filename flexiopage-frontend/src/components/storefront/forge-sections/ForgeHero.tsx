@@ -3,7 +3,7 @@
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 
-interface ForgeHeroProps {
+export interface ForgeHeroProps {
   heading: string;
   subheading: string;
   ctaText: string;

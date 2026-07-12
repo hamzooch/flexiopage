@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 
-interface ForgeNewsletterProps {
+export interface ForgeNewsletterProps {
   title: string;
   description: string;
   ctaText: string;

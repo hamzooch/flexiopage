@@ -3,7 +3,7 @@
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 
-interface ForgeProductsProps {
+export interface ForgeProductsProps {
   title: string;
   subtitle: string;
   products?: Array<{
