@@ -392,42 +392,52 @@ function DomainPanel({ store, onSaved, saving, setSaving }: PanelProps) {
               <li className="flex gap-3">
                 <span className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-primary/10 text-[11px] font-bold text-primary">3</span>
                 <div className="min-w-0">
-                  <p className="font-semibold text-foreground">Ajoute le(s) enregistrement(s) ci-dessous</p>
+                  <p className="font-semibold text-foreground">Supprime les anciens enregistrements</p>
                   <p className="mt-0.5 text-muted-foreground">
-                    Clique sur <span className="font-mono text-foreground">Ajouter un enregistrement</span> et recopie exactement les valeurs (bouton « Copier » à droite).
+                    Si tu avais déjà un <span className="font-mono">A Record</span> ou un <span className="font-mono">CNAME</span> pointant vers une ancienne IP ou domaine, <strong>supprime-le d'abord</strong>.
+                  </p>
+                </div>
+              </li>
+              <li className="flex gap-3">
+                <span className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-primary/10 text-[11px] font-bold text-primary">4</span>
+                <div className="min-w-0">
+                  <p className="font-semibold text-foreground">Ajoute l'enregistrement A ci-dessous</p>
+                  <p className="mt-0.5 text-muted-foreground">
+                    Clique sur <span className="font-mono text-foreground">Ajouter un enregistrement</span> et recopie exactement la valeur (bouton « Copier » à droite).
                   </p>
                   <div className="mt-2.5 space-y-2">
-                    <DnsRow type="CNAME" host={domain} value={target.host || 'stores.flexiopage.com'} />
-                    {target.ips.length > 0 && (
-                      <DnsRow type="A (apex)" host={domain} value={target.ips.join(', ')} />
+                    {target.ips.length > 0 ? (
+                      <DnsRow type="A Record" host={domain} value={target.ips[0]} />
+                    ) : (
+                      <DnsRow type="A Record" host={domain} value="72.62.24.14" />
                     )}
                   </div>
-                  <div className="mt-2.5 rounded-lg border border-amber-500/30 bg-amber-500/5 p-2.5 text-[11px] text-amber-800">
-                    <p className="font-semibold">⚠️ Important : supprime d'abord les anciens enregistrements</p>
-                    <p className="mt-1">Si tu avais déjà un <span className="font-mono">A Record</span> ou un autre <span className="font-mono">CNAME</span> pointant vers une ancienne IP ou domaine, <strong>supprime-le avant d'ajouter le nouveau</strong>. Tu ne peux avoir qu'un seul CNAME par domaine.</p>
+                  <div className="mt-2.5 rounded-lg border border-emerald-500/30 bg-emerald-500/5 p-2.5 text-[11px] text-emerald-800">
+                    <p className="font-semibold">✓ Pourquoi A Record?</p>
+                    <p className="mt-1">L'A Record est la solution la plus stable et fonctionne avec 100% des registrars. Aucun problème DNS ou SSL.</p>
                   </div>
                   <div className="mt-2.5 rounded-lg border border-border/50 bg-card/60 p-2.5 text-[11px] text-muted-foreground">
                     <p className="font-semibold text-foreground">Comment remplir le formulaire ?</p>
                     <ul className="mt-1 space-y-0.5">
-                      <li>• <span className="font-mono text-foreground">Type</span> : <span className="font-mono">CNAME</span> {target.ips.length > 0 && <>(ou <span className="font-mono">A</span> pour la ligne « apex »)</>}</li>
-                      <li>• <span className="font-mono text-foreground">Nom</span> / <span className="font-mono text-foreground">Host</span> : la partie avant ton domaine principal (ex. <span className="font-mono">shop</span>) — ou laisse vide / <span className="font-mono">@</span> pour le domaine nu.</li>
-                      <li>• <span className="font-mono text-foreground">Valeur</span> / <span className="font-mono text-foreground">Target</span> : ce qui est affiché à droite de la flèche dans le tableau ci-dessus.</li>
+                      <li>• <span className="font-mono text-foreground">Type</span> : <span className="font-mono">A</span></li>
+                      <li>• <span className="font-mono text-foreground">Nom</span> / <span className="font-mono text-foreground">Host</span> : laisse vide ou mets <span className="font-mono">@</span> (pour le domaine racine).</li>
+                      <li>• <span className="font-mono text-foreground">Valeur</span> / <span className="font-mono text-foreground">Target</span> : <span className="font-mono">{target.ips.length > 0 ? target.ips[0] : '72.62.24.14'}</span></li>
                       <li>• <span className="font-mono text-foreground">TTL</span> : laisse la valeur par défaut (ou <span className="font-mono">3600</span>).</li>
                     </ul>
                   </div>
                 </div>
               </li>
               <li className="flex gap-3">
-                <span className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-primary/10 text-[11px] font-bold text-primary">4</span>
+                <span className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-primary/10 text-[11px] font-bold text-primary">5</span>
                 <div className="min-w-0">
                   <p className="font-semibold text-foreground">Enregistre puis attends la propagation</p>
                   <p className="mt-0.5 text-muted-foreground">
-                    Sauvegarde la zone DNS chez ton fournisseur. La propagation prend généralement <span className="font-medium text-foreground">5 à 30 minutes</span> (parfois jusqu'à 24 h).
+                    Sauvegarde la zone DNS chez ton fournisseur. La propagation prend généralement <span className="font-medium text-foreground">5 à 15 minutes</span> (rarement plus).
                   </p>
                 </div>
               </li>
               <li className="flex gap-3">
-                <span className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-primary/10 text-[11px] font-bold text-primary">5</span>
+                <span className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-primary/10 text-[11px] font-bold text-primary">6</span>
                 <div className="min-w-0">
                   <p className="font-semibold text-foreground">Reviens ici et clique sur « Vérifier le DNS »</p>
                   <p className="mt-0.5 text-muted-foreground">
