@@ -402,6 +402,10 @@ function DomainPanel({ store, onSaved, saving, setSaving }: PanelProps) {
                       <DnsRow type="A (apex)" host={domain} value={target.ips.join(', ')} />
                     )}
                   </div>
+                  <div className="mt-2.5 rounded-lg border border-amber-500/30 bg-amber-500/5 p-2.5 text-[11px] text-amber-800">
+                    <p className="font-semibold">⚠️ Important : supprime d'abord les anciens enregistrements</p>
+                    <p className="mt-1">Si tu avais déjà un <span className="font-mono">A Record</span> ou un autre <span className="font-mono">CNAME</span> pointant vers une ancienne IP ou domaine, <strong>supprime-le avant d'ajouter le nouveau</strong>. Tu ne peux avoir qu'un seul CNAME par domaine.</p>
+                  </div>
                   <div className="mt-2.5 rounded-lg border border-border/50 bg-card/60 p-2.5 text-[11px] text-muted-foreground">
                     <p className="font-semibold text-foreground">Comment remplir le formulaire ?</p>
                     <ul className="mt-1 space-y-0.5">
