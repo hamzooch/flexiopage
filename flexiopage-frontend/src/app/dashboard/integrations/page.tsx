@@ -257,17 +257,53 @@ export default function IntegrationsPage() {
 // ─────────────────────────────────────────────────────────────────────
 // DOMAIN
 // ─────────────────────────────────────────────────────────────────────
+type DomainMethod = 'cname' | 'nameservers' | null;
+
 function DomainPanel({ store, onSaved, saving, setSaving }: PanelProps) {
   const [domain, setDomain] = useState(store.customDomain || '');
-  const [target, setTarget] = useState<{ host: string; ips: string[] }>({ host: '', ips: [] });
+  const [target, setTarget] = useState<{ host: string; ips: string[]; nameservers?: string[] }>({ host: '', ips: [], nameservers: [] });
   const [check, setCheck] = useState<null | { verified: boolean; cname?: string[]; aRecords?: string[]; reason?: string }>(null);
   const [checking, setChecking] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [justSaved, setJustSaved] = useState(false);
+  const [method, setMethod] = useState<DomainMethod>(null);
+  const [autoCheckInterval, setAutoCheckInterval] = useState<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
     storesApi.getDomainTarget(store._id).then((r) => setTarget(r.data)).catch(() => {});
   }, [store._id]);
+
+  // Auto-check DNS every 10 seconds when domain is set but not verified
+  useEffect(() => {
+    if (!domain.trim() || store.customDomainVerified) {
+      if (autoCheckInterval) clearInterval(autoCheckInterval);
+      return;
+    }
+
+    const checkDNS = async () => {
+      try {
+        const res = await storesApi.verifyDomain(store._id);
+        setCheck(res.data);
+        if (res.data.verified) {
+          await onSaved();
+          if (autoCheckInterval) clearInterval(autoCheckInterval);
+        }
+      } catch (err) {
+        // Silent fail - just keep polling
+      }
+    };
+
+    // First check immediately
+    checkDNS();
+
+    // Then check every 10 seconds
+    const interval = setInterval(checkDNS, 10000);
+    setAutoCheckInterval(interval);
+
+    return () => {
+      if (interval) clearInterval(interval);
+    };
+  }, [domain, store._id, store.customDomainVerified, onSaved]);
 
   // Normalize what the user types (no protocol, no path, no trailing dot).
   function normalize(d: string): string {
@@ -353,24 +389,82 @@ function DomainPanel({ store, onSaved, saving, setSaving }: PanelProps) {
         </div>
 
         {domain.trim() && (
-          <div className="rounded-2xl border border-border/60 bg-muted/20 p-5">
+          <div className="rounded-2xl border border-border/60 bg-muted/20 p-5 space-y-5">
             <div className="flex items-center justify-between gap-2">
               <h4 className="text-sm font-semibold">Configuration DNS</h4>
               {verified ? (
                 <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-500/10 px-2.5 py-1 text-xs font-bold text-emerald-700">
-                  <CheckCircle2 className="h-3.5 w-3.5" /> Vérifié
+                  <CheckCircle2 className="h-3.5 w-3.5" /> ✓ Actif
                 </span>
               ) : (
                 <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-500/10 px-2.5 py-1 text-xs font-bold text-amber-700">
-                  <AlertCircle className="h-3.5 w-3.5" /> Non vérifié
+                  <AlertCircle className="h-3.5 w-3.5" /> En attente...
                 </span>
               )}
             </div>
-            <p className="mt-3 text-xs text-muted-foreground">
-              Suis ces étapes chez ton fournisseur de domaine (le site où tu as acheté <span className="font-mono text-foreground">{domain}</span> — OVH, GoDaddy, Namecheap, Hostinger, Gandi, etc.) :
-            </p>
 
-            <ol className="mt-3 space-y-3 text-xs">
+            {!verified && (
+              <p className="text-xs text-muted-foreground">
+                Choisis une méthode ci-dessous. Flexiopage vérifiera automatiquement toutes les 10 secondes.
+              </p>
+            )}
+
+            {/* Method Selection - Shopify Style */}
+            <div className="grid gap-3 sm:grid-cols-2">
+              {/* CNAME Option */}
+              <button
+                type="button"
+                onClick={() => setMethod('cname')}
+                className={cn(
+                  'rounded-xl border-2 p-4 text-left transition-all',
+                  method === 'cname'
+                    ? 'border-primary bg-primary/5'
+                    : 'border-border/60 hover:border-primary/50'
+                )}
+              >
+                <div className="flex items-start justify-between">
+                  <div>
+                    <h5 className="font-semibold text-sm">CNAME (Recommandé)</h5>
+                    <p className="text-xs text-muted-foreground mt-1">Plus simple, 1 enregistrement</p>
+                  </div>
+                  {method === 'cname' && <CheckCircle2 className="h-5 w-5 text-primary shrink-0" />}
+                </div>
+              </button>
+
+              {/* Nameservers Option */}
+              <button
+                type="button"
+                onClick={() => setMethod('nameservers')}
+                className={cn(
+                  'rounded-xl border-2 p-4 text-left transition-all',
+                  method === 'nameservers'
+                    ? 'border-primary bg-primary/5'
+                    : 'border-border/60 hover:border-primary/50'
+                )}
+              >
+                <div className="flex items-start justify-between">
+                  <div>
+                    <h5 className="font-semibold text-sm">Nameservers</h5>
+                    <p className="text-xs text-muted-foreground mt-1">Contrôle total, 4 enregistrements</p>
+                  </div>
+                  {method === 'nameservers' && <CheckCircle2 className="h-5 w-5 text-primary shrink-0" />}
+                </div>
+              </button>
+            </div>
+
+            {/* Instructions by Method */}
+            {method && (
+              <div className="rounded-xl border border-border/60 bg-card p-4 space-y-4">
+                {method === 'cname' ? (
+                  <CnameInstructions domain={domain} target={target} />
+                ) : (
+                  <NameserversInstructions domain={domain} target={target} />
+                )}
+              </div>
+            )}
+
+            {/* Original steps - hidden but keep for fallback */}
+            <ol className="mt-3 space-y-3 text-xs hidden">
               <li className="flex gap-3">
                 <span className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-primary/10 text-[11px] font-bold text-primary">1</span>
                 <div className="min-w-0">
@@ -485,6 +579,108 @@ function DnsRow({ type, host, value }: { type: string; host: string; value: stri
       >
         <Copy className="h-3 w-3" /> Copier
       </button>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// CNAME Instructions (Shopify Style)
+// ─────────────────────────────────────────────────────────────────────
+function CnameInstructions({ domain, target }: { domain: string; target: { host: string; ips: string[] } }) {
+  return (
+    <div className="space-y-3">
+      <h5 className="font-semibold text-sm">Chez ton registrar (OVH, GoDaddy, etc.):</h5>
+
+      <ol className="space-y-2 text-xs">
+        <li className="flex gap-2">
+          <span className="shrink-0 font-bold text-primary">1.</span>
+          <span>Va dans la zone DNS de <span className="font-mono text-foreground">{domain}</span></span>
+        </li>
+        <li className="flex gap-2">
+          <span className="shrink-0 font-bold text-primary">2.</span>
+          <span>Ajoute un enregistrement <span className="font-mono bg-muted px-1 rounded">CNAME</span></span>
+        </li>
+        <li className="flex gap-2">
+          <span className="shrink-0 font-bold text-primary">3.</span>
+          <span>Remplis avec:</span>
+        </li>
+      </ol>
+
+      <div className="space-y-2 mt-3">
+        <div className="rounded-lg border border-border/60 bg-muted/30 p-3 font-mono text-xs space-y-1.5">
+          <div><span className="text-muted-foreground">Type:</span> <span className="font-bold">CNAME</span></div>
+          <div><span className="text-muted-foreground">Name/Host:</span> <span className="font-bold">@</span> <span className="text-muted-foreground">(ou laisse vide)</span></div>
+          <div className="flex items-center justify-between">
+            <div>
+              <span className="text-muted-foreground">Value/Target:</span> <span className="font-bold">stores.flexiopage.com.</span>
+            </div>
+            <button
+              type="button"
+              onClick={() => navigator.clipboard.writeText('stores.flexiopage.com.')}
+              className="inline-flex items-center gap-1 rounded px-2 py-1 hover:bg-muted text-muted-foreground text-xs"
+            >
+              <Copy className="h-3 w-3" /> Copier
+            </button>
+          </div>
+          <div><span className="text-muted-foreground">TTL:</span> <span className="font-bold">3600</span> <span className="text-muted-foreground">(ou défaut)</span></div>
+        </div>
+      </div>
+
+      <p className="text-xs text-muted-foreground mt-3">
+        ⏱️ La propagation prend généralement <strong>5-15 minutes</strong>. Flexiopage vérifiera automatiquement.
+      </p>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// Nameservers Instructions (Shopify Style)
+// ─────────────────────────────────────────────────────────────────────
+function NameserversInstructions({ domain, target }: { domain: string; target: { host: string; ips: string[]; nameservers?: string[] } }) {
+  const ns = target.nameservers || [
+    'ns1.flexiopage.com',
+    'ns2.flexiopage.com',
+    'ns3.flexiopage.com',
+    'ns4.flexiopage.com',
+  ];
+
+  return (
+    <div className="space-y-3">
+      <h5 className="font-semibold text-sm">Chez ton registrar (OVH, GoDaddy, etc.):</h5>
+
+      <ol className="space-y-2 text-xs">
+        <li className="flex gap-2">
+          <span className="shrink-0 font-bold text-primary">1.</span>
+          <span>Va dans les <strong>Nameservers</strong> ou <strong>DNS Settings</strong> de <span className="font-mono text-foreground">{domain}</span></span>
+        </li>
+        <li className="flex gap-2">
+          <span className="shrink-0 font-bold text-primary">2.</span>
+          <span>Remplace les 4 nameservers existants par ceux-ci:</span>
+        </li>
+      </ol>
+
+      <div className="space-y-2 mt-3">
+        {ns.map((nameserver, idx) => (
+          <div key={idx} className="flex items-center justify-between rounded-lg border border-border/60 bg-muted/30 p-3">
+            <span className="font-mono text-xs font-bold">{nameserver}</span>
+            <button
+              type="button"
+              onClick={() => navigator.clipboard.writeText(nameserver)}
+              className="inline-flex items-center gap-1 rounded px-2 py-1 hover:bg-muted text-muted-foreground text-xs"
+            >
+              <Copy className="h-3 w-3" /> Copier
+            </button>
+          </div>
+        ))}
+      </div>
+
+      <div className="rounded-lg border border-amber-500/30 bg-amber-500/5 p-3 text-xs text-amber-800">
+        <strong>⚠️ Important:</strong> Flexiopage gérera TOUS les DNS de ton domaine. La propagation peut prendre <strong>24-48h</strong> (plus long que CNAME).
+      </div>
+
+      <p className="text-xs text-muted-foreground mt-3">
+        ✓ Une fois complété, Flexiopage gérera automatiquement email, sous-domaines, et tout le reste.
+      </p>
     </div>
   );
 }
