@@ -16,6 +16,8 @@ let mainWindow: BrowserWindow | null;
 let tray: Tray | null;
 let notificationService: NotificationService;
 
+(app as any).isQuitting = false;
+
 const createWindow = () => {
   mainWindow = new BrowserWindow({
     width: 1400,
@@ -26,7 +28,6 @@ const createWindow = () => {
       preload: path.join(__dirname, 'preload.js'),
       nodeIntegration: false,
       contextIsolation: true,
-      enableRemoteModule: false,
     },
     icon: path.join(__dirname, '../../assets/icon.png'),
   });
@@ -52,7 +53,7 @@ const createWindow = () => {
   });
 
   mainWindow.on('close', (event) => {
-    if (mainWindow && !app.isQuitting) {
+    if (mainWindow && !(app as any).isQuitting) {
       event.preventDefault();
       mainWindow.hide();
     }
@@ -77,7 +78,7 @@ const createTray = () => {
     {
       label: 'Quit',
       click: () => {
-        app.isQuitting = true;
+        (app as any).isQuitting = true;
         app.quit();
       },
     },
@@ -100,7 +101,7 @@ const createMenu = () => {
           label: 'Exit',
           accelerator: 'CmdOrCtrl+Q',
           click: () => {
-            app.isQuitting = true;
+            (app as any).isQuitting = true;
             app.quit();
           },
         },

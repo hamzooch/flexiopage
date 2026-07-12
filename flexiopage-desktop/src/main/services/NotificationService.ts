@@ -82,7 +82,6 @@ export class NotificationService {
       body: event.body,
       icon: this.getIconForType(event.type),
       timeoutType: 'default',
-      tag: event.type,
     });
 
     notification.on('click', () => {
