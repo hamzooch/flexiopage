@@ -14,7 +14,7 @@ export class NotificationService {
   private mainWindow: BrowserWindow;
   private pollingInterval: NodeJS.Timeout | null = null;
   private lastCheckTime: number = Date.now();
-  private backendUrl: string = 'http://localhost:3001';
+  private backendUrl: string = 'http://localhost:5051';
   private pollInterval: number = 10000; // 10 seconds
 
   constructor(mainWindow: BrowserWindow) {

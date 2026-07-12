@@ -120,7 +120,7 @@ REACT_APP_WS_URL=ws://localhost:3001
 
 ### Backend URL
 
-Par défaut, l'app essaie de se connecter à `http://localhost:3001`.
+Par défaut, l'app essaie de se connecter à `http://localhost:5051`.
 Modifiez `src/main/services/NotificationService.ts` pour changer cette URL.
 
 ## Types de Notifications

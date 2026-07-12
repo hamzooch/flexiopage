@@ -63,12 +63,12 @@ Une fois l'app lancée:
 ## 🔧 Configuration
 
 ### Backend URL
-Par défaut: `http://localhost:3001`
+Par défaut: `http://localhost:5051`
 
 Pour modifier, éditez `flexiopage-desktop/src/main/services/NotificationService.ts`:
 
 ```typescript
-private backendUrl: string = 'http://localhost:3001';
+private backendUrl: string = 'http://localhost:5051';
 ```
 
 ### Fréquence de Polling des Notifications
@@ -110,14 +110,14 @@ npm run pack
 ### L'app ne démarre pas
 
 ```bash
-# 1. Vérifier que le backend tourne
-lsof -i :3001
+# 1. Vérifier que le backend tourne (port 5051)
+lsof -i :5051
 
-# 2. Vérifier que le frontend peut démarrer
-cd ../flexiopage-frontend && npm run dev
+# 2. Vérifier que le frontend peut démarrer (port 3002)
+lsof -i :3002
 
 # 3. Vérifier les dépendances
-cd ../flexiopage-desktop
+cd flexiopage-desktop
 npm install --force
 npm run dev
 ```
@@ -126,7 +126,7 @@ npm run dev
 
 1. **Vérifier le endpoint backend**:
    ```bash
-   curl http://localhost:3001/api/notifications/recent
+   curl http://localhost:5051/api/notifications/recent
    # Devrait retourner un JSON array
    ```
 
@@ -153,15 +153,17 @@ private pollInterval: number = 30000; // 30 secondes au lieu de 10
 
 ### Erreur "EADDRINUSE: address already in use"
 
-Un autre processus utilise le port 3002 ou 3001:
+Un autre processus utilise le port 5051 (backend) ou 3002 (frontend):
 
 ```bash
-# Trouver et tuer le processus
+# Trouver et tuer les processus
 # macOS/Linux
-lsof -i :3002
+lsof -i :5051   # Backend
+lsof -i :3002   # Frontend
 kill -9 <PID>
 
 # Windows
+netstat -ano | findstr :5051
 netstat -ano | findstr :3002
 taskkill /PID <PID> /F
 ```

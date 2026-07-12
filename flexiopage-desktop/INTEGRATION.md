@@ -75,10 +75,10 @@ await Notification.create({
 
 ### 2. Endpoint pour le polling (Desktop App)
 
-L'app Desktop utilise l'endpoint suivant pour récupérer les notifications:
+L'app Desktop utilise l'endpoint suivant pour récupérer les notifications (port 5051):
 
 ```
-GET /api/notifications/recent?since=TIMESTAMP
+GET http://localhost:5051/api/notifications/recent?since=TIMESTAMP
 ```
 
 **Paramètres:**
