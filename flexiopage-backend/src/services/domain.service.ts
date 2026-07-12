@@ -20,12 +20,21 @@ const TARGET_IPS = (process.env.STOREFRONT_IPS || '')
   .map((s) => s.trim())
   .filter(Boolean);
 
+// Nameservers that Flexiopage owns (for advanced users)
+const FLEXIOPAGE_NAMESERVERS = [
+  'ns1.flexiopage.com',
+  'ns2.flexiopage.com',
+  'ns3.flexiopage.com',
+  'ns4.flexiopage.com',
+];
+
 export interface DomainCheck {
   domain: string;
   expectedTarget: string;
   expectedIps: string[];
   cname?: string[];
   aRecords?: string[];
+  nameservers?: string[];
   verified: boolean;
   reason?: string;
 }
@@ -83,6 +92,19 @@ export async function checkDomain(domain: string): Promise<DomainCheck> {
     }
   }
 
+  // Nameservers (for advanced users with full DNS delegation)
+  try {
+    const ns = await dns.resolveNs(clean);
+    out.nameservers = ns.map((n) => n.toLowerCase().replace(/\.$/, ''));
+    // Check if ANY of Flexiopage's nameservers are configured
+    if (out.nameservers.some((n) => FLEXIOPAGE_NAMESERVERS.map((fn) => fn.toLowerCase()).includes(n.toLowerCase()))) {
+      out.verified = true;
+      return out;
+    }
+  } catch {
+    // no NS records
+  }
+
   out.reason = 'dns_not_matching';
   return out;
 }
@@ -117,6 +139,10 @@ export async function verifyAndSaveDomain(storeId: string): Promise<DomainCheck 
   return { ...check, saved: true };
 }
 
-export function getDomainTarget(): { host: string; ips: string[] } {
-  return { host: TARGET_HOST, ips: TARGET_IPS };
+export function getDomainTarget(): { host: string; ips: string[]; nameservers: string[] } {
+  return { host: TARGET_HOST, ips: TARGET_IPS, nameservers: FLEXIOPAGE_NAMESERVERS };
+}
+
+export function getNameservers(): string[] {
+  return FLEXIOPAGE_NAMESERVERS;
 }
