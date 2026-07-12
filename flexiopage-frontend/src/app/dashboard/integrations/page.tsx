@@ -587,6 +587,18 @@ function DnsRow({ type, host, value }: { type: string; host: string; value: stri
 // CNAME Instructions (Shopify Style)
 // ─────────────────────────────────────────────────────────────────────
 function CnameInstructions({ domain, target }: { domain: string; target: { host: string; ips: string[] } }) {
+  const [copied, setCopied] = useState<string | null>(null);
+
+  const handleCopy = async (text: string, key: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(key);
+      setTimeout(() => setCopied(null), 2000);
+    } catch (err) {
+      console.error('Copy failed:', err);
+    }
+  };
+
   return (
     <div className="space-y-3">
       <h5 className="font-semibold text-sm">Chez ton registrar (OVH, GoDaddy, etc.):</h5>
@@ -610,16 +622,17 @@ function CnameInstructions({ domain, target }: { domain: string; target: { host:
         <div className="rounded-lg border border-border/60 bg-muted/30 p-3 font-mono text-xs space-y-1.5">
           <div><span className="text-muted-foreground">Type:</span> <span className="font-bold">CNAME</span></div>
           <div><span className="text-muted-foreground">Name/Host:</span> <span className="font-bold">@</span> <span className="text-muted-foreground">(ou laisse vide)</span></div>
-          <div className="flex items-center justify-between">
-            <div>
-              <span className="text-muted-foreground">Value/Target:</span> <span className="font-bold">stores.flexiopage.com.</span>
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex-1">
+              <span className="text-muted-foreground">Value/Target:</span> <span className="font-bold break-all">stores.flexiopage.com.</span>
             </div>
             <button
               type="button"
-              onClick={() => navigator.clipboard.writeText('stores.flexiopage.com.')}
-              className="inline-flex items-center gap-1 rounded px-2 py-1 hover:bg-muted text-muted-foreground text-xs"
+              onClick={() => handleCopy('stores.flexiopage.com.', 'cname')}
+              className="inline-flex items-center gap-1 rounded px-2 py-1 hover:bg-muted text-muted-foreground hover:text-foreground transition-colors text-xs shrink-0"
             >
-              <Copy className="h-3 w-3" /> Copier
+              <Copy className="h-3 w-3" />
+              {copied === 'cname' ? 'Copié!' : 'Copier'}
             </button>
           </div>
           <div><span className="text-muted-foreground">TTL:</span> <span className="font-bold">3600</span> <span className="text-muted-foreground">(ou défaut)</span></div>
@@ -637,6 +650,18 @@ function CnameInstructions({ domain, target }: { domain: string; target: { host:
 // Nameservers Instructions (Shopify Style)
 // ─────────────────────────────────────────────────────────────────────
 function NameserversInstructions({ domain, target }: { domain: string; target: { host: string; ips: string[]; nameservers?: string[] } }) {
+  const [copied, setCopied] = useState<string | null>(null);
+
+  const handleCopy = async (text: string, key: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(key);
+      setTimeout(() => setCopied(null), 2000);
+    } catch (err) {
+      console.error('Copy failed:', err);
+    }
+  };
+
   const ns = target.nameservers || [
     'ns1.flexiopage.com',
     'ns2.flexiopage.com',
@@ -661,14 +686,15 @@ function NameserversInstructions({ domain, target }: { domain: string; target: {
 
       <div className="space-y-2 mt-3">
         {ns.map((nameserver, idx) => (
-          <div key={idx} className="flex items-center justify-between rounded-lg border border-border/60 bg-muted/30 p-3">
-            <span className="font-mono text-xs font-bold">{nameserver}</span>
+          <div key={idx} className="flex items-center justify-between gap-2 rounded-lg border border-border/60 bg-muted/30 p-3">
+            <span className="font-mono text-xs font-bold break-all flex-1">{nameserver}</span>
             <button
               type="button"
-              onClick={() => navigator.clipboard.writeText(nameserver)}
-              className="inline-flex items-center gap-1 rounded px-2 py-1 hover:bg-muted text-muted-foreground text-xs"
+              onClick={() => handleCopy(nameserver, `ns-${idx}`)}
+              className="inline-flex items-center gap-1 rounded px-2 py-1 hover:bg-muted text-muted-foreground hover:text-foreground transition-colors text-xs shrink-0"
             >
-              <Copy className="h-3 w-3" /> Copier
+              <Copy className="h-3 w-3" />
+              {copied === `ns-${idx}` ? 'Copié!' : 'Copier'}
             </button>
           </div>
         ))}
