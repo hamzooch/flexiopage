@@ -31,6 +31,39 @@ export async function unreadCount(req: AuthRequest, res: Response): Promise<void
   res.json({ count });
 }
 
+/**
+ * GET /api/notifications/recent
+ * Query:
+ *   - since: timestamp in milliseconds (only return notifications after this time)
+ */
+export async function getRecent(req: AuthRequest, res: Response): Promise<void> {
+  const userId = req.user!._id;
+  const since = req.query.since ? parseInt(String(req.query.since), 10) : Date.now() - 60000;
+
+  const filter: Record<string, unknown> = {
+    userId,
+    createdAt: { $gte: new Date(since) },
+  };
+
+  const notifications = await Notification.find(filter)
+    .sort({ createdAt: -1 })
+    .limit(50)
+    .lean();
+
+  const formatted = notifications.map((n: any) => ({
+    type: n.type || 'system',
+    title: n.title,
+    body: n.message,
+    data: {
+      id: n._id,
+      read: n.read,
+      createdAt: n.createdAt,
+    },
+  }));
+
+  res.json(formatted);
+}
+
 /** POST /api/notifications/:id/read */
 export async function markRead(req: AuthRequest, res: Response): Promise<void> {
   const userId = req.user!._id;
