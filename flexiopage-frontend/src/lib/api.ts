@@ -748,6 +748,56 @@ export const adminApi = {
     a.remove();
     setTimeout(() => URL.revokeObjectURL(url), 1000);
   },
+
+  // ── Paiements (Moneroo, etc.) ──
+  getPaymentConfig: () =>
+    api.get<{
+      apiKeyConfigured: boolean;
+      webhookUrl: string;
+      webhookSecret: string;
+      testMode: boolean;
+      gateway: string;
+    }>('/admin/payments/config'),
+  listPaymentTransactions: (params?: { limit?: number; skip?: number; status?: string; gateway?: string }) =>
+    api.get<Array<{
+      id: string;
+      orderId: string;
+      amount: number;
+      currency: string;
+      status: string;
+      reference: string;
+      createdAt: string;
+    }>>('/admin/payments/transactions', { params }),
+  listPaymentWebhooks: (params?: { limit?: number; skip?: number; gateway?: string }) =>
+    api.get<Array<{
+      id: string;
+      event: string;
+      status: 'success' | 'failed' | 'pending';
+      payload: Record<string, unknown>;
+      error?: string;
+      createdAt: string;
+    }>>('/admin/payments/webhooks', { params }),
+  getPaymentStats: (params?: { gateway?: string; days?: number }) =>
+    api.get<{
+      totalTransactions: number;
+      totalVolume: number;
+      successRate: number;
+      avgAmount: number;
+      period: { days: number; since: string };
+    }>('/admin/payments/stats', { params }),
+  verifyPaymentTransaction: (transactionId: string) =>
+    api.get<{
+      transactionId: string;
+      status: string;
+      reference?: string;
+      verified?: boolean;
+      timestamp?: string;
+      gatewayData?: Record<string, unknown>;
+      message?: string;
+      lastKnownStatus?: string;
+    }>(`/admin/payments/${transactionId}/verify`),
+  retryPaymentWebhook: (logId: string) =>
+    api.post<{ success: boolean; message: string }>(`/admin/payments/webhooks/${logId}/retry`, {}),
 };
 
 // ── Admin extras types ──

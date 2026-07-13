@@ -35,6 +35,7 @@ import {
   HeartPulse,
   BarChart3,
   Truck,
+  CreditCard,
 } from 'lucide-react';
 import { useAuthStore } from '@/stores/auth-store';
 import { cn } from '@/lib/utils';
@@ -50,6 +51,7 @@ const SECTIONS: { title: string; items: NavItem[] }[] = [
       { href: '/admin/reports',  label: 'Reports',         icon: BarChart3 },
       { href: '/admin/activity', label: 'Activité',        icon: Activity },
       { href: '/admin/orders',   label: 'Commandes',      icon: ShoppingCart },
+      { href: '/admin/payments', label: 'Paiements',      icon: CreditCard },
     ],
   },
   {
