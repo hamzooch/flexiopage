@@ -19,6 +19,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
 import { MediaPicker } from '@/components/dashboard/MediaPicker';
+import { imageSizes } from '@/lib/image-recommendations';
 import { FieldToggle } from '@/components/dashboard/store-editor';
 import { StoreSubPageShell, type SaveStatus } from '@/components/dashboard/store-sub-page';
 import { storesApi, extractApiError } from '@/lib/api';
@@ -178,7 +179,8 @@ export default function CollectionEditorPage() {
                   onChange={(url) => update('image', url || '')}
                   label="Bannière de la collection (optionnel)"
                   shape="wide"
-                  helper="1920×600 recommandé."
+                  helper=""
+                  imageSizeRecommendation={imageSizes.heroDesktop}
                 />
               </div>
               <FieldToggle

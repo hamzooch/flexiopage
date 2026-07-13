@@ -14,6 +14,7 @@ import { Plus, ChevronLeft, ChevronRight, Star, Trash2 } from 'lucide-react';
 import { MediaPicker } from '@/components/dashboard/MediaPicker';
 import { Button } from '@/components/ui/button';
 import { cn, mediaUrl } from '@/lib/utils';
+import { imageSizes } from '@/lib/image-recommendations';
 
 interface Props {
   storeId: string;
@@ -75,6 +76,7 @@ export function ProductImagesPicker({ storeId, images, onChange, max = 8 }: Prop
             label="Image principale"
             shape="square"
             helper="Téléverse la 1re image. Tu pourras en ajouter d'autres pour la galerie."
+            imageSizeRecommendation={imageSizes.productMain}
           />
         </div>
       ) : (
@@ -198,6 +200,7 @@ export function ProductImagesPicker({ storeId, images, onChange, max = 8 }: Prop
               shape="square"
               label=""
               helper="Téléverse depuis ton ordinateur ou choisis dans la galerie."
+              imageSizeRecommendation={imageSizes.productGallery}
             />
           </div>
         </div>

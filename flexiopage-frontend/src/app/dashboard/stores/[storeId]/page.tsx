@@ -84,6 +84,7 @@ import type {
 } from '@/components/dashboard/store-editor';
 import { ThemePreviewGrid } from '@/components/dashboard/theme-preview-card';
 import { MediaPicker } from '@/components/dashboard/MediaPicker';
+import { imageSizes } from '@/lib/image-recommendations';
 import {
   DEFAULT_SECTION_ORDER,
   resolveSectionOrder,
@@ -849,7 +850,8 @@ function BrandingEditor({ block, storeId, store, setStore, markDirty }: EditorCt
               }}
               label="Logo de la boutique"
               shape="square"
-              helper="Format carré recommandé (PNG ou SVG, 512×512). Apparaît dans la navbar du storefront."
+              helper="Apparaît dans la navbar du storefront."
+              imageSizeRecommendation={imageSizes.logo}
             />
           </div>
         </div>
@@ -864,7 +866,8 @@ function BrandingEditor({ block, storeId, store, setStore, markDirty }: EditorCt
               }}
               label="Favicon (onglet du navigateur)"
               shape="square"
-              helper="32×32 ou 64×64. PNG ou ICO."
+              helper=""
+              imageSizeRecommendation={imageSizes.favicon}
             />
           </div>
         </div>
@@ -1001,7 +1004,8 @@ function HeroEditor({ block, storeId, store, setStore, markDirty }: EditorCtx) {
                 onChange={(url) => patchHero({ heroImage: url || '' })}
                 label="Image hero (desktop)"
                 shape="wide"
-                helper="Format paysage idéal (16:9). Téléverse depuis ton ordi ou pioche dans la médiathèque."
+                helper="Téléverse depuis ton ordi ou pioche dans la médiathèque."
+                imageSizeRecommendation={imageSizes.heroDesktop}
               />
             </div>
             <div className="rounded-2xl border border-border/60 bg-muted/30 p-4">
@@ -1011,7 +1015,8 @@ function HeroEditor({ block, storeId, store, setStore, markDirty }: EditorCtx) {
                 onChange={(url) => patchHero({ heroImageMobile: url || '' })}
                 label="Image hero (mobile, optionnel)"
                 shape="square"
-                helper="Si vide, on utilise l'image desktop. Format portrait/carré conseillé."
+                helper="Si vide, on utilise l'image desktop."
+                imageSizeRecommendation={imageSizes.heroMobile}
               />
             </div>
           </>
@@ -1231,7 +1236,8 @@ function SliderEditor({ block, storeId, store, setStore, markDirty }: EditorCtx)
                       onChange={(url) => patchSlide(i, { image: url || '' })}
                       label="Image desktop"
                       shape="wide"
-                      helper="Format paysage 16:9."
+                      helper=""
+                      imageSizeRecommendation={imageSizes.heroDesktop}
                     />
                     <MediaPicker
                       storeId={storeId}
@@ -1240,6 +1246,7 @@ function SliderEditor({ block, storeId, store, setStore, markDirty }: EditorCtx)
                       label="Image mobile (optionnel)"
                       shape="square"
                       helper="Vide = image desktop."
+                      imageSizeRecommendation={imageSizes.heroMobile}
                     />
                   </div>
                   <div className="grid gap-2 sm:grid-cols-2">
@@ -1360,7 +1367,8 @@ function TestimonialsEditor({ block, storeId, store, setStore, markDirty }: Edit
                       onChange={(url) => patchItem(i, { avatar: url || '' })}
                       label="Avatar"
                       shape="round"
-                      helper="Photo client (carré)."
+                      helper=""
+                      imageSizeRecommendation={imageSizes.profilePhoto}
                     />
                     <div className="space-y-2">
                       <Input

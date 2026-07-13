@@ -11,6 +11,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { MediaPicker } from '@/components/dashboard/MediaPicker';
+import { imageSizes } from '@/lib/image-recommendations';
 
 // ─────────────────────────────────────────────────────────────────────
 // TYPES
@@ -606,11 +607,11 @@ export function SliderEditor({
                     </div>
                     <div className="grid gap-3 sm:grid-cols-[200px_140px_1fr]">
                       <div className="space-y-1">
-                        <MediaPicker storeId={storeId} value={slide.image} onChange={(url) => updateSlide(i, { image: url || '' })} shape="wide" />
+                        <MediaPicker storeId={storeId} value={slide.image} onChange={(url) => updateSlide(i, { image: url || '' })} shape="wide" imageSizeRecommendation={imageSizes.heroDesktop} />
                         <p className="text-[10px] text-muted-foreground">🖥️ Bureau (16:9)</p>
                       </div>
                       <div className="space-y-1">
-                        <MediaPicker storeId={storeId} value={slide.imageMobile} onChange={(url) => updateSlide(i, { imageMobile: url || '' })} shape="square" />
+                        <MediaPicker storeId={storeId} value={slide.imageMobile} onChange={(url) => updateSlide(i, { imageMobile: url || '' })} shape="square" imageSizeRecommendation={imageSizes.heroMobile} />
                         <p className="text-[10px] text-muted-foreground">📱 Mobile (vide = même)</p>
                       </div>
                       <div className="space-y-2">
@@ -1055,7 +1056,7 @@ export function TestimonialsEditor({
                     </div>
 
                     <div className="grid gap-3 sm:grid-cols-[140px_1fr]">
-                      <MediaPicker storeId={storeId} value={t.avatar} onChange={(url) => updateItem(i, { avatar: url || '' })} shape="round" />
+                      <MediaPicker storeId={storeId} value={t.avatar} onChange={(url) => updateItem(i, { avatar: url || '' })} shape="round" imageSizeRecommendation={imageSizes.profilePhoto} />
                       <div className="space-y-2">
                         <div className="grid gap-2 sm:grid-cols-2">
                           <Input placeholder="Nom client" value={t.author} onChange={(e) => updateItem(i, { author: e.target.value })} className="h-9" />

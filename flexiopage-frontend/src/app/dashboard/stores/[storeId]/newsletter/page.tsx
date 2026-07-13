@@ -17,6 +17,7 @@ import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
 import { useConfirm } from '@/components/ui/confirm-dialog';
 import { MediaPicker } from '@/components/dashboard/MediaPicker';
+import { imageSizes } from '@/lib/image-recommendations';
 import { FieldToggle } from '@/components/dashboard/store-editor';
 import { StoreSubPageShell, type SaveStatus } from '@/components/dashboard/store-sub-page';
 import { storesApi, extractApiError } from '@/lib/api';
@@ -244,7 +245,8 @@ export default function NewsletterPage() {
                   onChange={(url) => update('image', url || '')}
                   label="Image (optionnel)"
                   shape="square"
-                  helper="Affichée à gauche sur desktop · cachée sur mobile."
+                  helper="Affichée à gauche sur desktop."
+                  imageSizeRecommendation={imageSizes.promoBannerSquare}
                 />
               </div>
               <div className="space-y-1.5">

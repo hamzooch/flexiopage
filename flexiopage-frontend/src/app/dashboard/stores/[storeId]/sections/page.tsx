@@ -13,6 +13,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { storesApi, extractApiError } from '@/lib/api';
 import { MediaPicker } from '@/components/dashboard/MediaPicker';
+import { imageSizes } from '@/lib/image-recommendations';
 import { StoreSubPageShell, type SaveStatus } from '@/components/dashboard/store-sub-page';
 import {
   AnnouncementBarEditor,
@@ -617,7 +618,8 @@ export default function StoreSectionsPage() {
                       onChange={(url) => setStorefront({ ...storefront, heroImage: url || '' })}
                       label="🖥️ Image de fond — bureau (optionnel)"
                       shape="wide"
-                      helper="Format paysage 1920×1080 (16:9) recommandé."
+                      helper="Format paysage recommandé."
+                      imageSizeRecommendation={imageSizes.storefrontHeroDesktop}
                     />
                   </div>
                   <div className="space-y-1.5">
@@ -627,7 +629,8 @@ export default function StoreSectionsPage() {
                       onChange={(url) => setStorefront({ ...storefront, heroImageMobile: url || '' })}
                       label="📱 Image de fond — mobile (optionnel)"
                       shape="square"
-                      helper="Format portrait 1080×1350 (4:5) ou carré recommandé. Vide = même image que bureau."
+                      helper="Vide = même image que bureau."
+                      imageSizeRecommendation={imageSizes.storefrontHeroMobile}
                     />
                   </div>
                   <div className="sm:col-span-2 space-y-1.5">

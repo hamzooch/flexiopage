@@ -11,6 +11,7 @@ import { Image as ImageIcon, Loader2, Trash2, Upload, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { storesApi, extractApiError } from '@/lib/api';
 import { cn } from '@/lib/utils';
+import type { ImageSizeRecommendation } from '@/lib/image-recommendations';
 
 const API_BASE = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000').replace(/\/$/, '');
 
@@ -39,6 +40,8 @@ interface Props {
   helper?: string;
   /** Disable upload (gallery-only). Defaults to false. */
   uploadDisabled?: boolean;
+  /** Optional image size recommendations to display at the bottom. */
+  imageSizeRecommendation?: ImageSizeRecommendation;
 }
 
 export function MediaPicker({
@@ -49,6 +52,7 @@ export function MediaPicker({
   shape = 'wide',
   helper,
   uploadDisabled = false,
+  imageSizeRecommendation,
 }: Props) {
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState('');
@@ -165,7 +169,20 @@ export function MediaPicker({
         )}
       </div>
 
-      {helper && <p className="text-[11px] text-muted-foreground">{helper}</p>}
+      {(helper || imageSizeRecommendation) && (
+        <div className="space-y-1">
+          {helper && <p className="text-[11px] text-muted-foreground">{helper}</p>}
+          {imageSizeRecommendation && (
+            <p className="text-[11px] text-muted-foreground/80">
+              📐 Recommandé : {imageSizeRecommendation.width} × {imageSizeRecommendation.height} px, Max{' '}
+              {imageSizeRecommendation.maxFileSizeKb} KB
+              {imageSizeRecommendation.formats && imageSizeRecommendation.formats.length > 0 && (
+                <>, Format{imageSizeRecommendation.formats.length > 1 ? 's' : ''} : {imageSizeRecommendation.formats.join(', ')}</>
+              )}
+            </p>
+          )}
+        </div>
+      )}
 
       {uploadError && (
         <div className="flex items-start justify-between gap-2 rounded-md border border-rose-200 bg-rose-50 px-2.5 py-2 text-[11px] text-rose-700">

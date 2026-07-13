@@ -14,6 +14,7 @@ import {
 import { ThemePreviewGrid } from '@/components/dashboard/theme-preview-card';
 import { ThemePaletteEditor } from '@/components/dashboard/theme-palette-editor';
 import { MediaPicker } from '@/components/dashboard/MediaPicker';
+import { imageSizes } from '@/lib/image-recommendations';
 import { StoreSubPageShell, type SaveStatus } from '@/components/dashboard/store-sub-page';
 import { StoreHomepageLivePreview } from '@/components/dashboard/store-homepage-live-preview';
 import type { StorefrontSettings, StoreType, WhatsappSettings } from '@/components/dashboard/store-editor';
@@ -148,7 +149,8 @@ export default function StoreAppearancePage() {
                   onChange={setLogo}
                   label="Logo de la boutique"
                   shape="square"
-                  helper="Format carré recommandé (PNG ou SVG, 512×512)."
+                  helper="Format carré recommandé."
+                  imageSizeRecommendation={imageSizes.logo}
                 />
               </div>
             </div>
@@ -160,7 +162,8 @@ export default function StoreAppearancePage() {
                   onChange={setFavicon}
                   label="Favicon (onglet du navigateur)"
                   shape="square"
-                  helper="32×32 ou 64×64. PNG ou ICO."
+                  helper=""
+                  imageSizeRecommendation={imageSizes.favicon}
                 />
               </div>
             </div>
