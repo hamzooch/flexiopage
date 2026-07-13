@@ -242,6 +242,10 @@ export default function StoreEditPage() {
   const [previewDevice, setPreviewDevice] = useState<'mobile' | 'tablet' | 'desktop'>('desktop');
   const [previewBust, setPreviewBust] = useState(0);
 
+  // Auto-save state
+  const [autoSavingNow, setAutoSavingNow] = useState(false);
+  const autoSaveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
   // Fetch store + sample slugs
   useEffect(() => {
     if (!storeId) return;
@@ -282,11 +286,16 @@ export default function StoreEditPage() {
     return () => window.removeEventListener('beforeunload', handler);
   }, [dirty]);
 
-  // Save manuel uniquement — c'est le vendeur qui décide quand persister
-  // ses modifications via le bouton « Enregistrer (N) ».
-  async function handleSave() {
-    if (!store || !dirty || saving) return;
-    setSaving(true);
+  // Save manuel + auto-save
+  async function handleSave(isAutoSave = false) {
+    if (!store || !dirty || saving || autoSavingNow) return;
+
+    if (isAutoSave) {
+      setAutoSavingNow(true);
+    } else {
+      setSaving(true);
+    }
+
     setSaveError(null);
     const payload: Record<string, unknown> = {};
     for (const k of Array.from(patch.keys)) {
@@ -302,20 +311,30 @@ export default function StoreEditPage() {
     }
     try {
       await storesApi.update(storeId, payload);
-      // Pas de `setStore(fresh)` : avec l'auto-save, le vendeur tape en
-      // continu et la réponse pourrait écraser ses touches arrivées entre
-      // l'envoi et la réception. L'état local est déjà à jour (on l'a
-      // mis à jour à chaque markDirty), le backend a juste persisté.
       setPatch(emptyPatch);
       setPreviewBust((n) => n + 1);
       setSavedFlash(true);
-      window.setTimeout(() => setSavedFlash(false), 1800);
+      window.setTimeout(() => setSavedFlash(false), 2000);
     } catch (err) {
       const e = err as { response?: { data?: { error?: string } } };
       setSaveError(e.response?.data?.error || 'Erreur lors de la sauvegarde.');
     } finally {
-      setSaving(false);
+      if (isAutoSave) {
+        setAutoSavingNow(false);
+      } else {
+        setSaving(false);
+      }
     }
+  }
+
+  // Debounced auto-save (500ms après dernière modification)
+  function triggerAutoSave() {
+    if (autoSaveTimeoutRef.current) {
+      clearTimeout(autoSaveTimeoutRef.current);
+    }
+    autoSaveTimeoutRef.current = setTimeout(() => {
+      handleSave(true);
+    }, 500);
   }
 
   /** Marque une clé top-level comme modifiée. Si la clé est `settings`,
@@ -329,7 +348,18 @@ export default function StoreEditPage() {
       if (key === 'settings' && settingsSubPath) settingsPaths.add(settingsSubPath);
       return { keys, settingsPaths };
     });
+    // Trigger auto-save (debounced)
+    triggerAutoSave();
   }
+
+  // Cleanup auto-save timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (autoSaveTimeoutRef.current) {
+        clearTimeout(autoSaveTimeoutRef.current);
+      }
+    };
+  }, []);
 
   function selectTheme(tpl: StoreThemeTemplate) {
     setStore((s) => (s ? ({ ...s, theme: tpl.theme as unknown as Record<string, unknown> }) : s));
@@ -405,7 +435,7 @@ export default function StoreEditPage() {
           </Link>
           <Button
             type="button"
-            onClick={handleSave}
+            onClick={() => handleSave(false)}
             disabled={!dirty || saving}
             className={cn(
               'h-9 gap-1.5 rounded-lg gradient-brand text-white shadow-md shadow-primary/25 hover:opacity-95',
@@ -423,6 +453,23 @@ export default function StoreEditPage() {
           </Button>
         </div>
       </header>
+
+      {/* Auto-save indicator */}
+      {(autoSavingNow || savedFlash) && (
+        <div className="shrink-0 border-b border-emerald-200 bg-emerald-50 px-4 py-2 text-xs text-emerald-700 flex items-center gap-2 sm:px-6">
+          {autoSavingNow ? (
+            <>
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              Enregistrement automatique...
+            </>
+          ) : (
+            <>
+              <Check className="h-3.5 w-3.5" />
+              ✓ Modifications enregistrées
+            </>
+          )}
+        </div>
+      )}
 
       {/* Save error banner */}
       {saveError && (
