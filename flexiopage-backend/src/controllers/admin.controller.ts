@@ -31,8 +31,10 @@ import {
   invalidateSettingsCache,
   DEFAULT_AI_PRICING,
   DEFAULT_AUTH_SETTINGS,
+  DEFAULT_PLATFORM_SETTINGS,
   type IAiPricing,
   type IAuthSettings,
+  type IPlatformSettings,
 } from '../models/Settings.model';
 import { resendVerification } from '../services/auth.service';
 
@@ -1111,6 +1113,70 @@ export async function updateAuthSettings(req: AuthRequest, res: Response): Promi
     metadata: { update },
   });
   res.json({ auth: fresh.auth, updatedAt: fresh.updatedAt });
+}
+
+/**
+ * GET /api/admin/settings/platform — commission + payout minimums.
+ * Ces réglages contrôlent le modèle chariow-style : la plateforme retient
+ * une commission sur chaque vente en ligne et le vendeur ne peut demander
+ * un versement qu'à partir du seuil défini pour sa devise.
+ */
+export async function getPlatformSettings(_req: AuthRequest, res: Response): Promise<void> {
+  const s = await getSettings();
+  res.json({
+    platform: s.platform || DEFAULT_PLATFORM_SETTINGS,
+    defaults: DEFAULT_PLATFORM_SETTINGS,
+    updatedAt: s.updatedAt,
+  });
+}
+
+/**
+ * PATCH /api/admin/settings/platform — superadmin only. Merge partiel :
+ *   { commissionRate?, payoutMinimums? }
+ * commissionRate: 0..1 (0.15 = 15%). Rejette valeurs hors bornes.
+ * payoutMinimums: { XOF: 5000, USD: 8, ... } — merge par devise, pas remplacement.
+ */
+export async function updatePlatformSettings(req: AuthRequest, res: Response): Promise<void> {
+  const body = (req.body || {}) as Partial<IPlatformSettings>;
+  const update: Record<string, unknown> = { updatedBy: req.user?._id };
+
+  if (typeof body.commissionRate === 'number') {
+    if (body.commissionRate < 0 || body.commissionRate > 1) {
+      res.status(400).json({ error: 'commissionRate must be between 0 and 1' });
+      return;
+    }
+    update['platform.commissionRate'] = body.commissionRate;
+  }
+
+  if (body.payoutMinimums && typeof body.payoutMinimums === 'object') {
+    // Merge par devise — on ne remplace pas tout le mapping, on met à jour
+    // les devises fournies. Rejette les valeurs négatives.
+    const current = await getSettings();
+    const merged: Record<string, number> = {
+      ...(current.platform?.payoutMinimums || DEFAULT_PLATFORM_SETTINGS.payoutMinimums),
+    };
+    for (const [cur, val] of Object.entries(body.payoutMinimums)) {
+      const n = Number(val);
+      if (!Number.isFinite(n) || n < 0) {
+        res.status(400).json({ error: `Invalid minimum for ${cur}: must be >= 0` });
+        return;
+      }
+      merged[cur.toUpperCase()] = Math.round(n);
+    }
+    update['platform.payoutMinimums'] = merged;
+  }
+
+  await Settings.updateOne({ key: 'global' }, { $set: update }, { upsert: true });
+  invalidateSettingsCache();
+  const fresh = await getSettings(true);
+  await logAudit({
+    action: 'settings.platform',
+    req,
+    targetType: 'settings',
+    summary: 'Réglages plateforme (commission / payouts) mis à jour',
+    metadata: { update },
+  });
+  res.json({ platform: fresh.platform, updatedAt: fresh.updatedAt });
 }
 
 /**

@@ -12,8 +12,11 @@
  */
 
 import { useEffect, useState } from 'react';
-import { CheckCircle2, Loader2, MailCheck, ShieldAlert } from 'lucide-react';
+import { CheckCircle2, Loader2, MailCheck, ShieldAlert, Percent, Banknote } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
+import { Button } from '@/components/ui/button';
+import { Label } from '@/components/ui/label';
 import { adminApi, extractApiError } from '@/lib/api';
 import { useAuthStore } from '@/stores/auth-store';
 import { useConfirm } from '@/components/ui/confirm-dialog';
@@ -166,6 +169,174 @@ export default function AdminSettingsPage() {
           )}
         </CardContent>
       </Card>
+
+      {/* ── Commission plateforme + seuils de retrait ────────────── */}
+      <PlatformSettingsCard isSuperAdmin={isSuperAdmin} />
     </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// Platform commercials — commission on online sales + payout minimums
+// ─────────────────────────────────────────────────────────────────────
+
+interface PlatformState {
+  commissionRate: number;
+  payoutMinimums: Record<string, number>;
+}
+
+const CURRENCY_ORDER = ['XOF', 'USD', 'EUR', 'NGN', 'GHS', 'KES', 'MAD'];
+
+function PlatformSettingsCard({ isSuperAdmin }: { isSuperAdmin: boolean }) {
+  const [platform, setPlatform] = useState<PlatformState | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [commissionPct, setCommissionPct] = useState('15');
+  const [minimums, setMinimums] = useState<Record<string, string>>({});
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    adminApi
+      .getPlatformSettings()
+      .then((res) => {
+        setPlatform(res.data.platform);
+        setCommissionPct(String(Math.round(res.data.platform.commissionRate * 100)));
+        const asStrings: Record<string, string> = {};
+        for (const [cur, val] of Object.entries(res.data.platform.payoutMinimums)) {
+          asStrings[cur] = String(val);
+        }
+        setMinimums(asStrings);
+      })
+      .catch((err) => setError(extractApiError(err, 'Impossible de charger les réglages.')))
+      .finally(() => setLoading(false));
+  }, []);
+
+  async function handleSave() {
+    if (!isSuperAdmin) return;
+    setError('');
+    setSaved(false);
+
+    const pct = Number(commissionPct);
+    if (!Number.isFinite(pct) || pct < 0 || pct > 100) {
+      setError('La commission doit être entre 0 et 100.');
+      return;
+    }
+    const payoutMinimums: Record<string, number> = {};
+    for (const [cur, val] of Object.entries(minimums)) {
+      const n = Number(val);
+      if (!Number.isFinite(n) || n < 0) {
+        setError(`Minimum ${cur} invalide.`);
+        return;
+      }
+      payoutMinimums[cur] = n;
+    }
+
+    setSaving(true);
+    try {
+      const res = await adminApi.updatePlatformSettings({
+        commissionRate: pct / 100,
+        payoutMinimums,
+      });
+      setPlatform(res.data.platform);
+      setSaved(true);
+      window.setTimeout(() => setSaved(false), 2200);
+    } catch (err) {
+      setError(extractApiError(err, 'Sauvegarde échouée.'));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  if (loading) {
+    return (
+      <Card>
+        <CardContent className="grid place-items-center py-8">
+          <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+        </CardContent>
+      </Card>
+    );
+  }
+
+  if (!platform) return null;
+
+  const currencies = Array.from(new Set([...CURRENCY_ORDER, ...Object.keys(platform.payoutMinimums)]));
+  const previewNet = Math.round(10000 * (1 - Number(commissionPct) / 100));
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2 text-base">
+          <Percent className="h-4 w-4" />
+          Commission plateforme &amp; seuils de retrait
+        </CardTitle>
+        <CardDescription>
+          Le vendeur reçoit <strong>(montant vente − commission)</strong> dans son solde &quot;Revenus&quot;, et peut demander un versement une fois le seuil atteint pour sa devise.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-5">
+        {/* Commission */}
+        <div>
+          <Label htmlFor="commissionPct">Taux de commission (%)</Label>
+          <div className="mt-1 flex items-center gap-2">
+            <Input
+              id="commissionPct"
+              type="number"
+              min={0}
+              max={100}
+              step="0.1"
+              value={commissionPct}
+              onChange={(e) => setCommissionPct(e.target.value)}
+              disabled={!isSuperAdmin}
+              className="max-w-[150px]"
+            />
+            <span className="text-xs text-muted-foreground">
+              Sur 10 000 XOF le vendeur reçoit <strong>{previewNet} XOF</strong>
+            </span>
+          </div>
+        </div>
+
+        {/* Payout minimums */}
+        <div>
+          <Label className="flex items-center gap-1.5">
+            <Banknote className="h-3.5 w-3.5" />
+            Minimums de retrait par devise
+          </Label>
+          <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-4">
+            {currencies.map((cur) => (
+              <div key={cur} className="flex flex-col gap-1">
+                <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                  {cur}
+                </span>
+                <Input
+                  type="number"
+                  min={0}
+                  step="1"
+                  value={minimums[cur] ?? ''}
+                  onChange={(e) => setMinimums({ ...minimums, [cur]: e.target.value })}
+                  disabled={!isSuperAdmin}
+                  className="text-sm"
+                />
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Save */}
+        <div className="flex items-center gap-3 pt-2">
+          <Button onClick={handleSave} disabled={!isSuperAdmin || saving} className="gap-2">
+            {saving && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+            Enregistrer
+          </Button>
+          {saved && (
+            <span className="inline-flex items-center gap-1.5 text-xs font-medium text-emerald-700">
+              <CheckCircle2 className="h-3.5 w-3.5" />
+              Sauvegardé
+            </span>
+          )}
+          {error && <span className="text-xs text-rose-600">{error}</span>}
+        </div>
+      </CardContent>
+    </Card>
   );
 }

@@ -678,6 +678,22 @@ export const adminApi = {
       updatedAt: string;
     }>('/admin/settings/auth', data),
 
+  // ── Platform commercials (commission + payout minimums) ──
+  getPlatformSettings: () =>
+    api.get<{
+      platform: { commissionRate: number; payoutMinimums: Record<string, number> };
+      defaults: { commissionRate: number; payoutMinimums: Record<string, number> };
+      updatedAt: string;
+    }>('/admin/settings/platform'),
+  updatePlatformSettings: (data: {
+    commissionRate?: number;
+    payoutMinimums?: Record<string, number>;
+  }) =>
+    api.patch<{
+      platform: { commissionRate: number; payoutMinimums: Record<string, number> };
+      updatedAt: string;
+    }>('/admin/settings/platform', data),
+
   /** Renvoie le mail de vérification au nom d'un user cible (support manuel). */
   adminResendVerification: (userId: string) =>
     api.post<{ ok: true }>(`/admin/users/${userId}/resend-verification`),

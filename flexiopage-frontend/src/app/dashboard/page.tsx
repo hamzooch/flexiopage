@@ -60,6 +60,7 @@ import { formatCurrency, cn } from '@/lib/utils';
 import type { StoreAnalyticsRich, RangeKey } from '@/types/analytics';
 import { Button } from '@/components/ui/button';
 import { PageHeader } from '@/components/dashboard/page-header';
+import { EarningsWidget } from '@/components/dashboard/earnings-widget';
 
 interface StoreType {
   _id: string;
@@ -457,6 +458,11 @@ export default function DashboardOverviewPage() {
           />
         </section>
       )}
+
+      {/* ── Earnings widget — solde vendeur des ventes en ligne (chariow).
+            N'apparaît que si le vendeur a des revenus en ligne, sinon la
+            page reste épurée pour les vendeurs COD-only. ── */}
+      {activeStore && <EarningsWidget />}
 
       {/* ── Quality strip — 4 métriques "santé business" en petit,
             à côté des KPIs primaires pour ne pas surcharger. Ces

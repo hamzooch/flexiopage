@@ -37,6 +37,7 @@ import { PaymentDonutChart } from '@/components/charts/PaymentDonutChart';
 import { GeoBreakdownList } from '@/components/charts/GeoBreakdownList';
 import type { AdminOverviewRich } from '@/types/admin-analytics';
 import type { RangeKey } from '@/types/analytics';
+import { PendingPayoutsWidget } from '@/components/admin/pending-payouts-widget';
 
 const ROLE_BADGE: Record<string, { label: string; tone: string; Icon: typeof Crown }> = {
   owner:      { label: 'Owner',       tone: 'from-violet-600 to-fuchsia-600', Icon: Crown },
@@ -200,6 +201,9 @@ export default function AdminOverviewPage() {
               hint={`${data.totals.complaints.open} ouvertes`}
             />
           </div>
+
+          {/* Alerte payouts en attente — actionable si > 0 */}
+          <PendingPayoutsWidget />
 
           {/* Revenue chart full width */}
           <Card>

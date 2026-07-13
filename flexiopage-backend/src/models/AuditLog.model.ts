@@ -27,7 +27,8 @@ export type AuditAction =
   | 'complaint.update'
   | 'complaint.assign'
   | 'settings.ai_pricing'
-  | 'settings.auth';
+  | 'settings.auth'
+  | 'settings.platform';
 
 export interface IAuditLog extends Document {
   action: AuditAction;

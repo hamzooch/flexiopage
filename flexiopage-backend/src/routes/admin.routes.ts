@@ -58,6 +58,11 @@ router.put('/settings/ai-pricing', requireSuperAdmin, admin.updateAiPricing);
 router.get('/settings/auth', admin.getAuthSettings);
 router.patch('/settings/auth', requireSuperAdmin, admin.updateAuthSettings);
 
+// Platform commercials — commission % + payout minimums par devise. Touche
+// directement au revenu de la plateforme, donc mutation superadmin.
+router.get('/settings/platform', admin.getPlatformSettings);
+router.patch('/settings/platform', requireSuperAdmin, admin.updatePlatformSettings);
+
 // Renvoi manuel du mail de vérification depuis le panel admin (cas support
 // quand Resend a raté ou que le mail est tombé en spam et a été supprimé).
 router.post('/users/:userId/resend-verification', requireAdminWrite, admin.adminResendVerification);
