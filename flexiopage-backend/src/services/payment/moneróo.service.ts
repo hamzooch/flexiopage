@@ -4,7 +4,7 @@
  *
  * Env:
  *   MONERÓO_API_KEY       — required to init payments (Bearer token)
- *   MONERÓO_NOTIFY_URL    — fallback webhook URL (defaults to API_PUBLIC_URL/api/webhooks/moneróo)
+ *   MONERÓO_NOTIFY_URL    — fallback webhook URL (defaults to API_PUBLIC_URL/api/webhooks/moneroo)
  *   API_PUBLIC_URL        — used to build notify_url
  *   FRONTEND_URL          — used to build return_url
  *
@@ -33,7 +33,7 @@ export class MoneróoProvider implements PaymentProviderImpl {
     const apiKey = process.env.MONERÓO_API_KEY!;
     const apiBase = (process.env.API_PUBLIC_URL || 'http://localhost:5051').replace(/\/$/, '');
     const frontBase = firstUrl(process.env.FRONTEND_URL) || 'http://localhost:3000';
-    const notifyUrl = process.env.MONERÓO_NOTIFY_URL || `${apiBase}/api/webhooks/moneróo`;
+    const notifyUrl = process.env.MONERÓO_NOTIFY_URL || `${apiBase}/api/webhooks/moneroo`;
     const orderId = String(args.order._id);
     const returnUrl = args.returnUrl || `${frontBase}/thanks/${orderId}`;
 

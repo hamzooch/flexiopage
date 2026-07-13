@@ -93,8 +93,8 @@ router.post('/cinetpay', (req, res) => handlePaymentWebhook('cinetpay', req, res
 /** POST /api/webhooks/flutterwave */
 router.post('/flutterwave', (req, res) => handlePaymentWebhook('flutterwave', req, res));
 
-/** POST /api/webhooks/moneróo */
-router.post('/moneróo', (req, res) => handlePaymentWebhook('moneróo', req, res));
+/** POST /api/webhooks/moneroo */
+router.post('/moneroo', (req, res) => handlePaymentWebhook('moneróo', req, res));
 
 /**
  * POST /api/webhooks/mock — used by the dev mock flow (?simulate=1 page).

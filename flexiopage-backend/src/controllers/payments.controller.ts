@@ -9,7 +9,7 @@ import { Order } from '../models/Order.model';
 export async function getPaymentConfig(req: Request, res: Response): Promise<void> {
   try {
     const apiKeyConfigured = !!process.env.MONERÓO_API_KEY;
-    const webhookUrl = process.env.MONERÓO_NOTIFY_URL || `${process.env.API_PUBLIC_URL}/api/webhooks/moneróo`;
+    const webhookUrl = process.env.MONERÓO_NOTIFY_URL || `${process.env.API_PUBLIC_URL}/api/webhooks/moneroo`;
 
     res.json({
       apiKeyConfigured,
