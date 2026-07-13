@@ -24,6 +24,11 @@ services:
     restart: unless-stopped
     ports:
       - "5000:5000"
+    # Charge automatiquement toutes les variables depuis .env — plus simple
+    # que de les lister une par une et évite de rater une variable quand
+    # on en ajoute (Moneroo, Resend, Meta WhatsApp, Telegram, MogaDelivery…).
+    env_file:
+      - .env
     environment:
       NODE_ENV: production
       PORT: 5000
