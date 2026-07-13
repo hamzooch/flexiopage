@@ -268,17 +268,24 @@ function DomainPanel({ store, onSaved, saving, setSaving }: PanelProps) {
   const [justSaved, setJustSaved] = useState(false);
   const [method, setMethod] = useState<DomainMethod>(null);
   const [autoCheckInterval, setAutoCheckInterval] = useState<NodeJS.Timeout | null>(null);
+  const [isPollingActive, setIsPollingActive] = useState(false);
 
   useEffect(() => {
     storesApi.getDomainTarget(store._id).then((r) => setTarget(r.data)).catch(() => {});
   }, [store._id]);
 
-  // Auto-check DNS every 10 seconds when domain is set but not verified
-  useEffect(() => {
-    if (!domain.trim() || store.customDomainVerified) {
-      if (autoCheckInterval) clearInterval(autoCheckInterval);
-      return;
+  // Functions to control polling
+  const stopPolling = () => {
+    if (autoCheckInterval) {
+      clearInterval(autoCheckInterval);
+      setAutoCheckInterval(null);
+      setIsPollingActive(false);
     }
+  };
+
+  const startPolling = () => {
+    if (autoCheckInterval) clearInterval(autoCheckInterval);
+    setIsPollingActive(true);
 
     const checkDNS = async () => {
       try {
@@ -286,22 +293,32 @@ function DomainPanel({ store, onSaved, saving, setSaving }: PanelProps) {
         setCheck(res.data);
         if (res.data.verified) {
           await onSaved();
-          if (autoCheckInterval) clearInterval(autoCheckInterval);
+          stopPolling();
         }
       } catch (err) {
         // Silent fail - just keep polling
       }
     };
 
-    // First check immediately
+    // Check immediately
     checkDNS();
 
     // Then check every 10 seconds
     const interval = setInterval(checkDNS, 10000);
     setAutoCheckInterval(interval);
+  };
+
+  // Auto-check DNS every 10 seconds when domain is set but not verified
+  useEffect(() => {
+    if (!domain.trim() || store.customDomainVerified) {
+      stopPolling();
+      return;
+    }
+
+    startPolling();
 
     return () => {
-      if (interval) clearInterval(interval);
+      // Cleanup on unmount
     };
   }, [domain, store._id, store.customDomainVerified, onSaved]);
 
@@ -541,41 +558,78 @@ function DomainPanel({ store, onSaved, saving, setSaving }: PanelProps) {
               </li>
             </ol>
 
-            <div className="mt-5 flex flex-wrap items-center gap-2">
-              <Button variant="outline" size="sm" onClick={handleVerify} disabled={checking} className="gap-1.5">
-                {checking ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
-                Vérifier le DNS
-              </Button>
-              {check && !check.verified && (
-                <span className="text-xs text-destructive">
-                  {check.reason === 'dns_conflict_cname_and_a' ? (
-                    <div className="space-y-2">
-                      <div className="rounded-lg border border-amber-200 bg-amber-50 p-3">
-                        <p className="font-semibold text-amber-900">⚠️ Conflit DNS détecté</p>
-                        <div className="mt-2 space-y-1 text-sm text-amber-800">
-                          <p>Tu as à la fois:</p>
-                          <ul className="list-inside list-disc space-y-1 ml-2">
-                            <li>✓ CNAME: <span className="font-mono text-xs">{check.cname?.join(', ')}</span> (correct)</li>
-                            <li>✗ A record: <span className="font-mono text-xs">{check.aRecords?.join(', ')}</span> (ancien, doit être supprimé)</li>
-                          </ul>
-                          <p className="mt-3">
-                            <strong>Action requise:</strong> Supprime l'A record ancienne chez ton registraire (Namecheap, OVH, GoDaddy, etc) et garde SEULEMENT le CNAME vers stores.flexiopage.com.
-                          </p>
+            <div className="mt-5 space-y-3">
+              <div className="flex flex-wrap items-center gap-2">
+                <Button variant="outline" size="sm" onClick={handleVerify} disabled={checking} className="gap-1.5">
+                  {checking ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
+                  Vérifier le DNS
+                </Button>
+
+                {/* Polling controls */}
+                {domain.trim() && !store.customDomainVerified && (
+                  <div className="flex items-center gap-2">
+                    {isPollingActive ? (
+                      <>
+                        <span className="text-xs text-muted-foreground flex items-center gap-1">
+                          <span className="inline-block h-2 w-2 rounded-full bg-blue-500 animate-pulse"></span>
+                          Vérification auto (chaque 10s)
+                        </span>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={stopPolling}
+                          className="gap-1.5 text-xs text-amber-600 hover:bg-amber-50"
+                        >
+                          ⏸️ Arrêter
+                        </Button>
+                      </>
+                    ) : (
+                      <>
+                        <span className="text-xs text-muted-foreground">Vérification arrêtée</span>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={startPolling}
+                          className="gap-1.5 text-xs text-green-600 hover:bg-green-50"
+                        >
+                          ▶️ Relancer
+                        </Button>
+                      </>
+                    )}
+                  </div>
+                )}
+
+                {check && !check.verified && (
+                  <div className="w-full">
+                    {check.reason === 'dns_conflict_cname_and_a' ? (
+                      <div className="space-y-2">
+                        <div className="rounded-lg border border-amber-200 bg-amber-50 p-3">
+                          <p className="font-semibold text-amber-900">⚠️ Conflit DNS détecté</p>
+                          <div className="mt-2 space-y-1 text-sm text-amber-800">
+                            <p>Tu as à la fois:</p>
+                            <ul className="list-inside list-disc space-y-1 ml-2">
+                              <li>✓ CNAME: <span className="font-mono text-xs">{check.cname?.join(', ')}</span> (correct)</li>
+                              <li>✗ A record: <span className="font-mono text-xs">{check.aRecords?.join(', ')}</span> (ancien, doit être supprimé)</li>
+                            </ul>
+                            <p className="mt-3">
+                              <strong>Action requise:</strong> Supprime l'A record ancienne chez ton registraire (Namecheap, OVH, GoDaddy, etc) et garde SEULEMENT le CNAME vers stores.flexiopage.com.
+                            </p>
+                          </div>
                         </div>
                       </div>
-                    </div>
-                  ) : check.reason === 'dns_not_matching' ? (
-                    <div className="text-sm">
-                      DNS détecté : {[...(check.cname || []), ...(check.aRecords || [])].join(', ') || '—'} — la propagation n'est peut-être pas terminée, réessaie dans quelques minutes.
-                    </div>
-                  ) : (
-                    check.reason
-                  )}
-                </span>
-              )}
-              {check && check.verified && (
-                <span className="text-xs text-emerald-600 font-medium">DNS correct ✓</span>
-              )}
+                    ) : check.reason === 'dns_not_matching' ? (
+                      <div className="text-sm">
+                        DNS détecté : {[...(check.cname || []), ...(check.aRecords || [])].join(', ') || '—'} — la propagation n'est peut-être pas terminée, réessaie dans quelques minutes.
+                      </div>
+                    ) : (
+                      <div className="text-xs text-destructive">{check.reason}</div>
+                    )}
+                  </div>
+                )}
+                {check && check.verified && (
+                  <span className="text-xs text-emerald-600 font-medium">✓ DNS correct</span>
+                )}
+              </div>
             </div>
           </div>
         )}
