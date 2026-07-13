@@ -128,16 +128,54 @@ export class MoneróoProvider implements PaymentProviderImpl {
   }
 
   async verifyTransaction(order: IOrder): Promise<VerifyResult> {
-    // For now, just return pending. Moneróo doesn't have a transaction status check API in the free tier.
-    // Real implementation would call a status endpoint if available.
     if (!this.isConfigured()) return { status: 'pending' };
-    const status = (order.paymentStatus === 'pending' || order.paymentStatus === 'paid' || order.paymentStatus === 'failed')
-      ? order.paymentStatus
-      : 'pending';
-    return {
-      status,
-      reference: order.paymentReference || String(order._id),
-    };
+    if (!order.paymentReference) {
+      return { status: 'pending', reference: String(order._id) };
+    }
+
+    try {
+      const apiKey = process.env.MONERÓO_API_KEY!;
+      const paymentId = order.paymentReference;
+
+      const res = await fetch(`${this.base}/payments/${paymentId}/verify`, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${apiKey}`,
+        },
+      });
+
+      const json = (await res.json()) as {
+        message?: string;
+        data?: {
+          id?: string;
+          status?: string;
+          amount?: number;
+          currency?: string;
+        };
+        error?: string;
+      };
+
+      if (!res.ok || !json.data) {
+        console.warn(`Moneróo verify failed for ${paymentId}: ${json.error || json.message}`);
+        return { status: 'pending', reference: paymentId, raw: json };
+      }
+
+      const apiStatus = String(json.data.status || '').toLowerCase();
+      let mappedStatus: 'paid' | 'failed' | 'pending' = 'pending';
+
+      if (apiStatus === 'success') mappedStatus = 'paid';
+      else if (apiStatus === 'failed') mappedStatus = 'failed';
+
+      return {
+        status: mappedStatus,
+        reference: json.data.id || paymentId,
+        raw: json.data,
+      };
+    } catch (err) {
+      console.error(`Moneróo verifyTransaction error for ${order._id}:`, err);
+      return { status: 'pending', reference: order.paymentReference };
+    }
   }
 }
 

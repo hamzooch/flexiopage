@@ -177,3 +177,81 @@ export async function retryWebhook(req: Request, res: Response): Promise<void> {
     res.status(500).json({ error: 'Failed to retry webhook' });
   }
 }
+
+/** GET /api/admin/payments/:transactionId/verify — verify transaction with gateway */
+export async function verifyPaymentTransaction(req: Request, res: Response): Promise<void> {
+  try {
+    const { transactionId } = req.params;
+    if (!transactionId) {
+      res.status(400).json({ error: 'transactionId required' });
+      return;
+    }
+
+    // Find the payment log and associated order
+    const log = await PaymentLog.findOne({ reference: transactionId }).lean();
+    if (!log) {
+      res.status(404).json({ error: 'Transaction not found' });
+      return;
+    }
+
+    const order = await Order.findById(log.orderId)
+      .select('_id paymentStatus paymentReference paymentProvider')
+      .lean();
+    if (!order) {
+      res.status(404).json({ error: 'Associated order not found' });
+      return;
+    }
+
+    // Import payment service dynamically to verify with gateway
+    const { getProviderById } = await import('../services/payment/registry');
+    const provider = getProviderById(log.gateway as any);
+    if (!provider || !provider.verifyTransaction) {
+      res.json({
+        transactionId,
+        status: order.paymentStatus,
+        message: 'No gateway verification available for this provider',
+        lastKnownStatus: log.status,
+      });
+      return;
+    }
+
+    // Call the provider's verifyTransaction method
+    const verifyResult = await provider.verifyTransaction(order as any);
+
+    // Update order if status changed
+    if (verifyResult.status === 'paid' && order.paymentStatus !== 'paid') {
+      await Order.updateOne(
+        { _id: order._id },
+        { $set: { paymentStatus: 'paid', paymentWebhookData: verifyResult.raw } }
+      );
+    } else if (verifyResult.status === 'failed' && order.paymentStatus !== 'paid') {
+      await Order.updateOne(
+        { _id: order._id },
+        { $set: { paymentStatus: 'failed', paymentWebhookData: verifyResult.raw } }
+      );
+    }
+
+    // Log this verification attempt
+    await PaymentLog.create({
+      orderId: order._id,
+      gateway: log.gateway,
+      reference: transactionId,
+      event: 'verify',
+      status: verifyResult.status,
+      rawPayload: verifyResult.raw,
+      note: 'admin_manual_verify',
+    });
+
+    res.json({
+      transactionId,
+      status: verifyResult.status,
+      reference: verifyResult.reference || transactionId,
+      verified: true,
+      timestamp: new Date().toISOString(),
+      gatewayData: verifyResult.raw,
+    });
+  } catch (err) {
+    console.error('[payments] verifyPaymentTransaction error:', err);
+    res.status(500).json({ error: 'Failed to verify transaction: ' + (err as Error).message });
+  }
+}

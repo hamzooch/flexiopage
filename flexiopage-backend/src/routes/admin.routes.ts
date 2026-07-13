@@ -78,6 +78,10 @@ router.patch('/stores/:storeId/commission', requireSuperAdmin, adminExtras.setSt
 router.get('/stores/:storeId/delivery-config', adminExtras.getStoreDeliveryConfig);
 router.patch('/stores/:storeId/delivery-config', requireAdminWrite, adminExtras.patchStoreDeliveryConfig);
 
+// Paiements — transaction tracking
+router.get('/payments', payments.listPaymentTransactions);
+router.get('/payments/:transactionId/verify', payments.verifyPaymentTransaction);
+
 // ── Store limits (comptes autorisés à dépasser la limite par défaut) ──
 router.get('/store-limits', adminExtras.getStoreLimits);
 router.patch('/users/:userId/store-limit', requireAdminWrite, adminExtras.setUserStoreLimit);
