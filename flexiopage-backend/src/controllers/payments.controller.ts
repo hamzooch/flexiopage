@@ -8,13 +8,19 @@ import { Order } from '../models/Order.model';
 /** GET /api/admin/payments/config — payment gateway configuration */
 export async function getPaymentConfig(req: Request, res: Response): Promise<void> {
   try {
-    const apiKeyConfigured = !!process.env.MONERÓO_API_KEY;
-    const webhookUrl = process.env.MONERÓO_NOTIFY_URL || `${process.env.API_PUBLIC_URL}/api/webhooks/moneroo`;
+    const apiKeyConfigured = !!(process.env.MONEROO_API_KEY || process.env.MONERÓO_API_KEY);
+    const webhookUrl =
+      process.env.MONEROO_NOTIFY_URL
+      || process.env.MONERÓO_NOTIFY_URL
+      || `${process.env.API_PUBLIC_URL}/api/webhooks/moneroo`;
 
     res.json({
       apiKeyConfigured,
       webhookUrl,
-      webhookSecret: process.env.MONERÓO_WEBHOOK_SECRET || 'not-configured',
+      webhookSecret:
+        process.env.MONEROO_WEBHOOK_SECRET
+        || process.env.MONERÓO_WEBHOOK_SECRET
+        || 'not-configured',
       testMode: process.env.NODE_ENV !== 'production',
       gateway: 'moneróo',
     });

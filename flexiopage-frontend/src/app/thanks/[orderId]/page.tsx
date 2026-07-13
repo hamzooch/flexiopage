@@ -2,15 +2,16 @@
 
 /**
  * Thank-you page — landing target after the buyer comes back from the payment
- * provider (CinetPay return_url) or from the dev mock simulator.
+ * provider (Moneroo return_url) or from the dev mock simulator.
  *
  * Polls /api/public/orders/:orderId/status every 2s :
  *   - paymentStatus === 'paid' → redirect to /d/<downloadToken>
  *   - paymentStatus === 'failed' → show retry CTA
  *   - else → keep polling with progress UI
  *
- * In mock mode (?simulate=1), shows a "Simulate paid" button that posts the
- * mock webhook so devs can demo the full flow without a real provider.
+ * In mock mode (?simulate=1 or no gateway configured), shows a "Simulate paid"
+ * button that posts the mock webhook so devs can demo the full flow without
+ * a real provider.
  */
 import { useEffect, useState } from 'react';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
@@ -145,7 +146,7 @@ export default function ThanksPage() {
                   <Sparkles className="h-3 w-3" /> Mode développement
                 </div>
                 <p className="text-xs text-amber-900">
-                  CinetPay n'est pas configuré (CINETPAY_API_KEY manquant). Tu peux simuler un paiement réussi pour tester le flow complet.
+                  Aucune passerelle n&apos;est configurée (Moneroo/CinetPay/Flutterwave). Tu peux simuler un paiement réussi pour tester le flow complet.
                 </p>
                 <button
                   type="button"

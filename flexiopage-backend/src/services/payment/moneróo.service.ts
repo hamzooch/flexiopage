@@ -2,9 +2,11 @@
  * Moneróo — Multiple payment providers (Wave, MTN, Moov, Orange Money, cards) in Africa.
  * Docs: https://docs.moneroo.io/payments/initialize-payment
  *
- * Env:
- *   MONERÓO_API_KEY       — required to init payments (Bearer token)
- *   MONERÓO_NOTIFY_URL    — fallback webhook URL (defaults to API_PUBLIC_URL/api/webhooks/moneroo)
+ * Env (accepts both ASCII and accented names for robustness — most shells
+ * mangle "ó" in .env files or when exporting, so MONEROO_* is the recommended
+ * canonical form and MONERÓO_* is kept as a legacy alias):
+ *   MONEROO_API_KEY       — required to init payments (Bearer token)
+ *   MONEROO_NOTIFY_URL    — fallback webhook URL (defaults to API_PUBLIC_URL/api/webhooks/moneroo)
  *   API_PUBLIC_URL        — used to build notify_url
  *   FRONTEND_URL          — used to build return_url
  *
@@ -21,19 +23,28 @@ import type {
   WebhookHandleResult,
 } from './types';
 
+/** Read the Moneroo API key from env, tolerating both ASCII and accented names. */
+function moneRooApiKey(): string | undefined {
+  return process.env.MONEROO_API_KEY || process.env.MONERÓO_API_KEY;
+}
+
+function moneRooNotifyUrl(): string | undefined {
+  return process.env.MONEROO_NOTIFY_URL || process.env.MONERÓO_NOTIFY_URL;
+}
+
 export class MoneróoProvider implements PaymentProviderImpl {
   id: PaymentProvider = 'moneróo';
   private base = 'https://api.moneroo.io/v1';
 
   isConfigured(): boolean {
-    return !!process.env.MONERÓO_API_KEY;
+    return !!moneRooApiKey();
   }
 
   async initPayment(args: InitPaymentArgs): Promise<InitPaymentResult> {
-    const apiKey = process.env.MONERÓO_API_KEY!;
+    const apiKey = moneRooApiKey()!;
     const apiBase = (process.env.API_PUBLIC_URL || 'http://localhost:5051').replace(/\/$/, '');
     const frontBase = firstUrl(process.env.FRONTEND_URL) || 'http://localhost:3000';
-    const notifyUrl = process.env.MONERÓO_NOTIFY_URL || `${apiBase}/api/webhooks/moneroo`;
+    const notifyUrl = moneRooNotifyUrl() || `${apiBase}/api/webhooks/moneroo`;
     const orderId = String(args.order._id);
     const returnUrl = args.returnUrl || `${frontBase}/thanks/${orderId}`;
 
@@ -136,7 +147,7 @@ export class MoneróoProvider implements PaymentProviderImpl {
     }
 
     try {
-      const apiKey = process.env.MONERÓO_API_KEY!;
+      const apiKey = moneRooApiKey()!;
       const paymentId = order.paymentReference;
 
       const res = await fetch(`${this.base}/payments/${paymentId}/verify`, {
