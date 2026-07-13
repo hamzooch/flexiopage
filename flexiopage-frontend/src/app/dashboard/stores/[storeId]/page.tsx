@@ -220,12 +220,9 @@ export default function StoreEditPage() {
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [savedFlash, setSavedFlash] = useState(false);
-  const [activeBlock, setActiveBlock] = useState<string | null>('identity');
-  // Sur petit écran (< lg) on n'affiche qu'un panneau à la fois — switch
-  // via une barre d'onglets en haut. Sur lg+ les 3 panneaux sont toujours
-  // visibles côte à côte et cet état est ignoré.
-  const [mobileView, setMobileView] = useState<'blocks' | 'editor' | 'preview'>('blocks');
+  const [activeBlock, setActiveBlock] = useState<string | null>('hero');
   const [themePickerOpen, setThemePickerOpen] = useState(false);
+  const [visualEditMode, setVisualEditMode] = useState(true);
 
   // Dirty tracker — quels top-level keys ont changé localement.
   // On envoie au save la VALEUR COURANTE depuis `store` (déjà mergée).
@@ -434,58 +431,75 @@ export default function StoreEditPage() {
         </div>
       )}
 
-      {/* ── Sélecteur d'onglets mobile (< lg) ───────────────────
-          Sur petit écran on n'a pas la place pour les 3 panneaux côte à
-          côte — on ne montre qu'un seul à la fois et l'utilisateur
-          bascule via ces onglets. Caché à partir de lg où la grille
-          côte-à-côte habituelle reprend. */}
-      <div className="flex shrink-0 items-center border-b border-border/60 bg-card/60 px-2 lg:hidden">
-        {([
-          { id: 'blocks',  label: 'Blocs' },
-          { id: 'editor',  label: 'Éditeur' },
-          { id: 'preview', label: 'Aperçu' },
-        ] as const).map((t) => {
-          const active = mobileView === t.id;
-          return (
-            <button
-              key={t.id}
-              type="button"
-              onClick={() => setMobileView(t.id)}
-              className={cn(
-                'flex-1 border-b-2 px-3 py-2.5 text-xs font-semibold transition-colors',
-                active
-                  ? 'border-primary text-primary'
-                  : 'border-transparent text-muted-foreground hover:text-foreground',
-              )}
-            >
-              {t.label}
-            </button>
-          );
-        })}
-      </div>
-
-      {/* ── Body (3 panneaux) ──────────────────────────────────── */}
+      {/* ── Body (WYSIWYG Visual Editor) ──────────────────────────── */}
       <div className="flex min-h-0 flex-1">
-        {/* LEFT — block list */}
-        <BlockList
-          blocks={visibleBlocks}
-          activeId={activeBlock}
-          onPick={(id) => {
-            setActiveBlock(id);
-            // Sur mobile, après le pick on bascule automatiquement vers
-            // l'éditeur — sinon le seller resterait bloqué sur la liste.
-            setMobileView('editor');
-          }}
-          dirtyTopKeys={patch.keys}
-          dirtySettingsPaths={patch.settingsPaths}
-          hiddenOnMobile={mobileView !== 'blocks'}
-        />
+        {/* LEFT/CENTER — Visual block grid (all blocks as clickable cards) */}
+        <div className="min-w-0 flex-1 flex-col overflow-y-auto border-r border-border/60 bg-muted/20 lg:flex">
+          <div className="container max-w-5xl px-4 py-8 sm:px-6">
+            <div className="space-y-6">
+              {/* Section title */}
+              <div className="space-y-2">
+                <h2 className="text-2xl font-bold">Modifier votre boutique</h2>
+                <p className="text-sm text-muted-foreground">Clique sur n'importe quel bloc pour le modifier. Les changements s'affichent en temps réel sur la droite.</p>
+              </div>
 
-        {/* CENTER — block editor */}
+              {/* Visual blocks grid */}
+              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                {visibleBlocks.map((block) => {
+                  const isActive = activeBlock === block.id;
+                  const isDirty = patch.keys.has('name') || patch.keys.has('description') ||
+                                 (block.id === 'identity' && (patch.keys.has('name') || patch.keys.has('description'))) ||
+                                 patch.settingsPaths.has(block.id);
+                  const BlockIcon = block.icon;
+
+                  return (
+                    <button
+                      key={block.id}
+                      type="button"
+                      onClick={() => setActiveBlock(block.id)}
+                      className={cn(
+                        'group relative flex flex-col gap-3 rounded-2xl border-2 p-4 text-left transition-all',
+                        isActive
+                          ? 'border-primary bg-primary/5 shadow-lg'
+                          : 'border-border/60 bg-card hover:border-primary/50 hover:shadow-md',
+                      )}
+                    >
+                      {/* Icon */}
+                      <div className={cn(
+                        'flex h-10 w-10 items-center justify-center rounded-lg transition-colors',
+                        isActive ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground group-hover:bg-primary/10 group-hover:text-primary',
+                      )}>
+                        <BlockIcon className="h-5 w-5" />
+                      </div>
+
+                      {/* Label + hint */}
+                      <div className="flex-1">
+                        <div className="font-semibold leading-tight">{block.label}</div>
+                        <p className="mt-1 text-xs text-muted-foreground line-clamp-2">{block.hint}</p>
+                      </div>
+
+                      {/* Dirty indicator */}
+                      {isDirty && (
+                        <div className="absolute right-2 top-2 h-2 w-2 rounded-full bg-amber-500" title="Modifié" />
+                      )}
+
+                      {/* Active indicator */}
+                      {isActive && (
+                        <div className="absolute inset-0 rounded-2xl ring-2 ring-primary pointer-events-none" />
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* RIGHT — Editor panel (shows selected block options) */}
         <main
           className={cn(
-            'min-w-0 flex-1 flex-col overflow-y-auto border-r border-border/60 bg-card/40 lg:flex',
-            mobileView === 'editor' ? 'flex' : 'hidden',
+            'w-96 shrink-0 flex-col overflow-y-auto border-r border-border/60 bg-card/40 lg:flex',
+            'hidden lg:flex',
           )}
         >
           {currentBlock ? (
@@ -499,16 +513,16 @@ export default function StoreEditPage() {
               currentThemeName={currentThemeName || 'Par défaut'}
             />
           ) : (
-            <div className="grid flex-1 place-items-center p-8 text-center">
+            <div className="grid flex-1 place-items-center p-6 text-center">
               <div className="max-w-sm space-y-2 text-muted-foreground">
                 <Sparkles className="mx-auto h-8 w-8 opacity-40" />
-                <p className="text-sm">Sélectionne un bloc à gauche pour commencer à l&apos;éditer.</p>
+                <p className="text-sm">Sélectionne un bloc pour commencer.</p>
               </div>
             </div>
           )}
         </main>
 
-        {/* RIGHT — live preview */}
+        {/* FAR RIGHT — live preview */}
         <PreviewPane
           previewPages={PREVIEW_PAGES}
           previewPage={previewPage}
@@ -517,7 +531,7 @@ export default function StoreEditPage() {
           setPreviewDevice={setPreviewDevice}
           previewBust={previewBust}
           onReload={() => setPreviewBust((n) => n + 1)}
-          mobileVisible={mobileView === 'preview'}
+          mobileVisible={true}
           path={previewPath}
         />
       </div>
