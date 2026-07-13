@@ -24,6 +24,16 @@ interface Props {
   params: Promise<{ token: string }>;
 }
 
+/**
+ * Build the force-download URL for an asset. This hits the backend
+ * `/downloads/:token/file/:assetId` endpoint which streams the file with a
+ * `Content-Disposition: attachment` header — without it, browsers open PDFs
+ * / images inline instead of downloading them.
+ */
+function downloadUrl(token: string, assetId: string): string {
+  return `${API_BASE}/api/public/downloads/${token}/file/${assetId}`;
+}
+
 interface Asset {
   id: string;
   name: string;
@@ -199,7 +209,7 @@ export default async function DownloadPortalPage({ params }: Props) {
           )}
 
           {items.map((item, i) => (
-            <ItemCard key={item.orderItemId || i} item={item} />
+            <ItemCard key={item.orderItemId || i} item={item} token={token} />
           ))}
         </div>
 
@@ -211,7 +221,7 @@ export default async function DownloadPortalPage({ params }: Props) {
   );
 }
 
-function ItemCard({ item }: { item: Item }) {
+function ItemCard({ item, token }: { item: Item; token: string }) {
   const isCourse = item.digitalKind === 'course';
   const isLicense = item.digitalKind === 'license';
   const isService = item.digitalKind === 'service';
@@ -286,7 +296,7 @@ function ItemCard({ item }: { item: Item }) {
                     </div>
                     <div className="mt-3 space-y-2">
                       {lessons.map((a) => (
-                        <AssetRow key={a.id} asset={a} compact />
+                        <AssetRow key={a.id} asset={a} token={token} compact />
                       ))}
                     </div>
                   </div>
@@ -307,7 +317,7 @@ function ItemCard({ item }: { item: Item }) {
               )
               .sort((a, b) => a.order - b.order)
               .map((a) => (
-                <AssetRow key={a.id} asset={a} />
+                <AssetRow key={a.id} asset={a} token={token} />
               ))}
             {item.assets.length === 0 && !isLicense && !isMembership && (
               <p className="text-sm text-muted-foreground">Aucun fichier disponible pour le moment.</p>
@@ -319,9 +329,13 @@ function ItemCard({ item }: { item: Item }) {
   );
 }
 
-function AssetRow({ asset, compact = false }: { asset: Asset; compact?: boolean }) {
+function AssetRow({ asset, token, compact = false }: { asset: Asset; token: string; compact?: boolean }) {
   const Icon = ASSET_ICON[asset.kind] || FileText;
-  const url = absUrl(asset.url);
+  // "link" assets are external URLs (Google Drive, Dropbox, calendly…) — open
+  // in a new tab. Everything else goes through the backend's force-download
+  // route so the browser saves the file instead of opening it inline.
+  const openHref = absUrl(asset.url);
+  const dlHref = downloadUrl(token, asset.id);
   return (
     <div
       className={`group flex items-center gap-3 rounded-xl border border-border/60 bg-card transition-all hover:border-primary/40 hover:shadow-md ${
@@ -341,7 +355,7 @@ function AssetRow({ asset, compact = false }: { asset: Asset; compact?: boolean 
       </div>
       {asset.kind === 'link' ? (
         <a
-          href={url}
+          href={openHref}
           target="_blank"
           rel="noopener noreferrer"
           className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-border/70 bg-background px-3 text-xs font-semibold transition-colors hover:bg-muted"
@@ -351,8 +365,7 @@ function AssetRow({ asset, compact = false }: { asset: Asset; compact?: boolean 
         </a>
       ) : (
         <a
-          href={url}
-          download={asset.name}
+          href={dlHref}
           className="inline-flex h-9 items-center gap-1.5 rounded-lg gradient-brand px-3 text-xs font-semibold text-white shadow-md shadow-primary/25 transition-transform hover:scale-[1.02]"
         >
           <Download className="h-3.5 w-3.5" />

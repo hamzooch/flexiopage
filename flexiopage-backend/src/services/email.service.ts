@@ -188,12 +188,34 @@ Total : ${fmtPrice(args.total, args.currency)}
 Si tu as une question, réponds simplement à cet email.
 `;
 
+  // Personnaliser l'expéditeur avec le nom de la boutique — comme chariow.
+  // Le vendeur veut que l'email vienne de "MA BOUTIQUE <noreply@...>" et non
+  // de "FlexioPage". On garde l'adresse email de la plateforme (contrôle DKIM/
+  // SPF) mais on change juste le friendly name affiché dans les inboxes.
+  const fromWithStoreName = buildStoreFrom(args.storeName);
+
   return sendEmail({
     to: args.to,
+    from: fromWithStoreName,
     subject: `Ta commande #${args.orderNumber} chez ${args.storeName} ⚡`,
     html,
     text,
   });
+}
+
+/**
+ * Build a "Store Name <email@platform>" From header. The address part stays
+ * on the platform's verified domain (Resend needs DKIM alignment), only the
+ * friendly name changes. Falls back to the platform default if EMAIL_FROM
+ * looks unparseable.
+ */
+function buildStoreFrom(storeName: string): string {
+  const raw = process.env.EMAIL_FROM || 'FlexioPage <onboarding@resend.dev>';
+  // Extract "<email>" from "Name <email>" — take everything inside angle brackets
+  const match = raw.match(/<([^>]+)>/);
+  const address = match ? match[1] : raw.trim();
+  const safeName = storeName.replace(/[<>"]/g, '').trim() || 'Boutique';
+  return `${safeName} <${address}>`;
 }
 
 function escape(s: string): string {

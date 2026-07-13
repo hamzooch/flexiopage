@@ -2,6 +2,8 @@
  * Public API for storefronts - no auth required.
  * Used by public store pages and landing pages.
  */
+import path from 'path';
+import fs from 'fs';
 import { Router, Request, Response } from 'express';
 import * as storeService from '../services/store.service';
 import * as productService from '../services/product.service';
@@ -777,6 +779,105 @@ router.get('/downloads/:token', async (req: Request, res: Response): Promise<voi
     },
     store: store ? { name: store.name, slug: store.slug } : null,
     items,
+  });
+});
+
+/**
+ * GET /api/public/downloads/:token/file/:assetId
+ *
+ * Force-download endpoint: streams a purchased asset with a proper
+ * `Content-Disposition: attachment` header so the browser saves it instead
+ * of opening it inline. Necessary for PDFs, images and anything the browser
+ * would otherwise render — without this the "Télécharger" button just opens
+ * the file in a new tab.
+ *
+ * Auth = the download token itself (same one that unlocks the portal). We
+ * cross-check that the requested assetId actually belongs to one of the
+ * purchased line items, so a token can't be used to fetch arbitrary assets.
+ */
+router.get('/downloads/:token/file/:assetId', async (req: Request, res: Response): Promise<void> => {
+  const { token, assetId } = req.params;
+  if (!token || token.length < 16 || !assetId) {
+    res.status(400).json({ error: 'Invalid request' });
+    return;
+  }
+  const order = await orderService.getOrderByDownloadToken(token);
+  if (!order) {
+    res.status(404).json({ error: 'Download link not found' });
+    return;
+  }
+  if (order.downloadExpiresAt && order.downloadExpiresAt < new Date()) {
+    res.status(410).json({ error: 'Download link expired' });
+    return;
+  }
+
+  // Look up the actual asset among the order's products.
+  const productIds = Array.from(new Set(order.items.map((i) => i.productId.toString())));
+  const products = await Product.find({ _id: { $in: productIds } })
+    .select('digitalAssets digitalFileUrl digitalFileName')
+    .lean();
+
+  interface AssetMatch {
+    url: string;
+    name: string;
+    mimeType?: string;
+  }
+  let match: AssetMatch | null = null;
+  for (const p of products) {
+    for (const a of p.digitalAssets || []) {
+      if (a.id === assetId) {
+        match = { url: a.url, name: a.name, mimeType: a.mimeType };
+        break;
+      }
+    }
+    if (!match && assetId === 'legacy' && p.digitalFileUrl) {
+      match = { url: p.digitalFileUrl, name: p.digitalFileName || 'Téléchargement' };
+    }
+    if (match) break;
+  }
+
+  if (!match) {
+    res.status(404).json({ error: 'Asset not found' });
+    return;
+  }
+
+  // External URL (dropbox, gdrive, S3 public...) → 302 redirect. The browser
+  // will follow it with a Referer, but the seller controls the storage.
+  if (/^https?:\/\//i.test(match.url)) {
+    res.redirect(302, match.url);
+    return;
+  }
+
+  // Local file under /uploads — stream with attachment disposition.
+  const uploadPath = process.env.UPLOAD_PATH || path.join(process.cwd(), 'uploads');
+  // The stored URL is typically "/uploads/xxx" — strip the "/uploads/" prefix
+  // so we join safely against the real disk root.
+  const rel = match.url.replace(/^\/?uploads\/?/i, '').replace(/^\/+/, '');
+  const abs = path.join(uploadPath, rel);
+  // Prevent path traversal: the resolved absolute path must stay under
+  // uploadPath.
+  const uploadPathAbs = path.resolve(uploadPath);
+  const requestedAbs = path.resolve(abs);
+  if (!requestedAbs.startsWith(uploadPathAbs + path.sep) && requestedAbs !== uploadPathAbs) {
+    res.status(400).json({ error: 'Invalid asset path' });
+    return;
+  }
+
+  fs.stat(requestedAbs, (err, stat) => {
+    if (err || !stat.isFile()) {
+      res.status(404).json({ error: 'File not found on disk' });
+      return;
+    }
+    // RFC 5987 encoding for non-ASCII filenames.
+    const safeName = match!.name.replace(/["\\]/g, '_');
+    const encoded = encodeURIComponent(match!.name);
+    res.setHeader(
+      'Content-Disposition',
+      `attachment; filename="${safeName}"; filename*=UTF-8''${encoded}`,
+    );
+    if (match!.mimeType) res.setHeader('Content-Type', match!.mimeType);
+    res.setHeader('Content-Length', String(stat.size));
+    fs.createReadStream(requestedAbs).pipe(res);
   });
 });
 
