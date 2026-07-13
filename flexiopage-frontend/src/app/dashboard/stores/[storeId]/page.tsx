@@ -147,13 +147,13 @@ const BLOCKS: BlockDef[] = [
   { id: 'footer',    label: 'Footer',       icon: PanelBottom,  group: 'footer', mode: 'inline', hint: 'Contact, colonnes, signature.' },
   { id: 'info-pages', label: 'Pages d\'information', icon: FileText, group: 'footer', mode: 'inline', hint: 'CGV, FAQ, Contact, Confidentialité.' },
   // Avancé
-  { id: 'collections', label: 'Collections', icon: Layers,      group: 'advanced', mode: 'link', href: 'collections', hint: 'Regroupements de produits.' },
-  { id: 'coupons',   label: 'Codes promo',  icon: BadgePercent, group: 'advanced', mode: 'link', href: 'coupons', hint: 'Réductions saisies au checkout.' },
-  { id: 'marketing', label: 'Marketing & pixels', icon: TrendingUp, group: 'advanced', mode: 'link', href: 'marketing', hint: 'Meta, TikTok, Snap, GA4.' },
-  { id: 'newsletter', label: 'Newsletter & popup', icon: Mail,   group: 'advanced', mode: 'link', href: 'newsletter', hint: 'Popup welcome, liste emails.' },
-  { id: 'delivery',  label: 'Livraison',     icon: Truck,        group: 'advanced', mode: 'link', href: 'delivery', hint: 'MogaDelivery, adresse expéditeur.', physicalOnly: true },
-  { id: 'abandoned', label: 'Paniers abandonnés', icon: ShoppingCart, group: 'advanced', mode: 'link', href: 'abandoned-carts', hint: 'Relances WhatsApp.', physicalOnly: true },
-  { id: 'apps',      label: 'Apps & intégrations', icon: Sparkles, group: 'advanced', mode: 'link', href: 'apps', hint: 'Vue d\'ensemble des modules.' },
+  { id: 'collections', label: 'Collections', icon: Layers,      group: 'advanced', mode: 'inline', hint: 'Regroupements de produits.' },
+  { id: 'coupons',   label: 'Codes promo',  icon: BadgePercent, group: 'advanced', mode: 'inline', hint: 'Réductions saisies au checkout.' },
+  { id: 'marketing', label: 'Marketing & pixels', icon: TrendingUp, group: 'advanced', mode: 'inline', hint: 'Meta, TikTok, Snap, GA4.' },
+  { id: 'newsletter', label: 'Newsletter & popup', icon: Mail,   group: 'advanced', mode: 'inline', hint: 'Popup welcome, liste emails.' },
+  { id: 'delivery',  label: 'Livraison',     icon: Truck,        group: 'advanced', mode: 'inline', hint: 'MogaDelivery, adresse expéditeur.', physicalOnly: true },
+  { id: 'abandoned', label: 'Paniers abandonnés', icon: ShoppingCart, group: 'advanced', mode: 'inline', hint: 'Relances WhatsApp.', physicalOnly: true },
+  { id: 'apps',      label: 'Apps & intégrations', icon: Sparkles, group: 'advanced', mode: 'inline', hint: 'Vue d\'ensemble des modules.' },
 ];
 
 const GROUP_LABELS: Record<BlockDef['group'], string> = {
@@ -673,37 +673,6 @@ interface EditorCtx {
 function BlockEditor(ctx: EditorCtx) {
   const { block } = ctx;
 
-  // Editor lourd → on propose juste un lien vers la sous-page dédiée.
-  if (block.mode === 'link' && block.href) {
-    return (
-      <div className="flex flex-1 flex-col">
-        <EditorHeader title={block.label} hint={block.hint} />
-        <div className="flex flex-1 items-center justify-center p-6">
-          <div className="max-w-md space-y-4 text-center">
-            <div className="mx-auto grid h-12 w-12 place-items-center rounded-2xl bg-gradient-to-br from-primary to-violet-600 text-white shadow-lg">
-              <block.icon className="h-5 w-5" />
-            </div>
-            <div>
-              <h3 className="text-base font-semibold">Éditeur complet dédié</h3>
-              <p className="mt-1 text-sm text-muted-foreground">
-                {block.label} a son propre éditeur avec tous les réglages avancés. Ouvre-le pour modifier en détail.
-              </p>
-            </div>
-            <Link href={`/dashboard/stores/${ctx.storeId}/${block.href}`}>
-              <Button className="gap-1.5 gradient-brand text-white">
-                Ouvrir l&apos;éditeur {block.label}
-                <ChevronRight className="h-4 w-4" />
-              </Button>
-            </Link>
-            <p className="text-[11px] text-muted-foreground">
-              Astuce : tu reviens ici via le bouton « Boutiques » → ta boutique.
-            </p>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
   // Editor inline — dispatch selon le bloc.
   switch (block.id) {
     case 'identity':  return <IdentityEditor {...ctx} />;
@@ -718,6 +687,13 @@ function BlockEditor(ctx: EditorCtx) {
     case 'navbar':    return <NavbarEditor {...ctx} />;
     case 'footer':    return <FooterInlineEditor {...ctx} />;
     case 'info-pages': return <InfoPagesInlineEditor {...ctx} />;
+    case 'collections': return <CollectionsInlineEditor {...ctx} />;
+    case 'coupons': return <CouponsInlineEditor {...ctx} />;
+    case 'marketing': return <MarketingInlineEditor {...ctx} />;
+    case 'newsletter': return <NewsletterInlineEditor {...ctx} />;
+    case 'delivery': return <DeliveryInlineEditor {...ctx} />;
+    case 'abandoned': return <AbandonedCartsInlineEditor {...ctx} />;
+    case 'apps': return <AppsInlineEditor {...ctx} />;
     case 'whatsapp':  return <WhatsappEditor {...ctx} />;
     case 'cod':       return <CodFormEditor {...ctx} />;
     case 'product-page': return <ProductPageEditor {...ctx} />;
@@ -1982,7 +1958,175 @@ function InfoPagesInlineEditor({ block, store, setStore, markDirty, storeId }: E
           </div>
           <Link href={`/dashboard/stores/${storeId}/info-pages`}>
             <Button className="w-full gap-1.5 gradient-brand text-white">
-              Ouvrir l'éditeur des pages
+              Gérer les pages
+              <ChevronRight className="h-4 w-4" />
+            </Button>
+          </Link>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function CollectionsInlineEditor({ block, store, setStore, markDirty, storeId }: EditorCtx & { storeId?: string }) {
+  return (
+    <div className="flex flex-1 flex-col">
+      <EditorHeader title={block.label} hint={block.hint} />
+      <div className="space-y-5 p-5 overflow-auto max-h-[calc(100vh-300px)]">
+        <div className="rounded-2xl border border-border/60 bg-muted/30 p-6 space-y-4">
+          <div className="space-y-2">
+            <div className="text-sm font-semibold">Collections</div>
+            <p className="text-xs text-muted-foreground">
+              Crée des regroupements de produits (ex: Nouveautés, Soldes, Best-sellers).
+            </p>
+          </div>
+          <Link href={`/dashboard/stores/${storeId}/collections`}>
+            <Button className="w-full gap-1.5 gradient-brand text-white">
+              Gérer les collections
+              <ChevronRight className="h-4 w-4" />
+            </Button>
+          </Link>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function CouponsInlineEditor({ block, store, setStore, markDirty, storeId }: EditorCtx & { storeId?: string }) {
+  return (
+    <div className="flex flex-1 flex-col">
+      <EditorHeader title={block.label} hint={block.hint} />
+      <div className="space-y-5 p-5 overflow-auto max-h-[calc(100vh-300px)]">
+        <div className="rounded-2xl border border-border/60 bg-muted/30 p-6 space-y-4">
+          <div className="space-y-2">
+            <div className="text-sm font-semibold">Codes promo</div>
+            <p className="text-xs text-muted-foreground">
+              Crée des codes de réduction avec pourcentage, montant fixe ou livraison gratuite.
+            </p>
+          </div>
+          <Link href={`/dashboard/stores/${storeId}/coupons`}>
+            <Button className="w-full gap-1.5 gradient-brand text-white">
+              Gérer les codes promo
+              <ChevronRight className="h-4 w-4" />
+            </Button>
+          </Link>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function MarketingInlineEditor({ block, store, setStore, markDirty, storeId }: EditorCtx & { storeId?: string }) {
+  return (
+    <div className="flex flex-1 flex-col">
+      <EditorHeader title={block.label} hint={block.hint} />
+      <div className="space-y-5 p-5 overflow-auto max-h-[calc(100vh-300px)]">
+        <div className="rounded-2xl border border-border/60 bg-muted/30 p-6 space-y-4">
+          <div className="space-y-2">
+            <div className="text-sm font-semibold">Marketing & pixels</div>
+            <p className="text-xs text-muted-foreground">
+              Intègre Meta Pixel, TikTok, Snapchat, Google Analytics, Mixpanel pour tracker les conversions.
+            </p>
+          </div>
+          <Link href={`/dashboard/stores/${storeId}/marketing`}>
+            <Button className="w-full gap-1.5 gradient-brand text-white">
+              Configurer le marketing
+              <ChevronRight className="h-4 w-4" />
+            </Button>
+          </Link>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function NewsletterInlineEditor({ block, store, setStore, markDirty, storeId }: EditorCtx & { storeId?: string }) {
+  return (
+    <div className="flex flex-1 flex-col">
+      <EditorHeader title={block.label} hint={block.hint} />
+      <div className="space-y-5 p-5 overflow-auto max-h-[calc(100vh-300px)]">
+        <div className="rounded-2xl border border-border/60 bg-muted/30 p-6 space-y-4">
+          <div className="space-y-2">
+            <div className="text-sm font-semibold">Newsletter & popup</div>
+            <p className="text-xs text-muted-foreground">
+              Configure la popup de bienvenue et gère la liste d'emails des abonnés.
+            </p>
+          </div>
+          <Link href={`/dashboard/stores/${storeId}/newsletter`}>
+            <Button className="w-full gap-1.5 gradient-brand text-white">
+              Configurer la newsletter
+              <ChevronRight className="h-4 w-4" />
+            </Button>
+          </Link>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function DeliveryInlineEditor({ block, store, setStore, markDirty, storeId }: EditorCtx & { storeId?: string }) {
+  return (
+    <div className="flex flex-1 flex-col">
+      <EditorHeader title={block.label} hint={block.hint} />
+      <div className="space-y-5 p-5 overflow-auto max-h-[calc(100vh-300px)]">
+        <div className="rounded-2xl border border-border/60 bg-muted/30 p-6 space-y-4">
+          <div className="space-y-2">
+            <div className="text-sm font-semibold">Livraison</div>
+            <p className="text-xs text-muted-foreground">
+              Intègre MogaDelivery, configure l'adresse d'expédition et les zones de livraison.
+            </p>
+          </div>
+          <Link href={`/dashboard/stores/${storeId}/delivery`}>
+            <Button className="w-full gap-1.5 gradient-brand text-white">
+              Configurer la livraison
+              <ChevronRight className="h-4 w-4" />
+            </Button>
+          </Link>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function AbandonedCartsInlineEditor({ block, store, setStore, markDirty, storeId }: EditorCtx & { storeId?: string }) {
+  return (
+    <div className="flex flex-1 flex-col">
+      <EditorHeader title={block.label} hint={block.hint} />
+      <div className="space-y-5 p-5 overflow-auto max-h-[calc(100vh-300px)]">
+        <div className="rounded-2xl border border-border/60 bg-muted/30 p-6 space-y-4">
+          <div className="space-y-2">
+            <div className="text-sm font-semibold">Paniers abandonnés</div>
+            <p className="text-xs text-muted-foreground">
+              Envoie des relances WhatsApp automatiques aux clients avec panier non finalisé.
+            </p>
+          </div>
+          <Link href={`/dashboard/stores/${storeId}/abandoned-carts`}>
+            <Button className="w-full gap-1.5 gradient-brand text-white">
+              Configurer les relances
+              <ChevronRight className="h-4 w-4" />
+            </Button>
+          </Link>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function AppsInlineEditor({ block, store, setStore, markDirty, storeId }: EditorCtx & { storeId?: string }) {
+  return (
+    <div className="flex flex-1 flex-col">
+      <EditorHeader title={block.label} hint={block.hint} />
+      <div className="space-y-5 p-5 overflow-auto max-h-[calc(100vh-300px)]">
+        <div className="rounded-2xl border border-border/60 bg-muted/30 p-6 space-y-4">
+          <div className="space-y-2">
+            <div className="text-sm font-semibold">Apps & intégrations</div>
+            <p className="text-xs text-muted-foreground">
+              Gère toutes tes apps connectées (Telegram, WhatsApp, paiements, etc.).
+            </p>
+          </div>
+          <Link href={`/dashboard/stores/${storeId}/apps`}>
+            <Button className="w-full gap-1.5 gradient-brand text-white">
+              Gérer les apps
               <ChevronRight className="h-4 w-4" />
             </Button>
           </Link>
