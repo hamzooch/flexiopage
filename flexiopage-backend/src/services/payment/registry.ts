@@ -29,11 +29,26 @@ export function getProviderById(id: PaymentProvider): PaymentProviderImpl | null
   return PROVIDERS[id] || null;
 }
 
-/** Map a routing Gateway → the concrete provider, falling back to mock in dev. */
+/**
+ * Map a routing Gateway → the concrete provider, falling back to mock in dev.
+ *
+ * The `moneróo` literal is normalized before comparison because the accented
+ * "ó" can be encoded as either a precomposed codepoint (NFC, U+00F3) or as
+ * "o + combining acute accent" (NFD). JSON parsers, shells, and TypeScript
+ * compilers don't always agree on the form, so a bare `=== 'moneróo'` check
+ * silently misses the string coming off the wire even though it looks
+ * identical in the debugger. Matching by an ASCII prefix sidesteps this
+ * entirely.
+ */
+function normalizeGateway(gateway: Gateway): string {
+  return String(gateway).normalize('NFC').toLowerCase();
+}
+
 export function getProviderForGateway(gateway: Gateway): PaymentProviderImpl {
-  if (gateway === 'cinetpay') return cinetpay.isConfigured() ? cinetpay : mock;
-  if (gateway === 'flutterwave') return flutterwave.isConfigured() ? flutterwave : mock;
-  if (gateway === 'moneróo') return moneróo.isConfigured() ? moneróo : mock;
+  const g = normalizeGateway(gateway);
+  if (g === 'cinetpay') return cinetpay.isConfigured() ? cinetpay : mock;
+  if (g === 'flutterwave') return flutterwave.isConfigured() ? flutterwave : mock;
+  if (g.startsWith('moner')) return moneróo.isConfigured() ? moneróo : mock;
   return mock;
 }
 

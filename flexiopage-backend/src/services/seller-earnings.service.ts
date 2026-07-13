@@ -17,10 +17,17 @@ import { Wallet } from '../models/Wallet.model';
 import { getSettings } from '../models/Settings.model';
 
 /** Online providers that route money through the platform's Moneroo account. */
-const PLATFORM_HELD_PROVIDERS = new Set(['moneróo', 'cinetpay', 'flutterwave', 'stripe']);
+const PLATFORM_HELD_PROVIDERS = new Set(['cinetpay', 'flutterwave', 'stripe']);
 
 export function isOnlineProvider(provider: string | undefined | null): boolean {
-  return !!provider && PLATFORM_HELD_PROVIDERS.has(provider);
+  if (!provider) return false;
+  const normalized = String(provider).normalize('NFC').toLowerCase();
+  if (PLATFORM_HELD_PROVIDERS.has(normalized)) return true;
+  // Match "moneróo" tolerantly — same Unicode-normalization concern as in
+  // registry.getProviderForGateway. Any provider id starting with "moner"
+  // is Moneroo (there is no other family of providers we integrate that
+  // shares that prefix).
+  return normalized.startsWith('moner');
 }
 
 /**
