@@ -210,7 +210,7 @@ const OrderSchema = new Schema<IOrder>(
     paymentMethod: { type: String, enum: ['stripe', 'manual', 'other', 'mobile_money', 'card', 'cod'], default: 'manual' },
     paymentProvider: {
       type: String,
-      enum: ['cinetpay', 'paydunya', 'flutterwave', 'wave', 'orange_money', 'mtn_momo', 'moov_money', 'stripe', 'cod', 'manual'],
+      enum: ['cinetpay', 'paydunya', 'flutterwave', 'moneróo', 'wave', 'orange_money', 'mtn_momo', 'moov_money', 'stripe', 'cod', 'manual'],
     },
     paymentReference: { type: String, index: true },
     paymentPhone: { type: String },
