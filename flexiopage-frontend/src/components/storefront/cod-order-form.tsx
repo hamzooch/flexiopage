@@ -158,6 +158,7 @@ export function CodOrderForm({
 
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
+  const [whatsapp, setWhatsapp] = useState('');
   const [email, setEmail] = useState('');
   const [country, setCountry] = useState(defaultCountry || 'SN');
   const [city, setCity] = useState('');
@@ -424,6 +425,10 @@ export function CodOrderForm({
       setError('Nom et téléphone obligatoires.');
       return;
     }
+    if (!whatsapp.trim()) {
+      setError('Numéro WhatsApp obligatoire.');
+      return;
+    }
     if (showEmail && requireEmail && !email.trim()) {
       setError('Email obligatoire.');
       return;
@@ -454,6 +459,7 @@ export function CodOrderForm({
             email: email.trim() || `pay-${phone.replace(/\D/g, '')}@flexiopage.local`,
             customerName: name.trim(),
             phone: phone.trim(),
+            whatsapp: whatsapp.trim(),
             country,
             gateway: selectedMethod.gateway,
             method: selectedMethod.id,
@@ -495,6 +501,7 @@ export function CodOrderForm({
           email: email.trim() || `cod-${phone.replace(/\D/g, '')}@flexiopage.local`,
           customerName: name.trim(),
           customerPhone: phone.trim(),
+          customerWhatsapp: whatsapp.trim(),
           shippingAddress: {
             line1: line1.trim(),
             line2: showAddressLine2 ? (line2.trim() || undefined) : undefined,
@@ -567,6 +574,19 @@ export function CodOrderForm({
           radius={radius}
         />
       </div>
+      {/* WhatsApp — obligatoire pour que le vendeur puisse recontacter
+          le client (confirmation, livraison, SAV). Séparé du téléphone
+          car certains clients ont deux numéros. Icône WhatsApp verte
+          pour signaler visuellement le canal. */}
+      <Field
+        label="Numéro WhatsApp * 💬"
+        value={whatsapp}
+        onChange={setWhatsapp}
+        type="tel"
+        placeholder={`${phonePrefix} 70 000 00 00`}
+        theme={theme}
+        radius={radius}
+      />
       {showEmail && (
         <Field
           label={`Email${requireEmail ? ' *' : ' (optionnel)'}`}

@@ -72,6 +72,7 @@ router.post('/initiate', async (req: Request, res: Response): Promise<void> => {
     email?: string;
     customerName?: string;
     phone?: string;
+    whatsapp?: string;
     country?: string;
     gateway?: Gateway;
     method?: PaymentMethodId;
@@ -127,6 +128,7 @@ router.post('/initiate', async (req: Request, res: Response): Promise<void> => {
       email: body.email.trim().toLowerCase(),
       customerName: body.customerName?.trim() || undefined,
       customerPhone: body.phone?.trim() || undefined,
+      customerWhatsapp: body.whatsapp?.trim() || body.phone?.trim() || undefined,
       shippingAddress: storeType === 'physical' ? body.shippingAddress : undefined,
       items: [{ productId: product._id.toString(), name: product.name, quantity, price: product.price }],
       subtotal,

@@ -36,6 +36,7 @@ export async function createOrder(req: AuthRequest, res: Response): Promise<void
     email: body.email.trim(),
     customerName: body.customerName,
     customerPhone: body.customerPhone,
+    customerWhatsapp: body.customerWhatsapp,
     shippingAddress: body.shippingAddress,
     items: body.items,
     subtotal: body.subtotal,

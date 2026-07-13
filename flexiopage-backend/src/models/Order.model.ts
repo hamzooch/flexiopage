@@ -52,6 +52,14 @@ export interface IOrder extends Document {
   customerName?: string;
   customerPhone?: string;
   /**
+   * Numéro WhatsApp du client, saisi séparément dans le checkout depuis
+   * 2026-07-13. Sert au vendeur pour recontacter le client via WhatsApp
+   * (confirmation COD, livraison, SAV). Peut être identique au customerPhone
+   * ou différent (le client peut donner un numéro voix pour l'appel et un
+   * autre pour WhatsApp).
+   */
+  customerWhatsapp?: string;
+  /**
    * Clé d'agrégation « fiabilité client » (cf. utils/phone.ts) : derniers
    * chiffres significatifs de customerPhone. Indexée pour retrouver
    * rapidement TOUTES les commandes d'un même numéro (dans la boutique et,
@@ -189,6 +197,7 @@ const OrderSchema = new Schema<IOrder>(
     email: { type: String, required: true },
     customerName: { type: String },
     customerPhone: { type: String },
+    customerWhatsapp: { type: String },
     customerPhoneKey: { type: String },
     shippingAddress: {
       line1: { type: String },

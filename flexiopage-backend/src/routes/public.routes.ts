@@ -998,6 +998,7 @@ router.post('/checkout/cod', async (req: Request, res: Response): Promise<void> 
     email?: string;
     customerName?: string;
     customerPhone?: string;
+    customerWhatsapp?: string;
     shippingAddress?: {
       line1?: string;
       line2?: string;
@@ -1193,6 +1194,7 @@ router.post('/checkout/cod', async (req: Request, res: Response): Promise<void> 
       email: body.email.trim().toLowerCase(),
       customerName: body.customerName.trim(),
       customerPhone: body.customerPhone.trim(),
+      customerWhatsapp: body.customerWhatsapp?.trim() || body.customerPhone.trim(),
       shippingAddress: {
         line1: ship.line1!.trim(),
         line2: ship.line2?.trim(),
@@ -1341,7 +1343,7 @@ router.post('/checkout/cod', async (req: Request, res: Response): Promise<void> 
  */
 router.get('/orders/:orderId/cod-summary', async (req: Request, res: Response): Promise<void> => {
   const order = await Order.findById(req.params.orderId)
-    .select('orderNumber paymentMethod paymentStatus fulfillmentStatus total currency subtotal shippingCost customerName customerPhone email shippingAddress items createdAt storeId delivery')
+    .select('orderNumber paymentMethod paymentStatus fulfillmentStatus total currency subtotal shippingCost customerName customerPhone customerWhatsapp email shippingAddress items createdAt storeId delivery')
     .lean();
   if (!order) {
     res.status(404).json({ error: 'Order not found' });
@@ -1364,6 +1366,7 @@ router.get('/orders/:orderId/cod-summary', async (req: Request, res: Response): 
       shippingCost: order.shippingCost,
       customerName: order.customerName,
       customerPhone: order.customerPhone,
+      customerWhatsapp: order.customerWhatsapp,
       email: order.email,
       shippingAddress: order.shippingAddress,
       items: order.items,

@@ -38,6 +38,7 @@ export interface CreateOrderInput {
   email: string;
   customerName?: string;
   customerPhone?: string;
+  customerWhatsapp?: string;
   shippingAddress?: IOrder['shippingAddress'];
   items: Array<{
     productId: string;
@@ -157,7 +158,8 @@ export async function createOrder(input: CreateOrderInput): Promise<IOrder> {
     email: input.email,
     customerName: input.customerName,
     customerPhone: input.customerPhone,
-    customerPhoneKey: phoneKey(input.customerPhone),
+    customerWhatsapp: input.customerWhatsapp,
+    customerPhoneKey: phoneKey(input.customerPhone || input.customerWhatsapp),
     shippingAddress: input.shippingAddress,
     items,
     subtotal: input.subtotal,

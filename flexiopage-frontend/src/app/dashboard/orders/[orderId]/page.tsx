@@ -68,6 +68,7 @@ interface OrderDoc {
   email: string;
   customerName?: string;
   customerPhone?: string;
+  customerWhatsapp?: string;
   shippingAddress?: {
     line1?: string;
     line2?: string;
@@ -467,6 +468,16 @@ export default function OrderDetailPage() {
                   className="inline-flex items-center gap-1.5 text-xs font-medium text-primary hover:underline"
                 >
                   <Phone className="h-3 w-3" /> {order.customerPhone}
+                </a>
+              )}
+              {order.customerWhatsapp && (
+                <a
+                  href={`https://wa.me/${order.customerWhatsapp.replace(/\D/g, '')}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="ml-2 inline-flex items-center gap-1.5 rounded-full bg-emerald-500/10 px-2 py-0.5 text-xs font-medium text-emerald-700 hover:bg-emerald-500/20"
+                >
+                  💬 WhatsApp
                 </a>
               )}
             </div>
