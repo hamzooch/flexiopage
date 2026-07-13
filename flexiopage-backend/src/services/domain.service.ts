@@ -70,26 +70,38 @@ export async function checkDomain(domain: string): Promise<DomainCheck> {
   try {
     const cname = await dns.resolveCname(clean);
     out.cname = cname.map((c) => c.toLowerCase().replace(/\.$/, ''));
-    if (out.cname.some((c) => c === TARGET_HOST || c.endsWith('.' + TARGET_HOST))) {
-      out.verified = true;
-      return out;
-    }
   } catch {
-    // not a CNAME — fall through to A
+    // not a CNAME — fall through
   }
 
-  // A (apex like example.com)
-  if (TARGET_IPS.length > 0) {
-    try {
-      const a = await dns.resolve4(clean);
-      out.aRecords = a;
-      if (a.some((ip) => TARGET_IPS.includes(ip))) {
-        out.verified = true;
-        return out;
-      }
-    } catch {
-      // no A either
+  // A records (always check, even if CNAME exists — helps detect conflicts)
+  try {
+    const a = await dns.resolve4(clean);
+    out.aRecords = a;
+  } catch {
+    // no A record
+  }
+
+  // Check for DNS conflicts: CNAME + A record at same level (invalid)
+  if (out.cname && out.cname.length > 0 && out.aRecords && out.aRecords.length > 0) {
+    // If CNAME is correct but A record is wrong/old, that's a conflict
+    const cnameIsCorrect = out.cname.some((c) => c === TARGET_HOST || c.endsWith('.' + TARGET_HOST));
+    if (cnameIsCorrect) {
+      out.reason = 'dns_conflict_cname_and_a';
+      return out;
     }
+  }
+
+  // Verify CNAME
+  if (out.cname && out.cname.some((c) => c === TARGET_HOST || c.endsWith('.' + TARGET_HOST))) {
+    out.verified = true;
+    return out;
+  }
+
+  // Verify A record
+  if (out.aRecords && out.aRecords.some((ip) => TARGET_IPS.includes(ip))) {
+    out.verified = true;
+    return out;
   }
 
   // Nameservers (for advanced users with full DNS delegation)

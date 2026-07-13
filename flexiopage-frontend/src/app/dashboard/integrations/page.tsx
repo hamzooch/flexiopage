@@ -548,9 +548,29 @@ function DomainPanel({ store, onSaved, saving, setSaving }: PanelProps) {
               </Button>
               {check && !check.verified && (
                 <span className="text-xs text-destructive">
-                  {check.reason === 'dns_not_matching'
-                    ? `DNS détecté : ${[...(check.cname || []), ...(check.aRecords || [])].join(', ') || '—'} — la propagation n'est peut-être pas terminée, réessaie dans quelques minutes.`
-                    : check.reason}
+                  {check.reason === 'dns_conflict_cname_and_a' ? (
+                    <div className="space-y-2">
+                      <div className="rounded-lg border border-amber-200 bg-amber-50 p-3">
+                        <p className="font-semibold text-amber-900">⚠️ Conflit DNS détecté</p>
+                        <div className="mt-2 space-y-1 text-sm text-amber-800">
+                          <p>Tu as à la fois:</p>
+                          <ul className="list-inside list-disc space-y-1 ml-2">
+                            <li>✓ CNAME: <span className="font-mono text-xs">{check.cname?.join(', ')}</span> (correct)</li>
+                            <li>✗ A record: <span className="font-mono text-xs">{check.aRecords?.join(', ')}</span> (ancien, doit être supprimé)</li>
+                          </ul>
+                          <p className="mt-3">
+                            <strong>Action requise:</strong> Supprime l'A record ancienne chez ton registraire (Namecheap, OVH, GoDaddy, etc) et garde SEULEMENT le CNAME vers stores.flexiopage.com.
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  ) : check.reason === 'dns_not_matching' ? (
+                    <div className="text-sm">
+                      DNS détecté : {[...(check.cname || []), ...(check.aRecords || [])].join(', ') || '—'} — la propagation n'est peut-être pas terminée, réessaie dans quelques minutes.
+                    </div>
+                  ) : (
+                    check.reason
+                  )}
                 </span>
               )}
               {check && check.verified && (
