@@ -23,7 +23,6 @@ import { Label } from '@/components/ui/label';
 import { useConfirm } from '@/components/ui/confirm-dialog';
 import { cn, storeAbsoluteUrl } from '@/lib/utils';
 import { PageHeader } from '@/components/dashboard/page-header';
-import { TelegramCard } from '@/components/dashboard/telegram-card';
 import {
   Globe,
   CheckCircle2,
@@ -200,8 +199,6 @@ export default function IntegrationsPage() {
           </select>
         ) : undefined}
       />
-
-      <TelegramCard />
 
       <nav role="tablist" className="inline-flex rounded-2xl border border-border/60 bg-card p-1 shadow-sm overflow-x-auto">
         {TABS.map((t) => {

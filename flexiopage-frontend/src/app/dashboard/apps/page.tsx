@@ -63,7 +63,7 @@ interface StoreDoc {
   };
 }
 
-type AppId = 'google-sheets' | 'mailchimp' | 'slack' | 'zapier' | 'discord' | 'messenger-bot' | 'whatsapp-bot' | 'sales-popup';
+type AppId = 'google-sheets' | 'mailchimp' | 'slack' | 'zapier' | 'discord' | 'messenger-bot' | 'whatsapp-bot' | 'telegram-bot' | 'sales-popup';
 
 interface AppDef {
   id: AppId;
@@ -92,6 +92,15 @@ const APPS: AppDef[] = [
     category: 'Automation',
     icon: MessageSquare,
     accent: 'from-green-500 to-emerald-600',
+    available: true,
+  },
+  {
+    id: 'telegram-bot',
+    name: 'Telegram Bot',
+    description: 'Notifications de commandes, messages et alertes directement sur Telegram. Gratuit!',
+    category: 'Notifications',
+    icon: MessageSquare,
+    accent: 'from-sky-500 to-blue-600',
     available: true,
   },
   {
@@ -261,6 +270,7 @@ export default function AppsPage() {
   const openAppHandler = (id: AppId) => {
     if (id === 'messenger-bot') router.push(`/dashboard/apps/messenger-bot?storeId=${activeStore._id}`);
     else if (id === 'whatsapp-bot') router.push(`/dashboard/apps/whatsapp-bot?storeId=${activeStore._id}`);
+    else if (id === 'telegram-bot') router.push(`/dashboard/apps/telegram-bot`);
     else setOpenApp(id);
   };
 
