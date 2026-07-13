@@ -36,6 +36,14 @@ services:
     # Bind only to localhost — Caddy is the public entry point.
     ports:
       - "127.0.0.1:5000:5000"
+    # Passe tout le .env au container en une fois. Sécurise contre l'oubli
+    # d'un `VAR: ${VAR}` dans `environment:` — depuis 2026-07-13 (fix Moneroo)
+    # où MONEROO_API_KEY était dans le .env mais absente du container faute
+    # d'entrée explicite ici. Le bloc `environment:` en-dessous override quand
+    # il faut réécrire une valeur (MONGODB_URI pointant sur le service compose,
+    # NODE_ENV forcé à production…).
+    env_file:
+      - .env
     environment:
       NODE_ENV: production
       PORT: 5000
@@ -72,6 +80,10 @@ services:
       FLW_PUBLIC_KEY: ${FLW_PUBLIC_KEY:-}
       FLW_SECRET_KEY: ${FLW_SECRET_KEY:-}
       FLW_SECRET_HASH: ${FLW_SECRET_HASH:-}
+      # Moneroo (Wave/OM/MTN/Moov/cards multi-country African gateway)
+      MONEROO_API_KEY: ${MONEROO_API_KEY:-}
+      MONEROO_NOTIFY_URL: ${MONEROO_NOTIFY_URL:-}
+      MONEROO_WEBHOOK_SECRET: ${MONEROO_WEBHOOK_SECRET:-}
       # Public base URL of the API (used for webhook notify_url + data-deletion status URL)
       API_PUBLIC_URL: ${API_PUBLIC_URL}
       # Custom domain verification — utilisés par /api/stores/:id/verify-domain
