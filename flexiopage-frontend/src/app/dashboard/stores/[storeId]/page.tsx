@@ -144,8 +144,8 @@ const BLOCKS: BlockDef[] = [
   { id: 'whatsapp',  label: 'Bouton WhatsApp', icon: MessageCircle, group: 'conversion', mode: 'inline', hint: 'Bulle flottante à droite.' },
   { id: 'product-page', label: 'Page produit', icon: Tag,       group: 'conversion', mode: 'inline', hint: 'Toggles + ordre des sections produit.' },
   // Footer
-  { id: 'footer',    label: 'Footer',       icon: PanelBottom,  group: 'footer', mode: 'link', href: 'sections', hint: 'Contact, colonnes, signature.' },
-  { id: 'info-pages', label: 'Pages d\'information', icon: FileText, group: 'footer', mode: 'link', href: 'info-pages', hint: 'CGV, FAQ, Contact, Confidentialité.' },
+  { id: 'footer',    label: 'Footer',       icon: PanelBottom,  group: 'footer', mode: 'inline', hint: 'Contact, colonnes, signature.' },
+  { id: 'info-pages', label: 'Pages d\'information', icon: FileText, group: 'footer', mode: 'inline', hint: 'CGV, FAQ, Contact, Confidentialité.' },
   // Avancé
   { id: 'collections', label: 'Collections', icon: Layers,      group: 'advanced', mode: 'link', href: 'collections', hint: 'Regroupements de produits.' },
   { id: 'coupons',   label: 'Codes promo',  icon: BadgePercent, group: 'advanced', mode: 'link', href: 'coupons', hint: 'Réductions saisies au checkout.' },
@@ -242,10 +242,6 @@ export default function StoreEditPage() {
   const [previewDevice, setPreviewDevice] = useState<'mobile' | 'tablet' | 'desktop'>('desktop');
   const [previewBust, setPreviewBust] = useState(0);
 
-  // Auto-save state
-  const [autoSavingNow, setAutoSavingNow] = useState(false);
-  const autoSaveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-
   // Fetch store + sample slugs
   useEffect(() => {
     if (!storeId) return;
@@ -286,16 +282,10 @@ export default function StoreEditPage() {
     return () => window.removeEventListener('beforeunload', handler);
   }, [dirty]);
 
-  // Save manuel + auto-save
-  async function handleSave(isAutoSave = false) {
-    if (!store || !dirty || saving || autoSavingNow) return;
-
-    if (isAutoSave) {
-      setAutoSavingNow(true);
-    } else {
-      setSaving(true);
-    }
-
+  // Manual save only
+  async function handleSave() {
+    if (!store || !dirty || saving) return;
+    setSaving(true);
     setSaveError(null);
     const payload: Record<string, unknown> = {};
     for (const k of Array.from(patch.keys)) {
@@ -319,22 +309,8 @@ export default function StoreEditPage() {
       const e = err as { response?: { data?: { error?: string } } };
       setSaveError(e.response?.data?.error || 'Erreur lors de la sauvegarde.');
     } finally {
-      if (isAutoSave) {
-        setAutoSavingNow(false);
-      } else {
-        setSaving(false);
-      }
+      setSaving(false);
     }
-  }
-
-  // Debounced auto-save (500ms après dernière modification)
-  function triggerAutoSave() {
-    if (autoSaveTimeoutRef.current) {
-      clearTimeout(autoSaveTimeoutRef.current);
-    }
-    autoSaveTimeoutRef.current = setTimeout(() => {
-      handleSave(true);
-    }, 500);
   }
 
   /** Marque une clé top-level comme modifiée. Si la clé est `settings`,
@@ -348,18 +324,7 @@ export default function StoreEditPage() {
       if (key === 'settings' && settingsSubPath) settingsPaths.add(settingsSubPath);
       return { keys, settingsPaths };
     });
-    // Trigger auto-save (debounced)
-    triggerAutoSave();
   }
-
-  // Cleanup auto-save timeout on unmount
-  useEffect(() => {
-    return () => {
-      if (autoSaveTimeoutRef.current) {
-        clearTimeout(autoSaveTimeoutRef.current);
-      }
-    };
-  }, []);
 
   function selectTheme(tpl: StoreThemeTemplate) {
     setStore((s) => (s ? ({ ...s, theme: tpl.theme as unknown as Record<string, unknown> }) : s));
@@ -435,7 +400,7 @@ export default function StoreEditPage() {
           </Link>
           <Button
             type="button"
-            onClick={() => handleSave(false)}
+            onClick={handleSave}
             disabled={!dirty || saving}
             className={cn(
               'h-9 gap-1.5 rounded-lg gradient-brand text-white shadow-md shadow-primary/25 hover:opacity-95',
@@ -454,20 +419,11 @@ export default function StoreEditPage() {
         </div>
       </header>
 
-      {/* Auto-save indicator */}
-      {(autoSavingNow || savedFlash) && (
+      {/* Save feedback banner */}
+      {savedFlash && (
         <div className="shrink-0 border-b border-emerald-200 bg-emerald-50 px-4 py-2 text-xs text-emerald-700 flex items-center gap-2 sm:px-6">
-          {autoSavingNow ? (
-            <>
-              <Loader2 className="h-3.5 w-3.5 animate-spin" />
-              Enregistrement automatique...
-            </>
-          ) : (
-            <>
-              <Check className="h-3.5 w-3.5" />
-              ✓ Modifications enregistrées
-            </>
-          )}
+          <Check className="h-3.5 w-3.5" />
+          ✓ Modifications enregistrées
         </div>
       )}
 
@@ -760,6 +716,8 @@ function BlockEditor(ctx: EditorCtx) {
     case 'testimonials': return <TestimonialsEditor {...ctx} />;
     case 'section-order': return <SectionOrderEditor {...ctx} />;
     case 'navbar':    return <NavbarEditor {...ctx} />;
+    case 'footer':    return <FooterInlineEditor {...ctx} />;
+    case 'info-pages': return <InfoPagesInlineEditor {...ctx} />;
     case 'whatsapp':  return <WhatsappEditor {...ctx} />;
     case 'cod':       return <CodFormEditor {...ctx} />;
     case 'product-page': return <ProductPageEditor {...ctx} />;
@@ -1979,6 +1937,54 @@ function CodFormEditor({ block, store, setStore, markDirty }: EditorCtx) {
           {' '}
           <Link href={`/dashboard/stores/${store._id}/checkout`} className="font-semibold text-primary hover:underline">
             Ouvrir le réglage complet du formulaire →
+          </Link>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function FooterInlineEditor({ block, store, setStore, markDirty, storeId }: EditorCtx & { storeId?: string }) {
+  return (
+    <div className="flex flex-1 flex-col">
+      <EditorHeader title={block.label} hint={block.hint} />
+      <div className="space-y-5 p-5 overflow-auto max-h-[calc(100vh-300px)]">
+        <div className="rounded-2xl border border-border/60 bg-muted/30 p-6 space-y-4">
+          <div className="space-y-2">
+            <div className="text-sm font-semibold">Footer</div>
+            <p className="text-xs text-muted-foreground">
+              Personnalise les colonnes, liens, logo et contenu du footer de ta boutique.
+            </p>
+          </div>
+          <Link href={`/dashboard/stores/${storeId}/sections`}>
+            <Button className="w-full gap-1.5 gradient-brand text-white">
+              Ouvrir l'éditeur complet du footer
+              <ChevronRight className="h-4 w-4" />
+            </Button>
+          </Link>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function InfoPagesInlineEditor({ block, store, setStore, markDirty, storeId }: EditorCtx & { storeId?: string }) {
+  return (
+    <div className="flex flex-1 flex-col">
+      <EditorHeader title={block.label} hint={block.hint} />
+      <div className="space-y-5 p-5 overflow-auto max-h-[calc(100vh-300px)]">
+        <div className="rounded-2xl border border-border/60 bg-muted/30 p-6 space-y-4">
+          <div className="space-y-2">
+            <div className="text-sm font-semibold">Pages d'information</div>
+            <p className="text-xs text-muted-foreground">
+              Crée et gère les pages CGV, FAQ, Politique de confidentialité, Contact, etc.
+            </p>
+          </div>
+          <Link href={`/dashboard/stores/${storeId}/info-pages`}>
+            <Button className="w-full gap-1.5 gradient-brand text-white">
+              Ouvrir l'éditeur des pages
+              <ChevronRight className="h-4 w-4" />
+            </Button>
           </Link>
         </div>
       </div>
