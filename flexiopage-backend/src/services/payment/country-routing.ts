@@ -1,18 +1,18 @@
 /**
  * Country → available payment methods, scoped by store type.
  *
- * Business matrix (validated):
+ * Business matrix (validated 2026-07-13):
  *               | Online | COD
  *   ------------|--------|-----
  *   digital     |   ✅   |  ❌   (no courier → must pay to receive the download)
- *   physical    |   ✅   |  ✅
+ *   physical    |   ❌   |  ✅   (COD only — vendors pas prêts à gérer online sur physique)
  *
- * Regional gateway zones:
+ * Regional gateway zones (digital only):
  *   - CinetPay (francophone CFA): Mobile Money (Wave, OM, MTN, Moov)
  *   - Flutterwave (anglophone + others): Card + Mobile Money
- *   - "Other" zone: no regional online gateway. Physical → COD only; digital
- *     falls back to international card via Flutterwave so an online option
- *     always exists (a digital store must be payable everywhere).
+ *   - Moneróo: Mobile Money across CFA + Flutterwave zones
+ *   - "Other" zone: falls back to international card via Flutterwave so a
+ *     digital store is payable everywhere.
  *
  * This module is the single source of truth — the frontend selector mirrors
  * the same zones so what the buyer sees matches what the server will accept.
@@ -32,28 +32,19 @@ export interface PaymentMethodOption {
   channel?: Channel;
 }
 
-/** Francophone CFA zone covered by CinetPay. */
-const CINETPAY_COUNTRIES = new Set([
-  'SN', 'CI', 'BJ', 'TG', 'BF', 'ML', 'CM', 'NE', 'GN', 'GW', 'CD', 'CG', 'GA', 'TD',
-]);
-
-/** Anglophone + East/Southern Africa zone covered by Flutterwave. */
-const FLUTTERWAVE_COUNTRIES = new Set([
-  'NG', 'GH', 'KE', 'ZA', 'UG', 'TZ', 'RW', 'ZM', 'MW',
-]);
-
-/** Moneróo coverage (Wave, MTN, Moov, OM, Cards across multiple African countries). */
+/**
+ * Moneróo coverage (Wave, MTN, Moov, OM across African countries).
+ * Prioritized over CinetPay/Flutterwave — it's our primary online gateway.
+ */
 const MONERÓO_COUNTRIES = new Set([
-  'SN', 'CI', 'BJ', 'TG', 'BF', 'ML', 'CM', 'NE', 'GN', 'GW', 'CD', 'CG', 'GA', 'TD', // CFA + Moneróo
-  'NG', 'GH', 'KE', 'ZA', 'UG', 'TZ', 'RW', 'ZM', 'MW', // Flutterwave + Moneróo
+  'SN', 'CI', 'BJ', 'TG', 'BF', 'ML', 'CM', 'NE', 'GN', 'GW', 'CD', 'CG', 'GA', 'TD', // CFA
+  'NG', 'GH', 'KE', 'ZA', 'UG', 'TZ', 'RW', 'ZM', 'MW', // Anglophone
 ]);
 
-type Zone = 'cinetpay' | 'flutterwave' | 'moneróo' | 'other';
+type Zone = 'moneróo' | 'other';
 
 export function zoneOf(country: string | undefined | null): Zone {
   const cc = (country || '').toUpperCase();
-  if (CINETPAY_COUNTRIES.has(cc)) return 'cinetpay';
-  if (FLUTTERWAVE_COUNTRIES.has(cc)) return 'flutterwave';
   if (MONERÓO_COUNTRIES.has(cc)) return 'moneróo';
   return 'other';
 }
@@ -62,15 +53,6 @@ const COD_OPTION: PaymentMethodOption = { id: 'cod', gateway: 'cod', label: 'Pai
 
 /** Online methods for a given zone (no COD here). */
 function onlineMethodsForZone(zone: Zone): PaymentMethodOption[] {
-  if (zone === 'cinetpay') {
-    return [{ id: 'mobile_money', gateway: 'cinetpay', label: 'Mobile Money', channel: 'all' }];
-  }
-  if (zone === 'flutterwave') {
-    return [
-      { id: 'card', gateway: 'flutterwave', label: 'Carte bancaire', channel: 'card' },
-      { id: 'mobile_money', gateway: 'flutterwave', label: 'Mobile Money', channel: 'all' },
-    ];
-  }
   if (zone === 'moneróo') {
     return [{ id: 'mobile_money', gateway: 'moneróo', label: 'Mobile Money', channel: 'all' }];
   }
@@ -80,23 +62,15 @@ function onlineMethodsForZone(zone: Zone): PaymentMethodOption[] {
 
 /**
  * Methods a buyer may use, given their country and the store type.
- * Guarantees: digital → online only (never empty); physical "other" zone →
- * COD only (matches the brief).
+ * Guarantees: digital → online only (never empty); physical → COD only.
  */
 export function getAvailableMethods(country: string, storeType: StoreType): PaymentMethodOption[] {
-  const zone = zoneOf(country);
-
   if (storeType === 'digital') {
-    // Online only — onlineMethodsForZone always returns ≥1 (card fallback).
-    return onlineMethodsForZone(zone);
+    // Digital: online only. onlineMethodsForZone always returns ≥1 (card fallback).
+    return onlineMethodsForZone(zoneOf(country));
   }
-
-  // Physical:
-  if (zone === 'other') {
-    // Brief: "Autres → COD uniquement".
-    return [COD_OPTION];
-  }
-  return [...onlineMethodsForZone(zone), COD_OPTION];
+  // Physical: COD only — online payment restricted to digital stores.
+  return [COD_OPTION];
 }
 
 /**

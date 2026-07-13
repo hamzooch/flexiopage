@@ -6,12 +6,12 @@
  * /api/payment/initiate, so this mirror only drives what the buyer SEES — drift
  * can never let an unauthorized method through.
  *
- * Matrix:
- *   digital  → online only (never COD)
- *   physical → online + COD (or COD only in "other" zones)
+ * Matrix (2026-07-13):
+ *   digital  → online only (Moneróo)
+ *   physical → COD only (no online — vendors pas prêts à gérer online sur physique)
  */
 export type PaymentMethodId = 'mobile_money' | 'card' | 'cod';
-export type Gateway = 'cinetpay' | 'flutterwave' | 'cod';
+export type Gateway = 'cinetpay' | 'flutterwave' | 'moneróo' | 'cod';
 export type StoreType = 'digital' | 'physical';
 
 export interface PaymentMethodOption {
@@ -22,39 +22,30 @@ export interface PaymentMethodOption {
   channel?: 'card' | 'all';
 }
 
-const CINETPAY_COUNTRIES = new Set([
+const MONERÓO_COUNTRIES = new Set([
   'SN', 'CI', 'BJ', 'TG', 'BF', 'ML', 'CM', 'NE', 'GN', 'GW', 'CD', 'CG', 'GA', 'TD',
-]);
-const FLUTTERWAVE_COUNTRIES = new Set([
   'NG', 'GH', 'KE', 'ZA', 'UG', 'TZ', 'RW', 'ZM', 'MW',
 ]);
 
-type Zone = 'cinetpay' | 'flutterwave' | 'other';
+type Zone = 'moneróo' | 'other';
 
 function zoneOf(country: string | undefined | null): Zone {
   const cc = (country || '').toUpperCase();
-  if (CINETPAY_COUNTRIES.has(cc)) return 'cinetpay';
-  if (FLUTTERWAVE_COUNTRIES.has(cc)) return 'flutterwave';
+  if (MONERÓO_COUNTRIES.has(cc)) return 'moneróo';
   return 'other';
 }
 
 const COD_OPTION: PaymentMethodOption = { id: 'cod', gateway: 'cod', label: 'Paiement à la livraison' };
 
 function onlineMethodsForZone(zone: Zone): PaymentMethodOption[] {
-  if (zone === 'cinetpay') {
-    return [{ id: 'mobile_money', gateway: 'cinetpay', label: 'Mobile Money', channel: 'all' }];
+  if (zone === 'moneróo') {
+    return [{ id: 'mobile_money', gateway: 'moneróo', label: 'Mobile Money', channel: 'all' }];
   }
-  if (zone === 'flutterwave') {
-    return [
-      { id: 'card', gateway: 'flutterwave', label: 'Carte bancaire', channel: 'card' },
-      { id: 'mobile_money', gateway: 'flutterwave', label: 'Mobile Money', channel: 'all' },
-    ];
-  }
+  // "Other" — international card fallback for digital stores outside Moneróo coverage.
   return [{ id: 'card', gateway: 'flutterwave', label: 'Carte bancaire', channel: 'card' }];
 }
 
 export function getAvailableMethods(country: string, storeType: StoreType): PaymentMethodOption[] {
-  const zone = zoneOf(country);
-  if (storeType === 'digital') return onlineMethodsForZone(zone);
+  if (storeType === 'digital') return onlineMethodsForZone(zoneOf(country));
   return [COD_OPTION];
 }
