@@ -3,7 +3,7 @@ import { formatCurrency } from '@/lib/utils';
 import { renderMarkdown } from '@/lib/markdown';
 import {
   resolveProductPageOrder,
-  DEFAULT_BADGES,
+  defaultBadgesForStoreType,
   type ProductPageSettings,
   type ProductPageSectionId,
 } from '@/lib/product-page-order';
@@ -583,7 +583,9 @@ export default async function PublicProductPage({ params }: Props) {
             const pp = store?.settings?.storefront?.productPage || {};
             const order = resolveProductPageOrder(pp.sectionOrder);
             const showBadgesSection = pp.showBadges !== false;
-            const badges = (pp.badges && pp.badges.length > 0) ? pp.badges : DEFAULT_BADGES;
+            const badges = (pp.badges && pp.badges.length > 0)
+              ? pp.badges
+              : defaultBadgesForStoreType(store?.storeType);
             const showTimerSection = !!pp.showTimer && !!pp.timer?.endsAt;
             const showProductDesc = (pp.showDescription !== false) && showDescription && !!product.description;
             const showTestimonialsSection = !!pp.showTestimonials;

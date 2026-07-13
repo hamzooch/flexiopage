@@ -46,12 +46,23 @@ export function ProductPageBadges({
               borderRadius: theme.borderRadius === 'none' ? '0' : undefined,
             }}
           >
-            <span
-              className="grid h-10 w-10 shrink-0 place-items-center rounded-lg"
-              style={{ backgroundColor: `${theme.primary}1a`, color: theme.primary }}
-            >
-              <Icon className="h-5 w-5" />
-            </span>
+            {b.imageUrl ? (
+              // Custom image badge — no tinted background, let the image
+              // breathe (logo, sticker, etc.).
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={b.imageUrl}
+                alt=""
+                className="h-10 w-10 shrink-0 rounded-lg object-contain"
+              />
+            ) : (
+              <span
+                className="grid h-10 w-10 shrink-0 place-items-center rounded-lg"
+                style={{ backgroundColor: `${theme.primary}1a`, color: theme.primary }}
+              >
+                <Icon className="h-5 w-5" />
+              </span>
+            )}
             <div className="min-w-0">
               <div className="text-sm font-semibold leading-tight" style={{ color: theme.foreground }}>
                 {b.label}

@@ -133,6 +133,7 @@ export default function StoreProductPageSettings() {
         onCodFormChange={setCodForm}
         currency={store.settings?.currency || 'TND'}
         storeType={store.storeType}
+        storeId={store._id}
       />
 
       {/* ── Page de remerciement ──────────────────────────────────────

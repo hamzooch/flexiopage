@@ -25,7 +25,7 @@ import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import {
-  DEFAULT_BADGES,
+  defaultBadgesForStoreType,
   DEFAULT_PRODUCT_PAGE_ORDER,
   resolveProductPageOrder,
   type BadgeIcon,
@@ -34,6 +34,7 @@ import {
   type ProductPageStyle,
   type TrustBadge,
 } from '@/lib/product-page-order';
+import { storesApi } from '@/lib/api';
 import { FieldToggle, type CodFormSettings } from '@/components/dashboard/store-editor';
 import { TimerPresetPicker } from '@/components/dashboard/timer-presets';
 import { PalettePresetPicker } from '@/components/dashboard/palette-presets';
@@ -74,9 +75,11 @@ interface Props {
   currency?: string;
   /** Storefront-wide accent color for the COD button preview. */
   storeType?: 'physical' | 'digital';
+  /** Store id — required for uploading custom badge images to the media endpoint. */
+  storeId?: string;
 }
 
-export function ProductPageEditor({ cfg, onChange, codForm, onCodFormChange, currency = 'TND', storeType = 'physical' }: Props) {
+export function ProductPageEditor({ cfg, onChange, codForm, onCodFormChange, currency = 'TND', storeType = 'physical', storeId }: Props) {
   const order = resolveProductPageOrder(cfg.sectionOrder);
   const badges = cfg.badges ?? [];
 
@@ -103,7 +106,26 @@ export function ProductPageEditor({ cfg, onChange, codForm, onCodFormChange, cur
     onChange({ ...cfg, badges: badges.filter((_, idx) => idx !== i) });
   }
   function seedDefaultBadges() {
-    onChange({ ...cfg, badges: DEFAULT_BADGES });
+    onChange({ ...cfg, badges: defaultBadgesForStoreType(storeType) });
+  }
+
+  /**
+   * Upload a custom badge image via the store's media endpoint and attach
+   * the returned URL to the given badge slot. Silent no-op if no storeId is
+   * available (embed in a create-mode page where the store isn't saved yet).
+   */
+  async function uploadBadgeImage(i: number, file: File) {
+    if (!storeId) {
+      alert('Sauvegarde la boutique une fois avant d\'ajouter une image.');
+      return;
+    }
+    try {
+      const res = await storesApi.uploadMedia(storeId, file);
+      const url = (res.data.media as { url?: string })?.url;
+      if (url) updateBadge(i, { imageUrl: url });
+    } catch {
+      alert('Échec de l\'upload. Réessaie avec une image plus petite.');
+    }
   }
 
   const style = cfg.style || {};
@@ -488,55 +510,93 @@ export function ProductPageEditor({ cfg, onChange, codForm, onCodFormChange, cur
                   return (
                     <div
                       key={i}
-                      className="grid grid-cols-[auto_1fr_1fr_auto] items-center gap-2 rounded-lg border border-border/60 bg-muted/20 p-2"
+                      className="space-y-2 rounded-lg border border-border/60 bg-muted/20 p-2"
                     >
-                      <details className="relative">
-                        <summary
-                          className="grid h-9 w-9 cursor-pointer place-items-center rounded-md bg-primary/10 text-primary"
-                          title="Changer l'icône"
+                      <div className="grid grid-cols-[auto_1fr_1fr_auto] items-center gap-2">
+                        <details className="relative">
+                          <summary
+                            className="grid h-9 w-9 cursor-pointer place-items-center rounded-md bg-primary/10 text-primary overflow-hidden"
+                            title="Changer l'icône ou l'image"
+                          >
+                            {b.imageUrl ? (
+                              // eslint-disable-next-line @next/next/no-img-element
+                              <img src={b.imageUrl} alt="" className="h-full w-full object-contain" />
+                            ) : (
+                              <Icon className="h-4 w-4" />
+                            )}
+                          </summary>
+                          <div className="absolute left-0 top-10 z-20 grid w-44 grid-cols-5 gap-1 rounded-lg border border-border bg-card p-2 shadow-lg">
+                            {ICON_LIST.map((ic) => {
+                              const IC = BADGE_ICONS[ic];
+                              const active = ic === b.icon && !b.imageUrl;
+                              return (
+                                <button
+                                  key={ic}
+                                  type="button"
+                                  onClick={() => updateBadge(i, { icon: ic, imageUrl: undefined })}
+                                  className={cn(
+                                    'grid h-8 w-8 place-items-center rounded-md transition-colors',
+                                    active ? 'bg-primary text-white' : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+                                  )}
+                                >
+                                  <IC className="h-4 w-4" />
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </details>
+                        <Input
+                          value={b.label}
+                          onChange={(e) => updateBadge(i, { label: e.target.value })}
+                          placeholder="Livraison rapide"
+                          className="h-9 text-sm"
+                        />
+                        <Input
+                          value={b.sublabel || ''}
+                          onChange={(e) => updateBadge(i, { sublabel: e.target.value })}
+                          placeholder="2 à 5 jours (optionnel)"
+                          className="h-9 text-[11px]"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => removeBadge(i)}
+                          className="grid h-9 w-9 place-items-center rounded-md text-destructive hover:bg-destructive/10"
+                          aria-label="Supprimer"
                         >
-                          <Icon className="h-4 w-4" />
-                        </summary>
-                        <div className="absolute left-0 top-10 z-20 grid w-44 grid-cols-5 gap-1 rounded-lg border border-border bg-card p-2 shadow-lg">
-                          {ICON_LIST.map((ic) => {
-                            const IC = BADGE_ICONS[ic];
-                            const active = ic === b.icon;
-                            return (
-                              <button
-                                key={ic}
-                                type="button"
-                                onClick={() => updateBadge(i, { icon: ic })}
-                                className={cn(
-                                  'grid h-8 w-8 place-items-center rounded-md transition-colors',
-                                  active ? 'bg-primary text-white' : 'text-muted-foreground hover:bg-muted hover:text-foreground'
-                                )}
-                              >
-                                <IC className="h-4 w-4" />
-                              </button>
-                            );
-                          })}
-                        </div>
-                      </details>
-                      <Input
-                        value={b.label}
-                        onChange={(e) => updateBadge(i, { label: e.target.value })}
-                        placeholder="Livraison rapide"
-                        className="h-9 text-sm"
-                      />
-                      <Input
-                        value={b.sublabel || ''}
-                        onChange={(e) => updateBadge(i, { sublabel: e.target.value })}
-                        placeholder="2 à 5 jours (optionnel)"
-                        className="h-9 text-[11px]"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => removeBadge(i)}
-                        className="grid h-9 w-9 place-items-center rounded-md text-destructive hover:bg-destructive/10"
-                        aria-label="Supprimer"
-                      >
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </button>
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
+                      {/* Custom image slot — the vendor can upload their own
+                          badge image (partner logo, hand-drawn seal, …). If set
+                          it takes priority over the Lucide icon at render time. */}
+                      <div className="flex items-center gap-2 pl-11 text-[11px]">
+                        {b.imageUrl ? (
+                          <>
+                            <span className="text-emerald-700">✓ Image custom</span>
+                            <button
+                              type="button"
+                              onClick={() => updateBadge(i, { imageUrl: undefined })}
+                              className="text-muted-foreground hover:text-destructive underline"
+                            >
+                              retirer
+                            </button>
+                          </>
+                        ) : (
+                          <label className="inline-flex cursor-pointer items-center gap-1 text-muted-foreground hover:text-foreground">
+                            <input
+                              type="file"
+                              accept="image/*"
+                              className="hidden"
+                              onChange={(e) => {
+                                const f = e.target.files?.[0];
+                                if (f) void uploadBadgeImage(i, f);
+                                e.target.value = '';
+                              }}
+                            />
+                            📷 Ajouter une image custom (optionnel)
+                          </label>
+                        )}
+                      </div>
                     </div>
                   );
                 })}
@@ -878,7 +938,7 @@ function ProductPageLivePreview({
   const navFg = style.navbarTextColor || '#0a0a0a';
   const layout = style.galleryLayout || 'thumbnails';
   const order = resolveProductPageOrder(cfg.sectionOrder);
-  const badges = (cfg.badges && cfg.badges.length > 0) ? cfg.badges : DEFAULT_BADGES;
+  const badges = (cfg.badges && cfg.badges.length > 0) ? cfg.badges : defaultBadgesForStoreType(storeType);
   const fakePrice = '49.90';
 
   // Viewport selector — drives the mock's max-width AND its column layout

@@ -50,6 +50,13 @@ export interface TrustBadge {
   icon: BadgeIcon;
   label: string;
   sublabel?: string;
+  /**
+   * URL d'image custom (uploadée par le vendeur, ex. /uploads/badge-xxx.png).
+   * Quand présente, elle prend le pas sur l'icône Lucide dans le rendu — utile
+   * pour utiliser un logo de partenaire (banque, transporteur) ou un badge
+   * dessiné maison. L'icône reste comme fallback si l'image casse.
+   */
+  imageUrl?: string;
 }
 
 export interface ProductPageTimer {
@@ -119,9 +126,31 @@ export interface ProductPageSettings {
   style?: ProductPageStyle;
 }
 
-/** Sensible defaults when the seller hasn't added any badge yet. */
-export const DEFAULT_BADGES: TrustBadge[] = [
+/**
+ * Sensible defaults when the seller hasn't added any badge yet.
+ *
+ * Two variants because the trust signals that convert are radically different
+ * between physical (waiting days for a courier) and digital (instant delivery,
+ * no shipping to worry about). The store type is known at render time so the
+ * storefront picks the right set — sellers can still override.
+ */
+export const DEFAULT_BADGES_PHYSICAL: TrustBadge[] = [
   { icon: 'truck',   label: 'Livraison rapide',     sublabel: '2 à 5 jours' },
   { icon: 'shield',  label: 'Paiement sécurisé',     sublabel: 'À la livraison' },
   { icon: 'refresh', label: 'Satisfait ou remboursé', sublabel: 'Sous 7 jours' },
 ];
+
+export const DEFAULT_BADGES_DIGITAL: TrustBadge[] = [
+  { icon: 'clock',   label: 'Accès instantané',     sublabel: 'Dès le paiement' },
+  { icon: 'lock',    label: 'Paiement sécurisé',     sublabel: 'Moneroo · SSL' },
+  { icon: 'refresh', label: 'Satisfait ou remboursé', sublabel: '14 jours' },
+];
+
+/** @deprecated — Import DEFAULT_BADGES_PHYSICAL / DEFAULT_BADGES_DIGITAL,
+ *  or use defaultBadgesForStoreType(). Kept for backward-compat with older
+ *  imports (dashboard editors created before 2026-07-13). */
+export const DEFAULT_BADGES = DEFAULT_BADGES_PHYSICAL;
+
+export function defaultBadgesForStoreType(storeType?: 'physical' | 'digital'): TrustBadge[] {
+  return storeType === 'digital' ? DEFAULT_BADGES_DIGITAL : DEFAULT_BADGES_PHYSICAL;
+}
