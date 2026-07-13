@@ -9,7 +9,8 @@ import { Router, Response } from 'express';
 import { authMiddleware, type AuthRequest } from '../middleware/auth.middleware';
 import { sanitizeMiddleware } from '../middleware/validate';
 import { getOrCreateWallet, credit, commissionFor, aiCostTokens, usdToTokensRate, usdToTokens } from '../services/wallet.service';
-import type { AiKind } from '../models/Settings.model';
+import { getSettings, type AiKind } from '../models/Settings.model';
+import { Payout, type PayoutMethod } from '../models/Payout.model';
 
 const router = Router();
 router.use(authMiddleware);
@@ -37,13 +38,20 @@ router.get('/', async (req: AuthRequest, res: Response): Promise<void> => {
     aiCosts[k] = await aiCostTokens(k);
   }
   const rate = await usdToTokensRate();
+  const settings = await getSettings();
+  const minForCur = settings.platform?.payoutMinimums?.[wallet.currency] ?? 0;
   res.json({
     wallet: {
       balance: wallet.balance,
       aiBalance: wallet.aiBalance,
+      payoutBalance: wallet.payoutBalance || 0,
       currency: wallet.currency,
       commissionRate: Number(process.env.COMMISSION_RATE || 0.03),
       commissionCap: Number(process.env.COMMISSION_CAP || 1500),
+      /** Platform commission on online paid orders (0.15 = 15%). */
+      platformCommissionRate: settings.platform?.commissionRate ?? 0.15,
+      /** Min amount required to request a payout in this wallet's currency. */
+      payoutMinimum: minForCur,
       aiCosts,
       aiTokenCosts: aiCosts,
       usdToTokens: rate,
@@ -51,6 +59,99 @@ router.get('/', async (req: AuthRequest, res: Response): Promise<void> => {
       updatedAt: wallet.updatedAt,
     },
   });
+});
+
+// ── Payouts (versements des ventes en ligne au vendeur) ───────────────
+
+/** POST /api/wallet/payouts — le vendeur demande un versement. */
+router.post('/payouts', async (req: AuthRequest, res: Response): Promise<void> => {
+  const userId = req.user?._id?.toString();
+  if (!userId) {
+    res.status(401).json({ error: 'Unauthorized' });
+    return;
+  }
+  const { amount, method, destination, sellerNote } = (req.body || {}) as {
+    amount?: number;
+    method?: PayoutMethod;
+    destination?: Record<string, string>;
+    sellerNote?: string;
+  };
+  const value = Number(amount);
+  if (!value || value <= 0) {
+    res.status(400).json({ error: 'amount must be positive' });
+    return;
+  }
+  const allowedMethods: PayoutMethod[] = ['wave', 'orange_money', 'mtn_momo', 'bank_transfer'];
+  if (!method || !allowedMethods.includes(method)) {
+    res.status(400).json({ error: 'method must be one of ' + allowedMethods.join(', ') });
+    return;
+  }
+  if (!destination || Object.keys(destination).length === 0) {
+    res.status(400).json({ error: 'destination required' });
+    return;
+  }
+  // Mobile money → require phone; bank transfer → require accountName + iban
+  if (method === 'bank_transfer') {
+    if (!destination.accountName || !destination.iban) {
+      res.status(400).json({ error: 'bank_transfer requires accountName and iban' });
+      return;
+    }
+  } else if (!destination.phone) {
+    res.status(400).json({ error: 'mobile money requires phone' });
+    return;
+  }
+
+  const wallet = await getOrCreateWallet(userId);
+  const settings = await getSettings();
+  const minForCur = settings.platform?.payoutMinimums?.[wallet.currency] ?? 0;
+  if (value < minForCur) {
+    res.status(400).json({
+      error: `Minimum de retrait: ${minForCur} ${wallet.currency}`,
+      code: 'below_minimum',
+      minimum: minForCur,
+    });
+    return;
+  }
+  if (value > (wallet.payoutBalance || 0)) {
+    res.status(400).json({
+      error: 'Solde insuffisant',
+      code: 'insufficient_balance',
+      available: wallet.payoutBalance || 0,
+    });
+    return;
+  }
+
+  // Freeze the amount now — subtract from payoutBalance so the seller can't
+  // double-spend it. If admin rejects later, we refund.
+  wallet.payoutBalance = (wallet.payoutBalance || 0) - value;
+  await wallet.save();
+
+  const payout = await Payout.create({
+    userId,
+    currency: wallet.currency,
+    amount: value,
+    method,
+    destination,
+    sellerNote: sellerNote?.trim() || undefined,
+    status: 'pending',
+    requestedAt: new Date(),
+  });
+
+  res.json({ ok: true, payout });
+});
+
+/** GET /api/wallet/payouts — l'historique des demandes de payout du vendeur. */
+router.get('/payouts', async (req: AuthRequest, res: Response): Promise<void> => {
+  const userId = req.user?._id?.toString();
+  if (!userId) {
+    res.status(401).json({ error: 'Unauthorized' });
+    return;
+  }
+  const payouts = await Payout.find({ userId })
+    .sort({ requestedAt: -1 })
+    .limit(100)
+    .lean();
+  res.json({ payouts });
 });
 
 router.post('/top-up', async (req: AuthRequest, res: Response): Promise<void> => {

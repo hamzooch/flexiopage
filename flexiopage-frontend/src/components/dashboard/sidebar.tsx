@@ -35,6 +35,7 @@ import {
   Calculator,
   Wand2,
   Building2,
+  Banknote,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAuthStore, readPersistedUser, type TeamRole } from '@/stores/auth-store';
@@ -103,6 +104,7 @@ const SECTIONS: { titleKey: TKey; items: NavItem[] }[] = [
   {
     titleKey: 'sidebar.account',
     items: [
+      { href: '/dashboard/earnings', labelKey: 'sidebar.earnings', icon: Banknote },
       { href: '/dashboard/wallet', labelKey: 'sidebar.wallet', icon: Wallet },
       { href: '/dashboard/team', labelKey: 'sidebar.team', icon: UsersRound },
       { href: '/dashboard/support', labelKey: 'sidebar.support', icon: LifeBuoy },

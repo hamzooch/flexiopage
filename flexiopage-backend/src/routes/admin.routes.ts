@@ -19,6 +19,7 @@ import * as admin from '../controllers/admin.controller';
 import * as adminExtras from '../controllers/admin-extras.controller';
 import * as complaint from '../controllers/complaint.controller';
 import * as payments from '../controllers/payments.controller';
+import * as payouts from '../controllers/payouts-admin.controller';
 
 const router = Router();
 
@@ -81,6 +82,11 @@ router.patch('/stores/:storeId/delivery-config', requireAdminWrite, adminExtras.
 // Paiements — transaction tracking
 router.get('/payments', payments.listPaymentTransactions);
 router.get('/payments/:transactionId/verify', payments.verifyPaymentTransaction);
+
+// Payouts — versements aux vendeurs (files d'attente)
+router.get('/payouts', payouts.listPayouts);
+router.get('/payouts/stats', payouts.getPayoutStats);
+router.patch('/payouts/:id', requireAdminWrite, payouts.updatePayout);
 
 // ── Store limits (comptes autorisés à dépasser la limite par défaut) ──
 router.get('/store-limits', adminExtras.getStoreLimits);

@@ -50,12 +50,14 @@ function fmtForBucket(amount: number, bucket: WalletBucket, currency: string): s
 
 function txMeta(t: WalletTransaction): { label: string; tone: 'positive' | 'negative' | 'neutral'; Icon: typeof ArrowDownToLine } {
   switch (t.kind) {
-    case 'top_up':         return { label: 'Recharge solde',     tone: 'positive', Icon: ArrowDownToLine };
-    case 'top_up_ai':      return { label: 'Recharge solde IA',  tone: 'positive', Icon: ArrowDownToLine };
-    case 'commission':     return { label: 'Commission',         tone: 'negative', Icon: ArrowUpRight };
-    case 'ai_generation':  return { label: 'Génération AI',      tone: 'negative', Icon: Sparkles };
-    case 'refund':         return { label: 'Remboursement',      tone: 'positive', Icon: ArrowDownToLine };
-    case 'adjustment':     return { label: 'Ajustement',         tone: 'neutral',  Icon: ReceiptText };
+    case 'top_up':         return { label: 'Recharge solde',       tone: 'positive', Icon: ArrowDownToLine };
+    case 'top_up_ai':      return { label: 'Recharge solde IA',    tone: 'positive', Icon: ArrowDownToLine };
+    case 'commission':     return { label: 'Commission',           tone: 'negative', Icon: ArrowUpRight };
+    case 'ai_generation':  return { label: 'Génération AI',        tone: 'negative', Icon: Sparkles };
+    case 'refund':         return { label: 'Remboursement',        tone: 'positive', Icon: ArrowDownToLine };
+    case 'adjustment':     return { label: 'Ajustement',           tone: 'neutral',  Icon: ReceiptText };
+    case 'sale_credit':    return { label: 'Vente en ligne',       tone: 'positive', Icon: ArrowDownToLine };
+    case 'payout_debit':   return { label: 'Versement au vendeur', tone: 'negative', Icon: ArrowUpRight };
   }
 }
 

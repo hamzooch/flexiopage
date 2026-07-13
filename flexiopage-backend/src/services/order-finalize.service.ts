@@ -18,6 +18,7 @@ import { dispatchOrder } from './delivery.service';
 import { notifyOrderCreated } from './notification.service';
 import { pushOrderToSheets } from './sheets.service';
 import { logActivity } from './activity-log.service';
+import { creditSellerForPaidOrder } from './seller-earnings.service';
 
 const TOKEN_BYTES = 24; // 32 base64url chars after encoding
 const DEFAULT_EXPIRY_DAYS = 30;
@@ -119,6 +120,17 @@ export async function finalizePaidOrder(orderId: string, providerData?: {
     orderId: order._id,
     metadata: { total: order.total, currency: order.currency, provider: providerData?.paymentProvider },
   });
+
+  // Credit the seller's payout balance for online-paid orders (best-effort —
+  // seller-earnings failure never blocks the buyer's confirmation flow).
+  try {
+    const credited = await creditSellerForPaidOrder(order);
+    if (credited > 0) {
+      console.log(`[order-finalize] credited seller ${credited} ${order.currency} for ${order.orderNumber}`);
+    }
+  } catch (err) {
+    console.error('[order-finalize] seller credit failed (non-fatal):', (err as Error).message);
+  }
 
   // Auto-dispatch to delivery provider when the order has at least one
   // physical item AND a carrier (integrations.delivery) OR MogaDelivery 3PL

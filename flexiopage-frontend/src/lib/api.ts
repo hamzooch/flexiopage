@@ -176,10 +176,10 @@ export const teamApi = {
 };
 
 // Wallet — main balance (commission per sale) + AI balance (generation cost)
-export type WalletBucket = 'main' | 'ai';
+export type WalletBucket = 'main' | 'ai' | 'payout';
 export interface WalletTransaction {
   id: string;
-  kind: 'top_up' | 'top_up_ai' | 'commission' | 'ai_generation' | 'refund' | 'adjustment';
+  kind: 'top_up' | 'top_up_ai' | 'commission' | 'ai_generation' | 'refund' | 'adjustment' | 'sale_credit' | 'payout_debit';
   bucket: WalletBucket;
   amount: number;
   balanceAfter: number;
@@ -195,9 +195,19 @@ export interface WalletState {
    * exprimé en monnaie côté IA — c'est un compteur entier.
    */
   aiBalance: number;
+  /**
+   * Solde des ventes en ligne à verser au vendeur (après commission plateforme).
+   * Ajouté 2026-07-13 — remplace le modèle "vendeur connecte sa clé" par
+   * un modèle chariow-style où la plateforme collecte et reverse.
+   */
+  payoutBalance: number;
   currency: string;
   commissionRate: number;
   commissionCap: number;
+  /** Taux de commission plateforme sur les paiements en ligne (0.15 = 15%). */
+  platformCommissionRate: number;
+  /** Montant minimum pour demander un versement (dans la devise du wallet). */
+  payoutMinimum: number;
   /** Coût par génération, en tokens. */
   aiCosts: { landing: number; product_page: number; text_only: number; poster?: number };
   /** Alias explicite — même contenu que aiCosts. */
@@ -207,6 +217,26 @@ export interface WalletState {
   transactions: WalletTransaction[];
   updatedAt: string;
 }
+
+export type PayoutMethod = 'wave' | 'orange_money' | 'mtn_momo' | 'bank_transfer';
+export type PayoutStatus = 'pending' | 'paid' | 'rejected';
+
+export interface Payout {
+  _id: string;
+  userId: string;
+  currency: string;
+  amount: number;
+  method: PayoutMethod;
+  destination: Record<string, string>;
+  status: PayoutStatus;
+  sellerNote?: string;
+  adminNote?: string;
+  externalRef?: string;
+  requestedAt: string;
+  processedAt?: string;
+  createdAt: string;
+}
+
 export const walletApi = {
   get: () => api.get<{ wallet: WalletState }>('/wallet'),
   topUp: (data: { amount: number; target?: WalletBucket; paymentReference?: string; note?: string }) =>
@@ -222,6 +252,15 @@ export const walletApi = {
       transaction: WalletTransaction;
       alreadyApplied: boolean;
     }>('/wallet/top-up', data),
+  /** Demander un versement (payout) des gains de vente en ligne. */
+  requestPayout: (data: {
+    amount: number;
+    method: PayoutMethod;
+    destination: Record<string, string>;
+    sellerNote?: string;
+  }) => api.post<{ ok: boolean; payout: Payout }>('/wallet/payouts', data),
+  /** Historique des demandes de payout du vendeur. */
+  listPayouts: () => api.get<{ payouts: Payout[] }>('/wallet/payouts'),
 };
 
 // ─────────────────────────────────────────────────────────────────────
@@ -798,6 +837,24 @@ export const adminApi = {
     }>(`/admin/payments/${transactionId}/verify`),
   retryPaymentWebhook: (logId: string) =>
     api.post<{ success: boolean; message: string }>(`/admin/payments/webhooks/${logId}/retry`, {}),
+
+  // ── Payouts (versements aux vendeurs) ──
+  listPayouts: (params?: { status?: PayoutStatus; limit?: number; skip?: number }) =>
+    api.get<{ payouts: Array<Payout & { user?: { name?: string; email: string } }> }>(
+      '/admin/payouts',
+      { params },
+    ),
+  getPayoutStats: () =>
+    api.get<{
+      pendingCount: number;
+      paid30dCount: number;
+      pendingByCurrency: Array<{ currency: string; amount: number }>;
+      paid30dByCurrency: Array<{ currency: string; amount: number }>;
+    }>('/admin/payouts/stats'),
+  updatePayout: (
+    id: string,
+    data: { status: 'paid' | 'rejected'; adminNote?: string; externalRef?: string },
+  ) => api.patch<{ ok: boolean; payout: Payout }>(`/admin/payouts/${id}`, data),
 };
 
 // ── Admin extras types ──

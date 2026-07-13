@@ -36,6 +36,7 @@ import {
   BarChart3,
   Truck,
   CreditCard,
+  Banknote,
 } from 'lucide-react';
 import { useAuthStore } from '@/stores/auth-store';
 import { cn } from '@/lib/utils';
@@ -52,6 +53,7 @@ const SECTIONS: { title: string; items: NavItem[] }[] = [
       { href: '/admin/activity', label: 'Activité',        icon: Activity },
       { href: '/admin/orders',   label: 'Commandes',      icon: ShoppingCart },
       { href: '/admin/payments', label: 'Paiements',      icon: CreditCard },
+      { href: '/admin/payouts',  label: 'Versements',     icon: Banknote },
     ],
   },
   {

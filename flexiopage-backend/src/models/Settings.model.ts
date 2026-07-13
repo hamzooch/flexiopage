@@ -41,10 +41,24 @@ export interface IAuthSettings {
   emailVerificationEnabled: boolean;
 }
 
+/**
+ * Payout / marketplace fee settings. Applied at online-payment finalization
+ * time — after the buyer's money lands on the platform account, we credit the
+ * seller (amount − commission) to their payout balance, and they withdraw
+ * once they hit `payoutMinimum` in their store currency.
+ */
+export interface IPlatformSettings {
+  /** Commission taken on every online-paid order. 0.15 = 15%. */
+  commissionRate: number;
+  /** Minimum payout amount per currency. Seller can't withdraw below this. */
+  payoutMinimums: Record<string, number>;
+}
+
 export interface ISettings extends Document {
   key: 'global';
   aiPricing: IAiPricing;
   auth: IAuthSettings;
+  platform: IPlatformSettings;
   updatedBy?: mongoose.Types.ObjectId;
   createdAt: Date;
   updatedAt: Date;
@@ -52,6 +66,20 @@ export interface ISettings extends Document {
 
 export const DEFAULT_AUTH_SETTINGS: IAuthSettings = {
   emailVerificationEnabled: true,
+};
+
+/** Défauts métier — chariow-style: 15% commission, seuil 5000 XOF. */
+export const DEFAULT_PLATFORM_SETTINGS: IPlatformSettings = {
+  commissionRate: 0.15,
+  payoutMinimums: {
+    XOF: 5000,
+    USD: 8,
+    EUR: 8,
+    NGN: 12000,
+    GHS: 100,
+    KES: 1000,
+    MAD: 80,
+  },
 };
 
 /**
@@ -105,6 +133,10 @@ const SettingsSchema = new Schema<ISettings>(
     auth: {
       emailVerificationEnabled: { type: Boolean, default: DEFAULT_AUTH_SETTINGS.emailVerificationEnabled },
     },
+    platform: {
+      commissionRate: { type: Number, default: DEFAULT_PLATFORM_SETTINGS.commissionRate, min: 0, max: 1 },
+      payoutMinimums: { type: Schema.Types.Mixed, default: () => ({ ...DEFAULT_PLATFORM_SETTINGS.payoutMinimums }) },
+    },
     updatedBy: { type: Schema.Types.ObjectId, ref: 'User' },
   },
   { timestamps: true },
@@ -127,6 +159,7 @@ export async function getSettings(force = false): Promise<ISettings> {
       key: 'global',
       aiPricing: DEFAULT_AI_PRICING,
       auth: DEFAULT_AUTH_SETTINGS,
+      platform: DEFAULT_PLATFORM_SETTINGS,
     });
   } else {
     // Migrations douces : le doc existe mais peut manquer des champs
@@ -134,6 +167,10 @@ export async function getSettings(force = false): Promise<ISettings> {
     let dirty = false;
     if (!doc.auth) {
       doc.auth = { ...DEFAULT_AUTH_SETTINGS };
+      dirty = true;
+    }
+    if (!doc.platform) {
+      doc.platform = { ...DEFAULT_PLATFORM_SETTINGS };
       dirty = true;
     }
     if (!doc.aiPricing?.usdToTokens) {

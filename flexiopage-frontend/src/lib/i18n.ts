@@ -84,6 +84,7 @@ const DICTIONARY = {
   },
 
   // Sidebar — account items
+  'sidebar.earnings': { fr: 'Revenus', en: 'Earnings', ar: 'الأرباح' },
   'sidebar.wallet': { fr: 'Solde', en: 'Wallet', ar: 'المحفظة' },
   'sidebar.team': { fr: 'Équipe', en: 'Team', ar: 'الفريق' },
   'sidebar.support': { fr: 'Support', en: 'Support', ar: 'الدعم' },

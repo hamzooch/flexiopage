@@ -21,10 +21,12 @@ export type TxKind =
   | 'commission'     // debit from main on order delivery
   | 'ai_generation'  // debit from AI balance per AI generation
   | 'refund'
-  | 'adjustment';
+  | 'adjustment'
+  | 'sale_credit'    // credit to payout balance after online paid order (minus platform commission)
+  | 'payout_debit';  // debit from payout balance when a payout is marked as paid
 
 /** Which sub-balance this transaction touched. */
-export type WalletBucket = 'main' | 'ai';
+export type WalletBucket = 'main' | 'ai' | 'payout';
 
 export interface IWalletTransaction {
   /** ISO uuid-like id used in the API. */
@@ -65,6 +67,12 @@ export interface IWallet extends Document {
    *                 'tokens' directement.
    */
   aiBalanceUnit: 'usd' | 'tokens';
+  /**
+   * Payout balance — accumulates seller earnings from online paid orders
+   * (order total minus platform commission). Debited when a payout request
+   * is marked as paid by an admin. In the store currency.
+   */
+  payoutBalance: number;
   /** Embedded ledger (chronological, append-only). */
   transactions: IWalletTransaction[];
   createdAt: Date;
@@ -76,10 +84,10 @@ const WalletTransactionSchema = new Schema<IWalletTransaction>(
     id: { type: String, required: true },
     kind: {
       type: String,
-      enum: ['top_up', 'top_up_ai', 'commission', 'ai_generation', 'refund', 'adjustment'],
+      enum: ['top_up', 'top_up_ai', 'commission', 'ai_generation', 'refund', 'adjustment', 'sale_credit', 'payout_debit'],
       required: true,
     },
-    bucket: { type: String, enum: ['main', 'ai'], required: true, default: 'main' },
+    bucket: { type: String, enum: ['main', 'ai', 'payout'], required: true, default: 'main' },
     amount: { type: Number, required: true },
     balanceAfter: { type: Number, required: true },
     orderId: { type: Schema.Types.ObjectId, ref: 'Order' },
@@ -98,6 +106,7 @@ const WalletSchema = new Schema<IWallet>(
     balance: { type: Number, default: 0, min: 0 },
     aiBalance: { type: Number, default: 0, min: 0 },
     aiBalanceUnit: { type: String, enum: ['usd', 'tokens'], default: 'tokens' },
+    payoutBalance: { type: Number, default: 0, min: 0 },
     transactions: { type: [WalletTransactionSchema], default: [] },
   },
   { timestamps: true }
