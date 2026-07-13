@@ -82,20 +82,21 @@ export async function checkDomain(domain: string): Promise<DomainCheck> {
     // no A record
   }
 
-  // Check for DNS conflicts: CNAME + A record at same level (invalid)
+  // Verify CNAME first (highest priority)
+  const cnameIsCorrect = out.cname && out.cname.some((c) => c === TARGET_HOST || c.endsWith('.' + TARGET_HOST));
+  if (cnameIsCorrect) {
+    out.verified = true;
+    return out;
+  }
+
+  // Check for DNS conflicts: CNAME + A record where CNAME is WRONG (not pointing to target)
+  // If CNAME is correct, the A record we see is from following the CNAME - that's normal, not a conflict
   if (out.cname && out.cname.length > 0 && out.aRecords && out.aRecords.length > 0) {
-    // If CNAME is correct but A record is wrong/old, that's a conflict
-    const cnameIsCorrect = out.cname.some((c) => c === TARGET_HOST || c.endsWith('.' + TARGET_HOST));
-    if (cnameIsCorrect) {
+    // Only report conflict if CNAME exists but is WRONG
+    if (!cnameIsCorrect) {
       out.reason = 'dns_conflict_cname_and_a';
       return out;
     }
-  }
-
-  // Verify CNAME
-  if (out.cname && out.cname.some((c) => c === TARGET_HOST || c.endsWith('.' + TARGET_HOST))) {
-    out.verified = true;
-    return out;
   }
 
   // Verify A record
