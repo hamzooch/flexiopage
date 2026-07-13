@@ -109,7 +109,9 @@ export class MoneróoProvider implements PaymentProviderImpl {
     // }
 
     const metadata = payload.metadata as Record<string, unknown> | undefined;
-    const transactionId = String(payload.transaction_id || metadata?.order_id || '');
+    // orderId is OUR Mongo ObjectId, passed to Moneróo via metadata.order_id at init.
+    // transaction_id is Moneróo's own reference — never a valid ObjectId.
+    const orderId = String(metadata?.order_id || '');
     const paymentId = String(payload.payment_id || payload.transaction_id || '');
     const status = String(payload.status || '').toLowerCase();
 
@@ -120,7 +122,7 @@ export class MoneróoProvider implements PaymentProviderImpl {
 
     return {
       status: mappedStatus,
-      orderId: transactionId,
+      orderId,
       reference: paymentId,
       raw: payload,
       signatureValid: undefined, // Moneróo doesn't use HMAC header — relies on return_url params
