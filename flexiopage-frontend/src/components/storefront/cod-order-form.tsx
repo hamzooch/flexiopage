@@ -155,6 +155,10 @@ export function CodOrderForm({
   const headline = config?.headline || 'Commander · Paiement à la livraison';
   const submitLabel = config?.submitLabel || 'Commander';
   const reassurance = config?.reassurance;
+  // WhatsApp n'est demandé que pour les boutiques digitales : c'est le canal
+  // de livraison du produit (lien, fichier, accès). Pour le physique, le
+  // téléphone suffit — le vendeur peut y écrire sur WhatsApp au besoin.
+  const showWhatsapp = storeType === 'digital';
 
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
@@ -425,7 +429,7 @@ export function CodOrderForm({
       setError('Nom et téléphone obligatoires.');
       return;
     }
-    if (!whatsapp.trim()) {
+    if (showWhatsapp && !whatsapp.trim()) {
       setError('Numéro WhatsApp obligatoire.');
       return;
     }
@@ -459,7 +463,7 @@ export function CodOrderForm({
             email: email.trim() || `pay-${phone.replace(/\D/g, '')}@flexiopage.local`,
             customerName: name.trim(),
             phone: phone.trim(),
-            whatsapp: whatsapp.trim(),
+            whatsapp: showWhatsapp ? whatsapp.trim() : undefined,
             country,
             gateway: selectedMethod.gateway,
             method: selectedMethod.id,
@@ -501,7 +505,7 @@ export function CodOrderForm({
           email: email.trim() || `cod-${phone.replace(/\D/g, '')}@flexiopage.local`,
           customerName: name.trim(),
           customerPhone: phone.trim(),
-          customerWhatsapp: whatsapp.trim(),
+          customerWhatsapp: showWhatsapp ? whatsapp.trim() : undefined,
           shippingAddress: {
             line1: line1.trim(),
             line2: showAddressLine2 ? (line2.trim() || undefined) : undefined,
@@ -574,19 +578,20 @@ export function CodOrderForm({
           radius={radius}
         />
       </div>
-      {/* WhatsApp — obligatoire pour que le vendeur puisse recontacter
-          le client (confirmation, livraison, SAV). Séparé du téléphone
-          car certains clients ont deux numéros. Icône WhatsApp verte
-          pour signaler visuellement le canal. */}
-      <Field
-        label="Numéro WhatsApp * 💬"
-        value={whatsapp}
-        onChange={setWhatsapp}
-        type="tel"
-        placeholder={`${phonePrefix} 70 000 00 00`}
-        theme={theme}
-        radius={radius}
-      />
+      {/* WhatsApp — uniquement pour les boutiques digitales, où c'est le
+          canal de livraison (fichier, lien, accès). Pour le physique, le
+          téléphone suffit — le vendeur peut y écrire sur WhatsApp au besoin. */}
+      {showWhatsapp && (
+        <Field
+          label="Numéro WhatsApp * 💬"
+          value={whatsapp}
+          onChange={setWhatsapp}
+          type="tel"
+          placeholder={`${phonePrefix} 70 000 00 00`}
+          theme={theme}
+          radius={radius}
+        />
+      )}
       {showEmail && (
         <Field
           label={`Email${requireEmail ? ' *' : ' (optionnel)'}`}
