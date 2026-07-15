@@ -99,8 +99,15 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const title = store?.settings?.seoTitle?.trim() || name;
 
   // No store? Don't leak FlexioPage branding either — return the icons only.
+  // `manifest: null` suppresses the FlexioPage PWA manifest inherited from
+  // the root layout so the browser never prompts « Installer FlexioPage »
+  // on a customer-facing shop (subdomain ou domaine custom).
   if (!store || !name) {
-    return { icons: { icon, shortcut: icon, apple: icon } };
+    return {
+      icons: { icon, shortcut: icon, apple: icon },
+      manifest: null,
+      applicationName: null,
+    };
   }
 
   return {
@@ -110,6 +117,11 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
     title: { absolute: title || name },
     description,
     icons: { icon, shortcut: icon, apple: icon },
+    // Idem branche du haut : coupe l'invite d'install PWA de FlexioPage
+    // sur toutes les pages boutique. Seule flexiopage.com apex (root
+    // layout) conserve son manifest et propose l'installation.
+    manifest: null,
+    applicationName: null,
     openGraph: {
       type: 'website',
       siteName: name,
