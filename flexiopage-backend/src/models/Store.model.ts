@@ -161,6 +161,14 @@ export interface IStore extends Document {
       intervalSeconds?: number;
       /** Accent color for the icon/badge (hex). Falls back to the theme primary. */
       accentColor?: string;
+      /**
+       * Bornes du « temps écoulé » affiché dans la popup. Toute valeur
+       * hors-plage (vraie commande de 6 j, faux event à 0, minutesAgo vide)
+       * est ré-échantillonnée aléatoirement dans [min, max] côté serveur
+       * pour que la popup n'affiche jamais d'achat ancien.
+       */
+      minMinutesAgo?: number;
+      maxMinutesAgo?: number;
       /** Seller-authored events used in 'fake' or as hybrid fallback. */
       fakeEvents?: Array<{
         name: string;      // "Ahmed"
@@ -603,6 +611,8 @@ const StoreSchema = new Schema<IStore>(
         initialDelaySeconds: { type: Number, default: 10, min: 0 },
         intervalSeconds: { type: Number, default: 25, min: 5 },
         accentColor: { type: String, trim: true },
+        minMinutesAgo: { type: Number, default: 3, min: 1 },
+        maxMinutesAgo: { type: Number, default: 55, min: 1 },
         fakeEvents: [
           {
             _id: false,

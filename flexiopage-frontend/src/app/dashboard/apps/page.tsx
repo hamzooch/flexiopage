@@ -48,6 +48,8 @@ interface SalesPopupSettings {
   initialDelaySeconds?: number;
   intervalSeconds?: number;
   accentColor?: string;
+  minMinutesAgo?: number;
+  maxMinutesAgo?: number;
   fakeEvents?: Array<{ name: string; city?: string; product: string; minutesAgo?: number }>;
 }
 
@@ -614,6 +616,8 @@ function SalesPopupApp({ store, onSaved }: { store: StoreDoc; onSaved: () => Pro
   const [position, setPosition] = useState<SalesPopupSettings['position']>(sp.position || 'bottom-left');
   const [initialDelay, setInitialDelay] = useState<number>(sp.initialDelaySeconds ?? 10);
   const [interval, setIntervalVal] = useState<number>(sp.intervalSeconds ?? 25);
+  const [minAgo, setMinAgo] = useState<number>(sp.minMinutesAgo ?? 3);
+  const [maxAgo, setMaxAgo] = useState<number>(sp.maxMinutesAgo ?? 55);
   const [accentColor, setAccentColor] = useState<string>(sp.accentColor || '#e11d48');
   const [fakeEvents, setFakeEvents] = useState(sp.fakeEvents || []);
   const [saving, setSaving] = useState(false);
@@ -654,6 +658,8 @@ function SalesPopupApp({ store, onSaved }: { store: StoreDoc; onSaved: () => Pro
             position,
             initialDelaySeconds: Math.max(0, initialDelay),
             intervalSeconds: Math.max(5, interval),
+            minMinutesAgo: Math.max(1, Math.floor(minAgo)),
+            maxMinutesAgo: Math.max(Math.max(1, Math.floor(minAgo)), Math.floor(maxAgo)),
             accentColor: accentColor.trim() || undefined,
             fakeEvents: cleaned,
           },
@@ -755,6 +761,42 @@ function SalesPopupApp({ store, onSaved }: { store: StoreDoc; onSaved: () => Pro
               onChange={(e) => setIntervalVal(parseInt(e.target.value, 10) || 5)}
               className="mt-1.5 h-11"
             />
+          </div>
+          <div className="sm:col-span-2 rounded-xl border border-border/60 bg-muted/20 p-3">
+            <Label>Temps « il y a … » affiché dans la popup</Label>
+            <p className="mt-1 text-[11px] text-muted-foreground">
+              Chaque achat sera affiché avec une ancienneté choisie au hasard dans cette plage.
+              Les vraies commandes plus vieilles seront quand même affichées comme récentes.
+            </p>
+            <div className="mt-2 grid gap-2 sm:grid-cols-2">
+              <div>
+                <Label htmlFor="sp-min" className="text-xs text-muted-foreground">Minimum (minutes)</Label>
+                <Input
+                  id="sp-min"
+                  type="number"
+                  min={1}
+                  value={minAgo}
+                  onChange={(e) => setMinAgo(parseInt(e.target.value, 10) || 1)}
+                  className="mt-1 h-10"
+                />
+              </div>
+              <div>
+                <Label htmlFor="sp-max" className="text-xs text-muted-foreground">Maximum (minutes)</Label>
+                <Input
+                  id="sp-max"
+                  type="number"
+                  min={1}
+                  value={maxAgo}
+                  onChange={(e) => setMaxAgo(parseInt(e.target.value, 10) || 1)}
+                  className="mt-1 h-10"
+                />
+              </div>
+            </div>
+            {maxAgo < minAgo && (
+              <p className="mt-1.5 text-[11px] font-medium text-amber-600">
+                Le maximum doit être ≥ minimum ; il sera ajusté à l&apos;enregistrement.
+              </p>
+            )}
           </div>
           <div className="sm:col-span-2">
             <Label htmlFor="sp-color">Couleur d&apos;accent</Label>

@@ -614,6 +614,23 @@ router.get('/stores/:storeSlug/sales-popup-events', async (req: Request, res: Re
     events = real.length >= 3 ? real : [...real, ...fake];
   }
 
+  // Bornes seller-driven du temps affiché — évite qu'une vraie commande de
+  // 6 jours (ou un faux event laissé sans minutesAgo) casse la sensation
+  // « ça vient de se passer ». Toute valeur hors-plage est ré-échantillonnée
+  // aléatoirement dans [min, max]. Défauts : 3–55 min (comportement historique).
+  const rawMin = Number(cfg.minMinutesAgo);
+  const rawMax = Number(cfg.maxMinutesAgo);
+  const minMin = Number.isFinite(rawMin) && rawMin >= 1 ? Math.floor(rawMin) : 3;
+  const maxMinCandidate = Number.isFinite(rawMax) && rawMax >= 1 ? Math.floor(rawMax) : 55;
+  const maxMin = Math.max(minMin, maxMinCandidate);
+  events = events.map((e) => {
+    const inRange = typeof e.minutesAgo === 'number' && e.minutesAgo >= minMin && e.minutesAgo <= maxMin;
+    const minutesAgo = inRange
+      ? e.minutesAgo
+      : Math.floor(Math.random() * (maxMin - minMin + 1)) + minMin;
+    return { ...e, minutesAgo };
+  });
+
   res.json({ events });
 });
 
