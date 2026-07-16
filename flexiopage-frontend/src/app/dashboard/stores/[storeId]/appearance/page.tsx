@@ -13,6 +13,7 @@ import {
 } from '@/data/store-themes';
 import { ThemePreviewGrid } from '@/components/dashboard/theme-preview-card';
 import { ThemePaletteEditor } from '@/components/dashboard/theme-palette-editor';
+import { ThemeFontEditor } from '@/components/dashboard/theme-font-editor';
 import { MediaPicker } from '@/components/dashboard/MediaPicker';
 import { imageSizes } from '@/lib/image-recommendations';
 import { StoreSubPageShell, type SaveStatus } from '@/components/dashboard/store-sub-page';
@@ -199,6 +200,21 @@ export default function StoreAppearancePage() {
           </CardHeader>
           <CardContent>
             <ThemePaletteEditor theme={themeTokens} onChange={setThemeTokens} />
+          </CardContent>
+        </Card>
+      )}
+
+      {themeTokens && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Typographie</CardTitle>
+            <CardDescription>
+              Change le style d&apos;écriture des titres et du texte de ta boutique.
+              Tu peux revenir à la police d&apos;origine du thème à tout moment.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <ThemeFontEditor theme={themeTokens} onChange={setThemeTokens} />
           </CardContent>
         </Card>
       )}

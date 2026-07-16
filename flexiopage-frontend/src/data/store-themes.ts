@@ -825,6 +825,130 @@ export function googleFontsHref(t: ThemeTokens): string | null {
   // Geist (Vercel's geometric sans) — used by the Prism theme. Falls back
   // to Inter in the CSS font stack if Google Fonts hasn't shipped it yet.
   if (/Geist\b/i.test(all)) families.push('Geist:wght@400;500;600;700;800');
+  // Familles supplémentaires exposées par le picker Typographie côté vendeur.
+  if (/Poppins/i.test(all)) families.push('Poppins:wght@400;500;600;700;800');
+  if (/Montserrat/i.test(all)) families.push('Montserrat:wght@400;500;600;700;800');
+  if (/Merriweather/i.test(all)) families.push('Merriweather:wght@400;700;900');
+  if (/Lora/i.test(all)) families.push('Lora:wght@400;500;600;700');
+  if (/Manrope/i.test(all)) families.push('Manrope:wght@400;500;600;700;800');
+  if (/Fraunces/i.test(all)) families.push('Fraunces:wght@400;500;600;700;800');
   if (families.length === 0) return null;
   return `https://fonts.googleapis.com/css2?${families.map((f) => `family=${f}`).join('&')}&display=swap`;
+}
+
+/**
+ * Paires de polices proposées au vendeur dans l'onglet Apparence. Chaque
+ * paire = un couple heading + body cohérent (contraste ou même famille pour
+ * la neutralité), avec un `id` stable pour retrouver la sélection courante.
+ * Les familles listées ici DOIVENT être connues de `googleFontsHref`
+ * au-dessus, sinon les vraies polices ne sont pas chargées côté storefront.
+ */
+export interface FontPair {
+  id: string;
+  label: string;      // libellé UI ("Éditorial", "Moderne"…)
+  sample: string;     // court aperçu de style (mot en teasing)
+  heading: string;    // font stack complet — copié sur theme.fontHeading
+  body: string;       // font stack complet — copié sur theme.fontBody
+}
+
+export const FONT_PAIRS: FontPair[] = [
+  {
+    id: 'inter',
+    label: 'Neutre',
+    sample: 'Aa',
+    heading: '"Inter", system-ui, sans-serif',
+    body: '"Inter", system-ui, -apple-system, sans-serif',
+  },
+  {
+    id: 'space-inter',
+    label: 'Moderne',
+    sample: 'Aa',
+    heading: '"Space Grotesk", "Inter", system-ui, sans-serif',
+    body: '"Inter", system-ui, sans-serif',
+  },
+  {
+    id: 'playfair-inter',
+    label: 'Élégant',
+    sample: 'Aa',
+    heading: '"Playfair Display", "Cormorant Garamond", Georgia, serif',
+    body: '"Inter", system-ui, sans-serif',
+  },
+  {
+    id: 'cormorant-inter',
+    label: 'Raffiné',
+    sample: 'Aa',
+    heading: '"Cormorant Garamond", "Playfair Display", Georgia, serif',
+    body: '"Inter", system-ui, sans-serif',
+  },
+  {
+    id: 'dmserif-inter',
+    label: 'Éditorial',
+    sample: 'Aa',
+    heading: '"DM Serif Display", "Cormorant Garamond", Georgia, serif',
+    body: '"Inter", system-ui, sans-serif',
+  },
+  {
+    id: 'outfit-inter',
+    label: 'Rond',
+    sample: 'Aa',
+    heading: '"Outfit", "Inter", system-ui, sans-serif',
+    body: '"Inter", system-ui, sans-serif',
+  },
+  {
+    id: 'geist',
+    label: 'Tech',
+    sample: 'Aa',
+    heading: '"Geist", "Inter Display", "Inter", system-ui, sans-serif',
+    body: '"Geist", "Inter", system-ui, sans-serif',
+  },
+  {
+    id: 'poppins',
+    label: 'Amical',
+    sample: 'Aa',
+    heading: '"Poppins", "Inter", system-ui, sans-serif',
+    body: '"Poppins", "Inter", system-ui, sans-serif',
+  },
+  {
+    id: 'montserrat-lora',
+    label: 'Boutique',
+    sample: 'Aa',
+    heading: '"Montserrat", "Inter", system-ui, sans-serif',
+    body: '"Lora", Georgia, serif',
+  },
+  {
+    id: 'manrope',
+    label: 'Épuré',
+    sample: 'Aa',
+    heading: '"Manrope", "Inter", system-ui, sans-serif',
+    body: '"Manrope", "Inter", system-ui, sans-serif',
+  },
+  {
+    id: 'fraunces-inter',
+    label: 'Chaleureux',
+    sample: 'Aa',
+    heading: '"Fraunces", "Playfair Display", Georgia, serif',
+    body: '"Inter", system-ui, sans-serif',
+  },
+  {
+    id: 'merriweather',
+    label: 'Sérieux',
+    sample: 'Aa',
+    heading: '"Merriweather", Georgia, serif',
+    body: '"Inter", system-ui, sans-serif',
+  },
+];
+
+/** Retrouve la paire correspondant aux fonts du thème actuel (matching sur
+ *  la première famille de chaque stack). Renvoie null si aucune ne matche —
+ *  utile pour marquer la sélection courante dans le picker. */
+export function findFontPair(fontHeading: string, fontBody: string): FontPair | null {
+  const firstFamily = (stack: string): string => {
+    const m = stack.match(/"([^"]+)"|^([^,\s]+)/);
+    return (m?.[1] || m?.[2] || '').toLowerCase().trim();
+  };
+  const h = firstFamily(fontHeading);
+  const b = firstFamily(fontBody);
+  return (
+    FONT_PAIRS.find((p) => firstFamily(p.heading) === h && firstFamily(p.body) === b) || null
+  );
 }
