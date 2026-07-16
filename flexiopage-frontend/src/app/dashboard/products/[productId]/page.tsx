@@ -23,8 +23,7 @@ import Link from 'next/link';
 import {
   ArrowLeft, CheckCircle2, Loader2, Save, ExternalLink, Eye, EyeOff,
   Image as ImageIcon, Package, Layers, Tag, TrendingUp, Search as SearchIcon,
-  Settings as SettingsIcon, Plus, Trash2, Clock,
-  Truck, ShieldCheck, RefreshCcw, Lock, Headphones, Gift, Star, Leaf, Banknote,
+  Settings as SettingsIcon, Plus, Trash2,
   Palette, ArrowRight,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -51,20 +50,12 @@ import {
   type ProductVideo, type ProductComparison, type ScoreTab,
 } from '@/components/dashboard/product-conversion-editors';
 import type { CodFormSettings } from '@/components/dashboard/store-editor';
-import { Sparkles, HelpCircle, ListChecks, Truck as TruckLine, Video as VideoIcon, Scale, ShoppingCart } from 'lucide-react';
-
-const BADGE_ICONS = {
-  truck: Truck, shield: ShieldCheck, refresh: RefreshCcw, lock: Lock,
-  headset: Headphones, gift: Gift, clock: Clock, star: Star, leaf: Leaf, banknote: Banknote,
-} as const;
-type BadgeIcon = keyof typeof BADGE_ICONS;
-const BADGE_ICON_LIST: BadgeIcon[] = ['truck', 'shield', 'refresh', 'lock', 'headset', 'gift', 'clock', 'star', 'leaf', 'banknote'];
-
-interface TrustBadge {
-  icon: BadgeIcon;
-  label: string;
-  sublabel?: string;
-}
+import { Sparkles, HelpCircle, ListChecks, Truck as TruckLine, Video as VideoIcon, Scale, ShoppingCart, RotateCcw } from 'lucide-react';
+import { defaultBadgesForStoreType, type TrustBadge } from '@/lib/product-page-order';
+import {
+  TrustBadgeCard,
+  TrustBadgesPreviewStrip,
+} from '@/components/dashboard/trust-badge-card';
 
 interface PageSettings {
   showGallery: boolean;
@@ -982,100 +973,77 @@ export default function EditProductPage() {
                 )}
               </div>
 
-              {/* Custom badges */}
+              {/* Custom badges — override par produit. Utilise le même
+                  composant que l'éditeur boutique pour rester cohérent
+                  (icône OU image custom, réordonnable, aperçu en direct). */}
               <div className="border-t border-border/60 pt-4">
-                <div className="mb-2 flex items-center justify-between">
+                <div className="mb-3 flex items-center justify-between gap-2">
                   <div>
                     <Label className="text-xs">Badges personnalisés (optionnel)</Label>
                     <p className="text-[11px] text-muted-foreground">
                       Vide = badges globaux de la boutique. Définis ici pour overrider sur ce produit seulement.
                     </p>
                   </div>
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="outline"
-                    onClick={() => setPageSettings((s) => ({
-                      ...s,
-                      badges: [...(s.badges || []), { icon: 'truck', label: 'Nouveau badge' }],
-                    }))}
-                    className="gap-1.5"
-                  >
-                    <Plus className="h-3.5 w-3.5" /> Ajouter
-                  </Button>
+                  <div className="flex items-center gap-2">
+                    {(pageSettings.badges?.length ?? 0) > 0 && (
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => setPageSettings((s) => ({
+                          ...s,
+                          badges: defaultBadgesForStoreType(type),
+                        }))}
+                        className="gap-1.5 text-muted-foreground"
+                        title="Restaurer les 3 badges par défaut"
+                      >
+                        <RotateCcw className="h-3.5 w-3.5" />
+                        Réinitialiser
+                      </Button>
+                    )}
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      onClick={() => setPageSettings((s) => ({
+                        ...s,
+                        badges: [...(s.badges || []), { icon: 'truck', label: 'Nouveau badge' }],
+                      }))}
+                      className="gap-1.5"
+                    >
+                      <Plus className="h-3.5 w-3.5" /> Ajouter
+                    </Button>
+                  </div>
                 </div>
                 {pageSettings.badges && pageSettings.badges.length > 0 && (
-                  <ul className="space-y-2">
-                    {pageSettings.badges.map((b, i) => {
-                      const Icon = BADGE_ICONS[b.icon] || Truck;
-                      return (
-                        <li key={i} className="grid grid-cols-[auto_1fr_1fr_auto] items-center gap-2 rounded-lg border border-border/60 bg-muted/20 p-2">
-                          <details className="relative">
-                            <summary
-                              className="grid h-9 w-9 cursor-pointer place-items-center rounded-md bg-primary/10 text-primary"
-                              title="Changer l'icône"
-                            >
-                              <Icon className="h-4 w-4" />
-                            </summary>
-                            <div className="absolute left-0 top-10 z-20 grid w-44 grid-cols-5 gap-1 rounded-lg border border-border bg-card p-2 shadow-lg">
-                              {BADGE_ICON_LIST.map((ic) => {
-                                const IC = BADGE_ICONS[ic];
-                                const active = ic === b.icon;
-                                return (
-                                  <button
-                                    key={ic}
-                                    type="button"
-                                    onClick={() => setPageSettings((s) => {
-                                      const next = (s.badges || []).slice();
-                                      next[i] = { ...next[i], icon: ic };
-                                      return { ...s, badges: next };
-                                    })}
-                                    className={cn(
-                                      'grid h-8 w-8 place-items-center rounded-md transition-colors',
-                                      active ? 'bg-primary text-white' : 'text-muted-foreground hover:bg-muted hover:text-foreground'
-                                    )}
-                                  >
-                                    <IC className="h-4 w-4" />
-                                  </button>
-                                );
-                              })}
-                            </div>
-                          </details>
-                          <Input
-                            value={b.label}
-                            onChange={(e) => setPageSettings((s) => {
-                              const next = (s.badges || []).slice();
-                              next[i] = { ...next[i], label: e.target.value };
-                              return { ...s, badges: next };
-                            })}
-                            placeholder="Livraison rapide"
-                            className="h-9 text-sm"
-                          />
-                          <Input
-                            value={b.sublabel || ''}
-                            onChange={(e) => setPageSettings((s) => {
-                              const next = (s.badges || []).slice();
-                              next[i] = { ...next[i], sublabel: e.target.value };
-                              return { ...s, badges: next };
-                            })}
-                            placeholder="2 à 5 jours (optionnel)"
-                            className="h-9 text-[11px]"
-                          />
-                          <button
-                            type="button"
-                            onClick={() => setPageSettings((s) => ({
-                              ...s,
-                              badges: (s.badges || []).filter((_, idx) => idx !== i),
-                            }))}
-                            className="grid h-9 w-9 place-items-center rounded-md text-destructive hover:bg-destructive/10"
-                            aria-label="Supprimer"
-                          >
-                            <Trash2 className="h-3.5 w-3.5" />
-                          </button>
-                        </li>
-                      );
-                    })}
-                  </ul>
+                  <div className="space-y-3">
+                    {pageSettings.badges.map((b, i) => (
+                      <TrustBadgeCard
+                        key={i}
+                        badge={b}
+                        index={i}
+                        total={pageSettings.badges!.length}
+                        storeId={storeId ?? undefined}
+                        onChange={(patch) => setPageSettings((s) => {
+                          const next = (s.badges || []).slice();
+                          next[i] = { ...next[i], ...patch };
+                          return { ...s, badges: next };
+                        })}
+                        onRemove={() => setPageSettings((s) => ({
+                          ...s,
+                          badges: (s.badges || []).filter((_, idx) => idx !== i),
+                        }))}
+                        onMove={(dir) => setPageSettings((s) => {
+                          const list = (s.badges || []).slice();
+                          const swap = i + dir;
+                          if (swap < 0 || swap >= list.length) return s;
+                          [list[i], list[swap]] = [list[swap], list[i]];
+                          return { ...s, badges: list };
+                        })}
+                      />
+                    ))}
+                    <TrustBadgesPreviewStrip badges={pageSettings.badges} />
+                  </div>
                 )}
               </div>
             </CardContent>
