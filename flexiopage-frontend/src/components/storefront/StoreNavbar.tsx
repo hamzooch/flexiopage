@@ -238,7 +238,10 @@ export function StoreNavbar({ storeName, storeSlug, storeLogo, theme, config, de
         }}
       >
         <div className="mx-auto flex max-w-6xl items-center justify-between gap-4 px-4 py-3 sm:px-6 sm:py-4">
-          {brand}
+          <div className="flex min-w-0 items-center gap-2">
+            {mobileToggle}
+            {brand}
+          </div>
           {links.length > 0 && (
             <nav className="hidden items-center gap-1 md:flex">
               {links.map((l, i) => (
@@ -267,7 +270,6 @@ export function StoreNavbar({ storeName, storeSlug, storeLogo, theme, config, de
             )}
             {trailing}
             {cartIcon}
-            {mobileToggle}
           </div>
         </div>
         {/* Mobile sheet */}
@@ -439,6 +441,9 @@ export function StoreNavbar({ storeName, storeSlug, storeLogo, theme, config, de
       ) : (
         // ── STANDARD & BOLD — logo left, links right ──
         // Bar height scales with logo so a big logo never gets visually clipped.
+        // Sur mobile, le burger vit à GAUCHE (avant le brand) pour rester
+        // aligné sur centered/editorial/glass — sinon on avait 3 emplacements
+        // différents selon le thème, ce qui déroutait les vendeurs.
         <div
           className={
             'mx-auto flex max-w-6xl items-center justify-between gap-3 px-3 sm:px-6 ' +
@@ -451,7 +456,10 @@ export function StoreNavbar({ storeName, storeSlug, storeLogo, theme, config, de
                   : 'h-14 sm:h-16')
           }
         >
-          {brand}
+          <div className="flex min-w-0 items-center gap-2">
+            {mobileToggle}
+            {brand}
+          </div>
           {desktopLinks}
           <div className="flex items-center gap-2">
             {markets && markets.length > 1 && (
@@ -462,7 +470,6 @@ export function StoreNavbar({ storeName, storeSlug, storeLogo, theme, config, de
             )}
             {trailing}
             {cartIcon}
-            {mobileToggle}
           </div>
         </div>
       )}
