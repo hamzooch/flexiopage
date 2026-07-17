@@ -822,7 +822,7 @@ export default function EditProductPage() {
                   of the store, so it lives in Sections > Page produit > Style
                   visuel rather than per-product. Linking here makes that obvious. */}
               <Link
-                href={`/dashboard/stores/${storeId}/product-page#product-page-style`}
+                href={`/dashboard/stores/${storeId}?block=product-page`}
                 className="flex items-center gap-3 rounded-xl border border-fuchsia-500/30 bg-gradient-to-br from-fuchsia-500/5 to-card p-3 transition-all hover:-translate-y-0.5 hover:border-fuchsia-500/50 hover:shadow-md"
               >
                 <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-gradient-to-br from-primary to-fuchsia-600 text-white shadow-sm">
@@ -1178,7 +1178,7 @@ export default function EditProductPage() {
               <CodFormPanel
                 value={codForm}
                 onChange={(next) => { setCodForm(next); setCodFormDirty(true); }}
-                advancedHref={`/dashboard/stores/${storeId}/product-page#cod-form`}
+                advancedHref={`/dashboard/stores/${storeId}?block=cod`}
                 currency={currency}
               />
             </CardContent>

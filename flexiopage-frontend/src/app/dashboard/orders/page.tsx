@@ -17,7 +17,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { storesApi } from '@/lib/api';
 import { useScopedStoreId } from '@/lib/use-scoped-store';
-import { formatCurrency, formatDate, cn } from '@/lib/utils';
+import { formatCurrency, formatDate, cn, mediaUrl } from '@/lib/utils';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { usePrompt } from '@/components/ui/confirm-dialog';
@@ -279,6 +279,10 @@ export default function DashboardOrdersPage() {
   const [customFrom, setCustomFrom] = useState<string>('');
   const [customTo, setCustomTo] = useState<string>('');
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  // Map productId → image URL, résolu depuis la liste des produits du store.
+  // Les snapshots OrderItem ne contiennent pas l'image (juste name/price/qty),
+  // donc on hydrate côté client pour éviter de modifier tous les orders passés.
+  const [productImages, setProductImages] = useState<Record<string, string>>({});
 
   useEffect(() => {
     storesApi.list().then((res) => {
@@ -288,6 +292,27 @@ export default function DashboardOrdersPage() {
     }).catch(() => setStores([]));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Hydrate le lookup productId→image pour la boutique sélectionnée. On demande
+  // un limit élevé (500) pour couvrir la plupart des catalogues sans pagination —
+  // les catalogues plus grands afficheront simplement un placeholder pour les
+  // items absents de la première page.
+  useEffect(() => {
+    if (!selectedStoreId) { setProductImages({}); return; }
+    let cancelled = false;
+    storesApi.listProducts(selectedStoreId, { limit: 500 })
+      .then((res) => {
+        if (cancelled) return;
+        const list = (res.data as { products?: Array<{ _id: string; images?: string[] }> }).products || [];
+        const map: Record<string, string> = {};
+        for (const p of list) {
+          if (p._id && p.images?.[0]) map[p._id] = p.images[0];
+        }
+        setProductImages(map);
+      })
+      .catch(() => setProductImages({}));
+    return () => { cancelled = true; };
+  }, [selectedStoreId]);
 
   // Calcule la plage de dates [from, to] (ISO) depuis les filtres date.
   // Le custom range prime sur les chips préréglées.
@@ -617,6 +642,7 @@ export default function DashboardOrdersPage() {
                 expanded={expandedId === o._id}
                 onToggle={() => setExpandedId((id) => (id === o._id ? null : o._id))}
                 onChanged={refreshOrders}
+                productImages={productImages}
               />
             ))}
           </ul>
@@ -1041,12 +1067,15 @@ function OrderCard({
   expanded,
   onToggle,
   onChanged,
+  productImages,
 }: {
   order: OrderType;
   storeId: string;
   expanded: boolean;
   onToggle: () => void;
   onChanged: () => void | Promise<void>;
+  /** Lookup productId → première image, hydratée depuis listProducts en amont. */
+  productImages: Record<string, string>;
 }) {
   const payment = PAYMENT_BADGE[o.paymentStatus] || { label: o.paymentStatus, cls: 'bg-slate-500/10 text-slate-700 ring-slate-500/20' };
   const deliveryKey = (o.delivery?.externalStatus || '').toLowerCase();
@@ -1196,6 +1225,47 @@ function OrderCard({
               <div className="text-[10px] text-muted-foreground">
                 {totalQty} article{totalQty > 1 ? 's' : ''}
               </div>
+            </div>
+          </div>
+
+          {/* Aperçu produits — thumbnail + nom du 1er article + « +N autres »
+              si la commande a plusieurs lignes. Ce qui manquait aux cartes :
+              on voit immédiatement CE QUI a été commandé sans dérouler. */}
+          <div className="mt-2 flex items-center gap-2">
+            <div className="flex -space-x-1.5">
+              {o.items.slice(0, 3).map((it, i) => {
+                const img = mediaUrl(productImages[it.productId]);
+                return (
+                  <div
+                    key={`${it.productId}-${i}`}
+                    className="grid h-8 w-8 shrink-0 place-items-center overflow-hidden rounded-md border-2 border-card bg-muted"
+                    title={it.name}
+                  >
+                    {img ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={img} alt={it.name} className="h-full w-full object-cover" loading="lazy" />
+                    ) : (
+                      <Package className="h-3.5 w-3.5 text-muted-foreground" />
+                    )}
+                  </div>
+                );
+              })}
+              {o.items.length > 3 && (
+                <div className="grid h-8 w-8 shrink-0 place-items-center rounded-md border-2 border-card bg-muted text-[10px] font-bold text-muted-foreground">
+                  +{o.items.length - 3}
+                </div>
+              )}
+            </div>
+            <div className="min-w-0 flex-1 text-[11px] text-muted-foreground">
+              <span className="truncate font-medium text-foreground">
+                {o.items[0]?.name || 'Produit'}
+                {o.items[0]?.quantity > 1 && ` ×${o.items[0].quantity}`}
+              </span>
+              {o.items.length > 1 && (
+                <span className="ml-1">
+                  +{o.items.length - 1} autre{o.items.length > 2 ? 's' : ''}
+                </span>
+              )}
             </div>
           </div>
 
@@ -1395,13 +1465,27 @@ function OrderCard({
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border/60">
-                  {o.items.map((it, i) => (
+                  {o.items.map((it, i) => {
+                    const img = mediaUrl(productImages[it.productId]);
+                    return (
                     <tr key={`${it.productId}-${i}`}>
                       <td className="px-4 py-2.5">
-                        <div className="font-medium">{it.name}</div>
-                        {it.variantId && (
-                          <div className="text-[11px] text-muted-foreground">Variante : {it.variantId}</div>
-                        )}
+                        <div className="flex items-center gap-3">
+                          <div className="grid h-11 w-11 shrink-0 place-items-center overflow-hidden rounded-md border border-border/60 bg-muted">
+                            {img ? (
+                              // eslint-disable-next-line @next/next/no-img-element
+                              <img src={img} alt={it.name} className="h-full w-full object-cover" loading="lazy" />
+                            ) : (
+                              <Package className="h-4 w-4 text-muted-foreground" />
+                            )}
+                          </div>
+                          <div className="min-w-0">
+                            <div className="truncate font-medium">{it.name}</div>
+                            {it.variantId && (
+                              <div className="text-[11px] text-muted-foreground">Variante : {it.variantId}</div>
+                            )}
+                          </div>
+                        </div>
                       </td>
                       <td className="hidden px-4 py-2.5 sm:table-cell">
                         {it.sku ? (
@@ -1422,7 +1506,8 @@ function OrderCard({
                         {formatCurrency(it.total, o.currency)}
                       </td>
                     </tr>
-                  ))}
+                    );
+                  })}
                 </tbody>
                 <tfoot className="bg-muted/30">
                   <tr className="text-sm">

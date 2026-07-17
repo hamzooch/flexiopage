@@ -108,7 +108,7 @@ export function OnboardingChecklist({ store }: Props) {
         id: 'theme',
         title: 'Choisir un thème',
         hint: themeDone ? 'Thème sélectionné.' : 'Sélectionne un design qui colle à ta marque.',
-        href: `/dashboard/stores/${store._id}/appearance`,
+        href: `/dashboard/stores/${store._id}?block=theme`,
         icon: Palette,
         status: themeDone ? 'done' : 'todo',
         doneAccent: 'from-violet-500 to-fuchsia-600',
@@ -143,7 +143,7 @@ export function OnboardingChecklist({ store }: Props) {
         hint: pixelDone
           ? 'Pixels actifs sur la vitrine.'
           : 'Pour mesurer tes pubs Meta, TikTok ou Google.',
-        href: `/dashboard/stores/${store._id}/marketing`,
+        href: `/dashboard/stores/${store._id}?block=marketing`,
         icon: TrendingUp,
         status: pixelDone ? 'done' : 'todo',
         doneAccent: 'from-fuchsia-500 to-pink-600',

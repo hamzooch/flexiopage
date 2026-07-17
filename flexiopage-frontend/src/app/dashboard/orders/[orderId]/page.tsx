@@ -44,7 +44,7 @@ import {
 } from 'lucide-react';
 import { storesApi, extractApiError } from '@/lib/api';
 import { useScopedStoreId } from '@/lib/use-scoped-store';
-import { formatCurrency, formatDate, cn } from '@/lib/utils';
+import { formatCurrency, formatDate, cn, mediaUrl } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import type { CustomerReliability, ReliabilityBadge } from '@/types/reliability';
 
@@ -163,6 +163,9 @@ export default function OrderDetailPage() {
   const [saving, setSaving] = useState(false);
   const [actionMsg, setActionMsg] = useState<{ kind: 'ok' | 'err'; text: string } | null>(null);
   const [copied, setCopied] = useState(false);
+  // Lookup productId → image, hydraté depuis listProducts (les snapshots
+  // OrderItem ne stockent que name/price/qty, pas d'image).
+  const [productImages, setProductImages] = useState<Record<string, string>>({});
 
   const fetchOrder = useCallback(async () => {
     if (!storeId || !orderId) { setLoading(false); return; }
@@ -179,6 +182,25 @@ export default function OrderDetailPage() {
   }, [storeId, orderId]);
 
   useEffect(() => { void fetchOrder(); }, [fetchOrder]);
+
+  // Charge les images produits du store (une seule requête). On borne à 500 —
+  // les gros catalogues afficheront un placeholder pour les items absents.
+  useEffect(() => {
+    if (!storeId) { setProductImages({}); return; }
+    let cancelled = false;
+    storesApi.listProducts(storeId, { limit: 500 })
+      .then((res) => {
+        if (cancelled) return;
+        const list = (res.data as { products?: Array<{ _id: string; images?: string[] }> }).products || [];
+        const map: Record<string, string> = {};
+        for (const p of list) {
+          if (p._id && p.images?.[0]) map[p._id] = p.images[0];
+        }
+        setProductImages(map);
+      })
+      .catch(() => setProductImages({}));
+    return () => { cancelled = true; };
+  }, [storeId]);
 
   // Fiabilité client (score de retours) — chargé en parallèle pour aider
   // l'agent de confirmation. N'interrompt jamais l'affichage de la commande.
@@ -383,10 +405,17 @@ export default function OrderDetailPage() {
               </span>
             </div>
             <ul className="divide-y divide-border/40">
-              {order.items.map((item, idx) => (
+              {order.items.map((item, idx) => {
+                const img = mediaUrl(productImages[item.productId]);
+                return (
                 <li key={`${item.productId}-${item.variantId || idx}`} className="flex items-start gap-3 px-4 py-3">
-                  <div className="grid h-10 w-10 shrink-0 place-items-center rounded-lg bg-muted/60">
-                    <Package className="h-4 w-4 text-muted-foreground" />
+                  <div className="grid h-12 w-12 shrink-0 place-items-center overflow-hidden rounded-lg border border-border/60 bg-muted/60">
+                    {img ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={img} alt={item.name} className="h-full w-full object-cover" loading="lazy" />
+                    ) : (
+                      <Package className="h-4 w-4 text-muted-foreground" />
+                    )}
                   </div>
                   <div className="min-w-0 flex-1">
                     <div className="truncate text-sm font-medium">{item.name}</div>
@@ -400,7 +429,8 @@ export default function OrderDetailPage() {
                     {formatCurrency(item.total, order.currency)}
                   </div>
                 </li>
-              ))}
+                );
+              })}
             </ul>
             {/* Totals */}
             <dl className="space-y-1.5 border-t border-border/40 px-4 py-3 text-sm">

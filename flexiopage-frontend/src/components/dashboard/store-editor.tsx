@@ -131,6 +131,26 @@ export interface VideoSettings {
   text?: string;
 }
 
+export interface FAQItemSettings {
+  question: string;
+  answer: string;
+}
+
+export interface FAQSettings {
+  enabled?: boolean;
+  title?: string;
+  subtitle?: string;
+  items?: FAQItemSettings[];
+}
+
+export interface RichTextSettings {
+  enabled?: boolean;
+  title?: string;
+  /** Contenu markdown : # titres, **gras**, *italique*, - listes, [lien](url). */
+  content?: string;
+  align?: 'left' | 'center';
+}
+
 export interface NavMenuLink {
   label: string;
   url: string;
@@ -236,8 +256,12 @@ export interface StorefrontSettings {
   footer?: FooterSettings;
   slider?: SliderSettings;
   video?: VideoSettings;
-  /** Order of the 4 movable body sections on the public storefront. */
-  sectionOrder?: Array<'hero' | 'slider' | 'products' | 'testimonials'>;
+  faq?: FAQSettings;
+  richText?: RichTextSettings;
+  /** Ordre des sections movables du corps — inclut hero/slider/products/
+   *  testimonials + les nouvelles video/faq/richText. Le type est aligné
+   *  sur `MovableSectionId` de `@/lib/section-order`. */
+  sectionOrder?: import('@/lib/section-order').MovableSectionId[];
   /** Per-store product-page customization (timer, badges, order, etc.). */
   productPage?: import('@/lib/product-page-order').ProductPageSettings;
 }

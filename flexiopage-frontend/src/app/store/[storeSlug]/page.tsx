@@ -25,6 +25,8 @@ import { cookies } from 'next/headers';
 import { StoreFooter, type FooterConfig } from '@/components/storefront/StoreFooter';
 import { StorefrontTestimonials, type TestimonialsConfig } from '@/components/storefront/Testimonials';
 import { StorefrontVideo, type VideoConfig } from '@/components/storefront/Video';
+import { StorefrontFAQ, type FAQConfig } from '@/components/storefront/FAQ';
+import { StorefrontRichText, type RichTextConfig } from '@/components/storefront/RichText';
 import { AnnouncementBar, type AnnouncementBarConfig } from '@/components/storefront/AnnouncementBar';
 import { HeroMedia } from '@/components/storefront/hero-media';
 import type { WhatsappConfig } from '@/components/storefront/whatsapp-button';
@@ -57,6 +59,8 @@ interface StorefrontConfig {
   footer?: FooterConfig;
   slider?: SliderConfig;
   video?: VideoConfig;
+  faq?: FAQConfig;
+  richText?: RichTextConfig;
   sectionOrder?: MovableSectionId[];
 }
 
@@ -313,11 +317,10 @@ export default async function PublicStorePage({ params }: Props) {
           markets={enabledMarkets}
           currentMarketCountry={market?.country}
         />
-        {/* The 4 body sections (hero / slider / products / testimonials) are
-            rendered in the order the seller picked in the dashboard, with
-            the default being hero → slider → products → testimonials.
-            Each entry checks its own enabled flag so a section with no
-            content stays out of the DOM. */}
+        {/* Sections du corps rendues dans l'ordre choisi par le vendeur.
+            Chaque entrée vérifie son propre flag `enabled` — une section
+            vide reste hors du DOM. Nouveaux : video/faq/richText peuvent
+            désormais être réordonnés depuis le dashboard. */}
         {(() => {
           const order = resolveSectionOrder(sf.sectionOrder);
           const blocks: Record<MovableSectionId, React.ReactNode> = {
@@ -343,6 +346,12 @@ export default async function PublicStorePage({ params }: Props) {
               />
             ) : null,
             testimonials: <StorefrontTestimonials config={sf.testimonials} theme={theme} />,
+            video: <StorefrontVideo config={sf.video} theme={theme} />,
+            faq: <StorefrontFAQ config={sf.faq} theme={theme} />,
+            richText: <StorefrontRichText config={sf.richText} theme={theme} />,
+            // « featuredProduct » — le type est réservé pour le futur block
+            // vitrine mono-produit ; rien à rendre tant qu'il n'existe pas.
+            featuredProduct: null,
           };
           return (
             <>
@@ -352,9 +361,6 @@ export default async function PublicStorePage({ params }: Props) {
             </>
           );
         })()}
-        {/* Section vidéo (lien YouTube/Vimeo/mp4 → cadre + paragraphe). Position
-            fixe sous les sections du corps ; ne s'affiche que si activée + lien posé. */}
-        <StorefrontVideo config={sf.video} theme={theme} />
         {isDigital && showFeatures && <DigitalTrustStrip theme={theme} />}
         {isDigital && showFeatures && <DigitalGuarantee theme={theme} />}
         {showFooter && (

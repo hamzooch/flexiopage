@@ -24,9 +24,9 @@
  * Checkout / Collection / Wishlist / Info sans quitter l'éditeur.
  */
 
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
-import { useParams, useRouter } from 'next/navigation';
+import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import {
   ArrowLeft,
   Check,
@@ -61,11 +61,25 @@ import {
   Tag,
   Save,
   GripVertical,
+  CheckCircle2,
+  Circle,
+  AlertTriangle,
+  Zap,
+  Power,
+  ShieldAlert,
+  Code2,
+  Trash2,
+  Search,
+  Download,
+  Plus,
+  X,
+  EyeOff,
+  ChevronDown,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { storesApi } from '@/lib/api';
+import { storesApi, extractApiError } from '@/lib/api';
 import { cn, publicStoreUrl } from '@/lib/utils';
 import type {
   StoreType,
@@ -81,7 +95,26 @@ import type {
   NavMenuLink,
   BrandDisplay,
   LogoSize,
+  DeliveryIntegration,
+  MarketingIntegration,
+  VideoSettings,
+  FAQSettings,
+  FAQItemSettings,
+  RichTextSettings,
 } from '@/components/dashboard/store-editor';
+import { FieldToggle, FooterEditor } from '@/components/dashboard/store-editor';
+import { useConfirm, usePrompt } from '@/components/ui/confirm-dialog';
+import { renderMarkdown } from '@/lib/markdown';
+import type { NewsletterSettings, Subscriber, SubscriberCounts } from '@/types/newsletter';
+import type { Coupon } from '@/types/coupon';
+import {
+  SETTINGS_COUNTRIES,
+  SETTINGS_CURRENCIES,
+  SETTINGS_LANGUAGES,
+  directionOf,
+} from '@/components/dashboard/store-editor';
+import { ThemePaletteEditor } from '@/components/dashboard/theme-palette-editor';
+import { ThemeFontEditor } from '@/components/dashboard/theme-font-editor';
 import { ThemePreviewGrid } from '@/components/dashboard/theme-preview-card';
 import { MediaPicker } from '@/components/dashboard/MediaPicker';
 import { imageSizes } from '@/lib/image-recommendations';
@@ -99,6 +132,7 @@ import {
 import {
   STORE_THEME_TEMPLATES,
   themesForStoreType,
+  withLayoutFallback,
   type StoreThemeTemplate,
   type ThemeTokens,
 } from '@/data/store-themes';
@@ -138,7 +172,10 @@ const BLOCKS: BlockDef[] = [
   { id: 'slider',    label: 'Slider',       icon: GalleryHorizontal, group: 'home', mode: 'inline', hint: 'Carousel auto-play avec images.' },
   { id: 'products',  label: 'Grille produits', icon: Package,   group: 'home', mode: 'inline', hint: 'Affichage de la grille sur l\'accueil.' },
   { id: 'testimonials', label: 'Témoignages', icon: Quote,      group: 'home', mode: 'inline', hint: 'Avis clients avec avatar et note.' },
-  { id: 'section-order', label: 'Ordre des sections', icon: Layers, group: 'home', mode: 'inline', hint: 'Glisser hero/slider/produits/témoignages.' },
+  { id: 'video',     label: 'Vidéo',         icon: GalleryHorizontal, group: 'home', mode: 'inline', hint: 'YouTube, Vimeo ou mp4 avec paragraphe.' },
+  { id: 'faq',       label: 'FAQ',           icon: MessageCircle, group: 'home', mode: 'inline', hint: 'Questions fréquentes en accordéon.' },
+  { id: 'rich-text', label: 'Texte libre',   icon: FileText,      group: 'home', mode: 'inline', hint: 'Bloc markdown : histoire de marque, SEO.' },
+  { id: 'section-order', label: 'Ordre des sections', icon: Layers, group: 'home', mode: 'inline', hint: 'Glisser hero/slider/produits/témoignages/vidéo/FAQ/texte.' },
   // Conversion
   { id: 'cod',       label: 'Formulaire COD', icon: Wallet,     group: 'conversion', mode: 'inline', hint: 'Champs du paiement à la livraison.', physicalOnly: true },
   { id: 'whatsapp',  label: 'Bouton WhatsApp', icon: MessageCircle, group: 'conversion', mode: 'inline', hint: 'Bulle flottante à droite.' },
@@ -175,7 +212,7 @@ interface PreviewPageDef {
   label: string;
   icon: typeof SettingsIcon;
   /** Construit l'URL relative à partir du store + des slugs sample. */
-  buildPath: (ctx: { slug: string; productSlug?: string; collectionSlug?: string; infoSlug?: string }) => string | null;
+  buildPath: (ctx: { slug: string; productSlug?: string; collectionSlug?: string; infoSlug?: string; orderId?: string }) => string | null;
 }
 
 const PREVIEW_PAGES: PreviewPageDef[] = [
@@ -183,6 +220,7 @@ const PREVIEW_PAGES: PreviewPageDef[] = [
   { id: 'product',  label: 'Produit',    icon: Package,     buildPath: ({ slug, productSlug }) => productSlug ? `/${slug}/product/${productSlug}` : null },
   { id: 'cart',     label: 'Panier',     icon: ShoppingCart, buildPath: ({ slug }) => `/${slug}/cart` },
   { id: 'checkout', label: 'Checkout',   icon: Wallet,      buildPath: ({ slug }) => `/${slug}/cart/checkout` },
+  { id: 'thanks',   label: 'Merci',      icon: CheckCircle2, buildPath: ({ orderId }) => orderId ? `/thanks/cod/${orderId}` : null },
   { id: 'collection', label: 'Collection', icon: Layers,    buildPath: ({ slug, collectionSlug }) => collectionSlug ? `/${slug}/c/${collectionSlug}` : null },
   { id: 'wishlist', label: 'Wishlist',   icon: Quote,       buildPath: ({ slug }) => `/${slug}/wishlist` },
   { id: 'info',     label: 'Page info',  icon: FileText,    buildPath: ({ slug, infoSlug }) => infoSlug ? `/${slug}/p/${infoSlug}` : null },
@@ -198,7 +236,7 @@ const PREVIEW_PAGES: PreviewPageDef[] = [
  * qui contient déjà le merge complet (on évite le `$set: settings: {...}`
  * partiel qui écraserait les autres clés de settings côté backend).
  */
-type DirtyKey = 'name' | 'description' | 'logo' | 'favicon' | 'isPublished' | 'theme' | 'settings';
+type DirtyKey = 'name' | 'description' | 'logo' | 'favicon' | 'isPublished' | 'theme' | 'settings' | 'customDomain' | 'integrations';
 
 interface PatchState {
   /** Clés top-level dirty. */
@@ -213,6 +251,7 @@ const emptyPatch: PatchState = { keys: new Set(), settingsPaths: new Set() };
 export default function StoreEditPage() {
   const params = useParams();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const storeId = params.storeId as string;
 
   const [store, setStore] = useState<StoreType | null>(null);
@@ -220,7 +259,14 @@ export default function StoreEditPage() {
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [savedFlash, setSavedFlash] = useState(false);
-  const [activeBlock, setActiveBlock] = useState<string | null>('hero');
+  // Le block actif peut être deep-linké via ?block=xxx (utilisé par les
+  // redirects 301 des anciennes sous-pages et les CTAs externes). On lit
+  // le param une seule fois à l'init pour ne pas re-forcer le block si le
+  // vendeur clique ensuite un autre item dans le menu.
+  const [activeBlock, setActiveBlock] = useState<string | null>(() => {
+    const q = searchParams?.get('block');
+    return q && q.trim() ? q : 'hero';
+  });
   const [themePickerOpen, setThemePickerOpen] = useState(false);
   const [visualEditMode, setVisualEditMode] = useState(true);
 
@@ -233,6 +279,7 @@ export default function StoreEditPage() {
   const [firstProductSlug, setFirstProductSlug] = useState<string | null>(null);
   const [firstCollectionSlug, setFirstCollectionSlug] = useState<string | null>(null);
   const [firstInfoSlug, setFirstInfoSlug] = useState<string | null>(null);
+  const [firstOrderId, setFirstOrderId] = useState<string | null>(null);
 
   // Preview state
   const [previewPage, setPreviewPage] = useState<string>('home');
@@ -248,7 +295,11 @@ export default function StoreEditPage() {
       storesApi.listProducts(storeId, { published: 'true', limit: 1 }).catch(() => null),
       storesApi.listCollections?.(storeId).catch(() => null) ?? null,
       storesApi.listPages(storeId, { kind: 'info' }).catch(() => null),
-    ]).then(([sRes, pRes, cRes, iRes]) => {
+      // On charge le dernier order pour permettre au preview « Merci » de
+      // pointer sur un vrai orderId. Si aucun n'existe, l'entrée reste
+      // disabled dans le switcher.
+      storesApi.listOrders(storeId, { limit: 1 }).catch(() => null),
+    ]).then(([sRes, pRes, cRes, iRes, oRes]) => {
       if (cancelled) return;
       const s = (sRes?.data as { store?: StoreType } | undefined)?.store || null;
       setStore(s);
@@ -258,6 +309,8 @@ export default function StoreEditPage() {
       setFirstCollectionSlug(collections[0]?.slug || null);
       const pages = (iRes?.data as { pages?: Array<{ slug?: string }> } | undefined)?.pages || [];
       setFirstInfoSlug(pages[0]?.slug || null);
+      const orders = (oRes?.data as { orders?: Array<{ _id?: string }> } | undefined)?.orders || [];
+      setFirstOrderId(orders[0]?._id || null);
       setLoading(false);
     });
     return () => { cancelled = true; };
@@ -294,6 +347,8 @@ export default function StoreEditPage() {
         case 'isPublished': payload.isPublished = !!store.isPublished; break;
         case 'theme':       payload.theme       = store.theme; break;
         case 'settings':    payload.settings    = store.settings; break;
+        case 'customDomain': payload.customDomain = store.customDomain || undefined; break;
+        case 'integrations': payload.integrations = store.integrations; break;
       }
     }
     try {
@@ -351,6 +406,7 @@ export default function StoreEditPage() {
     productSlug: firstProductSlug || undefined,
     collectionSlug: firstCollectionSlug || undefined,
     infoSlug: firstInfoSlug || undefined,
+    orderId: firstOrderId || undefined,
   };
   const previewDef = PREVIEW_PAGES.find((p) => p.id === previewPage) || PREVIEW_PAGES[0];
   const previewPath = previewDef.buildPath(previewCtx);
@@ -511,6 +567,7 @@ export default function StoreEditPage() {
               markDirty={markDirty}
               openThemePicker={() => setThemePickerOpen(true)}
               currentThemeName={currentThemeName || 'Par défaut'}
+              setActiveBlock={setActiveBlock}
             />
           ) : (
             <div className="grid flex-1 place-items-center p-6 text-center">
@@ -682,6 +739,9 @@ interface EditorCtx {
   markDirty: (key: DirtyKey, settingsSubPath?: string) => void;
   openThemePicker: () => void;
   currentThemeName: string;
+  /** Permet à un éditeur (ex: Apps dashboard) de basculer l'utilisateur
+   *  sur un autre block du hub sans passer par un lien externe. */
+  setActiveBlock: (id: string) => void;
 }
 
 function BlockEditor(ctx: EditorCtx) {
@@ -697,6 +757,9 @@ function BlockEditor(ctx: EditorCtx) {
     case 'slider':    return <SliderEditor {...ctx} />;
     case 'products':  return <ProductsGridEditor {...ctx} />;
     case 'testimonials': return <TestimonialsEditor {...ctx} />;
+    case 'video':     return <VideoInlineEditor {...ctx} />;
+    case 'faq':       return <FAQInlineEditor {...ctx} />;
+    case 'rich-text': return <RichTextInlineEditor {...ctx} />;
     case 'section-order': return <SectionOrderEditor {...ctx} />;
     case 'navbar':    return <NavbarEditor {...ctx} />;
     case 'footer':    return <FooterInlineEditor {...ctx} />;
@@ -734,6 +797,16 @@ function EditorHeader({ title, hint }: { title: string; hint: string }) {
 // ─────────────────────────────────────────────────────────────────────
 
 function IdentityEditor({ block, store, setStore, markDirty }: EditorCtx) {
+  const country = store.settings?.country || '';
+  const language = store.settings?.language || '';
+  const currency = store.settings?.currency || 'USD';
+
+  function patchSettings(patch: Record<string, unknown>) {
+    const nextSettings = { ...(store.settings || {}), ...patch };
+    setStore((s) => (s ? { ...s, settings: nextSettings } : s));
+    markDirty('settings', 'identity');
+  }
+
   return (
     <div className="flex flex-1 flex-col">
       <EditorHeader title={block.label} hint={block.hint} />
@@ -782,20 +855,107 @@ function IdentityEditor({ block, store, setStore, markDirty }: EditorCtx) {
             </span>
           </label>
         </Field>
-        <div className="rounded-lg border border-border/60 bg-muted/20 p-3 text-xs text-muted-foreground">
-          Tu veux régler langue, devise, pays, domaine personnalisé ?
-          {' '}
-          <Link href={`/dashboard/stores/${store._id}/info`} className="font-semibold text-primary hover:underline">
-            Ouvrir les infos détaillées →
-          </Link>
-        </div>
+
+        <Field label="Pays cible" hint="Alimente la génération AI et pré-remplit devise/langue.">
+          <select
+            value={country}
+            onChange={(e) => {
+              const v = e.target.value;
+              const match = SETTINGS_COUNTRIES.find((c) => c.code === v);
+              // Cascade : sélectionner un pays auto-remplit devise, et bascule
+              // en arabe si c'est un pays du monde arabe (préservé de /info).
+              const patch: Record<string, unknown> = { country: v || undefined };
+              if (match?.currency) patch.currency = match.currency;
+              if (match?.arab && language !== 'ar') {
+                patch.language = 'ar';
+                patch.direction = 'rtl';
+              }
+              patchSettings(patch);
+            }}
+            className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+          >
+            <optgroup label="Monde arabe">
+              {SETTINGS_COUNTRIES.filter((c) => c.group === 'arab').map((c) => (
+                <option key={c.code} value={c.code}>{c.label}</option>
+              ))}
+            </optgroup>
+            <optgroup label="Afrique">
+              {SETTINGS_COUNTRIES.filter((c) => c.group === 'africa').map((c) => (
+                <option key={c.code} value={c.code}>{c.label}</option>
+              ))}
+            </optgroup>
+            <optgroup label="Autre">
+              {SETTINGS_COUNTRIES.filter((c) => c.group === 'other').map((c) => (
+                <option key={c.code || 'none'} value={c.code}>{c.label}</option>
+              ))}
+            </optgroup>
+          </select>
+        </Field>
+
+        <Field label="Langue" hint="Détermine le sens de lecture (LTR/RTL).">
+          <select
+            value={language}
+            onChange={(e) => {
+              const v = e.target.value;
+              patchSettings({ language: v || undefined, direction: directionOf(v) });
+            }}
+            className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+          >
+            {SETTINGS_LANGUAGES.map((l) => (
+              <option key={l.code} value={l.code}>{l.label}</option>
+            ))}
+          </select>
+          {language && directionOf(language) === 'rtl' && (
+            <p className="mt-1.5 inline-flex items-center gap-1.5 rounded-full bg-fuchsia-500/10 px-2.5 py-1 text-[10px] font-semibold text-fuchsia-700">
+              RTL · Droite → Gauche
+            </p>
+          )}
+        </Field>
+
+        <Field label="Devise" hint="Affichée sur les prix, cartes et checkout.">
+          <select
+            value={currency}
+            onChange={(e) => patchSettings({ currency: e.target.value || 'USD' })}
+            className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+          >
+            {SETTINGS_CURRENCIES.map((c) => (
+              <option key={c} value={c}>{c}</option>
+            ))}
+          </select>
+        </Field>
+
+        <Field label="Domaine personnalisé" hint="Optionnel — branche ton propre nom de domaine.">
+          <Input
+            value={store.customDomain || ''}
+            onChange={(e) => {
+              const v = e.target.value;
+              setStore((s) => (s ? { ...s, customDomain: v || undefined } : s));
+              markDirty('customDomain');
+            }}
+            placeholder="Ex: www.maboutique.com"
+          />
+          <p className="mt-1.5 text-[11px] text-muted-foreground">
+            Configure un CNAME chez ton registrar vers <code className="rounded bg-muted px-1 py-0.5 text-[11px]">cname.flexiopage.com</code>.
+          </p>
+        </Field>
       </div>
     </div>
   );
 }
 
-function ThemeEditor({ block, store, openThemePicker, currentThemeName }: EditorCtx) {
+function ThemeEditor({ block, store, setStore, markDirty, openThemePicker, currentThemeName }: EditorCtx) {
   const theme = (store.theme as Partial<ThemeTokens> | undefined) || {};
+  // Un thème sauvegardé peut être antérieur au bloc `layout` ou entièrement
+  // personnalisé — on backfill les tokens structurels manquants pour éviter
+  // que les éditeurs palette/fonts affichent des valeurs vides.
+  const themeForEditors: ThemeTokens | null =
+    theme.primary && theme.background ? withLayoutFallback(theme as ThemeTokens) : null;
+
+  function patchTheme(next: ThemeTokens) {
+    setStore((s) => (s ? { ...s, theme: next as unknown as Record<string, unknown> } : s));
+    markDirty('theme');
+  }
+
   return (
     <div className="flex flex-1 flex-col">
       <EditorHeader title={block.label} hint={block.hint} />
@@ -817,13 +977,30 @@ function ThemeEditor({ block, store, openThemePicker, currentThemeName }: Editor
             <Palette className="h-4 w-4" /> Choisir un autre thème
           </Button>
         </div>
-        <div className="rounded-lg border border-border/60 bg-muted/20 p-3 text-xs text-muted-foreground">
-          Pour ajuster les couleurs précisément (palette personnalisée) :
-          {' '}
-          <Link href={`/dashboard/stores/${store._id}/appearance`} className="font-semibold text-primary hover:underline">
-            Ouvrir l&apos;éditeur d&apos;apparence →
-          </Link>
-        </div>
+
+        {themeForEditors && (
+          <div className="rounded-2xl border border-border/60 bg-muted/20 p-4">
+            <div className="mb-3">
+              <div className="text-sm font-semibold">Palette de couleurs</div>
+              <p className="text-[11px] text-muted-foreground">
+                Personnalise chaque teinte du thème. Reviens à l&apos;original à tout moment.
+              </p>
+            </div>
+            <ThemePaletteEditor theme={themeForEditors} onChange={patchTheme} />
+          </div>
+        )}
+
+        {themeForEditors && (
+          <div className="rounded-2xl border border-border/60 bg-muted/20 p-4">
+            <div className="mb-3">
+              <div className="text-sm font-semibold">Typographie</div>
+              <p className="text-[11px] text-muted-foreground">
+                Choisis les polices des titres et du texte. Reviens à celles du thème quand tu veux.
+              </p>
+            </div>
+            <ThemeFontEditor theme={themeForEditors} onChange={patchTheme} />
+          </div>
+        )}
       </div>
     </div>
   );
@@ -1498,10 +1675,14 @@ function DraggableOrderList<T>({
 // ─────────────────────────────────────────────────────────────────────
 
 const SECTION_LABELS: Record<MovableSectionId, string> = {
-  hero:         'Hero',
-  slider:       'Slider',
-  products:     'Grille produits',
-  testimonials: 'Témoignages',
+  hero:            'Hero',
+  slider:          'Slider',
+  products:        'Grille produits',
+  testimonials:    'Témoignages',
+  video:           'Vidéo',
+  faq:             'FAQ',
+  richText:        'Texte libre',
+  featuredProduct: 'Produit vedette',
 };
 
 function SectionOrderEditor({ block, store, setStore, markDirty }: EditorCtx) {
@@ -1532,6 +1713,273 @@ function SectionOrderEditor({ block, store, setStore, markDirty }: EditorCtx) {
         <Button type="button" variant="outline" size="sm" onClick={() => setOrder([...DEFAULT_SECTION_ORDER])}>
           Réinitialiser à l&apos;ordre par défaut
         </Button>
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// Vidéo — YouTube/Vimeo/mp4 + paragraphe côté droit sur l'accueil
+// ─────────────────────────────────────────────────────────────────────
+
+function VideoInlineEditor({ block, store, setStore, markDirty }: EditorCtx) {
+  const storefront = (store.settings?.storefront || {}) as StorefrontSettings;
+  const video: VideoSettings = storefront.video || {};
+
+  function patch(next: Partial<VideoSettings>) {
+    const nextVideo = { ...video, ...next };
+    const nextStorefront = { ...storefront, video: nextVideo };
+    const nextSettings = { ...(store.settings || {}), storefront: nextStorefront };
+    setStore((s) => (s ? { ...s, settings: nextSettings } : s));
+    markDirty('settings', 'video');
+  }
+
+  return (
+    <div className="flex flex-1 flex-col">
+      <EditorHeader title={block.label} hint={block.hint} />
+      <div className="space-y-5 p-5">
+        <FieldToggle
+          label="Afficher la vidéo"
+          sublabel="Section visible sur la page d'accueil (position réordonnable)."
+          checked={!!video.enabled}
+          onChange={(v) => patch({ enabled: v })}
+        />
+        <Field label="Lien vidéo" hint="YouTube, Vimeo, ou fichier .mp4/.webm/.ogg.">
+          <Input
+            value={video.url || ''}
+            onChange={(e) => patch({ url: e.target.value })}
+            placeholder="https://www.youtube.com/watch?v=..."
+          />
+        </Field>
+        <Field label="Titre" hint="Affiché à côté de la vidéo.">
+          <Input
+            value={video.title || ''}
+            onChange={(e) => patch({ title: e.target.value })}
+            placeholder="Notre histoire"
+          />
+        </Field>
+        <Field label="Paragraphe" hint="Contexte, promesse de marque ou descriptif court.">
+          <textarea
+            value={video.text || ''}
+            onChange={(e) => patch({ text: e.target.value })}
+            rows={5}
+            placeholder="Depuis 2020, on sélectionne les meilleurs artisans du Sénégal…"
+            className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+          />
+        </Field>
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// FAQ — accordéon de questions / réponses réordonnable
+// ─────────────────────────────────────────────────────────────────────
+
+function FAQInlineEditor({ block, store, setStore, markDirty }: EditorCtx) {
+  const storefront = (store.settings?.storefront || {}) as StorefrontSettings;
+  const faq: FAQSettings = storefront.faq || {};
+  const items: FAQItemSettings[] = faq.items || [];
+
+  function patch(next: Partial<FAQSettings>) {
+    const nextFaq = { ...faq, ...next };
+    const nextStorefront = { ...storefront, faq: nextFaq };
+    const nextSettings = { ...(store.settings || {}), storefront: nextStorefront };
+    setStore((s) => (s ? { ...s, settings: nextSettings } : s));
+    markDirty('settings', 'faq');
+  }
+
+  function setItems(next: FAQItemSettings[]) {
+    patch({ items: next });
+  }
+
+  function addItem() {
+    setItems([...items, { question: '', answer: '' }]);
+  }
+
+  function updateItem(i: number, key: keyof FAQItemSettings, value: string) {
+    setItems(items.map((it, idx) => (idx === i ? { ...it, [key]: value } : it)));
+  }
+
+  function removeItem(i: number) {
+    setItems(items.filter((_, idx) => idx !== i));
+  }
+
+  function moveItem(i: number, delta: -1 | 1) {
+    const j = i + delta;
+    if (j < 0 || j >= items.length) return;
+    const next = [...items];
+    [next[i], next[j]] = [next[j], next[i]];
+    setItems(next);
+  }
+
+  return (
+    <div className="flex flex-1 flex-col">
+      <EditorHeader title={block.label} hint={block.hint} />
+      <div className="space-y-5 p-5">
+        <FieldToggle
+          label="Afficher la FAQ"
+          sublabel="Section visible sur la page d'accueil (position réordonnable)."
+          checked={!!faq.enabled}
+          onChange={(v) => patch({ enabled: v })}
+        />
+        <Field label="Titre">
+          <Input
+            value={faq.title || ''}
+            onChange={(e) => patch({ title: e.target.value })}
+            placeholder="Questions fréquentes"
+          />
+        </Field>
+        <Field label="Sous-titre (optionnel)">
+          <Input
+            value={faq.subtitle || ''}
+            onChange={(e) => patch({ subtitle: e.target.value })}
+            placeholder="Tout ce que tu voulais savoir avant de commander."
+          />
+        </Field>
+
+        <div className="rounded-xl border border-border/60 bg-muted/20 p-3">
+          <div className="mb-2 flex items-center justify-between">
+            <div className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+              Questions ({items.length})
+            </div>
+            <Button size="sm" variant="outline" onClick={addItem} className="h-7 gap-1 text-[11px]">
+              <Plus className="h-3 w-3" />
+              Ajouter
+            </Button>
+          </div>
+          {items.length === 0 ? (
+            <div className="rounded-lg border border-dashed border-border/60 bg-card p-4 text-center text-[11px] text-muted-foreground">
+              Aucune question — clique « Ajouter » pour commencer.
+            </div>
+          ) : (
+            <ul className="space-y-2">
+              {items.map((it, i) => (
+                <li key={i} className="rounded-lg border border-border/60 bg-card p-2.5">
+                  <div className="mb-1.5 flex items-center justify-between">
+                    <span className="text-[10px] font-semibold text-muted-foreground">Q{i + 1}</span>
+                    <div className="flex items-center gap-0.5">
+                      <button
+                        type="button"
+                        onClick={() => moveItem(i, -1)}
+                        disabled={i === 0}
+                        className="grid h-6 w-6 place-items-center rounded text-muted-foreground hover:bg-muted disabled:opacity-30"
+                        aria-label="Monter"
+                      >
+                        ↑
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => moveItem(i, 1)}
+                        disabled={i === items.length - 1}
+                        className="grid h-6 w-6 place-items-center rounded text-muted-foreground hover:bg-muted disabled:opacity-30"
+                        aria-label="Descendre"
+                      >
+                        ↓
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => removeItem(i)}
+                        className="grid h-6 w-6 place-items-center rounded text-destructive hover:bg-destructive/10"
+                        aria-label="Supprimer"
+                      >
+                        <Trash2 className="h-3 w-3" />
+                      </button>
+                    </div>
+                  </div>
+                  <Input
+                    value={it.question}
+                    onChange={(e) => updateItem(i, 'question', e.target.value)}
+                    placeholder="Ex: Quels sont les délais de livraison ?"
+                    className="mb-1.5 text-xs"
+                  />
+                  <textarea
+                    value={it.answer}
+                    onChange={(e) => updateItem(i, 'answer', e.target.value)}
+                    rows={3}
+                    placeholder="Réponse claire et rassurante — 2 phrases max."
+                    className="w-full rounded-md border border-input bg-background px-2 py-1.5 text-[11px]"
+                  />
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// Rich Text — bloc markdown libre pour histoire de marque / SEO
+// ─────────────────────────────────────────────────────────────────────
+
+function RichTextInlineEditor({ block, store, setStore, markDirty }: EditorCtx) {
+  const storefront = (store.settings?.storefront || {}) as StorefrontSettings;
+  const rt: RichTextSettings = storefront.richText || {};
+
+  function patch(next: Partial<RichTextSettings>) {
+    const nextRt = { ...rt, ...next };
+    const nextStorefront = { ...storefront, richText: nextRt };
+    const nextSettings = { ...(store.settings || {}), storefront: nextStorefront };
+    setStore((s) => (s ? { ...s, settings: nextSettings } : s));
+    markDirty('settings', 'richText');
+  }
+
+  return (
+    <div className="flex flex-1 flex-col">
+      <EditorHeader title={block.label} hint={block.hint} />
+      <div className="space-y-5 p-5">
+        <FieldToggle
+          label="Afficher le bloc"
+          sublabel="Section visible sur la page d'accueil (position réordonnable)."
+          checked={!!rt.enabled}
+          onChange={(v) => patch({ enabled: v })}
+        />
+        <Field label="Titre (optionnel)">
+          <Input
+            value={rt.title || ''}
+            onChange={(e) => patch({ title: e.target.value })}
+            placeholder="À propos de la marque"
+          />
+        </Field>
+        <Field label="Alignement">
+          <div className="inline-flex rounded-lg bg-muted/40 p-0.5">
+            {(['left', 'center'] as const).map((a) => (
+              <button
+                key={a}
+                type="button"
+                onClick={() => patch({ align: a })}
+                className={cn(
+                  'rounded-md px-3 py-1.5 text-xs font-medium transition-colors',
+                  (rt.align || 'left') === a ? 'bg-card text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground',
+                )}
+              >
+                {a === 'left' ? 'Gauche' : 'Centre'}
+              </button>
+            ))}
+          </div>
+        </Field>
+        <Field label="Contenu (markdown)" hint="# titre · **gras** · *italique* · - listes · [lien](url)">
+          <textarea
+            value={rt.content || ''}
+            onChange={(e) => patch({ content: e.target.value })}
+            rows={10}
+            placeholder={'## Notre mission\n\nDepuis 2020, nous ...\n\n- Point 1\n- Point 2'}
+            className="w-full rounded-lg border border-input bg-background p-2.5 font-mono text-[11px] leading-relaxed focus:border-primary/40 focus:outline-none focus:ring-2 focus:ring-primary/10"
+          />
+        </Field>
+        {rt.content?.trim() && (
+          <div className="rounded-lg border border-border/60 bg-card p-3">
+            <div className="mb-1.5 text-[9px] font-semibold uppercase tracking-wider text-muted-foreground">
+              Aperçu
+            </div>
+            <div
+              className={cn('prose-storefront text-xs leading-relaxed', (rt.align || 'left') === 'center' && 'text-center')}
+              dangerouslySetInnerHTML={{ __html: renderMarkdown(rt.content) }}
+            />
+          </div>
+        )}
       </div>
     </div>
   );
@@ -1934,216 +2382,1492 @@ function CodFormEditor({ block, store, setStore, markDirty }: EditorCtx) {
   );
 }
 
-function FooterInlineEditor({ block, store, setStore, markDirty, storeId }: EditorCtx & { storeId?: string }) {
+function FooterInlineEditor({ block, store, setStore, markDirty }: EditorCtx) {
+  const storefront = (store.settings?.storefront || {}) as StorefrontSettings;
+
+  function patchStorefront(patch: Partial<StorefrontSettings>) {
+    const nextStorefront: StorefrontSettings = { ...storefront, ...patch };
+    const nextSettings = { ...(store.settings || {}), storefront: nextStorefront };
+    setStore((s) => (s ? { ...s, settings: nextSettings } : s));
+    markDirty('settings', 'footer');
+  }
+
   return (
     <div className="flex flex-1 flex-col">
       <EditorHeader title={block.label} hint={block.hint} />
-      <div className="space-y-5 p-5 overflow-auto max-h-[calc(100vh-300px)]">
-        <div className="rounded-2xl border border-border/60 bg-muted/30 p-6 space-y-4">
-          <div className="space-y-2">
-            <div className="text-sm font-semibold">Footer</div>
-            <p className="text-xs text-muted-foreground">
-              Personnalise les colonnes, liens, logo et contenu du footer de ta boutique.
-            </p>
+      <div className="space-y-4 p-5">
+        <FieldToggle
+          label="Bandeau de réassurance"
+          sublabel="Livraison rapide · Paiement sécurisé · Support"
+          checked={storefront.showFeatures !== false}
+          onChange={(v) => patchStorefront({ showFeatures: v })}
+        />
+        <FieldToggle
+          label="Afficher le pied de page"
+          sublabel="Mentions et liens vers les pages d'info."
+          checked={storefront.showFooter !== false}
+          onChange={(v) => patchStorefront({ showFooter: v })}
+        />
+        {storefront.showFooter !== false && (
+          <div className="space-y-3">
+            <Field label="Note légale (optionnel)" hint="Affichée en tout bas du footer.">
+              <Input
+                value={storefront.footerNote || ''}
+                onChange={(e) => patchStorefront({ footerNote: e.target.value })}
+                placeholder="Ex: © 2026 Ma Boutique · Tous droits réservés"
+              />
+            </Field>
+            <FooterEditor
+              footer={storefront.footer}
+              onChange={(footer) => patchStorefront({ footer })}
+            />
           </div>
-          <Link href={`/dashboard/stores/${storeId}/sections`}>
-            <Button className="w-full gap-1.5 gradient-brand text-white">
-              Ouvrir l'éditeur complet du footer
-              <ChevronRight className="h-4 w-4" />
-            </Button>
-          </Link>
+        )}
+      </div>
+    </div>
+  );
+}
+
+interface InfoPageDoc {
+  _id: string;
+  name: string;
+  slug: string;
+  kind?: 'landing' | 'info';
+  body?: string;
+  isPublished?: boolean;
+  updatedAt?: string;
+}
+
+function InfoPagesInlineEditor({ block, storeId, store }: EditorCtx) {
+  const prompt = usePrompt();
+  const confirm = useConfirm();
+  const [pages, setPages] = useState<InfoPageDoc[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await storesApi.listPages(storeId, { kind: 'info' });
+      const list = (res.data as { pages?: InfoPageDoc[] }).pages || [];
+      setPages(list.filter((p) => p.kind === 'info' || !p.kind));
+    } finally {
+      setLoading(false);
+    }
+  }, [storeId]);
+
+  useEffect(() => { void load(); }, [load]);
+
+  async function createInfoPage() {
+    const name = await prompt({
+      title: 'Nouvelle page',
+      description: "Donne-lui un titre clair — c'est ce que tes clients verront dans le menu et le footer.",
+      placeholder: 'Ex: Mentions légales, CGV, À propos…',
+      confirmLabel: 'Créer',
+      minLength: 2,
+    });
+    if (!name?.trim()) return;
+    const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+    await storesApi.createPage(storeId, {
+      name: name.trim(),
+      slug,
+      kind: 'info',
+      body: `# ${name.trim()}\n\nDécris ici le contenu de ta page.`,
+      isPublished: true,
+    });
+    await load();
+  }
+
+  return (
+    <div className="flex flex-1 flex-col">
+      <EditorHeader title={block.label} hint={block.hint} />
+      <div className="space-y-4 p-5">
+        <Button onClick={createInfoPage} className="w-full gap-1.5 gradient-brand text-white">
+          <Plus className="h-3.5 w-3.5" />
+          Nouvelle page
+        </Button>
+        {loading ? (
+          <div className="grid place-items-center py-10"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>
+        ) : pages.length === 0 ? (
+          <div className="rounded-xl border border-dashed border-border/60 bg-card p-6 text-center">
+            <FileText className="mx-auto h-6 w-6 text-muted-foreground" />
+            <p className="mt-2 text-sm font-medium">Aucune page</p>
+            <p className="text-[11px] text-muted-foreground">Clique sur « Nouvelle page ».</p>
+          </div>
+        ) : (
+          <ul className="space-y-2">
+            {pages.map((p) => (
+              <InfoPageRow
+                key={p._id}
+                page={p}
+                storeId={storeId}
+                storeSlug={store.slug || ''}
+                expanded={expandedId === p._id}
+                onToggle={() => setExpandedId((id) => (id === p._id ? null : p._id))}
+                onSaved={(u) => setPages((arr) => arr.map((r) => (r._id === u._id ? u : r)))}
+                onDeleted={async () => {
+                  const ok = await confirm({
+                    title: `Supprimer « ${p.name} » ?`,
+                    description: 'La page ne sera plus accessible sur ta vitrine. Action irréversible.',
+                    confirmLabel: 'Supprimer',
+                    tone: 'destructive',
+                  });
+                  if (!ok) return;
+                  await storesApi.deletePage(storeId, p._id);
+                  setPages((arr) => arr.filter((r) => r._id !== p._id));
+                }}
+              />
+            ))}
+          </ul>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function InfoPageRow({
+  page,
+  storeId,
+  storeSlug,
+  expanded,
+  onToggle,
+  onSaved,
+  onDeleted,
+}: {
+  page: InfoPageDoc;
+  storeId: string;
+  storeSlug: string;
+  expanded: boolean;
+  onToggle: () => void;
+  onSaved: (p: InfoPageDoc) => void;
+  onDeleted: () => void;
+}) {
+  const [name, setName] = useState(page.name);
+  const [body, setBody] = useState(page.body || '');
+  const [isPublished, setIsPublished] = useState(!!page.isPublished);
+  const [saving, setSaving] = useState(false);
+  const [savedAt, setSavedAt] = useState<number | null>(null);
+
+  const dirty = name !== page.name || body !== (page.body || '') || isPublished !== !!page.isPublished;
+
+  async function handleSave() {
+    setSaving(true);
+    try {
+      const res = await storesApi.updatePage(storeId, page._id, { name: name.trim(), body, isPublished });
+      const updated = (res.data as { page: InfoPageDoc }).page;
+      onSaved(updated);
+      setSavedAt(Date.now());
+      window.setTimeout(() => setSavedAt(null), 2200);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleTogglePublish() {
+    const next = !isPublished;
+    setIsPublished(next);
+    setSaving(true);
+    try {
+      const res = await storesApi.updatePage(storeId, page._id, { isPublished: next });
+      onSaved((res.data as { page: InfoPageDoc }).page);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <li className="overflow-hidden rounded-xl border border-border/60 bg-card">
+      <button type="button" onClick={onToggle} className="flex w-full items-center justify-between gap-2 px-3 py-2.5 text-left">
+        <div className="flex min-w-0 items-center gap-2">
+          <span className="grid h-7 w-7 shrink-0 place-items-center rounded-md bg-indigo-500/10 text-indigo-700">
+            <FileText className="h-3.5 w-3.5" />
+          </span>
+          <div className="min-w-0">
+            <div className="flex items-center gap-1.5">
+              <span className="truncate text-xs font-semibold">{page.name}</span>
+              {isPublished ? (
+                <span className="inline-flex items-center gap-0.5 rounded-full bg-emerald-500/10 px-1.5 py-0.5 text-[9px] font-semibold text-emerald-700">
+                  <Eye className="h-2.5 w-2.5" /> Publiée
+                </span>
+              ) : (
+                <span className="inline-flex items-center gap-0.5 rounded-full bg-amber-500/10 px-1.5 py-0.5 text-[9px] font-semibold text-amber-700">
+                  <EyeOff className="h-2.5 w-2.5" /> Brouillon
+                </span>
+              )}
+            </div>
+            <code className="text-[10px] text-muted-foreground">/p/{page.slug}</code>
+          </div>
+        </div>
+        <ChevronDown className={cn('h-3.5 w-3.5 text-muted-foreground transition-transform', expanded && 'rotate-180')} />
+      </button>
+      {expanded && (
+        <div className="border-t border-border/60 bg-muted/20 p-3">
+          <div className="space-y-2">
+            <Field label="Titre">
+              <Input value={name} onChange={(e) => setName(e.target.value)} />
+            </Field>
+            <Field label="Contenu (markdown)" hint="# titre · **gras** · *italique* · [lien](url) · - listes">
+              <textarea
+                value={body}
+                onChange={(e) => setBody(e.target.value)}
+                rows={10}
+                className="w-full rounded-lg border border-input bg-background p-2 font-mono text-[11px] leading-relaxed focus:border-primary/40 focus:outline-none focus:ring-2 focus:ring-primary/10"
+              />
+            </Field>
+            {body.trim() && (
+              <div className="rounded-lg border border-border/60 bg-card p-2 max-h-48 overflow-y-auto">
+                <div className="mb-1 text-[9px] font-semibold uppercase tracking-wider text-muted-foreground">Aperçu</div>
+                <div className="prose-storefront text-xs leading-relaxed" dangerouslySetInnerHTML={{ __html: renderMarkdown(body) }} />
+              </div>
+            )}
+            <div className="flex flex-wrap gap-1.5">
+              <Button size="sm" onClick={handleSave} disabled={saving || !dirty} className="gap-1">
+                {saving ? <Loader2 className="h-3 w-3 animate-spin" /> : <Save className="h-3 w-3" />}
+                Enregistrer
+              </Button>
+              <Button size="sm" variant="outline" onClick={handleTogglePublish} disabled={saving} className="gap-1">
+                {isPublished ? <EyeOff className="h-3 w-3" /> : <Eye className="h-3 w-3" />}
+                {isPublished ? 'Brouillon' : 'Publier'}
+              </Button>
+              {storeSlug && (
+                <Link href={`/${storeSlug}/p/${page.slug}`} target="_blank" rel="noopener">
+                  <Button size="sm" variant="outline" className="gap-1"><ExternalLink className="h-3 w-3" />Voir</Button>
+                </Link>
+              )}
+              <Button size="sm" variant="ghost" onClick={onDeleted} className="gap-1 text-destructive hover:bg-destructive/10">
+                <Trash2 className="h-3 w-3" />
+                Suppr.
+              </Button>
+              {savedAt && (
+                <span className="ml-auto inline-flex items-center gap-1 text-[10px] text-emerald-600">
+                  <CheckCircle2 className="h-3 w-3" /> Enregistré
+                </span>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+    </li>
+  );
+}
+
+/**
+ * Modal plein-écran qui embarque une sous-page CRUD via iframe.
+ * On passe `?embed=1` pour que le layout dashboard masque la sidebar +
+ * header — sinon le vendeur verrait le chrome deux fois.
+ * ESC pour fermer, refresh pour reload la vue.
+ */
+function CrudModal({
+  title,
+  src,
+  onClose,
+}: {
+  title: string;
+  src: string;
+  onClose: () => void;
+}) {
+  const [refreshKey, setRefreshKey] = useState(0);
+  const separator = src.includes('?') ? '&' : '?';
+  const embedSrc = `${src}${separator}embed=1`;
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [onClose]);
+  return (
+    <div className="fixed inset-0 z-[60] flex flex-col bg-background">
+      <div className="flex items-center justify-between gap-3 border-b border-border/60 bg-card px-4 py-2.5 shadow-sm">
+        <div className="min-w-0">
+          <div className="truncate text-sm font-semibold">{title}</div>
+          <div className="text-[10px] text-muted-foreground">ESC pour fermer</div>
+        </div>
+        <div className="flex items-center gap-1.5">
+          <Button variant="ghost" size="sm" onClick={() => setRefreshKey((n) => n + 1)} className="gap-1">
+            <RotateCw className="h-3.5 w-3.5" />
+            Actualiser
+          </Button>
+          <Button variant="outline" size="sm" onClick={onClose} className="gap-1">
+            <X className="h-3.5 w-3.5" />
+            Fermer
+          </Button>
+        </div>
+      </div>
+      <iframe
+        key={refreshKey}
+        src={embedSrc}
+        className="flex-1 w-full border-0"
+        title={title}
+      />
+    </div>
+  );
+}
+
+function CollectionsInlineEditor({ block, storeId }: EditorCtx) {
+  const [collections, setCollections] = useState<Array<{ _id: string; name: string; slug?: string; productCount?: number }>>([]);
+  const [loading, setLoading] = useState(true);
+  const [modalOpen, setModalOpen] = useState(false);
+
+  const load = useCallback(() => {
+    if (!storeId) return;
+    setLoading(true);
+    (storesApi.listCollections?.(storeId) || Promise.resolve({ data: { collections: [] } }))
+      .then((res) => {
+        setCollections((res.data as { collections?: Array<{ _id: string; name: string; slug?: string; productCount?: number }> }).collections || []);
+      })
+      .catch(() => setCollections([]))
+      .finally(() => setLoading(false));
+  }, [storeId]);
+
+  useEffect(() => { load(); }, [load]);
+
+  return (
+    <div className="flex flex-1 flex-col">
+      <EditorHeader title={block.label} hint={block.hint} />
+      <div className="space-y-4 p-5">
+        <Button
+          onClick={() => setModalOpen(true)}
+          className="w-full gap-1.5 gradient-brand text-white"
+        >
+          <Plus className="h-3.5 w-3.5" />
+          Nouvelle collection
+        </Button>
+        {loading ? (
+          <div className="grid place-items-center py-8"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>
+        ) : collections.length === 0 ? (
+          <div className="rounded-xl border border-dashed border-border/60 bg-card p-5 text-center">
+            <Layers className="mx-auto h-6 w-6 text-muted-foreground" />
+            <p className="mt-2 text-sm font-medium">Aucune collection</p>
+            <p className="text-[11px] text-muted-foreground">Regroupe tes produits par thème.</p>
+          </div>
+        ) : (
+          <ul className="space-y-1.5">
+            {collections.map((c) => (
+              <li key={c._id}>
+                <button
+                  type="button"
+                  onClick={() => setModalOpen(true)}
+                  className="flex w-full items-center gap-2 rounded-lg border border-border/60 bg-card p-2.5 text-left transition-colors hover:border-primary/40"
+                >
+                  <span className="grid h-8 w-8 shrink-0 place-items-center rounded-md bg-sky-500/10 text-sky-700">
+                    <Layers className="h-3.5 w-3.5" />
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <div className="truncate text-xs font-semibold">{c.name}</div>
+                    {typeof c.productCount === 'number' && (
+                      <div className="text-[10px] text-muted-foreground">{c.productCount} produit{c.productCount > 1 ? 's' : ''}</div>
+                    )}
+                  </div>
+                  <ChevronRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+      {modalOpen && (
+        <CrudModal
+          title="Collections"
+          src={`/dashboard/stores/${storeId}/collections`}
+          onClose={() => { setModalOpen(false); load(); }}
+        />
+      )}
+    </div>
+  );
+}
+
+function CouponsInlineEditor({ block, storeId }: EditorCtx) {
+  const [coupons, setCoupons] = useState<Coupon[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [modalOpen, setModalOpen] = useState(false);
+
+  const load = useCallback(() => {
+    if (!storeId) return;
+    setLoading(true);
+    storesApi.listCoupons(storeId)
+      .then((res) => setCoupons((res.data as { coupons?: Coupon[] }).coupons || []))
+      .catch(() => setCoupons([]))
+      .finally(() => setLoading(false));
+  }, [storeId]);
+
+  useEffect(() => { load(); }, [load]);
+
+  return (
+    <div className="flex flex-1 flex-col">
+      <EditorHeader title={block.label} hint={block.hint} />
+      <div className="space-y-4 p-5">
+        <Button
+          onClick={() => setModalOpen(true)}
+          className="w-full gap-1.5 gradient-brand text-white"
+        >
+          <Plus className="h-3.5 w-3.5" />
+          Nouveau code promo
+        </Button>
+        {loading ? (
+          <div className="grid place-items-center py-8"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>
+        ) : coupons.length === 0 ? (
+          <div className="rounded-xl border border-dashed border-border/60 bg-card p-5 text-center">
+            <BadgePercent className="mx-auto h-6 w-6 text-muted-foreground" />
+            <p className="mt-2 text-sm font-medium">Aucun code promo</p>
+            <p className="text-[11px] text-muted-foreground">Réduction saisie au COD.</p>
+          </div>
+        ) : (
+          <ul className="space-y-1.5">
+            {coupons.map((c) => (
+              <li key={c._id}>
+                <button
+                  type="button"
+                  onClick={() => setModalOpen(true)}
+                  className="flex w-full items-center gap-2 rounded-lg border border-border/60 bg-card p-2.5 text-left transition-colors hover:border-primary/40"
+                >
+                  <span className="grid h-8 w-8 shrink-0 place-items-center rounded-md bg-amber-500/10 text-amber-700">
+                    <BadgePercent className="h-3.5 w-3.5" />
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-1.5">
+                      <code className="truncate text-xs font-bold">{c.code}</code>
+                      {!c.isActive && (
+                        <span className="rounded-full bg-muted px-1.5 py-0.5 text-[9px] font-semibold text-muted-foreground">
+                          inactif
+                        </span>
+                      )}
+                    </div>
+                    <div className="text-[10px] text-muted-foreground">
+                      {c.type === 'percent' ? `−${c.value}%` : c.type === 'fixed' ? `−${c.value}` : 'Livraison gratuite'}
+                    </div>
+                  </div>
+                  <ChevronRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+      {modalOpen && (
+        <CrudModal
+          title="Codes promo"
+          src={`/dashboard/stores/${storeId}/coupons`}
+          onClose={() => { setModalOpen(false); load(); }}
+        />
+      )}
+    </div>
+  );
+}
+
+interface MarketingProviderDef {
+  key: keyof MarketingIntegration;
+  label: string;
+  placeholder: string;
+  hint: string;
+  accent: string;
+  looksValid?: (v: string) => boolean;
+}
+
+const MARKETING_PROVIDERS: MarketingProviderDef[] = [
+  {
+    key: 'facebookPixelId',
+    label: 'Meta Pixel',
+    placeholder: '1234567890123456',
+    hint: 'Meta Business Suite → Gestionnaire d\'événements.',
+    accent: 'from-blue-500 to-indigo-600',
+    looksValid: (v) => /^\d{10,20}$/.test(v.trim()),
+  },
+  {
+    key: 'tiktokPixelId',
+    label: 'TikTok Pixel',
+    placeholder: 'CXXXXXXXXXXXXXXX',
+    hint: 'TikTok Ads Manager → Outils → Événements.',
+    accent: 'from-rose-500 to-pink-600',
+    looksValid: (v) => /^[A-Z0-9]{18,30}$/.test(v.trim()),
+  },
+  {
+    key: 'snapchatPixelId',
+    label: 'Snapchat Pixel',
+    placeholder: '00000000-0000-0000-0000-000000000000',
+    hint: 'Snap Ads Manager → Événements.',
+    accent: 'from-amber-400 to-yellow-500',
+    looksValid: (v) => /^[0-9a-f-]{30,40}$/i.test(v.trim()),
+  },
+  {
+    key: 'googleAnalyticsId',
+    label: 'Google Analytics 4',
+    placeholder: 'G-XXXXXXXXXX',
+    hint: 'GA4 → Administration → Flux de données.',
+    accent: 'from-orange-500 to-red-500',
+    looksValid: (v) => /^G-[A-Z0-9]{8,12}$/i.test(v.trim()),
+  },
+];
+
+function MarketingInlineEditor({ block, store, setStore, markDirty }: EditorCtx) {
+  const cfg: MarketingIntegration = store.integrations?.marketing || {};
+
+  function updateCfg<K extends keyof MarketingIntegration>(key: K, value: MarketingIntegration[K]) {
+    const nextCfg = { ...cfg, [key]: value };
+    // On nettoie les strings vides pour ne pas polluer la DB avec des "".
+    const cleaned: MarketingIntegration = Object.fromEntries(
+      Object.entries(nextCfg).map(([k, v]) => [k, typeof v === 'string' ? (v.trim() ? v : undefined) : v]),
+    ) as MarketingIntegration;
+    const nextIntegrations = { ...(store.integrations || {}), marketing: cleaned };
+    setStore((s) => (s ? { ...s, integrations: nextIntegrations } : s));
+    markDirty('integrations', 'marketing');
+  }
+
+  return (
+    <div className="flex flex-1 flex-col">
+      <EditorHeader title={block.label} hint={block.hint} />
+      <div className="space-y-5 p-5">
+        <div className="rounded-xl border border-border/60 bg-muted/20 p-3 text-[11px] text-muted-foreground">
+          Colle l&apos;ID brut de chaque plateforme — FlexioPage envoie <strong>PageView</strong>,
+          {' '}<strong>ViewContent</strong>, <strong>AddToCart</strong>, <strong>InitiateCheckout</strong>,
+          {' '}<strong>Purchase</strong> automatiquement.
+        </div>
+
+        {MARKETING_PROVIDERS.map((p) => {
+          const value = (cfg[p.key] as string) || '';
+          const filled = !!value.trim();
+          const validFormat = filled && (p.looksValid?.(value) ?? true);
+          return (
+            <div key={p.key} className="rounded-xl border border-border/60 bg-card p-3">
+              <div className="mb-2 flex items-center gap-2">
+                <span className={cn('grid h-7 w-7 place-items-center rounded-md bg-gradient-to-br text-white shadow-sm', p.accent)}>
+                  <TrendingUp className="h-3.5 w-3.5" />
+                </span>
+                <Label className="flex-1 text-sm font-semibold">{p.label}</Label>
+                {filled && (
+                  <span
+                    className={cn(
+                      'inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-bold',
+                      validFormat ? 'bg-emerald-500/10 text-emerald-700' : 'bg-amber-500/10 text-amber-700',
+                    )}
+                  >
+                    <span className={cn('h-1.5 w-1.5 rounded-full', validFormat ? 'bg-emerald-500' : 'bg-amber-500')} />
+                    {validFormat ? 'OK' : '?'}
+                  </span>
+                )}
+              </div>
+              <Input
+                value={value}
+                placeholder={p.placeholder}
+                onChange={(e) => updateCfg(p.key, e.target.value as MarketingIntegration[typeof p.key])}
+                className="h-9 font-mono text-xs"
+              />
+              <p className="mt-1 text-[10px] text-muted-foreground">{p.hint}</p>
+            </div>
+          );
+        })}
+
+        <div className="rounded-xl border border-border/60 bg-card p-3">
+          <div className="mb-2 flex items-center gap-2">
+            <span className="grid h-7 w-7 place-items-center rounded-md bg-gradient-to-br from-cyan-500 to-blue-500 text-white shadow-sm">
+              <TrendingUp className="h-3.5 w-3.5" />
+            </span>
+            <div className="flex-1 text-sm font-semibold">Google Ads (conversion)</div>
+          </div>
+          <div className="space-y-2">
+            <div>
+              <Label className="text-[10px]">ID de conversion</Label>
+              <Input
+                value={cfg.googleAdsConversionId || ''}
+                onChange={(e) => updateCfg('googleAdsConversionId', e.target.value)}
+                placeholder="AW-123456789"
+                className="mt-0.5 h-9 font-mono text-xs"
+              />
+            </div>
+            <div>
+              <Label className="text-[10px]">Label de l&apos;action</Label>
+              <Input
+                value={cfg.googleAdsConversionLabel || ''}
+                onChange={(e) => updateCfg('googleAdsConversionLabel', e.target.value)}
+                placeholder="xyzABCDEFghijklm"
+                className="mt-0.5 h-9 font-mono text-xs"
+              />
+            </div>
+          </div>
+        </div>
+
+        <div className="rounded-xl border border-fuchsia-500/30 bg-fuchsia-500/5 p-3">
+          <div className="mb-2 flex items-center gap-2">
+            <ShieldAlert className="h-4 w-4 text-fuchsia-600" />
+            <div className="flex-1 text-sm font-semibold">Meta Conversions API</div>
+            <span className="rounded-full bg-fuchsia-500/10 px-2 py-0.5 text-[10px] font-semibold text-fuchsia-700">
+              Serveur
+            </span>
+          </div>
+          <p className="mb-2 text-[11px] text-muted-foreground">
+            Double les événements en server-side. Recommandé si tu dépenses &gt; 100€/mois sur Meta Ads.
+          </p>
+          <div className="space-y-2">
+            <div>
+              <Label className="text-[10px]">Access token</Label>
+              <Input
+                type="password"
+                autoComplete="off"
+                value={cfg.facebookConversionsApiToken || ''}
+                onChange={(e) => updateCfg('facebookConversionsApiToken', e.target.value)}
+                placeholder="EAA..."
+                className="mt-0.5 h-9 font-mono text-xs"
+              />
+            </div>
+            <div>
+              <Label className="text-[10px]">Code de test (optionnel)</Label>
+              <Input
+                value={cfg.facebookTestEventCode || ''}
+                onChange={(e) => updateCfg('facebookTestEventCode', e.target.value)}
+                placeholder="TEST12345"
+                className="mt-0.5 h-9 font-mono text-xs"
+              />
+            </div>
+          </div>
+        </div>
+
+        <div className="rounded-xl border border-amber-500/30 bg-amber-500/5 p-3">
+          <div className="mb-2 flex items-center gap-2">
+            <Code2 className="h-4 w-4 text-amber-600" />
+            <div className="flex-1 text-sm font-semibold">Code personnalisé &lt;head&gt;</div>
+            <span className="rounded-full bg-amber-500/10 px-2 py-0.5 text-[10px] font-semibold text-amber-700">
+              Avancé
+            </span>
+          </div>
+          <textarea
+            value={cfg.customHeadCode || ''}
+            onChange={(e) => updateCfg('customHeadCode', e.target.value)}
+            rows={6}
+            placeholder={'<!-- Hotjar -->\n<script>...</script>'}
+            className="w-full rounded-lg border border-input bg-background p-2 font-mono text-[11px] leading-relaxed focus:border-primary/40 focus:outline-none focus:ring-2 focus:ring-primary/10"
+          />
+          <p className="mt-1 text-[10px] text-muted-foreground">
+            Injecté sur toutes les pages publiques. Ne colle que du code de confiance.
+          </p>
         </div>
       </div>
     </div>
   );
 }
 
-function InfoPagesInlineEditor({ block, store, setStore, markDirty, storeId }: EditorCtx & { storeId?: string }) {
+function NewsletterInlineEditor({ block, storeId, store, setStore, markDirty }: EditorCtx) {
+  const confirm = useConfirm();
+  const cfg: NewsletterSettings = {
+    enabled: false,
+    delaySeconds: 5,
+    exitIntent: true,
+    dismissalDays: 7,
+    ...((store.settings as { newsletter?: NewsletterSettings } | undefined)?.newsletter || {}),
+  };
+  const [subscribers, setSubscribers] = useState<Subscriber[]>([]);
+  const [counts, setCounts] = useState<SubscriberCounts>({ total: 0, thisMonth: 0 });
+  const [coupons, setCoupons] = useState<Coupon[]>([]);
+  const [search, setSearch] = useState('');
+  const [subsLoading, setSubsLoading] = useState(true);
+
+  // Chargement initial : abonnés + coupons (pour le dropdown récompense).
+  useEffect(() => {
+    if (!storeId) return;
+    let cancelled = false;
+    Promise.all([
+      storesApi.listSubscribers(storeId).catch(() => ({ data: { subscribers: [], counts: { total: 0, thisMonth: 0 } } })),
+      storesApi.listCoupons(storeId).catch(() => ({ data: { coupons: [] } })),
+    ]).then(([sRes, cRes]) => {
+      if (cancelled) return;
+      setSubscribers((sRes?.data as { subscribers?: Subscriber[] } | undefined)?.subscribers || []);
+      setCounts((sRes?.data as { counts?: SubscriberCounts } | undefined)?.counts || { total: 0, thisMonth: 0 });
+      setCoupons((cRes?.data as { coupons?: Coupon[] } | undefined)?.coupons || []);
+      setSubsLoading(false);
+    });
+    return () => { cancelled = true; };
+  }, [storeId]);
+
+  // Debounce search vers l'API — 250ms pour ne pas pilonner le backend.
+  useEffect(() => {
+    if (!storeId || subsLoading) return;
+    const t = window.setTimeout(() => {
+      storesApi.listSubscribers(storeId, { search: search || undefined })
+        .then((res) => setSubscribers((res.data as { subscribers?: Subscriber[] }).subscribers || []))
+        .catch(() => {});
+    }, 250);
+    return () => window.clearTimeout(t);
+  }, [search, storeId, subsLoading]);
+
+  function updateCfg<K extends keyof NewsletterSettings>(key: K, value: NewsletterSettings[K]) {
+    const nextNewsletter = { ...cfg, [key]: value };
+    const nextSettings = { ...(store.settings || {}), newsletter: nextNewsletter };
+    setStore((s) => (s ? { ...s, settings: nextSettings } : s));
+    markDirty('settings', 'newsletter');
+  }
+
+  async function handleDeleteSubscriber(sub: Subscriber) {
+    const ok = await confirm({
+      title: `Supprimer ${sub.email} ?`,
+      description: "L'abonné ne recevra plus tes campagnes. L'historique des envois est conservé.",
+      confirmLabel: 'Supprimer',
+      tone: 'destructive',
+    });
+    if (!ok) return;
+    await storesApi.deleteSubscriber(storeId, sub._id);
+    setSubscribers((arr) => arr.filter((x) => x._id !== sub._id));
+    setCounts((c) => ({ ...c, total: Math.max(0, c.total - 1) }));
+  }
+
   return (
     <div className="flex flex-1 flex-col">
       <EditorHeader title={block.label} hint={block.hint} />
-      <div className="space-y-5 p-5 overflow-auto max-h-[calc(100vh-300px)]">
-        <div className="rounded-2xl border border-border/60 bg-muted/30 p-6 space-y-4">
-          <div className="space-y-2">
-            <div className="text-sm font-semibold">Pages d'information</div>
-            <p className="text-xs text-muted-foreground">
-              Crée et gère les pages CGV, FAQ, Politique de confidentialité, Contact, etc.
-            </p>
+      <div className="space-y-5 p-5">
+        <FieldToggle
+          label="Pop-up actif"
+          sublabel="Décoche pour mettre en pause sans perdre la config."
+          checked={!!cfg.enabled}
+          onChange={(v) => updateCfg('enabled', v)}
+        />
+
+        <div className="grid grid-cols-2 gap-2">
+          <Field label="Délai (s)" hint="0 = immédiat. 3-7s = sweet spot.">
+            <Input
+              type="number"
+              min={0}
+              step={1}
+              value={cfg.delaySeconds ?? 5}
+              onChange={(e) => updateCfg('delaySeconds', Math.max(0, parseInt(e.target.value, 10) || 0))}
+            />
+          </Field>
+          <Field label="Re-affichage (jours)" hint="Après un refus visiteur.">
+            <Input
+              type="number"
+              min={0}
+              step={1}
+              value={cfg.dismissalDays ?? 7}
+              onChange={(e) => updateCfg('dismissalDays', Math.max(0, parseInt(e.target.value, 10) || 0))}
+            />
+          </Field>
+        </div>
+
+        <FieldToggle
+          label="Trigger exit-intent (desktop)"
+          sublabel="Surface le pop-up si la souris quitte la fenêtre par le haut."
+          checked={cfg.exitIntent !== false}
+          onChange={(v) => updateCfg('exitIntent', v)}
+        />
+
+        <div className="rounded-xl border border-border/60 bg-muted/20 p-3">
+          <div className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+            Contenu du pop-up
           </div>
-          <Link href={`/dashboard/stores/${storeId}/info-pages`}>
-            <Button className="w-full gap-1.5 gradient-brand text-white">
-              Gérer les pages
-              <ChevronRight className="h-4 w-4" />
-            </Button>
-          </Link>
+          <div className="space-y-2">
+            <Field label="Titre">
+              <Input
+                value={cfg.headline || ''}
+                onChange={(e) => updateCfg('headline', e.target.value)}
+                placeholder="Profite de 10% sur ta première commande"
+              />
+            </Field>
+            <Field label="Sous-titre">
+              <Input
+                value={cfg.subheadline || ''}
+                onChange={(e) => updateCfg('subheadline', e.target.value)}
+                placeholder="Laisse ton email pour recevoir le code"
+              />
+            </Field>
+            <Field label="Texte du bouton">
+              <Input
+                value={cfg.ctaLabel || ''}
+                onChange={(e) => updateCfg('ctaLabel', e.target.value)}
+                placeholder="Recevoir mon code"
+              />
+            </Field>
+            <div className="max-w-[180px]">
+              <MediaPicker
+                storeId={storeId}
+                value={cfg.image}
+                onChange={(url) => updateCfg('image', url || '')}
+                label="Image (optionnel)"
+                shape="square"
+                helper="Affichée à gauche sur desktop."
+                imageSizeRecommendation={imageSizes.promoBannerSquare}
+              />
+            </div>
+            <Field label="Message de succès" hint="Affiché après l'inscription.">
+              <Input
+                value={cfg.successMessage || ''}
+                onChange={(e) => updateCfg('successMessage', e.target.value)}
+                placeholder="Merci, voici ton code :"
+              />
+            </Field>
+          </div>
+        </div>
+
+        <Field
+          label="Récompense (code promo)"
+          hint={coupons.length === 0
+            ? "Crée d'abord un code depuis le block « Codes promo »."
+            : "Le code est affiché à l'abonné dans l'écran de succès."}
+        >
+          <select
+            value={cfg.rewardCouponCode || ''}
+            onChange={(e) => updateCfg('rewardCouponCode', e.target.value || undefined)}
+            disabled={coupons.length === 0}
+            className="flex h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+          >
+            <option value="">— Aucune récompense —</option>
+            {coupons.map((c) => (
+              <option key={c._id} value={c.code}>
+                {c.code} ({c.type === 'percent' ? `−${c.value}%` : `−${c.value}`})
+                {!c.isActive && ' · inactif'}
+              </option>
+            ))}
+          </select>
+        </Field>
+
+        <div className="rounded-xl border border-border/60 bg-muted/20 p-3">
+          <div className="mb-2 flex items-center justify-between">
+            <div>
+              <div className="text-sm font-semibold">Abonnés</div>
+              <div className="text-[11px] text-muted-foreground">
+                <strong>{counts.total}</strong> total · <strong>{counts.thisMonth}</strong> ce mois
+              </div>
+            </div>
+            <a
+              href={storesApi.subscribersCsvUrl(storeId)}
+              className="inline-flex h-8 items-center gap-1.5 rounded-md border border-border/60 bg-card px-2 text-[11px] font-medium transition-colors hover:border-primary/40 hover:text-primary"
+            >
+              <Download className="h-3 w-3" />
+              CSV
+            </a>
+          </div>
+          <div className="relative mb-2">
+            <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3 w-3 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              placeholder="Filtrer par email…"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="h-8 pl-7 text-xs"
+            />
+          </div>
+          {subsLoading ? (
+            <div className="grid place-items-center py-6"><Loader2 className="h-4 w-4 animate-spin text-muted-foreground" /></div>
+          ) : subscribers.length === 0 ? (
+            <div className="rounded-lg border border-dashed border-border/60 bg-card p-4 text-center text-[11px] text-muted-foreground">
+              {search ? `Aucun email ne contient « ${search} »` : 'Aucun abonné pour le moment.'}
+            </div>
+          ) : (
+            <ul className="max-h-64 divide-y divide-border/60 overflow-y-auto rounded-lg border border-border/60 bg-card">
+              {subscribers.map((sub) => (
+                <li key={sub._id} className="flex items-center gap-2 px-2 py-2">
+                  <div className="min-w-0 flex-1">
+                    <div className="truncate text-xs font-medium">{sub.email}</div>
+                    <div className="text-[10px] text-muted-foreground">
+                      {new Date(sub.createdAt).toLocaleDateString('fr-FR')}
+                      {sub.rewardCouponCode && (
+                        <span className="ml-1 inline-flex items-center gap-1 rounded bg-primary/10 px-1 text-[9px] text-primary">
+                          <BadgePercent className="h-2 w-2" />
+                          {sub.rewardCouponCode}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => handleDeleteSubscriber(sub)}
+                    className="grid h-6 w-6 place-items-center rounded-md text-destructive hover:bg-destructive/10"
+                    aria-label="Supprimer"
+                  >
+                    <Trash2 className="h-3 w-3" />
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
         </div>
       </div>
     </div>
   );
 }
 
-function CollectionsInlineEditor({ block, store, setStore, markDirty, storeId }: EditorCtx & { storeId?: string }) {
+function DeliveryInlineEditor({ block, store, setStore, markDirty, storeId }: EditorCtx) {
+  const delivery: DeliveryIntegration = store.integrations?.delivery || {
+    provider: 'mogadelivery',
+    enabled: false,
+    autoDispatch: true,
+  };
+
+  // Onboarding auto MD — les actions connexion/rotation appellent des
+  // endpoints dédiés qui écrivent directement en DB (pas via markDirty).
+  // Après succès, on refetch le store pour resync l'état local.
+  const [connecting, setConnecting] = useState(false);
+  const [togglingConn, setTogglingConn] = useState(false);
+  const [connectResult, setConnectResult] = useState<null | { kind: 'success' | 'manual' | 'error'; message: string }>(null);
+  const [mdJwt, setMdJwt] = useState('');
+  const [existingBoutiqueId, setExistingBoutiqueId] = useState('');
+  const [showAdvanced, setShowAdvanced] = useState(false);
+
+  function patchDelivery(patch: Partial<DeliveryIntegration>) {
+    const nextDelivery = { ...delivery, ...patch };
+    const nextIntegrations = { ...(store.integrations || {}), delivery: nextDelivery };
+    setStore((s) => (s ? { ...s, integrations: nextIntegrations } : s));
+    markDirty('integrations', 'delivery');
+  }
+
+  function patchPickup(patch: Record<string, string>) {
+    patchDelivery({ pickupAddress: { ...(delivery.pickupAddress || {}), ...patch } });
+  }
+
+  async function refetchStore() {
+    try {
+      const fresh = await storesApi.get(storeId);
+      const s = (fresh.data as { store: StoreType }).store;
+      setStore(s);
+    } catch { /* silent */ }
+  }
+
+  async function handleConnect() {
+    setConnecting(true);
+    setConnectResult(null);
+    try {
+      const res = await storesApi.connectMogaDelivery(storeId, {
+        sellerToken: mdJwt.trim() || undefined,
+        existingBoutiqueId: existingBoutiqueId.trim() || undefined,
+      });
+      if (res.data.mode === 'auto') {
+        setConnectResult({
+          kind: 'success',
+          message: `Boutique enregistrée chez MogaDelivery (store_id ${res.data.storeIdMD ?? storeId}). L'authentification utilise le secret plateforme — tu peux dispatcher.`,
+        });
+        await refetchStore();
+      } else {
+        setConnectResult({
+          kind: 'manual',
+          message: res.data.message || "Mode manuel : demande à MogaDelivery d'enregistrer ce store_id.",
+        });
+      }
+    } catch (err) {
+      setConnectResult({ kind: 'error', message: extractApiError(err, 'Onboarding échoué.') });
+    } finally {
+      setConnecting(false);
+    }
+  }
+
+  async function handleToggleConnection(connect: boolean) {
+    setTogglingConn(true);
+    setConnectResult(null);
+    try {
+      await storesApi.setDeliveryConnection(storeId, connect);
+      // Refresh depuis DB pour resync — enabled + secret sont écrits par l'API.
+      await refetchStore();
+      setConnectResult({
+        kind: 'success',
+        message: connect
+          ? 'Intégration reconnectée — les dispatchs reprennent. Secret inchangé, aucun risque de 401.'
+          : 'Intégration déconnectée — dispatchs suspendus. Ton secret et ta Boutique MogaDelivery sont conservés ; reconnecte quand tu veux.',
+      });
+    } catch (err) {
+      setConnectResult({ kind: 'error', message: extractApiError(err, 'Action impossible.') });
+    } finally {
+      setTogglingConn(false);
+    }
+  }
+
+  // Livraison est physical-only — le block est déjà filtré dans BLOCKS,
+  // mais garde-fou visuel si un digital arrive ici via ?block=delivery.
+  if (store.storeType === 'digital') {
+    return (
+      <div className="flex flex-1 flex-col">
+        <EditorHeader title={block.label} hint={block.hint} />
+        <div className="p-5">
+          <div className="rounded-2xl border border-border/60 bg-muted/30 p-4 text-sm text-muted-foreground">
+            La livraison n&apos;est pas disponible pour les boutiques digitales.
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  const webhookUrl = `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5001'}/api/webhooks/mogadelivery`;
+
   return (
     <div className="flex flex-1 flex-col">
       <EditorHeader title={block.label} hint={block.hint} />
-      <div className="space-y-5 p-5 overflow-auto max-h-[calc(100vh-300px)]">
-        <div className="rounded-2xl border border-border/60 bg-muted/30 p-6 space-y-4">
-          <div className="space-y-2">
-            <div className="text-sm font-semibold">Collections</div>
-            <p className="text-xs text-muted-foreground">
-              Crée des regroupements de produits (ex: Nouveautés, Soldes, Best-sellers).
-            </p>
+      <div className="space-y-5 p-5">
+        <Toggle
+          label={delivery.provider === 'bestdelivery' ? 'Activer Best Delivery' : 'Activer MogaDelivery'}
+          checked={!!delivery.enabled}
+          onChange={(v) => patchDelivery({ enabled: v })}
+        />
+
+        <Field label="Transporteur" hint="MogaDelivery = Afrique de l'Ouest, Best Delivery = Tunisie.">
+          <select
+            value={delivery.provider || 'mogadelivery'}
+            onChange={(e) => patchDelivery({ provider: e.target.value as DeliveryIntegration['provider'] })}
+            className="w-full rounded-md border bg-background px-3 py-2 text-sm"
+          >
+            <option value="mogadelivery">MogaDelivery — Afrique de l&apos;Ouest</option>
+            <option value="bestdelivery">Best Delivery — Tunisie (SOAP)</option>
+          </select>
+        </Field>
+
+        {delivery.provider === 'bestdelivery' && (
+          <>
+            <div className="flex items-start gap-2 rounded-md bg-sky-500/10 px-3 py-2 text-[11px] text-sky-800">
+              <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+              <span>Best Delivery couvre la Tunisie. Renseigne les identifiants de ton compte expéditeur.</span>
+            </div>
+            <Field label="Login" hint="Login du compte expéditeur Best Delivery.">
+              <Input
+                autoComplete="off"
+                value={delivery.login || ''}
+                onChange={(e) => patchDelivery({ login: e.target.value })}
+                className={delivery.enabled && !delivery.login?.trim() ? 'border-rose-500/60' : ''}
+              />
+            </Field>
+            <Field label="Mot de passe" hint="Stocké chiffré côté serveur.">
+              <Input
+                type="password"
+                autoComplete="off"
+                value={delivery.pwd || ''}
+                onChange={(e) => patchDelivery({ pwd: e.target.value })}
+                className={delivery.enabled && !delivery.pwd?.trim() ? 'border-rose-500/60' : ''}
+                placeholder="••••••••"
+              />
+            </Field>
+            <Field label="WSDL (avancé)" hint="Laisse vide pour l'endpoint prod par défaut.">
+              <Input
+                value={delivery.baseUrl || ''}
+                onChange={(e) => patchDelivery({ baseUrl: e.target.value })}
+                placeholder="https://api.best-delivery.net/serviceShipments.php?wsdl"
+              />
+            </Field>
+          </>
+        )}
+
+        {delivery.provider !== 'bestdelivery' && (
+          <>
+            {delivery.enabled && (
+              <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-emerald-500/30 bg-emerald-500/5 p-3">
+                <span className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-emerald-700">
+                  <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+                  Connecté — dispatchs auto actifs
+                </span>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  onClick={() => handleToggleConnection(false)}
+                  disabled={togglingConn}
+                  className="gap-1.5"
+                >
+                  {togglingConn ? <Loader2 className="h-3 w-3 animate-spin" /> : <Power className="h-3 w-3" />}
+                  Déconnecter
+                </Button>
+              </div>
+            )}
+
+            <div className="rounded-xl border border-fuchsia-500/30 bg-gradient-to-br from-fuchsia-500/5 to-rose-500/5 p-4">
+              <div className="flex items-center gap-2">
+                <Zap className="h-4 w-4 text-fuchsia-700" />
+                <div className="text-sm font-semibold">Connexion automatique MogaDelivery</div>
+              </div>
+              <p className="mt-1 text-[11px] text-muted-foreground">
+                Crée la Boutique côté MogaDelivery (ou resync le secret) et pose un HMAC en un clic. Auth via le secret plateforme.
+              </p>
+              <Button
+                type="button"
+                onClick={handleConnect}
+                disabled={connecting}
+                className="mt-2 w-full gap-2"
+              >
+                {connecting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Zap className="h-3.5 w-3.5" />}
+                {delivery.enabled ? 'Resynchroniser' : 'Connecter'}
+              </Button>
+              <button
+                type="button"
+                onClick={() => setShowAdvanced((v) => !v)}
+                className="mt-2 text-[11px] font-medium text-fuchsia-700 hover:underline"
+              >
+                {showAdvanced ? 'Masquer' : 'Afficher'} les options avancées
+              </button>
+              {showAdvanced && (
+                <div className="mt-2 space-y-2">
+                  <div>
+                    <Label className="text-[10px]">JWT seller MogaDelivery (optionnel)</Label>
+                    <Input
+                      type="password"
+                      autoComplete="off"
+                      value={mdJwt}
+                      onChange={(e) => setMdJwt(e.target.value)}
+                      placeholder="eyJhbGciOi..."
+                      className="mt-0.5 font-mono text-xs"
+                    />
+                    <p className="mt-0.5 text-[10px] text-muted-foreground">
+                      Colle ton token depuis DevTools de admin-mogadelivery.com. Utilisé uniquement pour cet appel.
+                    </p>
+                  </div>
+                  <div>
+                    <Label className="text-[10px]">boutiqueId existant (resync)</Label>
+                    <Input
+                      value={existingBoutiqueId}
+                      onChange={(e) => setExistingBoutiqueId(e.target.value)}
+                      placeholder="Laisse vide pour créer une nouvelle Boutique"
+                      className="mt-0.5 text-xs"
+                    />
+                  </div>
+                </div>
+              )}
+              {connectResult && (
+                <div
+                  className={cn(
+                    'mt-2 rounded-md px-3 py-2 text-[11px]',
+                    connectResult.kind === 'success' && 'bg-emerald-500/10 text-emerald-800',
+                    connectResult.kind === 'manual' && 'bg-amber-500/10 text-amber-800',
+                    connectResult.kind === 'error' && 'bg-rose-500/10 text-rose-800',
+                  )}
+                >
+                  {connectResult.message}
+                </div>
+              )}
+            </div>
+
+            <Field label="Base URL (avancé)" hint="Laisse vide pour l'endpoint MogaDelivery par défaut.">
+              <Input
+                value={delivery.baseUrl || ''}
+                onChange={(e) => patchDelivery({ baseUrl: e.target.value })}
+                placeholder="https://api.admin-mogadelivery.com/api/webhooks/flexiopage"
+              />
+            </Field>
+
+            <div className="rounded-xl border border-border/60 bg-muted/30 p-3">
+              <div className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Webhook entrant</div>
+              <code className="mt-1 block truncate rounded-md bg-background px-2 py-1.5 font-mono text-[10px]">
+                {webhookUrl}
+              </code>
+              <p className="mt-1 text-[10px] text-muted-foreground">
+                MogaDelivery pousse les changements de statut (assigné, en transit, livré, retourné) signés avec le secret plateforme.
+              </p>
+            </div>
+          </>
+        )}
+
+        <div>
+          <Toggle
+            label="Dispatch automatique"
+            checked={delivery.autoDispatch !== false}
+            onChange={(v) => patchDelivery({ autoDispatch: v })}
+          />
+          <p className="mt-1 text-[11px] text-muted-foreground">
+            Dès qu&apos;une commande COD est payée, envoi auto au coursier. Décoche pour dispatcher manuellement.
+          </p>
+        </div>
+
+        <div className="rounded-xl border border-border/60 bg-muted/20 p-3">
+          <div className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+            Adresse d&apos;expédition
           </div>
-          <Link href={`/dashboard/stores/${storeId}/collections`}>
-            <Button className="w-full gap-1.5 gradient-brand text-white">
-              Gérer les collections
-              <ChevronRight className="h-4 w-4" />
-            </Button>
-          </Link>
+          <div className="space-y-3">
+            <Field label="Nom du contact">
+              <Input
+                value={delivery.pickupAddress?.contactName || ''}
+                onChange={(e) => patchPickup({ contactName: e.target.value })}
+                placeholder="Ex: Aïssatou Diallo"
+              />
+            </Field>
+            <Field label="Téléphone du contact" hint="Format international avec indicatif pays.">
+              <Input
+                type="tel"
+                value={delivery.pickupAddress?.contactPhone || ''}
+                onChange={(e) => patchPickup({ contactPhone: e.target.value })}
+                placeholder="Ex: +221 70 000 00 00"
+              />
+            </Field>
+            <Field label="Adresse complète" hint="N°, rue, quartier — comme sur Google Maps.">
+              <Input
+                value={delivery.pickupAddress?.line1 || ''}
+                onChange={(e) => patchPickup({ line1: e.target.value })}
+                placeholder="Ex: 12 Rue Félix Faure, Plateau"
+              />
+            </Field>
+            <div className="grid grid-cols-2 gap-2">
+              <Field label="Ville">
+                <Input
+                  value={delivery.pickupAddress?.city || ''}
+                  onChange={(e) => patchPickup({ city: e.target.value })}
+                  placeholder="Dakar"
+                />
+              </Field>
+              <Field label="Pays" hint="Code ISO 2 lettres.">
+                <Input
+                  value={delivery.pickupAddress?.country || ''}
+                  onChange={(e) => patchPickup({ country: e.target.value })}
+                  placeholder="SN"
+                />
+              </Field>
+            </div>
+          </div>
         </div>
       </div>
     </div>
   );
 }
 
-function CouponsInlineEditor({ block, store, setStore, markDirty, storeId }: EditorCtx & { storeId?: string }) {
+function AbandonedCartsInlineEditor({ block, storeId }: EditorCtx) {
+  const [carts, setCarts] = useState<Array<{ _id: string; phone?: string; customerName?: string; total?: number; createdAt?: string }>>([]);
+  const [loading, setLoading] = useState(true);
+  const [modalOpen, setModalOpen] = useState(false);
+
+  const load = useCallback(() => {
+    if (!storeId) return;
+    setLoading(true);
+    storesApi.listAbandonedCarts(storeId)
+      .then((res) => setCarts((res.data as { carts?: Array<{ _id: string; phone?: string; customerName?: string; total?: number; createdAt?: string }> }).carts || []))
+      .catch(() => setCarts([]))
+      .finally(() => setLoading(false));
+  }, [storeId]);
+
+  useEffect(() => { load(); }, [load]);
+
   return (
     <div className="flex flex-1 flex-col">
       <EditorHeader title={block.label} hint={block.hint} />
-      <div className="space-y-5 p-5 overflow-auto max-h-[calc(100vh-300px)]">
-        <div className="rounded-2xl border border-border/60 bg-muted/30 p-6 space-y-4">
-          <div className="space-y-2">
-            <div className="text-sm font-semibold">Codes promo</div>
-            <p className="text-xs text-muted-foreground">
-              Crée des codes de réduction avec pourcentage, montant fixe ou livraison gratuite.
-            </p>
+      <div className="space-y-4 p-5">
+        <Button
+          onClick={() => setModalOpen(true)}
+          className="w-full gap-1.5 gradient-brand text-white"
+        >
+          <ShoppingCart className="h-3.5 w-3.5" />
+          Ouvrir la liste des paniers
+        </Button>
+        {loading ? (
+          <div className="grid place-items-center py-8"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>
+        ) : carts.length === 0 ? (
+          <div className="rounded-xl border border-dashed border-border/60 bg-card p-5 text-center">
+            <ShoppingCart className="mx-auto h-6 w-6 text-muted-foreground" />
+            <p className="mt-2 text-sm font-medium">Aucun panier abandonné</p>
+            <p className="text-[11px] text-muted-foreground">Les paniers non finalisés apparaîtront ici.</p>
           </div>
-          <Link href={`/dashboard/stores/${storeId}/coupons`}>
-            <Button className="w-full gap-1.5 gradient-brand text-white">
-              Gérer les codes promo
-              <ChevronRight className="h-4 w-4" />
-            </Button>
-          </Link>
-        </div>
+        ) : (
+          <>
+            <div className="text-[11px] text-muted-foreground">
+              <strong>{carts.length}</strong> panier{carts.length > 1 ? 's' : ''} à relancer
+            </div>
+            <ul className="space-y-1.5">
+              {carts.slice(0, 8).map((c) => (
+                <li key={c._id}>
+                  <button
+                    type="button"
+                    onClick={() => setModalOpen(true)}
+                    className="flex w-full items-center gap-2 rounded-lg border border-border/60 bg-card p-2.5 text-left transition-colors hover:border-primary/40"
+                  >
+                    <span className="grid h-8 w-8 shrink-0 place-items-center rounded-md bg-rose-500/10 text-rose-700">
+                      <ShoppingCart className="h-3.5 w-3.5" />
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <div className="truncate text-xs font-semibold">
+                        {c.customerName || c.phone || 'Anonyme'}
+                      </div>
+                      <div className="text-[10px] text-muted-foreground">
+                        {typeof c.total === 'number' && <>{c.total.toFixed(2)} · </>}
+                        {c.createdAt && new Date(c.createdAt).toLocaleDateString('fr-FR')}
+                      </div>
+                    </div>
+                    <ChevronRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                  </button>
+                </li>
+              ))}
+              {carts.length > 8 && (
+                <li className="text-center text-[10px] text-muted-foreground">
+                  + {carts.length - 8} autres — clique « Ouvrir la liste »
+                </li>
+              )}
+            </ul>
+          </>
+        )}
       </div>
+      {modalOpen && (
+        <CrudModal
+          title="Paniers abandonnés"
+          src={`/dashboard/stores/${storeId}/abandoned-carts`}
+          onClose={() => { setModalOpen(false); load(); }}
+        />
+      )}
     </div>
   );
 }
 
-function MarketingInlineEditor({ block, store, setStore, markDirty, storeId }: EditorCtx & { storeId?: string }) {
-  return (
-    <div className="flex flex-1 flex-col">
-      <EditorHeader title={block.label} hint={block.hint} />
-      <div className="space-y-5 p-5 overflow-auto max-h-[calc(100vh-300px)]">
-        <div className="rounded-2xl border border-border/60 bg-muted/30 p-6 space-y-4">
-          <div className="space-y-2">
-            <div className="text-sm font-semibold">Marketing & pixels</div>
-            <p className="text-xs text-muted-foreground">
-              Intègre Meta Pixel, TikTok, Snapchat, Google Analytics, Mixpanel pour tracker les conversions.
-            </p>
-          </div>
-          <Link href={`/dashboard/stores/${storeId}/marketing`}>
-            <Button className="w-full gap-1.5 gradient-brand text-white">
-              Configurer le marketing
-              <ChevronRight className="h-4 w-4" />
-            </Button>
-          </Link>
-        </div>
-      </div>
-    </div>
-  );
+/** Chaque tuile pointe vers un block ID du hub — pas d'URL, on switch localement. */
+interface AppTile {
+  blockId: string;
+  icon: typeof SettingsIcon;
+  title: string;
+  description: string;
+  connected: boolean;
+  metric?: string;
+  tone: 'fuchsia' | 'rose' | 'emerald' | 'amber' | 'sky' | 'violet';
 }
 
-function NewsletterInlineEditor({ block, store, setStore, markDirty, storeId }: EditorCtx & { storeId?: string }) {
-  return (
-    <div className="flex flex-1 flex-col">
-      <EditorHeader title={block.label} hint={block.hint} />
-      <div className="space-y-5 p-5 overflow-auto max-h-[calc(100vh-300px)]">
-        <div className="rounded-2xl border border-border/60 bg-muted/30 p-6 space-y-4">
-          <div className="space-y-2">
-            <div className="text-sm font-semibold">Newsletter & popup</div>
-            <p className="text-xs text-muted-foreground">
-              Configure la popup de bienvenue et gère la liste d'emails des abonnés.
-            </p>
-          </div>
-          <Link href={`/dashboard/stores/${storeId}/newsletter`}>
-            <Button className="w-full gap-1.5 gradient-brand text-white">
-              Configurer la newsletter
-              <ChevronRight className="h-4 w-4" />
-            </Button>
-          </Link>
-        </div>
-      </div>
-    </div>
-  );
-}
+const APPS_TONE: Record<AppTile['tone'], { iconBg: string; chipBg: string; chipFg: string }> = {
+  fuchsia: { iconBg: 'from-fuchsia-500 to-pink-600',   chipBg: 'bg-fuchsia-500/10', chipFg: 'text-fuchsia-700' },
+  rose:    { iconBg: 'from-rose-500 to-pink-600',      chipBg: 'bg-rose-500/10',    chipFg: 'text-rose-700' },
+  emerald: { iconBg: 'from-emerald-500 to-teal-600',   chipBg: 'bg-emerald-500/10', chipFg: 'text-emerald-700' },
+  amber:   { iconBg: 'from-amber-500 to-orange-600',   chipBg: 'bg-amber-500/10',   chipFg: 'text-amber-700' },
+  sky:     { iconBg: 'from-sky-500 to-blue-600',       chipBg: 'bg-sky-500/10',     chipFg: 'text-sky-700' },
+  violet:  { iconBg: 'from-violet-500 to-fuchsia-600', chipBg: 'bg-violet-500/10',  chipFg: 'text-violet-700' },
+};
 
-function DeliveryInlineEditor({ block, store, setStore, markDirty, storeId }: EditorCtx & { storeId?: string }) {
-  return (
-    <div className="flex flex-1 flex-col">
-      <EditorHeader title={block.label} hint={block.hint} />
-      <div className="space-y-5 p-5 overflow-auto max-h-[calc(100vh-300px)]">
-        <div className="rounded-2xl border border-border/60 bg-muted/30 p-6 space-y-4">
-          <div className="space-y-2">
-            <div className="text-sm font-semibold">Livraison</div>
-            <p className="text-xs text-muted-foreground">
-              Intègre MogaDelivery, configure l'adresse d'expédition et les zones de livraison.
-            </p>
-          </div>
-          <Link href={`/dashboard/stores/${storeId}/delivery`}>
-            <Button className="w-full gap-1.5 gradient-brand text-white">
-              Configurer la livraison
-              <ChevronRight className="h-4 w-4" />
-            </Button>
-          </Link>
-        </div>
-      </div>
-    </div>
-  );
-}
+function AppsInlineEditor({ block, store, storeId, setActiveBlock }: EditorCtx) {
+  // Compteurs live pour badges "3 actifs" — on tolère un échec silencieux
+  // (l'API peut ne pas être dispo si le store est en création).
+  const [couponCount, setCouponCount] = useState<number>(0);
+  const [collectionCount, setCollectionCount] = useState<number>(0);
+  const [subscriberCount, setSubscriberCount] = useState<number>(0);
 
-function AbandonedCartsInlineEditor({ block, store, setStore, markDirty, storeId }: EditorCtx & { storeId?: string }) {
-  return (
-    <div className="flex flex-1 flex-col">
-      <EditorHeader title={block.label} hint={block.hint} />
-      <div className="space-y-5 p-5 overflow-auto max-h-[calc(100vh-300px)]">
-        <div className="rounded-2xl border border-border/60 bg-muted/30 p-6 space-y-4">
-          <div className="space-y-2">
-            <div className="text-sm font-semibold">Paniers abandonnés</div>
-            <p className="text-xs text-muted-foreground">
-              Envoie des relances WhatsApp automatiques aux clients avec panier non finalisé.
-            </p>
-          </div>
-          <Link href={`/dashboard/stores/${storeId}/abandoned-carts`}>
-            <Button className="w-full gap-1.5 gradient-brand text-white">
-              Configurer les relances
-              <ChevronRight className="h-4 w-4" />
-            </Button>
-          </Link>
-        </div>
-      </div>
-    </div>
-  );
-}
+  useEffect(() => {
+    if (!storeId) return;
+    let cancelled = false;
+    Promise.all([
+      storesApi.listCoupons(storeId).catch(() => ({ data: { coupons: [] } })),
+      storesApi.listCollections?.(storeId).catch(() => ({ data: { collections: [] } })) ?? Promise.resolve({ data: { collections: [] } }),
+      storesApi.listSubscribers?.(storeId).catch(() => ({ data: { counts: { total: 0 } } })) ?? Promise.resolve({ data: { counts: { total: 0 } } }),
+    ]).then(([cRes, colRes, subRes]) => {
+      if (cancelled) return;
+      const coupons = (cRes?.data as { coupons?: Array<{ isActive?: boolean }> } | undefined)?.coupons || [];
+      setCouponCount(coupons.filter((c) => c.isActive).length);
+      const collections = (colRes?.data as { collections?: unknown[] } | undefined)?.collections || [];
+      setCollectionCount(collections.length);
+      const counts = (subRes?.data as { counts?: { total?: number } } | undefined)?.counts;
+      setSubscriberCount(counts?.total || 0);
+    });
+    return () => { cancelled = true; };
+  }, [storeId]);
 
-function AppsInlineEditor({ block, store, setStore, markDirty, storeId }: EditorCtx & { storeId?: string }) {
+  const delivery = store.integrations?.delivery;
+  const marketing = store.integrations?.marketing;
+  const newsletter = (store.settings as { newsletter?: { enabled?: boolean } } | undefined)?.newsletter;
+  const whatsapp = store.settings?.whatsapp;
+
+  const tiles: AppTile[] = [
+    {
+      blockId: 'delivery',
+      icon: Truck,
+      title: 'Livraison',
+      description: 'Dispatch auto des commandes COD vers le coursier.',
+      connected: !!(delivery?.enabled && delivery.apiKey && delivery.pickupAddress?.city),
+      metric: delivery?.autoDispatch !== false ? 'Auto-dispatch' : 'Manuel',
+      tone: 'rose',
+    },
+    {
+      blockId: 'marketing',
+      icon: TrendingUp,
+      title: 'Pixels marketing',
+      description: 'Meta, TikTok, Snap, GA4 — événements auto.',
+      connected: !!(marketing?.facebookPixelId || marketing?.tiktokPixelId || marketing?.snapchatPixelId || marketing?.googleAnalyticsId),
+      metric: (() => {
+        const n = [marketing?.facebookPixelId, marketing?.tiktokPixelId, marketing?.snapchatPixelId, marketing?.googleAnalyticsId].filter(Boolean).length;
+        return n > 0 ? `${n} pixel${n > 1 ? 's' : ''}` : undefined;
+      })(),
+      tone: 'fuchsia',
+    },
+    {
+      blockId: 'whatsapp',
+      icon: MessageCircle,
+      title: 'WhatsApp flottant',
+      description: 'Bouton chat sur toutes les pages.',
+      connected: !!(whatsapp?.enabled && whatsapp?.phoneNumber?.trim()),
+      tone: 'emerald',
+    },
+    {
+      blockId: 'newsletter',
+      icon: Mail,
+      title: 'Newsletter & pop-up',
+      description: 'Capture d\'emails avec code promo.',
+      connected: !!newsletter?.enabled,
+      metric: subscriberCount > 0 ? `${subscriberCount} abonné${subscriberCount > 1 ? 's' : ''}` : undefined,
+      tone: 'emerald',
+    },
+    {
+      blockId: 'coupons',
+      icon: BadgePercent,
+      title: 'Codes promo',
+      description: 'Codes % ou fixes saisis au COD.',
+      connected: couponCount > 0,
+      metric: couponCount > 0 ? `${couponCount} actif${couponCount > 1 ? 's' : ''}` : undefined,
+      tone: 'amber',
+    },
+    {
+      blockId: 'collections',
+      icon: Layers,
+      title: 'Collections',
+      description: 'Regroupe tes produits par thème.',
+      connected: collectionCount > 0,
+      metric: collectionCount > 0 ? `${collectionCount} collection${collectionCount > 1 ? 's' : ''}` : undefined,
+      tone: 'sky',
+    },
+  ];
+
+  const connectedCount = tiles.filter((t) => t.connected).length;
+
   return (
     <div className="flex flex-1 flex-col">
       <EditorHeader title={block.label} hint={block.hint} />
-      <div className="space-y-5 p-5 overflow-auto max-h-[calc(100vh-300px)]">
-        <div className="rounded-2xl border border-border/60 bg-muted/30 p-6 space-y-4">
-          <div className="space-y-2">
-            <div className="text-sm font-semibold">Apps & intégrations</div>
-            <p className="text-xs text-muted-foreground">
-              Gère toutes tes apps connectées (Telegram, WhatsApp, paiements, etc.).
-            </p>
-          </div>
-          <Link href={`/dashboard/stores/${storeId}/apps`}>
-            <Button className="w-full gap-1.5 gradient-brand text-white">
-              Gérer les apps
-              <ChevronRight className="h-4 w-4" />
-            </Button>
-          </Link>
+      <div className="space-y-4 p-5">
+        <div
+          className={cn(
+            'inline-flex rounded-full px-3 py-1.5 text-xs font-bold',
+            connectedCount === tiles.length
+              ? 'bg-emerald-500/10 text-emerald-700'
+              : 'bg-primary/10 text-primary',
+          )}
+        >
+          {connectedCount} / {tiles.length} connectées
+        </div>
+        <div className="space-y-2">
+          {tiles.map((t) => {
+            const tone = APPS_TONE[t.tone];
+            const Icon = t.icon;
+            return (
+              <button
+                key={t.blockId}
+                type="button"
+                onClick={() => setActiveBlock(t.blockId)}
+                className={cn(
+                  'group relative flex w-full items-start gap-3 overflow-hidden rounded-xl border bg-card p-3 text-left transition-all hover:-translate-y-0.5 hover:shadow-md',
+                  t.connected
+                    ? 'border-emerald-500/30 hover:border-emerald-500/60'
+                    : 'border-border/60 hover:border-primary/40',
+                )}
+              >
+                <div className={cn('grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-gradient-to-br text-white shadow-sm', tone.iconBg)}>
+                  <Icon className="h-4 w-4" />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-2">
+                    <h3 className="truncate text-sm font-bold tracking-tight">{t.title}</h3>
+                    {t.connected ? (
+                      <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-500" />
+                    ) : (
+                      <Circle className="h-4 w-4 shrink-0 text-muted-foreground/40" />
+                    )}
+                  </div>
+                  <p className="mt-0.5 line-clamp-2 text-[11px] text-muted-foreground">{t.description}</p>
+                  <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+                    <span
+                      className={cn(
+                        'inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold',
+                        t.connected ? 'bg-emerald-500/10 text-emerald-700' : 'bg-amber-500/10 text-amber-700',
+                      )}
+                    >
+                      <span className={cn('h-1.5 w-1.5 rounded-full', t.connected ? 'bg-emerald-500' : 'bg-amber-500')} />
+                      {t.connected ? 'Connectée' : 'À configurer'}
+                    </span>
+                    {t.metric && (
+                      <span className={cn('rounded-full px-2 py-0.5 text-[10px] font-semibold', tone.chipBg, tone.chipFg)}>
+                        {t.metric}
+                      </span>
+                    )}
+                  </div>
+                </div>
+                <ChevronRight className="h-4 w-4 shrink-0 self-center text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100" />
+              </button>
+            );
+          })}
+        </div>
+        <div className="rounded-xl border border-dashed border-border/60 bg-muted/30 p-3 text-center text-[11px] text-muted-foreground">
+          <Sparkles className="mx-auto mb-1 h-3.5 w-3.5 text-primary" />
+          Plus d&apos;intégrations à venir — chatbots, email transactionnel, Google Sheets…
         </div>
       </div>
     </div>

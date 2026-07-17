@@ -847,7 +847,7 @@ function ActionPanel({
           tone="rose"
           label="Paniers abandonnés"
           count={abandonedCount}
-          href={`/dashboard/stores/${storeId}/abandoned-carts`}
+          href={`/dashboard/stores/${storeId}?block=abandoned`}
           hint={abandonedCount ? 'Relance par WhatsApp' : 'Aucun lead à relancer'}
         />
         <ActionRow

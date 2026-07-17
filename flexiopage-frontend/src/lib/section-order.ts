@@ -5,14 +5,25 @@
  * can import them without dragging the editor's client bundle.
  */
 
-/** The 4 sections the seller can reorder. */
-export type MovableSectionId = 'hero' | 'slider' | 'products' | 'testimonials';
+/** Les sections réordonnables du corps de la page d'accueil. */
+export type MovableSectionId =
+  | 'hero'
+  | 'slider'
+  | 'products'
+  | 'testimonials'
+  | 'video'
+  | 'faq'
+  | 'richText'
+  | 'featuredProduct';
 
 export const DEFAULT_SECTION_ORDER: MovableSectionId[] = [
   'hero',
   'slider',
   'products',
   'testimonials',
+  'video',
+  'faq',
+  'richText',
 ];
 
 /**
