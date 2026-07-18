@@ -673,23 +673,29 @@ function BlockList({
   return (
     <aside
       className={cn(
-        // En desktop large : toujours visible à 288px (w-72).
-        // En tablette/mobile : prend toute la largeur si actif via les
-        // onglets, sinon masqué. La position est en flow normal — pas
-        // d'overlay — pour rester lisible avec un long scroll.
-        'shrink-0 flex-col overflow-y-auto border-r border-border/60 bg-card/60 lg:flex lg:w-72',
+        // Desktop (lg+) : rail vertical icônes seules, 56px. Économise
+        // ~232px pour l'éditeur central + la preview vs l'ancien layout
+        // large. Tooltip natif au survol pour le nom du block.
+        // Mobile : prend toute la largeur quand actif via les onglets,
+        // avec labels visibles (l'espace horizontal n'est pas contraint).
+        'shrink-0 flex-col overflow-y-auto border-r border-border/60 bg-card/60 lg:flex lg:w-14',
         hiddenOnMobile ? 'hidden' : 'flex w-full',
       )}
     >
-      <div className="flex-1 px-3 py-4">
-        {groups.map((g) => {
+      <div className="flex-1 px-2 py-3 lg:px-1.5 lg:py-2">
+        {groups.map((g, gi) => {
           const items = blocks.filter((b) => b.group === g);
           if (items.length === 0) return null;
           return (
-            <div key={g} className="mb-5 last:mb-0">
-              <div className="mb-1.5 px-2 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+            <div key={g} className="mb-4 last:mb-0 lg:mb-2">
+              {/* Sur mobile on garde le label texte du groupe. Sur desktop
+                 on n'affiche qu'un séparateur fin (sauf le tout premier). */}
+              <div className="mb-1.5 px-2 text-[10px] font-bold uppercase tracking-wider text-muted-foreground lg:hidden">
                 {GROUP_LABELS[g]}
               </div>
+              {gi > 0 && (
+                <div className="mx-1 mb-1.5 hidden h-px bg-border/60 lg:block" aria-hidden />
+              )}
               <div className="space-y-0.5">
                 {items.map((b) => {
                   const Icon = b.icon;
@@ -700,20 +706,39 @@ function BlockList({
                       key={b.id}
                       type="button"
                       onClick={() => onPick(b.id)}
+                      title={b.label + ' — ' + b.hint}
+                      aria-label={b.label}
                       className={cn(
-                        'group flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left transition-colors',
+                        // Mobile : ligne complète avec label. Desktop : bouton
+                        // carré 40x40 centré, icône seule.
+                        'group relative flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left transition-colors',
+                        'lg:h-10 lg:w-10 lg:justify-center lg:px-0 lg:py-0 lg:mx-auto',
                         active
                           ? 'bg-primary/10 text-primary'
                           : 'text-foreground/80 hover:bg-muted hover:text-foreground',
                       )}
                     >
-                      <Icon className={cn('h-4 w-4 shrink-0', active ? 'text-primary' : 'text-muted-foreground')} />
-                      <span className="min-w-0 flex-1 truncate text-sm font-medium">{b.label}</span>
+                      <Icon
+                        className={cn(
+                          'h-4 w-4 shrink-0 lg:h-[18px] lg:w-[18px]',
+                          active ? 'text-primary' : 'text-muted-foreground',
+                        )}
+                      />
+                      {/* Label mobile-only — masqué sur desktop rail. */}
+                      <span className="min-w-0 flex-1 truncate text-sm font-medium lg:hidden">{b.label}</span>
                       {dirty && (
-                        <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-amber-500" title="Modifications non enregistrées" />
+                        <span
+                          className={cn(
+                            'shrink-0 rounded-full bg-amber-500',
+                            // Mobile : petit dot à droite. Desktop : dot en
+                            // haut-droite du bouton (badge de notification).
+                            'h-1.5 w-1.5 lg:absolute lg:right-1 lg:top-1 lg:h-2 lg:w-2 lg:border lg:border-card',
+                          )}
+                          title="Modifications non enregistrées"
+                        />
                       )}
                       {b.mode === 'link' ? (
-                        <ChevronRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground/60" />
+                        <ChevronRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground/60 lg:hidden" />
                       ) : null}
                     </button>
                   );
