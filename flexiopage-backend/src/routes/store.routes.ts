@@ -27,6 +27,10 @@ router.use('/:storeId', requireStoreAccess);
 
 router.get('/:storeId', storeController.getStore);
 router.patch('/:storeId', storeController.updateStore);
+// Snapshot des modifs en cours dans l'éditeur — lues par l'iframe d'aperçu
+// (?preview=1). Ne touche pas au live tant qu'updateStore n'est pas appelé.
+router.patch('/:storeId/preview-draft', storeController.savePreviewDraft);
+router.delete('/:storeId/preview-draft', storeController.discardPreviewDraft);
 router.get('/:storeId/analytics', storeController.getStoreAnalyticsController);
 router.get('/:storeId/analytics/rich', storeController.getStoreAnalyticsRichController);
 router.get('/:storeId/tracking', storeController.getStoreTrackingController);

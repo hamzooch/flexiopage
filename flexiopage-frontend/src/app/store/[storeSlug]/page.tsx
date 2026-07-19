@@ -215,12 +215,23 @@ export default async function PublicStorePage({ params }: Props) {
     .getAll()
     .map((c) => `${c.name}=${c.value}`)
     .join('; ');
+  // Preview mode : cookie `preview_auth` posé par l'éditeur → on ajoute
+  // ?preview=1 + Authorization Bearer pour que le backend fusionne le
+  // previewDraft dans la réponse. Aucune influence si le cookie n'existe pas.
+  const previewToken = cookieStore.get('preview_auth')?.value;
+  const previewQuery = previewToken ? '?preview=1' : '';
+  const previewAuthHeader: HeadersInit = previewToken
+    ? { Authorization: `Bearer ${previewToken}` }
+    : {};
 
   try {
     const [storeRes, productsRes] = await Promise.all([
-      fetch(`${apiBase}/api/public/store-by-slug/${storeSlug}`, {
+      fetch(`${apiBase}/api/public/store-by-slug/${storeSlug}${previewQuery}`, {
         cache: 'no-store',
-        headers: fwdCookie ? { Cookie: fwdCookie } : undefined,
+        headers: {
+          ...(fwdCookie ? { Cookie: fwdCookie } : {}),
+          ...previewAuthHeader,
+        },
       }),
       fetch(`${apiBase}/api/public/stores/${storeSlug}/products`, {
         cache: 'no-store',

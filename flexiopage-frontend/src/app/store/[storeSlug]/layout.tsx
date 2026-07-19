@@ -14,6 +14,7 @@
  * <head> and the wa.me link is rendered without a client roundtrip.
  */
 import type { Metadata } from 'next';
+import { cookies } from 'next/headers';
 import { mediaUrl, storeAbsoluteUrl } from '@/lib/utils';
 import { WhatsappButton, type WhatsappConfig } from '@/components/storefront/whatsapp-button';
 import { NewsletterPopup, type NewsletterConfig } from '@/components/storefront/newsletter-popup';
@@ -53,11 +54,21 @@ interface StoreLite {
 
 async function fetchStore(storeSlug: string): Promise<StoreLite | null> {
   const apiBase = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
+  // Preview mode : le dashboard, en ouvrant l'iframe d'aperçu, dépose un
+  // cookie `preview_auth=<jwt>` sur le même origin. On l'expédie en
+  // Authorization Bearer + ?preview=1 au backend qui fusionne alors
+  // previewDraft par-dessus le live. Sans cookie → fetch normal (ISR
+  // 60 s). Avec cookie → no-store pour ne PAS empoisonner le cache
+  // partagé avec la version draft.
+  const previewToken = (await cookies()).get('preview_auth')?.value;
+  const url = previewToken
+    ? `${apiBase}/api/public/store-by-slug/${storeSlug}?preview=1`
+    : `${apiBase}/api/public/store-by-slug/${storeSlug}`;
   try {
-    const res = await fetch(`${apiBase}/api/public/store-by-slug/${storeSlug}`, {
-      // ISR: cache 60s + tag so the dashboard can revalidate on mutation
-      // via revalidateTag(`store:<slug>`) once a webhook is wired up.
-      next: { revalidate: 60, tags: [`store:${storeSlug}`] },
+    const res = await fetch(url, {
+      ...(previewToken
+        ? { cache: 'no-store', headers: { Authorization: `Bearer ${previewToken}` } }
+        : { next: { revalidate: 60, tags: [`store:${storeSlug}`] } }),
     });
     if (!res.ok) return null;
     const { store } = (await res.json()) as { store?: StoreLite };

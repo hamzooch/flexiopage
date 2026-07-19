@@ -82,6 +82,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { storesApi, extractApiError } from '@/lib/api';
+import { useAuthStore } from '@/stores/auth-store';
 import { cn, publicStoreUrl } from '@/lib/utils';
 import type {
   StoreType,
@@ -256,6 +257,11 @@ export default function StoreEditPage() {
   const searchParams = useSearchParams();
   const storeId = params.storeId as string;
 
+  // Le token JWT est nécessaire pour que la storefront (server-side)
+  // puisse s'authentifier auprès du backend en mode preview et récupérer
+  // le draft. On le passe en query param `pt` dans l'URL de l'iframe —
+  // usage restreint au dashboard du propriétaire, pas de leak externe.
+  const authToken = useAuthStore((s) => s.token);
   const [store, setStore] = useState<StoreType | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -368,6 +374,75 @@ export default function StoreEditPage() {
     return () => window.removeEventListener('beforeunload', handler);
   }, [dirty]);
 
+  /**
+   * Auto-draft (400 ms debounce) — chaque édition écrit un snapshot des
+   * champs dirty dans store.previewDraft côté backend. L'iframe d'aperçu
+   * (mode ?preview=1) lit ce draft mergé par-dessus le live, ce qui fait
+   * que le vendeur voit ses modifs en TEMPS RÉEL sans qu'elles remplacent
+   * la boutique publique. Le vrai save (handleSave) écrase le live et
+   * efface le draft côté DB dans la même transaction.
+   */
+  useEffect(() => {
+    if (!store || !dirty) return;
+    const timer = window.setTimeout(() => {
+      const payload: Record<string, unknown> = {};
+      for (const k of Array.from(patch.keys)) {
+        switch (k) {
+          case 'name':         payload.name         = store.name; break;
+          case 'description':  payload.description  = store.description; break;
+          case 'logo':         payload.logo         = store.logo; break;
+          case 'favicon':      payload.favicon      = store.favicon; break;
+          case 'isPublished':  payload.isPublished  = !!store.isPublished; break;
+          case 'theme':        payload.theme        = store.theme; break;
+          case 'settings':     payload.settings     = store.settings; break;
+          case 'customDomain': payload.customDomain = store.customDomain || undefined; break;
+          case 'integrations': payload.integrations = store.integrations; break;
+        }
+      }
+      // Best-effort — pas de spinner, pas d'erreur affichée : c'est un
+      // effet de bord de l'aperçu, pas une action du vendeur. Si ça foire
+      // (réseau, 500), l'iframe montrera juste l'état pré-modif.
+      void storesApi.savePreviewDraft(storeId, payload).then(() => {
+        // Force le refresh de l'iframe pour que la storefront relise le
+        // draft avec les nouvelles valeurs.
+        setPreviewBust((n) => n + 1);
+      }).catch(() => {});
+    }, 400);
+    return () => window.clearTimeout(timer);
+    // On veut re-déclencher à chaque édition — `store` est le snapshot
+    // complet, `patch.keys` change quand un nouveau bloc devient dirty.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [store, patch.keys, storeId]);
+
+  // Cleanup : quand le vendeur quitte l'éditeur (navigation vers une autre
+  // page ou refresh), on efface le draft côté DB si aucune modif dirty
+  // n'a été sauvegardée. Sans ça, un rechargement plus tard verrait un
+  // faux "aperçu en cours" alors que le vendeur a abandonné.
+  useEffect(() => {
+    return () => {
+      // On ne fait le nettoyage QUE si aucune modif n'est en cours d'être
+      // enregistrée. Un vrai save nettoie déjà le draft côté DB.
+      void storesApi.discardPreviewDraft(storeId).catch(() => {});
+    };
+  }, [storeId]);
+
+  // Cookie preview_auth — l'iframe d'aperçu est côté storefront (server
+  // component) et n'a pas accès à localStorage / zustand. Le cookie est
+  // le seul canal same-origin où le token JWT du vendeur atteint le SSR
+  // de la storefront. On le pose au montage, on l'efface au démontage
+  // pour ne laisser aucun résidu (un curieux qui visite plus tard un
+  // storefront ne verrait pas ses drafts d'un autre vendeur).
+  useEffect(() => {
+    if (!authToken) return;
+    // Cookie non-httpOnly (posé côté JS), Path=/ pour qu'il soit envoyé
+    // à toutes les routes /store/*, SameSite=Strict pour bloquer les
+    // cross-origin cadres tiers. Session cookie (pas de Max-Age).
+    document.cookie = `preview_auth=${encodeURIComponent(authToken)}; Path=/; SameSite=Strict`;
+    return () => {
+      document.cookie = 'preview_auth=; Path=/; SameSite=Strict; Max-Age=0';
+    };
+  }, [authToken]);
+
   // Manual save only
   async function handleSave() {
     if (!store || !dirty || saving) return;
@@ -445,7 +520,17 @@ export default function StoreEditPage() {
     orderId: firstOrderId || undefined,
   };
   const previewDef = PREVIEW_PAGES.find((p) => p.id === previewPage) || PREVIEW_PAGES[0];
-  const previewPath = previewDef.buildPath(previewCtx);
+  const basePreviewPath = previewDef.buildPath(previewCtx);
+  // Preview draft — le cookie `preview_auth` (posé au montage) suffit pour
+  // que la storefront demande la fusion draft. On garde `?preview=1` dans
+  // l'URL iframe seulement quand il y a effectivement des modifs dirty,
+  // ce qui force un cache-bust de la réponse ISR et signale visuellement
+  // « aperçu draft » côté URL bar (utile pour le debug).
+  const previewPath = basePreviewPath
+    ? (dirty
+        ? `${basePreviewPath}${basePreviewPath.includes('?') ? '&' : '?'}preview=1`
+        : basePreviewPath)
+    : null;
 
   // Layout plein écran : `100dvh` (dynamic viewport) tient compte de la
   // barre URL iOS Safari qui se cache/montre, `100vh` coupait le bas
@@ -2440,46 +2525,254 @@ function CodFormEditor({ block, store, setStore, markDirty }: EditorCtx) {
     markDirty('settings', 'codForm');
   }
 
+  const BUTTON_SHAPES: Array<{ id: 'pill' | 'rounded' | 'square'; label: string; radius: string }> = [
+    { id: 'square',  label: 'Carré',   radius: '4px' },
+    { id: 'rounded', label: 'Arrondi', radius: '12px' },
+    { id: 'pill',    label: 'Pilule',  radius: '9999px' },
+  ];
+  const ANIMATIONS: Array<{ id: 'pulse' | 'shimmer' | 'bounce' | 'none'; label: string }> = [
+    { id: 'none',    label: 'Aucune' },
+    { id: 'pulse',   label: 'Pulse' },
+    { id: 'shimmer', label: 'Shimmer' },
+    { id: 'bounce',  label: 'Bounce' },
+  ];
+
+  const currentShape = cf.buttonShape || 'rounded';
+  const currentAnim = cf.buttonAnimation || 'none';
+
   return (
     <div className="flex flex-1 flex-col">
       <EditorHeader title={block.label} hint={block.hint} />
       <div className="space-y-5 p-5">
-        <Field label="En-tête du formulaire">
-          <Input
-            value={cf.headline || ''}
-            onChange={(e) => patchCf({ ...cf, headline: e.target.value })}
-            placeholder="Ex: Commander en 30 secondes"
-          />
-        </Field>
-        <Field label="Libellé du bouton">
-          <Input
-            value={cf.submitLabel || ''}
-            onChange={(e) => patchCf({ ...cf, submitLabel: e.target.value })}
-            placeholder="Ex: Commander maintenant"
-          />
-        </Field>
-        <Field label="Phrase de réassurance">
-          <Input
-            value={cf.reassurance || ''}
-            onChange={(e) => patchCf({ ...cf, reassurance: e.target.value })}
-            placeholder="Ex: Sans carte. Livraison 24-72h."
-          />
-        </Field>
+        {/* ── Copy — textes ──────────────────────────────────────── */}
+        <div className="space-y-4">
+          <Field label="En-tête du formulaire">
+            <Input
+              value={cf.headline || ''}
+              onChange={(e) => patchCf({ ...cf, headline: e.target.value })}
+              placeholder="Ex: Commander en 30 secondes"
+            />
+          </Field>
+          <Field label="Libellé du bouton">
+            <Input
+              value={cf.submitLabel || ''}
+              onChange={(e) => patchCf({ ...cf, submitLabel: e.target.value })}
+              placeholder="Ex: Commander maintenant"
+            />
+          </Field>
+          <Field label="Phrase de réassurance">
+            <Input
+              value={cf.reassurance || ''}
+              onChange={(e) => patchCf({ ...cf, reassurance: e.target.value })}
+              placeholder="Ex: Sans carte. Livraison 24-72h."
+            />
+          </Field>
+        </div>
+
+        {/* ── Champs visibles ────────────────────────────────────── */}
         <div className="space-y-2 rounded-2xl border border-border/60 bg-muted/20 p-4">
-          <div className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Champs visibles</div>
+          <div className="mb-1 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+            Champs visibles
+          </div>
+          <p className="mb-2 text-[11px] text-muted-foreground">
+            Nom, téléphone et adresse ligne 1 sont toujours affichés — le minimum pour livrer.
+          </p>
           <Toggle compact label="Email" checked={cf.showEmail !== false} onChange={(v) => patchCf({ ...cf, showEmail: v })} />
           <Toggle compact label="Email obligatoire" checked={!!cf.requireEmail} onChange={(v) => patchCf({ ...cf, requireEmail: v })} />
+          <Toggle compact label="Adresse — ligne 2" checked={!!cf.showAddressLine2} onChange={(v) => patchCf({ ...cf, showAddressLine2: v })} />
+          <Toggle compact label="Ville" checked={cf.showCity !== false} onChange={(v) => patchCf({ ...cf, showCity: v })} />
           <Toggle compact label="Code postal" checked={!!cf.showPostalCode} onChange={(v) => patchCf({ ...cf, showPostalCode: v })} />
-          <Toggle compact label="État/région" checked={!!cf.showState} onChange={(v) => patchCf({ ...cf, showState: v })} />
-          <Toggle compact label="Notes" checked={cf.showNotes !== false} onChange={(v) => patchCf({ ...cf, showNotes: v })} />
-          <Toggle compact label="Quantité" checked={cf.showQuantity !== false} onChange={(v) => patchCf({ ...cf, showQuantity: v })} />
+          <Toggle compact label="État / région / wilaya" checked={!!cf.showState} onChange={(v) => patchCf({ ...cf, showState: v })} />
+          <Toggle compact label="Notes pour le livreur" checked={cf.showNotes !== false} onChange={(v) => patchCf({ ...cf, showNotes: v })} />
+          <Toggle compact label="Sélecteur quantité" checked={cf.showQuantity !== false} onChange={(v) => patchCf({ ...cf, showQuantity: v })} />
         </div>
-        <div className="rounded-lg border border-border/60 bg-muted/20 p-3 text-xs text-muted-foreground">
-          Couleurs, forme du bouton, animation, frais de livraison ?
-          {' '}
-          <Link href={`/dashboard/stores/${store._id}/checkout`} className="font-semibold text-primary hover:underline">
-            Ouvrir le réglage complet du formulaire →
-          </Link>
+
+        {/* ── Frais de livraison ─────────────────────────────────── */}
+        <Field
+          label="Frais de livraison (par commande)"
+          hint="Ajouté au sous-total. Laisse 0 pour livraison gratuite."
+        >
+          <div className="flex items-center gap-2">
+            <Input
+              type="number"
+              min={0}
+              step="0.01"
+              value={typeof cf.shippingFee === 'number' ? cf.shippingFee : ''}
+              onChange={(e) => {
+                const v = e.target.value;
+                patchCf({ ...cf, shippingFee: v === '' ? undefined : Number(v) });
+              }}
+              placeholder="0"
+              className="max-w-[140px]"
+            />
+            <span className="text-xs text-muted-foreground">
+              {store.settings?.currency || 'XOF'}
+            </span>
+          </div>
+        </Field>
+
+        {/* ── Design — couleurs ──────────────────────────────────── */}
+        <div className="space-y-3 rounded-2xl border border-border/60 bg-muted/20 p-4">
+          <div className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+            Design du formulaire
+          </div>
+          <ColorField
+            label="Fond du formulaire"
+            value={cf.backgroundColor}
+            onChange={(v) => patchCf({ ...cf, backgroundColor: v })}
+            placeholder="#ffffff"
+          />
+          <ColorField
+            label="Couleur du bouton"
+            value={cf.buttonColor}
+            onChange={(v) => patchCf({ ...cf, buttonColor: v })}
+            placeholder="Couleur primaire du thème"
+          />
+          <ColorField
+            label="Couleur du texte du bouton"
+            value={cf.buttonTextColor}
+            onChange={(v) => patchCf({ ...cf, buttonTextColor: v })}
+            placeholder="#ffffff"
+          />
+        </div>
+
+        {/* ── Forme du bouton ────────────────────────────────────── */}
+        <Field label="Forme du bouton">
+          <div className="grid grid-cols-3 gap-2">
+            {BUTTON_SHAPES.map((s) => {
+              const active = currentShape === s.id;
+              return (
+                <button
+                  key={s.id}
+                  type="button"
+                  onClick={() => patchCf({ ...cf, buttonShape: s.id })}
+                  className={cn(
+                    'group flex flex-col items-center gap-2 rounded-xl border p-3 transition-all',
+                    active
+                      ? 'border-primary bg-primary/5 ring-2 ring-primary/20'
+                      : 'border-border/60 bg-card hover:border-primary/30 hover:bg-muted/40',
+                  )}
+                >
+                  <div
+                    className={cn(
+                      'h-8 w-16 shadow-sm transition-transform group-hover:scale-105',
+                      active ? '' : '',
+                    )}
+                    style={{
+                      background: cf.buttonColor || 'hsl(var(--primary))',
+                      borderRadius: s.radius,
+                    }}
+                  />
+                  <span className={cn('text-[11px] font-medium', active ? 'text-primary' : 'text-foreground/70')}>
+                    {s.label}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        </Field>
+
+        {/* ── Animation du bouton ────────────────────────────────── */}
+        <Field label="Animation du bouton" hint="Attire l'œil sur le CTA — à utiliser avec parcimonie.">
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+            {ANIMATIONS.map((a) => {
+              const active = currentAnim === a.id;
+              return (
+                <button
+                  key={a.id}
+                  type="button"
+                  onClick={() => patchCf({
+                    ...cf,
+                    buttonAnimation: a.id,
+                    buttonAnimated: a.id !== 'none',
+                  })}
+                  className={cn(
+                    'rounded-lg border px-3 py-2 text-xs font-medium transition-all',
+                    active
+                      ? 'border-primary bg-primary/10 text-primary shadow-sm'
+                      : 'border-border/60 bg-card text-foreground/70 hover:border-primary/30 hover:bg-muted/40',
+                  )}
+                >
+                  {a.label}
+                </button>
+              );
+            })}
+          </div>
+        </Field>
+
+        {/* ── Info — synchro live ─────────────────────────────────── */}
+        <div className="flex items-start gap-2 rounded-lg border border-emerald-500/30 bg-emerald-500/5 p-3 text-[11px] text-emerald-800">
+          <CheckCircle2 className="mt-0.5 h-3.5 w-3.5 shrink-0 text-emerald-600" />
+          <span>
+            Chaque changement se reflète dans l&apos;aperçu à droite en temps réel — rien n&apos;est
+            publié tant que tu ne cliques pas <strong>Enregistrer</strong>.
+          </span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/** Petit color picker chic : swatch cliquable + input hex + reset X. */
+function ColorField({
+  label,
+  value,
+  onChange,
+  placeholder,
+}: {
+  label: string;
+  value?: string;
+  onChange: (v: string | undefined) => void;
+  placeholder?: string;
+}) {
+  const raw = (value || '').trim();
+  const isValidHex = /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.test(raw);
+  return (
+    <div className="flex items-center gap-2.5">
+      <div
+        className="relative h-9 w-9 shrink-0 overflow-hidden rounded-lg border border-border/60 shadow-sm"
+        style={{ background: isValidHex ? raw : 'transparent' }}
+      >
+        {/* Damier de fond pour visualiser la transparence quand vide. */}
+        {!isValidHex && (
+          <div
+            aria-hidden
+            className="absolute inset-0"
+            style={{
+              backgroundImage:
+                'linear-gradient(45deg,#ddd 25%,transparent 25%),linear-gradient(-45deg,#ddd 25%,transparent 25%),linear-gradient(45deg,transparent 75%,#ddd 75%),linear-gradient(-45deg,transparent 75%,#ddd 75%)',
+              backgroundSize: '8px 8px',
+              backgroundPosition: '0 0,0 4px,4px -4px,-4px 0',
+            }}
+          />
+        )}
+        <input
+          type="color"
+          value={isValidHex ? raw : '#000000'}
+          onChange={(e) => onChange(e.target.value)}
+          className="absolute inset-0 cursor-pointer opacity-0"
+          aria-label={label}
+        />
+      </div>
+      <div className="min-w-0 flex-1">
+        <div className="text-xs font-medium">{label}</div>
+        <div className="mt-0.5 flex items-center gap-1.5">
+          <Input
+            value={raw}
+            onChange={(e) => onChange(e.target.value || undefined)}
+            placeholder={placeholder}
+            className="h-7 max-w-[120px] font-mono text-[11px]"
+          />
+          {raw && (
+            <button
+              type="button"
+              onClick={() => onChange(undefined)}
+              className="grid h-6 w-6 place-items-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"
+              title="Réinitialiser"
+            >
+              <X className="h-3 w-3" />
+            </button>
+          )}
         </div>
       </div>
     </div>

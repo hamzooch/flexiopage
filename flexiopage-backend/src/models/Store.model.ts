@@ -544,6 +544,26 @@ export interface IStore extends Document {
     /** Chiffre d'affaires visé sur le mois (devise = store currency). */
     monthlyRevenue?: number;
   };
+  /**
+   * Snapshot des modifications en cours dans l'éditeur boutique — le vendeur
+   * les VOIT (via ?preview=1 dans l'iframe d'aperçu) mais elles ne remplacent
+   * PAS le live tant qu'il ne clique pas « Enregistrer ». Auto-écrit à chaque
+   * édition (debounced) par le dashboard ; effacé lors du save réel ou via
+   * DELETE /preview-draft. Shape libre — sous-ensemble des champs Store.
+   */
+  previewDraft?: {
+    name?: string;
+    description?: string;
+    logo?: string;
+    favicon?: string;
+    isPublished?: boolean;
+    theme?: unknown;
+    settings?: unknown;
+    customDomain?: string;
+    integrations?: unknown;
+    /** Horodatage de la dernière mise à jour du draft, pour TTL éventuel. */
+    updatedAt?: Date;
+  };
   createdAt: Date;
   updatedAt: Date;
 }
@@ -892,6 +912,10 @@ const StoreSchema = new Schema<IStore>(
     goals: {
       monthlyRevenue: { type: Number, min: 0 },
     },
+    // Draft "modifs en cours" — sous-doc mixte pour rester tolérant à
+    // l'évolution du shape settings sans migration. Non exposé aux routes
+    // publiques ; seul le propriétaire authentifié le lit via ?preview=1.
+    previewDraft: { type: Schema.Types.Mixed, default: undefined },
   },
   { timestamps: true }
 );

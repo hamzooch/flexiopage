@@ -27,6 +27,27 @@ import { resolveBundlePricing } from '../lib/bundle';
 import { resolveMarketForRequest, resolveProductPricing } from '../lib/market';
 import { recordEvent, deviceFromUserAgent, classifySource } from '../services/tracking.service';
 import mongoose from 'mongoose';
+import jwt from 'jsonwebtoken';
+
+const JWT_SECRET = process.env.JWT_SECRET || 'change-me-in-production';
+
+/**
+ * Preview-only auth : décode le Bearer de la requête pour vérifier que le
+ * caller est bien le propriétaire de la boutique. Utilisé par les routes
+ * publiques quand ?preview=1 est présent — dans ce mode on renvoie le draft
+ * fusionné par-dessus le live, ce qui exige une vérification stricte
+ * d'appartenance. Renvoie false sur token absent/invalide ou owner mismatch.
+ */
+function isPreviewOwner(req: Request, ownerId: unknown): boolean {
+  const raw = req.headers.authorization?.replace('Bearer ', '');
+  if (!raw) return false;
+  try {
+    const decoded = jwt.verify(raw, JWT_SECRET) as { userId?: string };
+    return !!decoded.userId && String(decoded.userId) === String(ownerId);
+  } catch {
+    return false;
+  }
+}
 
 /**
  * Applique le pricing du market résolu sur un produit lean/serialisable.
@@ -237,10 +258,24 @@ function draftStorePayload(store: { _id: unknown; name: string; slug: string; lo
 }
 
 router.get('/store-by-slug/:slug', async (req: Request, res: Response): Promise<void> => {
-  const store = await storeService.getStoreBySlugIncludingDraft(req.params.slug);
-  if (!store) {
+  const rawStore = await storeService.getStoreBySlugIncludingDraft(req.params.slug);
+  if (!rawStore) {
     res.status(404).json({ error: 'Store not found' });
     return;
+  }
+  // Preview mode : le vendeur voit ses modifs en cours dans l'iframe de
+  // l'éditeur avant de cliquer Save. On n'expose le draft QUE si le Bearer
+  // matche le propriétaire — sans ça, un visiteur avec ?preview=1 en URL
+  // pourrait forcer l'affichage d'une version non-publiée.
+  const preview = req.query.preview === '1';
+  let store = rawStore;
+  if (preview && isPreviewOwner(req, rawStore.ownerId)) {
+    store = storeService.mergeStoreWithDraft(rawStore);
+  } else {
+    // Ne JAMAIS renvoyer le draft aux visiteurs anonymes — même si aucun
+    // draft n'existe, on nettoie le champ par principe pour ne pas leaker
+    // un shape interne éventuellement futur.
+    (store as unknown as { previewDraft?: unknown }).previewDraft = undefined;
   }
   if (!store.isPublished) {
     res.json({ unpublished: true, store: draftStorePayload(store) });

@@ -279,10 +279,70 @@ export async function updateStore(
     if (v === null) unset[k] = '';
     else set[k] = v;
   }
+  // Un vrai save écrase le live : le draft n'a plus de raison d'exister.
+  // Sans ça, la prochaine ouverture de l'éditeur ressusciterait des modifs
+  // déjà appliquées et le vendeur verrait des « modifs non enregistrées »
+  // fantômes.
+  unset.previewDraft = '';
   const op: Record<string, unknown> = {};
   if (Object.keys(set).length) op.$set = set;
   if (Object.keys(unset).length) op.$unset = unset;
   return Store.findByIdAndUpdate(storeId, op, { new: true });
+}
+
+/**
+ * Écrit un instantané des modifications en cours dans le sous-doc mixte
+ * `previewDraft`. Aucune fusion côté DB — le dashboard poste toujours
+ * l'état COMPLET dirty (name, settings, theme…) donc on remplace le doc
+ * précédent. Retourne le store mis à jour (pour vérifier updatedAt).
+ */
+export async function savePreviewDraft(
+  storeId: string,
+  draft: Record<string, unknown>,
+): Promise<IStore | null> {
+  return Store.findByIdAndUpdate(
+    storeId,
+    { $set: { previewDraft: { ...draft, updatedAt: new Date() } } },
+    { new: true },
+  );
+}
+
+/** Efface le draft — utilisé sur discard explicite ou après un vrai save. */
+export async function clearPreviewDraft(storeId: string): Promise<IStore | null> {
+  return Store.findByIdAndUpdate(
+    storeId,
+    { $unset: { previewDraft: '' } },
+    { new: true },
+  );
+}
+
+/**
+ * Applique un draft PAR-DESSUS un doc store lu (typiquement .lean()). Fusion
+ * peu profonde sur les clés top-level uniquement — settings, theme,
+ * integrations sont replacés en entier, ce qui matche exactement ce que
+ * updateStore fait aussi. `previewDraft` lui-même n'est pas propagé au caller
+ * (privé). Le paramètre est typé large : on accepte tout objet plain (les
+ * .lean() renvoient un plain object ; TS pense encore que c'est un IStore
+ * complet avec ses méthodes Document, ce qui casserait le spread).
+ */
+export function mergeStoreWithDraft(store: IStore): IStore {
+  const draft = store.previewDraft;
+  if (!draft) return store;
+  // Le paramètre IStore inclut les méthodes de Mongoose Document mais à
+  // runtime c'est un plain object (.lean()). On travaille via un shim
+  // Record<> pour éviter les erreurs de spread sur les méthodes.
+  const merged = { ...(store as unknown as Record<string, unknown>) };
+  if (typeof draft.name === 'string') merged.name = draft.name;
+  if (typeof draft.description === 'string') merged.description = draft.description;
+  if (typeof draft.logo === 'string') merged.logo = draft.logo;
+  if (typeof draft.favicon === 'string') merged.favicon = draft.favicon;
+  if (typeof draft.isPublished === 'boolean') merged.isPublished = draft.isPublished;
+  if (typeof draft.customDomain === 'string') merged.customDomain = draft.customDomain;
+  if (draft.theme && typeof draft.theme === 'object') merged.theme = draft.theme;
+  if (draft.settings && typeof draft.settings === 'object') merged.settings = draft.settings;
+  if (draft.integrations && typeof draft.integrations === 'object') merged.integrations = draft.integrations;
+  delete merged.previewDraft;
+  return merged as unknown as IStore;
 }
 
 export async function getStoresByOwner(ownerId: string): Promise<IStore[]> {

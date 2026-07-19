@@ -170,6 +170,37 @@ export async function updateStore(req: AuthRequest, res: Response): Promise<void
   res.json({ store: updated });
 }
 
+/**
+ * PATCH /api/stores/:storeId/preview-draft — snapshot les modifs en cours.
+ * Même schéma d'entrée que updateStore ; la différence est qu'on n'écrit
+ * PAS dans le live, on remplace le sous-doc `previewDraft`. L'iframe
+ * d'aperçu (mode ?preview=1) lira ce doc mergé par-dessus le live pour
+ * refléter les changements en temps réel avant que le vendeur clique Save.
+ */
+export async function savePreviewDraft(req: AuthRequest, res: Response): Promise<void> {
+  const store = req.store!;
+  const { name, description, logo, favicon, customDomain, theme, settings, integrations, isPublished } = req.body;
+  const draft: Record<string, unknown> = {};
+  if (typeof name === 'string') draft.name = name.trim();
+  if (description !== undefined) draft.description = description;
+  if (typeof logo === 'string') draft.logo = validator.unescape(logo);
+  if (typeof favicon === 'string') draft.favicon = validator.unescape(favicon);
+  if (typeof customDomain === 'string') draft.customDomain = customDomain;
+  if (theme && typeof theme === 'object') draft.theme = deepUnescape(theme);
+  if (settings && typeof settings === 'object') draft.settings = deepUnescape(settings);
+  if (integrations && typeof integrations === 'object') draft.integrations = deepUnescape(integrations);
+  if (typeof isPublished === 'boolean') draft.isPublished = isPublished;
+  const updated = await storeService.savePreviewDraft(store._id.toString(), draft);
+  res.json({ ok: true, updatedAt: updated?.previewDraft?.updatedAt });
+}
+
+/** DELETE /api/stores/:storeId/preview-draft — jette les modifs en cours. */
+export async function discardPreviewDraft(req: AuthRequest, res: Response): Promise<void> {
+  const store = req.store!;
+  await storeService.clearPreviewDraft(store._id.toString());
+  res.json({ ok: true });
+}
+
 export async function getStoreAnalyticsController(req: AuthRequest, res: Response): Promise<void> {
   const store = req.store!;
   const analytics = await getStoreAnalytics(store._id.toString());

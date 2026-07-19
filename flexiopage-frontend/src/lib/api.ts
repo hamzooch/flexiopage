@@ -1076,6 +1076,15 @@ export const storesApi = {
   get: (storeId: string) => api.get<{ store: unknown }>(`/stores/${storeId}`),
   update: (storeId: string, data: Record<string, unknown>) =>
     api.patch<{ store: unknown }>(`/stores/${storeId}`, data),
+  /** Snapshot des modifs en cours dans l'éditeur — lu par l'iframe d'aperçu
+   *  (?preview=1). Ne touche pas au live tant que `update` n'est pas
+   *  appelé. Auto-débouncé côté éditeur pour ne pas spam le backend. */
+  savePreviewDraft: (storeId: string, data: Record<string, unknown>) =>
+    api.patch<{ ok: boolean; updatedAt?: string }>(`/stores/${storeId}/preview-draft`, data),
+  /** Jette le draft — appelé quand le vendeur quitte l'éditeur ou clique
+   *  « Annuler les modifs ». Un save réel efface aussi le draft côté DB. */
+  discardPreviewDraft: (storeId: string) =>
+    api.delete<{ ok: boolean }>(`/stores/${storeId}/preview-draft`),
   getAnalytics: (storeId: string) =>
     api.get<StoreAnalyticsSummary>(`/stores/${storeId}/analytics`),
   getAnalyticsRich: (
