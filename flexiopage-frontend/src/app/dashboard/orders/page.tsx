@@ -283,6 +283,14 @@ export default function DashboardOrdersPage() {
   // Les snapshots OrderItem ne contiennent pas l'image (juste name/price/qty),
   // donc on hydrate côté client pour éviter de modifier tous les orders passés.
   const [productImages, setProductImages] = useState<Record<string, string>>({});
+  // Cache in-memory badge fiabilité par phoneKey (résolu batch après chaque
+  // refresh des orders). Rempli via `getCustomerReliabilityBatch`.
+  const [reliability, setReliability] = useState<Record<string, {
+    badge: 'reliable' | 'watch' | 'risky';
+    score: number;
+    total: number;
+    refusalRate: number;
+  }>>({});
 
   useEffect(() => {
     storesApi.list().then((res) => {
@@ -353,6 +361,17 @@ export default function DashboardOrdersPage() {
         const data = res.data as { orders: OrderType[]; total: number };
         setOrders(data.orders);
         setTotal(data.total ?? 0);
+        // Hydrate le cache fiabilité pour les phones visibles. Un seul appel
+        // batch — pas de N+1. Échec silencieux (l'orders list continue de
+        // marcher, juste sans badges).
+        const phones = Array.from(new Set(
+          data.orders.map((o) => o.customerPhone).filter((p): p is string => !!p),
+        ));
+        if (phones.length && selectedStoreId) {
+          storesApi.getCustomerReliabilityBatch(selectedStoreId, phones)
+            .then((r) => setReliability(r.data.reliability || {}))
+            .catch(() => {});
+        }
       })
       .catch(() => {
         setOrders([]);
@@ -661,6 +680,7 @@ export default function DashboardOrdersPage() {
                       onToggle={() => setExpandedId((id) => (id === o._id ? null : o._id))}
                       onChanged={refreshOrders}
                       productImages={productImages}
+                      reliability={reliability}
                     />
                   ))}
                 </tbody>
@@ -1089,6 +1109,7 @@ function OrderCard({
   onToggle,
   onChanged,
   productImages,
+  reliability,
 }: {
   order: OrderType;
   storeId: string;
@@ -1097,6 +1118,13 @@ function OrderCard({
   onChanged: () => void | Promise<void>;
   /** Lookup productId → première image, hydratée depuis listProducts en amont. */
   productImages: Record<string, string>;
+  /** Cache batch phoneKey (backend l'a déjà normalisé) → badge fiabilité. */
+  reliability: Record<string, {
+    badge: 'reliable' | 'watch' | 'risky';
+    score: number;
+    total: number;
+    refusalRate: number;
+  }>;
 }) {
   const payment = PAYMENT_BADGE[o.paymentStatus] || { label: o.paymentStatus, cls: 'bg-slate-500/10 text-slate-700 ring-slate-500/20' };
   const deliveryKey = (o.delivery?.externalStatus || '').toLowerCase();
@@ -1185,7 +1213,7 @@ function OrderCard({
           </div>
         </td>
 
-        {/* Client — avatar + nom + téléphone cliquable */}
+        {/* Client — avatar + nom + téléphone cliquable + badge fiabilité */}
         <td className="px-3 py-3 sm:px-4">
           <div className="flex items-center gap-2.5">
             <div
@@ -1198,8 +1226,30 @@ function OrderCard({
               {initials}
             </div>
             <div className="min-w-0">
-              <div className="truncate text-sm font-medium">
-                {o.customerName || 'Anonyme'}
+              <div className="flex items-center gap-1.5">
+                <span className="truncate text-sm font-medium">
+                  {o.customerName || 'Anonyme'}
+                </span>
+                {/* Badge fiabilité — visible seulement s'il y a de l'historique.
+                    Rouge = plusieurs refus/retours ; orange = à surveiller ;
+                    vert = client OK. Nouveau client (aucun historique) = pas
+                    de badge (évite le bruit). */}
+                {o.customerPhone && reliability[o.customerPhone] && reliability[o.customerPhone].total > 0 && (() => {
+                  const r = reliability[o.customerPhone];
+                  const meta = r.badge === 'risky'
+                    ? { cls: 'bg-rose-500/15 text-rose-700', label: `${Math.round(r.refusalRate * 100)}% refus`, title: `Client à risque : ${r.total} commande${r.total > 1 ? 's' : ''} historique, ${Math.round(r.refusalRate * 100)}% de refus/retours. Score ${r.score}/100.` }
+                    : r.badge === 'watch'
+                      ? { cls: 'bg-amber-500/15 text-amber-700', label: `${r.total} cmd`, title: `À surveiller : ${r.total} commande${r.total > 1 ? 's' : ''}, ${Math.round(r.refusalRate * 100)}% refus/retours. Score ${r.score}/100.` }
+                      : { cls: 'bg-emerald-500/15 text-emerald-700', label: `✓ ${r.total} cmd`, title: `Client fiable : ${r.total} commande${r.total > 1 ? 's' : ''} historique. Score ${r.score}/100.` };
+                  return (
+                    <span
+                      className={cn('inline-flex shrink-0 items-center rounded-full px-1.5 py-0.5 text-[9px] font-bold', meta.cls)}
+                      title={meta.title}
+                    >
+                      {meta.label}
+                    </span>
+                  );
+                })()}
               </div>
               {o.customerPhone ? (
                 <a

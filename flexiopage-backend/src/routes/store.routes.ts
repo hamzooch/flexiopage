@@ -74,6 +74,8 @@ router.patch('/:storeId/pages/:pageId', pageController.updatePage);
 router.delete('/:storeId/pages/:pageId', pageController.deletePage);
 
 router.get('/:storeId/orders', orderController.listOrders);
+// Doit être défini AVANT /orders/:orderId pour ne pas être capté par le param.
+router.get('/:storeId/orders/todo', orderController.listOrdersTodo);
 router.post('/:storeId/orders', orderController.createOrder);
 router.get('/:storeId/orders/:orderId', orderController.getOrder);
 router.patch('/:storeId/orders/:orderId/payment', orderController.updateOrderPaymentStatus);
@@ -90,6 +92,7 @@ router.get('/:storeId/media', mediaController.listMedia);
 router.get('/:storeId/customers', customerController.listCustomers);
 // Fiabilité client (score de retours) — aide l'agent de confirmation COD.
 router.get('/:storeId/customers/reliability', customerController.getReliability);
+router.post('/:storeId/customers/reliability/batch', customerController.getReliabilityBatch);
 
 // Collections (groups of products with their own storefront page).
 router.get('/:storeId/collections', collectionController.listCollections);

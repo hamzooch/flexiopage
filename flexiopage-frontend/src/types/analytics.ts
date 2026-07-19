@@ -67,8 +67,14 @@ export interface StoreAnalyticsRich {
   trafficSources: Array<{ source: string; visitors: number }>;
   /** Commandes + ventes par heure du jour (0..23) sur la fenêtre. */
   hourlySales: Array<{ hour: number; orders: number; sales: number }>;
+  /** Funnel COD enrichi 6 étapes — les compteurs sont bruts, le drop-off
+   *  se calcule côté client (%). Voir `<CodFunnelWidget>` sur analytics. */
   funnel: {
     created: number;
+    contacted: number;
+    confirmed: number;
+    dispatched: number;
+    delivered: number;
     paid: number;
     fulfilled: number;
     refunded: number;

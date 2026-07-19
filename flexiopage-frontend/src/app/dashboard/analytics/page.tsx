@@ -310,11 +310,13 @@ export default function DashboardAnalyticsPage() {
             </Card>
             <Card>
               <CardHeader className="pb-2">
-                <CardTitle className="text-sm sm:text-base">Tunnel de conversion</CardTitle>
-                <p className="text-[11px] text-muted-foreground sm:text-xs">Créée → payée → livrée</p>
+                <CardTitle className="text-sm sm:text-base">Funnel COD</CardTitle>
+                <p className="text-[11px] text-muted-foreground sm:text-xs">
+                  Créée → contactée → confirmée → dispatchée → livrée → payée
+                </p>
               </CardHeader>
               <CardContent>
-                <FunnelChart funnel={data.funnel} />
+                <FunnelChart funnel={data.funnel} mode="full" />
               </CardContent>
             </Card>
           </div>

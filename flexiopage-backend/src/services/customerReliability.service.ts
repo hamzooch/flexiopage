@@ -265,3 +265,80 @@ export async function getCustomerReliability(
     platform,
   };
 }
+
+/**
+ * Version batch pour la liste orders — évite le N+1 (20 rows visibles = 20
+ * appels sinon). Prend un tableau de phones (ou phoneKeys), renvoie un
+ * Record `{ [phoneKey]: { badge, score, total, refusalRate } }`. Le badge
+ * est basé sur les compteurs plateforme (agrégé en UN pipeline).
+ */
+export async function getCustomerReliabilityBatch(
+  phones: string[],
+): Promise<Record<string, { badge: ReliabilityBadge; score: number; total: number; refusalRate: number }>> {
+  // Table de correspondance phoneRaw → phoneKey normalisé. On garde ce mapping
+  // pour renvoyer un dict keyé par le phone brut (le client n'a pas le key
+  // normalisé, ça évite de dupliquer la logique phoneKey côté frontend).
+  const phoneToKey: Record<string, string> = {};
+  for (const p of phones) {
+    const k = phoneKey(p);
+    if (k) phoneToKey[p] = k;
+  }
+  const keys = Array.from(new Set(Object.values(phoneToKey)));
+  if (keys.length === 0) return {};
+
+  // Un seul pipeline qui matche tous les phoneKeys, groupe par key, et
+  // agrège les 4 métriques nécessaires au badge. Pas de projection des
+  // commandes individuelles — on ne renvoie que les compteurs.
+  const rows = await Order.aggregate([
+    { $match: { customerPhoneKey: { $in: keys } } },
+    {
+      $group: {
+        _id: '$customerPhoneKey',
+        total: { $sum: 1 },
+        delivered: {
+          $sum: {
+            $cond: [
+              { $or: [
+                { $eq: ['$fulfillmentStatus', 'fulfilled'] },
+                { $eq: ['$delivery.externalStatus', 'delivered'] },
+              ]},
+              1, 0,
+            ],
+          },
+        },
+        returned: { $sum: { $cond: [{ $eq: ['$delivery.externalStatus', 'returned'] }, 1, 0] } },
+        declined: { $sum: { $cond: [{ $eq: ['$confirmationStatus', 'declined'] }, 1, 0] } },
+        noAnswer: { $sum: { $cond: [{ $eq: ['$confirmationStatus', 'no_answer'] }, 1, 0] } },
+      },
+    },
+  ]);
+
+  // On construit d'abord le résultat keyé par phoneKey, puis on le "réémet"
+  // pour chaque phone brut qui pointe vers ce key. Ça permet de renvoyer
+  // le même badge pour deux formats du même numéro (+221701234, 0221701234).
+  const byKey: Record<string, { badge: ReliabilityBadge; score: number; total: number; refusalRate: number }> = {};
+  for (const row of rows) {
+    const counts: Counts = {
+      total: row.total,
+      delivered: row.delivered || 0,
+      returned: row.returned || 0,
+      declined: row.declined || 0,
+      noAnswer: row.noAnswer || 0,
+      decisive: (row.delivered || 0) + (row.returned || 0),
+      returnRate: 0,
+    };
+    counts.returnRate = counts.decisive > 0 ? Math.round((counts.returned / counts.decisive) * 100) / 100 : 0;
+    const { badge } = computeBadge(counts);
+    const score = computeScore(counts);
+    const refusalRate = counts.total > 0
+      ? Math.round(((counts.declined + counts.returned) / counts.total) * 100) / 100
+      : 0;
+    byKey[row._id] = { badge, score, total: counts.total, refusalRate };
+  }
+
+  const out: Record<string, { badge: ReliabilityBadge; score: number; total: number; refusalRate: number }> = {};
+  for (const [rawPhone, key] of Object.entries(phoneToKey)) {
+    if (byKey[key]) out[rawPhone] = byKey[key];
+  }
+  return out;
+}

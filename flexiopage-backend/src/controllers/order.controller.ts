@@ -50,6 +50,63 @@ export async function createOrder(req: AuthRequest, res: Response): Promise<void
   res.status(201).json({ order });
 }
 
+/**
+ * GET /api/stores/:storeId/orders/todo
+ *
+ * Todo list de l'agent de confirmation pour la journée :
+ *   - Commandes en `callback` dont la deadline est aujourd'hui ou dépassée
+ *     (le vendeur a promis de rappeler, il faut tenir).
+ *   - Commandes en `no_answer` des dernières 24h (à retenter avant abandon).
+ *
+ * Triées : callbacks en retard d'abord (les plus urgents), puis par
+ * callbackAt asc, puis no_answer par createdAt desc. Limite 30 pour tenir
+ * dans un widget dashboard sans pagination.
+ */
+export async function listOrdersTodo(req: AuthRequest, res: Response): Promise<void> {
+  const store = req.store!;
+  const now = new Date();
+  const tomorrow = new Date(now);
+  tomorrow.setUTCHours(23, 59, 59, 999);
+  const yesterday = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+
+  // Callbacks à faire : deadline ≤ fin de journée. Include overdue.
+  const callbacks = await Order.find({
+    storeId: store._id,
+    confirmationStatus: 'callback',
+    callbackAt: { $lte: tomorrow },
+    // Exclu les commandes déjà annulées ou en refund (l'agent n'a rien à
+    // faire dessus).
+    fulfillmentStatus: { $ne: 'cancelled' },
+  })
+    .select('orderNumber customerName customerPhone total currency callbackAt createdAt confirmationNote confirmationStatus items')
+    .sort({ callbackAt: 1 })
+    .limit(30)
+    .lean();
+
+  // No answer récents : les 24 dernières heures, non déjà annulés.
+  const noAnswers = await Order.find({
+    storeId: store._id,
+    confirmationStatus: 'no_answer',
+    updatedAt: { $gte: yesterday },
+    fulfillmentStatus: { $ne: 'cancelled' },
+  })
+    .select('orderNumber customerName customerPhone total currency updatedAt createdAt confirmationNote confirmationStatus items')
+    .sort({ updatedAt: -1 })
+    .limit(30)
+    .lean();
+
+  res.json({
+    now: now.toISOString(),
+    callbacks,
+    noAnswers,
+    counts: {
+      callbacksOverdue: callbacks.filter((o) => o.callbackAt && new Date(o.callbackAt) < now).length,
+      callbacksToday: callbacks.length,
+      noAnswers24h: noAnswers.length,
+    },
+  });
+}
+
 export async function listOrders(req: AuthRequest, res: Response): Promise<void> {
   const store = req.store!;
   const limit = Math.min(parseInt(req.query.limit as string, 10) || 50, 100);

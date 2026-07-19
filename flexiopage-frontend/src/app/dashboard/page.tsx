@@ -61,6 +61,7 @@ import type { StoreAnalyticsRich, RangeKey } from '@/types/analytics';
 import { Button } from '@/components/ui/button';
 import { PageHeader } from '@/components/dashboard/page-header';
 import { EarningsWidget } from '@/components/dashboard/earnings-widget';
+import { TodoCallbacksWidget } from '@/components/dashboard/todo-callbacks-widget';
 
 interface StoreType {
   _id: string;
@@ -537,6 +538,15 @@ export default function DashboardOverviewPage() {
             storeId={activeStoreId!}
           />
         </section>
+      )}
+
+      {/* ── Todo callbacks widget ────────────────────────────
+            Attaque de journée pour l'agent COD : callbacks du jour + no
+            answer récents dans une seule liste actionnable. Placé haut car
+            c'est l'action #1 quotidienne — chaque rappel manqué = commande
+            perdue. */}
+      {activeStore && (
+        <TodoCallbacksWidget storeId={activeStore._id} />
       )}
 
       {/* ── Funnel mini ─────────────────────────────────────── */}

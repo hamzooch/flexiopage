@@ -2,7 +2,7 @@ import { Response } from 'express';
 import { AuthRequest } from '../middleware/auth.middleware';
 import { Customer } from '../models/Customer.model';
 import { Order } from '../models/Order.model';
-import { getCustomerReliability } from '../services/customerReliability.service';
+import { getCustomerReliability, getCustomerReliabilityBatch } from '../services/customerReliability.service';
 
 export async function listCustomers(req: AuthRequest, res: Response): Promise<void> {
   const store = req.store!;
@@ -46,5 +46,26 @@ export async function getReliability(req: AuthRequest, res: Response): Promise<v
   }
 
   const reliability = await getCustomerReliability(store._id, phone, orderId || undefined);
+  res.json({ reliability });
+}
+
+/**
+ * Batch : renvoie un badge fiabilité pour chaque téléphone posté.
+ * Utilisé par la liste des commandes pour afficher un badge inline sans
+ * faire N+1 requêtes (~20 rows visibles = 1 seul appel).
+ * Body : `{ phones: string[] }` (max 100).
+ */
+export async function getReliabilityBatch(req: AuthRequest, res: Response): Promise<void> {
+  const body = req.body as { phones?: unknown };
+  const phones = Array.isArray(body.phones) ? body.phones.filter((p): p is string => typeof p === 'string') : [];
+  if (phones.length === 0) {
+    res.json({ reliability: {} });
+    return;
+  }
+  if (phones.length > 100) {
+    res.status(400).json({ error: 'Max 100 phones par requête.' });
+    return;
+  }
+  const reliability = await getCustomerReliabilityBatch(phones);
   res.json({ reliability });
 }

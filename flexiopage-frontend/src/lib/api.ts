@@ -1318,6 +1318,42 @@ export const storesApi = {
     },
   ) =>
     api.get<{ orders: unknown[]; total: number; limit: number; skip: number }>(`/stores/${storeId}/orders`, { params }),
+  /**
+   * Todo list agent de confirmation : callbacks du jour (avec overdue) +
+   * no_answer des 24h. Utilisé par le widget dashboard home pour orienter
+   * la journée de l'agent COD.
+   */
+  listOrdersTodo: (storeId: string) =>
+    api.get<{
+      now: string;
+      callbacks: Array<{
+        _id: string;
+        orderNumber: string;
+        customerName?: string;
+        customerPhone?: string;
+        total: number;
+        currency: string;
+        callbackAt?: string;
+        createdAt: string;
+        confirmationNote?: string;
+        confirmationStatus: string;
+        items: Array<{ productId: string; name: string; quantity: number }>;
+      }>;
+      noAnswers: Array<{
+        _id: string;
+        orderNumber: string;
+        customerName?: string;
+        customerPhone?: string;
+        total: number;
+        currency: string;
+        updatedAt: string;
+        createdAt: string;
+        confirmationNote?: string;
+        confirmationStatus: string;
+        items: Array<{ productId: string; name: string; quantity: number }>;
+      }>;
+      counts: { callbacksOverdue: number; callbacksToday: number; noAnswers24h: number };
+    }>(`/stores/${storeId}/orders/todo`),
   createOrder: (storeId: string, data: Record<string, unknown>) =>
     api.post<{ order: unknown }>(`/stores/${storeId}/orders`, data),
   getOrder: (storeId: string, orderId: string) =>
@@ -1363,6 +1399,19 @@ export const storesApi = {
    */
   getCustomerReliability: (storeId: string, params: { orderId?: string; phone?: string }) =>
     api.get<{ reliability: import('@/types/reliability').CustomerReliability }>(`/stores/${storeId}/customers/reliability`, { params }),
+  /**
+   * Version batch : jusqu'à 100 téléphones en une seule requête. Utilisé par
+   * la liste orders pour afficher un badge fiabilité inline sans N+1.
+   */
+  getCustomerReliabilityBatch: (storeId: string, phones: string[]) =>
+    api.post<{
+      reliability: Record<string, {
+        badge: 'reliable' | 'watch' | 'risky';
+        score: number;
+        total: number;
+        refusalRate: number;
+      }>;
+    }>(`/stores/${storeId}/customers/reliability/batch`, { phones }),
   // Suppliers
   listSuppliers: (storeId: string, params?: { limit?: number; skip?: number; search?: string; includeArchived?: boolean }) =>
     api.get<{ suppliers: import('@/types/supplier').Supplier[]; total: number; limit: number; skip: number }>(`/stores/${storeId}/suppliers`, { params }),

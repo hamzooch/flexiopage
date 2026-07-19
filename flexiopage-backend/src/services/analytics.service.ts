@@ -216,11 +216,25 @@ export interface StoreAnalyticsRich {
    * au seller de programmer ses pubs Meta / TikTok sur les heures fortes.
    */
   hourlySales: Array<{ hour: number; orders: number; sales: number }>;
-  /** Fulfillment funnel for the window. */
+  /** Fulfillment funnel for the window — enrichi COD-first :
+   *  Créées → Contactées (agent a répondu) → Confirmées → Dispatchées (envoyées
+   *  au coursier) → Livrées → Payées. Chaque étape est un compteur brut ; le
+   *  frontend calcule les taux de conversion / drop-off. */
   funnel: {
     created: number;
+    /** Toute commande dont l'agent a touché la confirmation (≠ 'pending'). */
+    contacted: number;
+    /** Confirmations positives uniquement. */
+    confirmed: number;
+    /** Dispatch réussi vers coursier (externalId présent). */
+    dispatched: number;
+    /** Marquée livrée par webhook coursier ou seller. */
+    delivered: number;
+    /** Encaissée. */
     paid: number;
+    /** Terminées (livrée + payée si COD). */
     fulfilled: number;
+    /** Refund / decliné. */
     refunded: number;
   };
   /** Recent activity for the side panel. */
@@ -425,12 +439,18 @@ export async function getStoreAnalyticsRich(
           fulfilled: { $sum: { $cond: [{ $eq: ['$fulfillmentStatus', 'fulfilled'] }, 1, 0] } },
           codConfirmed: { $sum: { $cond: [{ $eq: ['$confirmationStatus', 'confirmed'] }, 1, 0] } },
           codDelivered: { $sum: { $cond: [{ $and: [{ $eq: ['$confirmationStatus', 'confirmed'] }, { $eq: ['$fulfillmentStatus', 'fulfilled'] }] }, 1, 0] } },
+          // Funnel COD enrichi : chaque étape mesurée indépendamment sur le
+          // total créé (pas cumulatif dans l'aggr — le calcul de conversion
+          // se fait côté client pour rester flexible).
+          contacted: { $sum: { $cond: [{ $and: [{ $ne: ['$confirmationStatus', 'pending'] }, { $ne: ['$confirmationStatus', null] }] }, 1, 0] } },
+          dispatched: { $sum: { $cond: [{ $ifNull: ['$delivery.externalId', false] }, 1, 0] } },
+          delivered: { $sum: { $cond: [{ $eq: ['$delivery.externalStatus', 'delivered'] }, 1, 0] } },
           revenue: { $sum: { $cond: [{ $eq: ['$paymentStatus', 'paid'] }, '$total', 0] } },
           sales: { $sum: '$total' },
           uniqueCustomers: { $addToSet: '$email' },
         },
       },
-      { $project: { orders: 1, paid: 1, refunded: 1, fulfilled: 1, codConfirmed: 1, codDelivered: 1, revenue: 1, sales: 1, uniqueCustomers: { $size: '$uniqueCustomers' } } },
+      { $project: { orders: 1, paid: 1, refunded: 1, fulfilled: 1, codConfirmed: 1, codDelivered: 1, contacted: 1, dispatched: 1, delivered: 1, revenue: 1, sales: 1, uniqueCustomers: { $size: '$uniqueCustomers' } } },
     ]),
     // Previous-window aggregate for delta comparison.
     Order.aggregate([
@@ -444,12 +464,18 @@ export async function getStoreAnalyticsRich(
           fulfilled: { $sum: { $cond: [{ $eq: ['$fulfillmentStatus', 'fulfilled'] }, 1, 0] } },
           codConfirmed: { $sum: { $cond: [{ $eq: ['$confirmationStatus', 'confirmed'] }, 1, 0] } },
           codDelivered: { $sum: { $cond: [{ $and: [{ $eq: ['$confirmationStatus', 'confirmed'] }, { $eq: ['$fulfillmentStatus', 'fulfilled'] }] }, 1, 0] } },
+          // Funnel COD enrichi : chaque étape mesurée indépendamment sur le
+          // total créé (pas cumulatif dans l'aggr — le calcul de conversion
+          // se fait côté client pour rester flexible).
+          contacted: { $sum: { $cond: [{ $and: [{ $ne: ['$confirmationStatus', 'pending'] }, { $ne: ['$confirmationStatus', null] }] }, 1, 0] } },
+          dispatched: { $sum: { $cond: [{ $ifNull: ['$delivery.externalId', false] }, 1, 0] } },
+          delivered: { $sum: { $cond: [{ $eq: ['$delivery.externalStatus', 'delivered'] }, 1, 0] } },
           revenue: { $sum: { $cond: [{ $eq: ['$paymentStatus', 'paid'] }, '$total', 0] } },
           sales: { $sum: '$total' },
           uniqueCustomers: { $addToSet: '$email' },
         },
       },
-      { $project: { orders: 1, paid: 1, refunded: 1, fulfilled: 1, codConfirmed: 1, codDelivered: 1, revenue: 1, sales: 1, uniqueCustomers: { $size: '$uniqueCustomers' } } },
+      { $project: { orders: 1, paid: 1, refunded: 1, fulfilled: 1, codConfirmed: 1, codDelivered: 1, contacted: 1, dispatched: 1, delivered: 1, revenue: 1, sales: 1, uniqueCustomers: { $size: '$uniqueCustomers' } } },
     ]),
     // Pending-payment count is a snapshot, not a window aggregate.
     Order.countDocuments({ ...baseMatch, paymentStatus: 'pending' }),
@@ -664,7 +690,16 @@ export async function getStoreAnalyticsRich(
     devices,
     trafficSources,
     hourlySales,
-    funnel: { created: a.orders, paid: a.paid, fulfilled: a.fulfilled, refunded: a.refunded },
+    funnel: {
+      created: a.orders,
+      contacted: a.contacted || 0,
+      confirmed: a.codConfirmed || 0,
+      dispatched: a.dispatched || 0,
+      delivered: a.delivered || 0,
+      paid: a.paid,
+      fulfilled: a.fulfilled,
+      refunded: a.refunded,
+    },
     recentOrders: (recentRaw as Array<{
       _id: mongoose.Types.ObjectId; orderNumber: string; email: string; customerName?: string;
       total: number; currency: string; paymentStatus: string; fulfillmentStatus: string; createdAt: Date;
