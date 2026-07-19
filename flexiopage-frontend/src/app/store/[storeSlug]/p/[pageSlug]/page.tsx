@@ -5,6 +5,7 @@ import type { PageSection } from '@/components/landing/SectionEditor';
 import { StoreNavbar, type NavbarConfig } from '@/components/storefront/StoreNavbar';
 import { StoreFooter, type FooterConfig } from '@/components/storefront/StoreFooter';
 import { MarketingPixels, type MarketingConfig } from '@/components/storefront/MarketingPixels';
+import type { CodFormConfig } from '@/components/storefront/cod-order-form';
 import { STORE_THEME_TEMPLATES } from '@/data/store-themes';
 import { renderMarkdown } from '@/lib/markdown';
 import { StoreTracker } from '@/components/storefront/StoreTracker';
@@ -24,6 +25,7 @@ interface StoreDoc {
     currency?: string;
     language?: string;
     direction?: 'ltr' | 'rtl';
+    codForm?: CodFormConfig;
     storefront?: {
       navbar?: NavbarConfig;
       showFooter?: boolean;
@@ -205,6 +207,7 @@ export default async function PublicLandingPage({ params }: Props) {
       currency={data.page.currency || data.store.settings?.currency}
       language={data.page.language || data.store.settings?.language}
       direction={data.page.direction || data.store.settings?.direction || 'ltr'}
+      codForm={data.store.settings?.codForm}
       storeChat={{
         name: data.store.name,
         whatsapp: data.store.layout?.footer?.social?.whatsapp,

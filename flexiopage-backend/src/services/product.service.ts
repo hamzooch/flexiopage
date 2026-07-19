@@ -1,4 +1,12 @@
-import { Product, IProduct, IProductVariant, IProductPageSettings, IProductBundle } from '../models/Product.model';
+import {
+  Product,
+  IProduct,
+  IProductVariant,
+  IProductPageSettings,
+  IProductBundle,
+  IProductSupplier,
+  ProductTestStatus,
+} from '../models/Product.model';
 import mongoose from 'mongoose';
 import { slugify } from '../lib/slugify';
 
@@ -32,6 +40,11 @@ export interface CreateProductInput {
   seoDescription?: string;
   pageSettings?: IProductPageSettings;
   bundle?: IProductBundle;
+  suppliers?: IProductSupplier[];
+  isTestCandidate?: boolean;
+  testStatus?: ProductTestStatus;
+  wowEffect?: number;
+  testNotes?: string;
 }
 
 export async function createProduct(input: CreateProductInput): Promise<IProduct> {
@@ -69,10 +82,19 @@ export async function updateProduct(
 
 export async function getProductsByStore(
   storeId: string,
-  options?: { publishedOnly?: boolean; limit?: number; skip?: number; search?: string }
+  options?: {
+    publishedOnly?: boolean;
+    limit?: number;
+    skip?: number;
+    search?: string;
+    testCandidatesOnly?: boolean;
+    testStatus?: ProductTestStatus;
+  }
 ): Promise<{ products: IProduct[]; total: number }> {
   const q: Record<string, unknown> = { storeId };
   if (options?.publishedOnly) q.isPublished = true;
+  if (options?.testCandidatesOnly) q.isTestCandidate = true;
+  if (options?.testStatus) q.testStatus = options.testStatus;
   if (options?.search) {
     const re = new RegExp(options.search.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
     q.$or = [{ name: re }, { slug: re }];

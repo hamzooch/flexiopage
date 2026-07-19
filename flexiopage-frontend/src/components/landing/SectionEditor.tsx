@@ -1,9 +1,11 @@
 'use client';
 
+import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Plus, Trash2 } from 'lucide-react';
+import { Plus, Settings, Trash2 } from 'lucide-react';
+import { useStoreStore } from '@/stores/store-store';
 
 export interface PageSection {
   id: string;
@@ -319,90 +321,7 @@ export function SectionEditor({ section, index, onUpdate, onRemove }: SectionEdi
   }
 
   if (section.type === 'cod-form') {
-    return (
-      <div className="rounded-lg border bg-muted/20 p-4 space-y-4">
-        <div className="flex items-center justify-between">
-          <span className="font-medium">Formulaire de commande (COD)</span>
-          <Button type="button" variant="ghost" size="sm" onClick={onRemove}>
-            <Trash2 className="h-4 w-4" />
-          </Button>
-        </div>
-        <div className="grid gap-3 sm:grid-cols-2">
-          <div>
-            <Label className="text-xs">Slug du produit à commander</Label>
-            <Input
-              value={(p.productSlug as string) || ''}
-              onChange={(e) => set('productSlug', e.target.value)}
-              placeholder="(laisser vide = 1er produit publié)"
-              className="mt-1"
-            />
-          </div>
-          <div>
-            <Label className="text-xs">Libellé du bouton</Label>
-            <Input
-              value={(p.submitLabel as string) || ''}
-              onChange={(e) => set('submitLabel', e.target.value)}
-              placeholder="Commander"
-              className="mt-1"
-            />
-          </div>
-        </div>
-        <div>
-          <Label className="text-xs">Titre au-dessus du formulaire</Label>
-          <Input
-            value={(p.title as string) || ''}
-            onChange={(e) => set('title', e.target.value)}
-            placeholder="Commander · Paiement à la livraison"
-            className="mt-1"
-          />
-        </div>
-        <div>
-          <Label className="text-xs">Sous-titre</Label>
-          <Input
-            value={(p.subtitle as string) || ''}
-            onChange={(e) => set('subtitle', e.target.value)}
-            placeholder="Remplis tes coordonnées — paiement en espèces à la livraison"
-            className="mt-1"
-          />
-        </div>
-        <div>
-          <Label className="text-xs">Phrase de réassurance (optionnel)</Label>
-          <Input
-            value={(p.reassurance as string) || ''}
-            onChange={(e) => set('reassurance', e.target.value)}
-            placeholder="Aucun prépaiement, tu paies au livreur"
-            className="mt-1"
-          />
-        </div>
-        <div className="space-y-2 rounded border bg-card p-3">
-          <p className="text-xs font-semibold">Champs visibles</p>
-          {[
-            ['showEmail', 'Email', true],
-            ['requireEmail', 'Email obligatoire', false],
-            ['showPostalCode', 'Code postal', false],
-            ['showState', 'Région / wilaya', false],
-            ['showNotes', 'Note pour le livreur', true],
-            ['showQuantity', 'Sélecteur quantité', true],
-          ].map(([key, label, defOn]) => {
-            const k = key as string;
-            const def = defOn as boolean;
-            const v = p[k];
-            const checked = typeof v === 'boolean' ? v : def;
-            return (
-              <label key={k} className="flex cursor-pointer items-center gap-2 text-xs">
-                <input
-                  type="checkbox"
-                  checked={checked}
-                  onChange={(e) => set(k, e.target.checked)}
-                  className="h-3.5 w-3.5 rounded border-input"
-                />
-                {label as string}
-              </label>
-            );
-          })}
-        </div>
-      </div>
-    );
+    return <CodFormSectionEditor p={p} set={set} onRemove={onRemove} />;
   }
 
   if (section.type === 'products') {
@@ -1126,6 +1045,66 @@ export function SectionEditor({ section, index, onUpdate, onRemove }: SectionEdi
           />
         </div>
       </div>
+    </div>
+  );
+}
+
+// COD-form landing section is a *pointer* — it says "put the store-wide COD
+// form here for product X." The form's look, visible fields, colors, button
+// and reassurance line are edited once in Store settings → COD form, and
+// mirrored on every surface (product page, landing sections). This keeps
+// personalization in a single place, as promised to the seller.
+function CodFormSectionEditor({
+  p,
+  set,
+  onRemove,
+}: {
+  p: Record<string, unknown>;
+  set: (key: string, value: unknown) => void;
+  onRemove: () => void;
+}) {
+  const storeId = useStoreStore((s) => s.currentStoreId);
+  const settingsHref = storeId
+    ? `/dashboard/stores/${storeId}#cod-form`
+    : '/dashboard/stores';
+
+  return (
+    <div className="rounded-lg border bg-muted/20 p-4 space-y-4">
+      <div className="flex items-center justify-between">
+        <span className="font-medium">Formulaire de commande (COD)</span>
+        <Button type="button" variant="ghost" size="sm" onClick={onRemove}>
+          <Trash2 className="h-4 w-4" />
+        </Button>
+      </div>
+
+      <div>
+        <Label className="text-xs">Slug du produit à commander</Label>
+        <Input
+          value={(p.productSlug as string) || ''}
+          onChange={(e) => set('productSlug', e.target.value)}
+          placeholder="(laisser vide = 1er produit publié)"
+          className="mt-1"
+        />
+        <p className="mt-1.5 text-[11px] text-muted-foreground">
+          C'est la seule chose à choisir ici : quel produit ce formulaire vend.
+        </p>
+      </div>
+
+      <Link
+        href={settingsHref}
+        className="flex items-start gap-3 rounded-lg border border-primary/20 bg-primary/5 p-3 text-xs transition-colors hover:border-primary/40 hover:bg-primary/10"
+      >
+        <Settings className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
+        <div className="min-w-0 flex-1">
+          <p className="font-semibold text-foreground">
+            Personnalise le formulaire dans Réglages boutique
+          </p>
+          <p className="mt-0.5 text-muted-foreground">
+            Titre, champs visibles, couleurs, bouton, phrase de réassurance… Une seule édition,
+            appliquée automatiquement ici et sur la page produit.
+          </p>
+        </div>
+      </Link>
     </div>
   );
 }

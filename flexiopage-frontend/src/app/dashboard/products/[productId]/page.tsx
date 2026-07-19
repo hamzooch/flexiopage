@@ -62,8 +62,6 @@ interface PageSettings {
   showDescription: boolean;
   showTrustBadges: boolean;
   showRatingStrip?: boolean;
-  codFormTitle: string;
-  reassuranceText: string;
   accentColor?: string;
   timer?: { endsAt?: string; headline?: string; accentColor?: string };
   badges?: TrustBadge[];
@@ -114,8 +112,6 @@ export default function EditProductPage() {
     showDescription: true,
     showTrustBadges: true,
     showRatingStrip: false,
-    codFormTitle: '',
-    reassuranceText: '',
   });
   const [profit, setProfit] = useState<ProfitInputs>(EMPTY_PROFIT_INPUTS);
 
@@ -185,8 +181,6 @@ export default function EditProductPage() {
           showDescription: ps.showDescription !== false,
           showTrustBadges: ps.showTrustBadges !== false,
           showRatingStrip: !!ps.showRatingStrip,
-          codFormTitle: (ps.codFormTitle as string) || '',
-          reassuranceText: (ps.reassuranceText as string) || '',
           accentColor: (ps.accentColor as string) || undefined,
           timer: (ps.timer as PageSettings['timer']) || undefined,
           badges: Array.isArray(ps.badges) ? (ps.badges as TrustBadge[]) : undefined,
@@ -290,8 +284,6 @@ export default function EditProductPage() {
           showDescription: pageSettings.showDescription,
           showTrustBadges: pageSettings.showTrustBadges,
           showRatingStrip: pageSettings.showRatingStrip,
-          codFormTitle: pageSettings.codFormTitle.trim() || undefined,
-          reassuranceText: pageSettings.reassuranceText.trim() || undefined,
           accentColor: pageSettings.accentColor || undefined,
           timer: pageSettings.timer,
           badges: pageSettings.badges,
@@ -863,31 +855,6 @@ export default function EditProductPage() {
                   onChange={(v) => setPageSettings((s) => ({ ...s, showRatingStrip: v }))}
                 />
               </div>
-
-              {/* COD overrides */}
-              {type === 'physical' && (
-                <div className="grid gap-3 border-t border-border/60 pt-4 sm:grid-cols-2">
-                  <div className="space-y-1.5">
-                    <Label htmlFor="codFormTitle">Titre du formulaire de commande</Label>
-                    <Input
-                      id="codFormTitle"
-                      value={pageSettings.codFormTitle}
-                      onChange={(e) => setPageSettings((s) => ({ ...s, codFormTitle: e.target.value }))}
-                      placeholder="Ex: Commander — paiement à la livraison"
-                    />
-                    <p className="text-[11px] text-muted-foreground">Vide = config globale.</p>
-                  </div>
-                  <div className="space-y-1.5">
-                    <Label htmlFor="reassuranceText">Ligne de réassurance</Label>
-                    <Input
-                      id="reassuranceText"
-                      value={pageSettings.reassuranceText}
-                      onChange={(e) => setPageSettings((s) => ({ ...s, reassuranceText: e.target.value }))}
-                      placeholder="Ex: Aucun prépaiement · livraison 48h"
-                    />
-                  </div>
-                </div>
-              )}
 
               {/* Accent color (per-product) */}
               <div className="border-t border-border/60 pt-4">

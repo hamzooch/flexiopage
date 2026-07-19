@@ -13,6 +13,16 @@ export type ProductType = 'physical' | 'digital';
  */
 export type DigitalKind = 'download' | 'course' | 'license' | 'membership' | 'service';
 
+/**
+ * Statuts du pipeline de test produit (onglet "Produit test").
+ * Le vendeur trie les produits candidats avant de lancer une campagne :
+ *   - pending       : à évaluer / en attente de test
+ *   - in_progress   : test en cours (campagne active)
+ *   - tested        : validé (winner) — bon à mettre en catalogue
+ *   - test_finished : test terminé sans validation (loser / abandonné)
+ */
+export type ProductTestStatus = 'pending' | 'in_progress' | 'tested' | 'test_finished';
+
 /** Asset attached to a digital product (file, video, image, link). */
 export interface IDigitalAsset {
   /** Stable id used by the customer portal. */
@@ -176,6 +186,18 @@ export interface IProduct extends Document {
   upsells?: IRelatedOffer[];
   /** Cross-sell suggestions — surfaced as "related products" on the product page. */
   crossSells?: IRelatedOffer[];
+  /**
+   * Marque ce produit comme candidat au pipeline de test (onglet "Produit test").
+   * Quand `true`, le produit apparaît dans le tableau de suivi des tests avec son
+   * statut, son wow effect et ses infos fournisseur.
+   */
+  isTestCandidate?: boolean;
+  /** Statut du produit dans le pipeline de test. */
+  testStatus?: ProductTestStatus;
+  /** Score "wow effect" perçu (0-100) — utilisé pour prioriser les candidats. */
+  wowEffect?: number;
+  /** Notes libres du vendeur sur le test (ex: résultats, hypothèses). */
+  testNotes?: string;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -194,10 +216,6 @@ export interface IProductPageSettings {
   showDescription?: boolean;
   /** Trust badges row. */
   showTrustBadges?: boolean;
-  /** Overrides the COD form title for this product. */
-  codFormTitle?: string;
-  /** Overrides the reassurance line under the COD form for this product. */
-  reassuranceText?: string;
   /** Per-product timer override (e.g. flash sale on one product only). */
   timer?: {
     endsAt?: string;     // ISO date
@@ -460,8 +478,6 @@ const ProductSchema = new Schema<IProduct>(
       showGallery: { type: Boolean },
       showDescription: { type: Boolean },
       showTrustBadges: { type: Boolean },
-      codFormTitle: { type: String, trim: true },
-      reassuranceText: { type: String, trim: true },
       timer: {
         endsAt: { type: String, trim: true },
         headline: { type: String, trim: true },
@@ -569,6 +585,14 @@ const ProductSchema = new Schema<IProduct>(
         order: { type: Number, default: 0 },
       },
     ],
+    isTestCandidate: { type: Boolean, default: false },
+    testStatus: {
+      type: String,
+      enum: ['pending', 'in_progress', 'tested', 'test_finished'],
+      default: 'pending',
+    },
+    wowEffect: { type: Number, min: 0, max: 100 },
+    testNotes: { type: String, trim: true, maxlength: 2000 },
   },
   { timestamps: true }
 );
@@ -577,4 +601,6 @@ ProductSchema.index({ storeId: 1 });
 ProductSchema.index({ storeId: 1, slug: 1 }, { unique: true });
 // Tag-based lookups for auto-collections + tag filters.
 ProductSchema.index({ storeId: 1, tags: 1 });
+// Sub-index dédié à l'onglet "Produit test" — sort DESC par updatedAt.
+ProductSchema.index({ storeId: 1, isTestCandidate: 1, updatedAt: -1 });
 export const Product = mongoose.model<IProduct>('Product', ProductSchema);

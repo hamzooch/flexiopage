@@ -9,6 +9,7 @@ import { Label } from '@/components/ui/label';
 import { storesApi } from '@/lib/api';
 import { SectionEditor, type PageSection } from '@/components/landing/SectionEditor';
 import { LandingRenderer } from '@/components/landing/LandingRenderer';
+import type { CodFormConfig } from '@/components/storefront/cod-order-form';
 import { DevicePreviewFrame } from '@/components/landing/DevicePreviewFrame';
 import { ArrowLeft, Check, Eye, Loader2, Monitor, Smartphone, Sparkles } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -46,6 +47,7 @@ export default function EditLandingPagePage() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [previewDevice, setPreviewDevice] = useState<'desktop' | 'mobile'>('desktop');
+  const [storeCodForm, setStoreCodForm] = useState<CodFormConfig | undefined>();
 
   useEffect(() => {
     if (!storeId || !pageId) return;
@@ -63,6 +65,15 @@ export default function EditLandingPagePage() {
       })
       .catch(() => setError('Page not found'))
       .finally(() => setLoading(false));
+    // Fetch the store to know the seller's COD-form personalization so the
+    // in-editor preview reflects the same look/fields the buyer will see.
+    storesApi
+      .get(storeId)
+      .then((res) => {
+        const s = (res.data as { store?: { settings?: { codForm?: CodFormConfig } } }).store;
+        setStoreCodForm(s?.settings?.codForm);
+      })
+      .catch(() => {});
   }, [storeId, pageId]);
 
   function addSection(type: string) {
@@ -316,6 +327,7 @@ export default function EditLandingPagePage() {
                     sections={sections}
                     direction={directionOf(language)}
                     language={language}
+                    codForm={storeCodForm}
                   />
                 </DevicePreviewFrame>
               </div>

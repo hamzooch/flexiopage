@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
-import { LogOut, Menu, Repeat, Search, Settings as SettingsIcon, Store as StoreIcon, User } from 'lucide-react';
+import { Check, ChevronDown, LogOut, Menu, Plus, Search, Settings as SettingsIcon, Store as StoreIcon, User } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useAuthStore, readPersistedUser } from '@/stores/auth-store';
 import { useStoreStore } from '@/stores/store-store';
@@ -42,7 +42,10 @@ export function Header({ onOpenMobileNav }: Props = {}) {
   useEffect(() => { setMounted(true); }, []);
   const user = liveUser ?? (mounted ? readPersistedUser() : null);
   const currentStoreId = useStoreStore((s) => s.currentStoreId);
+  const setCurrentStore = useStoreStore((s) => s.setCurrentStore);
   const [activeStoreName, setActiveStoreName] = useState<string | null>(null);
+  const [storeList, setStoreList] = useState<{ _id: string; name: string; isPublished?: boolean }[]>([]);
+  const [storeMenuOpen, setStoreMenuOpen] = useState(false);
   const { t } = useT();
 
   // On gate l'affichage du nom/email sur la PRÉSENCE de `user` plutôt que sur
@@ -51,23 +54,36 @@ export function Header({ onOpenMobileNav }: Props = {}) {
   // `user` est réactif et null au 1ᵉʳ rendu (SSR + client avant rehydration)
   // → pas de mismatch, et la vraie valeur s'affiche dès le store hydraté.
 
-  // The header shows which store the dashboard is currently scoped to. We
-  // fetch the name lazily so we don't add a heavy load — list endpoint is
-  // already cached on most pages.
+  // Fetch the seller's stores once — powers both the header label ("scoped
+  // to <name>") and the switcher dropdown. The list endpoint is already
+  // cached by most dashboard pages so this rarely hits the network.
   useEffect(() => {
-    if (!currentStoreId) { setActiveStoreName(null); return; }
     let cancelled = false;
     storesApi
       .list()
       .then((res) => {
         if (cancelled) return;
-        const list = (res.data as { stores: { _id: string; name: string }[] }).stores || [];
-        const found = list.find((s) => s._id === currentStoreId);
-        setActiveStoreName(found?.name || null);
+        const list = (res.data as { stores: { _id: string; name: string; isPublished?: boolean }[] }).stores || [];
+        setStoreList(list);
       })
       .catch(() => {});
     return () => { cancelled = true; };
-  }, [currentStoreId]);
+  }, []);
+
+  useEffect(() => {
+    if (!currentStoreId) { setActiveStoreName(null); return; }
+    const found = storeList.find((s) => s._id === currentStoreId);
+    if (found) setActiveStoreName(found.name);
+  }, [currentStoreId, storeList]);
+
+  function pickStore(storeId: string) {
+    setCurrentStore(storeId);
+    setStoreMenuOpen(false);
+    // Force a soft refresh so any page currently scoped to the previous
+    // store re-fetches with the new one. router.refresh() is enough — no
+    // navigation needed since the dashboard routes are store-agnostic.
+    router.refresh();
+  }
 
   const segments = pathname.split('/').filter(Boolean);
   const lastSeg = segments[segments.length - 1] || '';
@@ -159,19 +175,99 @@ export function Header({ onOpenMobileNav }: Props = {}) {
 
       {/* Actions */}
       <div className="flex items-center gap-1.5">
-        {/* Active store indicator + quick switch. Clicking it returns to
-            the store picker so the seller can change scope. */}
-        <Link
-          href="/select-store"
-          className="hidden h-10 items-center gap-2 rounded-xl border border-sidebar-border bg-sidebar-muted/50 px-3 text-sm text-sidebar-strong transition-all hover:border-primary/50 hover:bg-sidebar-muted sm:inline-flex"
-          title={t('header.switchStore')}
-        >
-          <StoreIcon className="h-4 w-4 text-primary" />
-          <span className="max-w-[140px] truncate font-medium">
-            {activeStoreName || t('header.chooseStore')}
-          </span>
-          <Repeat className="h-3 w-3 text-sidebar-foreground" />
-        </Link>
+        {/* Store switcher — dropdown of the seller's stores. Clicking one
+            scopes the whole dashboard to it (via zustand + router.refresh)
+            without leaving the current page. The old behavior was to send
+            the seller to /select-store which felt like leaving the app. */}
+        <div className="relative hidden sm:block">
+          <button
+            type="button"
+            onClick={() => setStoreMenuOpen((v) => !v)}
+            onBlur={() => setTimeout(() => setStoreMenuOpen(false), 150)}
+            className="inline-flex h-10 items-center gap-2 rounded-xl border border-sidebar-border bg-sidebar-muted/50 px-3 text-sm text-sidebar-strong transition-all hover:border-primary/50 hover:bg-sidebar-muted"
+            title={t('header.switchStore')}
+            aria-haspopup="menu"
+            aria-expanded={storeMenuOpen}
+          >
+            <StoreIcon className="h-4 w-4 text-primary" />
+            <span className="max-w-[140px] truncate font-medium">
+              {activeStoreName || t('header.chooseStore')}
+            </span>
+            <ChevronDown className={cn('h-3 w-3 text-sidebar-foreground transition-transform', storeMenuOpen && 'rotate-180')} />
+          </button>
+          <div
+            className={cn(
+              'absolute end-0 top-12 z-30 w-72 origin-top-right rtl:origin-top-left rounded-2xl border border-border/70 bg-card p-2 shadow-xl shadow-foreground/5 transition-all',
+              storeMenuOpen
+                ? 'pointer-events-auto translate-y-0 scale-100 opacity-100'
+                : 'pointer-events-none -translate-y-1 scale-95 opacity-0'
+            )}
+            role="menu"
+          >
+            <div className="flex items-center justify-between px-3 pb-1.5 pt-1">
+              <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                {t('header.switchStore')}
+              </span>
+              <span className="rounded-full bg-muted px-1.5 py-0.5 text-[10px] font-semibold tabular-nums text-muted-foreground">
+                {storeList.length}
+              </span>
+            </div>
+            <div className="my-1 h-px bg-border/70" />
+            {storeList.length === 0 ? (
+              <div className="px-3 py-3 text-center text-xs text-muted-foreground">
+                Aucune boutique pour le moment.
+              </div>
+            ) : (
+              <div className="max-h-72 overflow-y-auto">
+                {storeList.map((s) => {
+                  const active = s._id === currentStoreId;
+                  return (
+                    <button
+                      key={s._id}
+                      type="button"
+                      onMouseDown={() => pickStore(s._id)}
+                      className={cn(
+                        'flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left text-sm transition-colors',
+                        active
+                          ? 'bg-primary/10 text-primary'
+                          : 'text-foreground/80 hover:bg-muted hover:text-foreground'
+                      )}
+                      role="menuitem"
+                    >
+                      <StoreIcon className={cn('h-4 w-4 shrink-0', active ? 'text-primary' : 'text-muted-foreground')} />
+                      <span className="min-w-0 flex-1 truncate font-medium">{s.name}</span>
+                      {!s.isPublished && (
+                        <span className="shrink-0 rounded-full bg-amber-500/10 px-1.5 py-0.5 text-[9px] font-semibold text-amber-700">
+                          Brouillon
+                        </span>
+                      )}
+                      {active && <Check className="h-4 w-4 shrink-0 text-primary" />}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+            <div className="my-1 h-px bg-border/70" />
+            <Link
+              href="/dashboard/stores"
+              onMouseDown={() => setStoreMenuOpen(false)}
+              className="flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm text-foreground/80 transition-colors hover:bg-muted hover:text-foreground"
+              role="menuitem"
+            >
+              <StoreIcon className="h-4 w-4" />
+              Gérer mes boutiques
+            </Link>
+            <Link
+              href="/dashboard/stores?create=1"
+              onMouseDown={() => setStoreMenuOpen(false)}
+              className="flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm text-primary transition-colors hover:bg-primary/10"
+              role="menuitem"
+            >
+              <Plus className="h-4 w-4" />
+              Nouvelle boutique
+            </Link>
+          </div>
+        </div>
 
         <WalletBadges />
 
@@ -217,14 +313,39 @@ export function Header({ onOpenMobileNav }: Props = {}) {
               </div>
             </div>
             <div className="my-1 h-px bg-border/70" />
-            <Link
-              href="/select-store"
-              className="flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm text-foreground/80 transition-colors hover:bg-muted hover:text-foreground sm:hidden"
-              role="menuitem"
-            >
-              <Repeat className="h-4 w-4" />
-              {t('header.switchStore')}
-            </Link>
+            {/* Mobile-only inline store switcher (compact list, same behavior
+                as the header dropdown on desktop). */}
+            {storeList.length > 0 && (
+              <div className="sm:hidden">
+                <div className="px-3 pb-1 pt-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                  {t('header.switchStore')}
+                </div>
+                <div className="max-h-40 overflow-y-auto">
+                  {storeList.map((s) => {
+                    const active = s._id === currentStoreId;
+                    return (
+                      <button
+                        key={s._id}
+                        type="button"
+                        onMouseDown={() => { pickStore(s._id); setMenuOpen(false); }}
+                        className={cn(
+                          'flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left text-sm transition-colors',
+                          active
+                            ? 'bg-primary/10 text-primary'
+                            : 'text-foreground/80 hover:bg-muted hover:text-foreground'
+                        )}
+                        role="menuitem"
+                      >
+                        <StoreIcon className={cn('h-4 w-4 shrink-0', active ? 'text-primary' : 'text-muted-foreground')} />
+                        <span className="min-w-0 flex-1 truncate font-medium">{s.name}</span>
+                        {active && <Check className="h-4 w-4 shrink-0 text-primary" />}
+                      </button>
+                    );
+                  })}
+                </div>
+                <div className="my-1 h-px bg-border/70" />
+              </div>
+            )}
             <Link
               href="/dashboard/profile"
               className="flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm text-foreground/80 transition-colors hover:bg-muted hover:text-foreground"

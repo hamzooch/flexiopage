@@ -63,6 +63,14 @@ interface Props {
   /** Theme template id (volt|atelier|bloom) for cod-form styling. */
   themeId?: string;
   /**
+   * Store-level COD form personalization (headline, submit label, visible
+   * fields, colors…). Single source of truth: whatever the seller saves in
+   * dashboard → Store settings → COD form is what shows here. Landing
+   * `cod-form` sections only decide *which* product to sell, not how the
+   * form looks.
+   */
+  codForm?: CodFormConfig;
+  /**
    * @deprecated The in-store chatbot was removed in favor of a
    * dedicated WhatsApp floating button (rendered by the storefront
    * page itself via `<WhatsappButton>`). Kept here for type-compat with
@@ -86,6 +94,7 @@ export function LandingRenderer({
   storeSlug,
   country,
   themeId,
+  codForm,
   // `storeChat` is intentionally NOT destructured — the in-store chatbot
   // was retired in favor of the WhatsApp button; ignoring the prop keeps
   // existing callers building.
@@ -119,6 +128,7 @@ export function LandingRenderer({
           storeSlug={storeSlug}
           country={country}
           themeId={themeId}
+          codForm={codForm}
         />
       ))}
       {stickyCta && <StickyMobileCta {...stickyCta} />}
@@ -136,6 +146,7 @@ function SectionView({
   storeSlug,
   country,
   themeId,
+  codForm,
 }: {
   section: PageSection;
   products: Props['products'];
@@ -144,6 +155,7 @@ function SectionView({
   storeSlug?: string;
   country?: string;
   themeId?: string;
+  codForm?: CodFormConfig;
 }) {
   switch (section.type) {
     case 'hero':
@@ -185,6 +197,7 @@ function SectionView({
           storeSlug={storeSlug}
           country={country}
           themeId={themeId}
+          codForm={codForm}
         />
       );
     default:
@@ -1310,6 +1323,7 @@ function CodFormSection({
   storeSlug,
   country,
   themeId,
+  codForm,
 }: {
   p: PageSection['props'];
   products: NonNullable<Props['products']>;
@@ -1317,9 +1331,13 @@ function CodFormSection({
   storeSlug?: string;
   country?: string;
   themeId?: string;
+  codForm?: CodFormConfig;
 }) {
-  const title = str(p.title, 'Commander · Paiement à la livraison');
-  const subtitle = str(p.subtitle);
+  // The form's look & fields come from store settings (single source of
+  // truth). The landing section only picks WHICH product to sell — no
+  // per-section overrides for title, colors, or field visibility.
+  const title = codForm?.headline || 'Commander · Paiement à la livraison';
+  const subtitle = '';
   const productSlug = str(p.productSlug) || products[0]?.slug || '';
   // Match exact d'abord ; sinon match « relâché » qui aplatit les diacritiques
   // pour rattraper les pages générées avant le fix backend (l'AI synthétisait
@@ -1335,17 +1353,9 @@ function CodFormSection({
     products.find((pr) => flat(pr.slug) === productSlugFlat) ||
     products[0];
 
-  const config: CodFormConfig = {
-    headline: str(p.headline) || undefined,
-    submitLabel: str(p.submitLabel) || undefined,
-    reassurance: str(p.reassurance) || undefined,
-    showEmail: p.showEmail !== false,
-    requireEmail: p.requireEmail === true,
-    showPostalCode: p.showPostalCode === true,
-    showState: p.showState === true,
-    showNotes: p.showNotes !== false,
-    showQuantity: p.showQuantity !== false,
-  };
+  // Store-level config is the single source of truth. If none was passed
+  // in (e.g. very old caller), fall back to sensible defaults.
+  const config: CodFormConfig = codForm || {};
 
   // Resolve theme tokens for the form (same look as the standalone product page).
   const theme =

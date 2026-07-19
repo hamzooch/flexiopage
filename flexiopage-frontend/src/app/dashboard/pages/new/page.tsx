@@ -11,6 +11,7 @@ import { useAuthStore } from '@/stores/auth-store';
 import { SectionEditor, type PageSection } from '@/components/landing/SectionEditor';
 import { LandingRenderer } from '@/components/landing/LandingRenderer';
 import { DevicePreviewFrame } from '@/components/landing/DevicePreviewFrame';
+import type { CodFormConfig } from '@/components/storefront/cod-order-form';
 import {
   LayoutTemplate,
   Sparkles,
@@ -183,6 +184,7 @@ export default function NewLandingPagePage() {
   // Async generation job
   const [jobId, setJobId] = useState<string | null>(null);
   const [job, setJob] = useState<GenerationJob | null>(null);
+  const [storeCodForm, setStoreCodForm] = useState<CodFormConfig | undefined>();
 
   // ────────────────────────────── Bootstrap
   useEffect(() => {
@@ -197,10 +199,11 @@ export default function NewLandingPagePage() {
         const s = (res.data as {
           store?: {
             name?: string;
-            settings?: { currency?: string; language?: string; country?: string };
+            settings?: { currency?: string; language?: string; country?: string; codForm?: CodFormConfig };
           };
         }).store;
         if (s?.name) setStoreName(s.name);
+        setStoreCodForm(s?.settings?.codForm);
         // Pre-fill landing-page generation context from store settings
         const sl = s?.settings?.language;
         const sc = s?.settings?.country;
@@ -946,6 +949,7 @@ export default function NewLandingPagePage() {
               direction={directionOf(language)}
               language={language}
               currency={currency}
+              codForm={storeCodForm}
             />
           </div>
         )}
@@ -1304,6 +1308,7 @@ export default function NewLandingPagePage() {
                     direction={directionOf(language)}
                     language={language}
                     currency={currency}
+                    codForm={storeCodForm}
                   />
                 </DevicePreviewFrame>
               </div>

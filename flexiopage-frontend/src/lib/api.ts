@@ -1132,7 +1132,17 @@ export const storesApi = {
   setDeliveryConnection: (storeId: string, enabled: boolean) =>
     api.post<{ ok: boolean; connected: boolean }>(`/stores/${storeId}/delivery/connection`, { enabled }),
   // Products
-  listProducts: (storeId: string, params?: { published?: string; limit?: number; skip?: number; search?: string }) =>
+  listProducts: (
+    storeId: string,
+    params?: {
+      published?: string;
+      limit?: number;
+      skip?: number;
+      search?: string;
+      testCandidates?: boolean;
+      testStatus?: 'pending' | 'in_progress' | 'tested' | 'test_finished';
+    },
+  ) =>
     api.get<{ products: unknown[]; total: number; limit: number; skip: number }>(`/stores/${storeId}/products`, { params }),
   createProduct: (storeId: string, data: Record<string, unknown>) =>
     api.post<{ product: unknown }>(`/stores/${storeId}/products`, data),

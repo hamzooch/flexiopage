@@ -8,6 +8,7 @@ import { storesApi } from '@/lib/api';
 import { LandingRenderer } from '@/components/landing/LandingRenderer';
 import { AuthGuard } from '@/components/dashboard/auth-guard';
 import type { PageSection } from '@/components/landing/SectionEditor';
+import type { CodFormConfig } from '@/components/storefront/cod-order-form';
 
 interface PageDoc {
   _id: string;
@@ -34,7 +35,7 @@ interface ProductLite {
 interface StoreLite {
   _id: string;
   slug: string;
-  settings?: { currency?: string; country?: string; language?: string };
+  settings?: { currency?: string; country?: string; language?: string; codForm?: CodFormConfig };
   theme?: { templateId?: string };
 }
 
@@ -105,6 +106,7 @@ export default function PreviewPage() {
           currency={page.currency || store?.settings?.currency}
           country={store?.settings?.country}
           themeId={store?.theme?.templateId}
+          codForm={store?.settings?.codForm}
           // Sans storeSlug le CodFormSection retombe sur un placeholder.
           // On le passe ici pour que la preview rende le vrai formulaire ;
           // le submit pointe sur l'API publique du vendeur et fait une

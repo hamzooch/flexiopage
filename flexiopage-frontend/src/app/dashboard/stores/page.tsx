@@ -23,7 +23,6 @@ import {
   Package,
   Pencil,
   Search,
-  Sparkles,
   Store as StoreIcon,
   X,
 } from 'lucide-react';
@@ -130,24 +129,32 @@ export default function MyStoresPage() {
   }
 
   return (
-    <div className="space-y-6">
-      {/* ─────────────────── HERO ─────────────────── */}
-      <section className="relative overflow-hidden rounded-3xl border border-border/60 bg-card p-6 sm:p-8">
-        <div className="pointer-events-none absolute -right-24 -top-24 h-72 w-72 rounded-full bg-gradient-to-br from-indigo-500/20 via-violet-500/10 to-transparent blur-3xl" aria-hidden />
-        <div className="pointer-events-none absolute -bottom-24 -left-16 h-64 w-64 rounded-full bg-gradient-to-tr from-fuchsia-500/15 to-transparent blur-3xl" aria-hidden />
+    <div className="space-y-4">
+      {/* ─────────────────── HERO — compact ─────────────────── */}
+      <section className="relative overflow-hidden rounded-2xl border border-border/60 bg-card px-4 py-3 sm:px-5 sm:py-4">
+        <div className="pointer-events-none absolute -right-24 -top-24 h-56 w-56 rounded-full bg-gradient-to-br from-indigo-500/20 via-violet-500/10 to-transparent blur-3xl" aria-hidden />
 
-        <div className="relative flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
-          <div className="min-w-0">
-            <div className="inline-flex items-center gap-2 rounded-full bg-gradient-to-r from-indigo-500/10 to-violet-500/10 px-3 py-1 text-[11px] font-semibold uppercase tracking-wider text-violet-700">
-              <Sparkles className="h-3 w-3" />
-              Espace vendeur
+        <div className="relative flex flex-wrap items-center justify-between gap-3">
+          <div className="min-w-0 flex items-center gap-3">
+            <div className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-gradient-to-br from-indigo-500 to-violet-600 text-white shadow-md shadow-indigo-500/20">
+              <StoreIcon className="h-4 w-4" />
             </div>
-            <h1 className="mt-3 text-3xl font-bold tracking-tight sm:text-4xl">Mes boutiques</h1>
-            <p className="mt-1 max-w-xl text-sm text-muted-foreground">
-              Toutes les boutiques que tu possèdes. Sélectionne celle sur laquelle travailler,
-              ouvre les réglages ou consulte le storefront public.
-            </p>
+            <div className="min-w-0">
+              <h1 className="text-lg font-bold tracking-tight sm:text-xl">Mes boutiques</h1>
+              <p className="text-[11px] text-muted-foreground">
+                Sélectionne une boutique ou crée-en une nouvelle.
+              </p>
+            </div>
           </div>
+
+          {/* KPIs inline — compacts */}
+          <div className="flex items-center gap-1.5">
+            <KpiChip label="Total" value={counts.total} accent="indigo" />
+            <KpiChip label="En ligne" value={counts.live} accent="emerald" />
+            <KpiChip label="Brouillons" value={counts.drafts} accent="amber" />
+            <KpiChip label="Quota" value={`${counts.total}/${MAX_STORES}`} accent="violet" />
+          </div>
+
           {!limitReached && (
             <div id="create-store" className="shrink-0">
               <CreateStoreWizard
@@ -156,14 +163,6 @@ export default function MyStoresPage() {
               />
             </div>
           )}
-        </div>
-
-        {/* KPIs — quick read on the seller's portfolio. */}
-        <div className="relative mt-6 grid grid-cols-2 gap-2 sm:grid-cols-4 sm:gap-3">
-          <KpiPill label="Total" value={counts.total} accent="indigo" />
-          <KpiPill label="En ligne" value={counts.live} accent="emerald" />
-          <KpiPill label="Brouillons" value={counts.drafts} accent="amber" />
-          <KpiPill label="Quota" value={`${counts.total} / ${MAX_STORES}`} accent="violet" />
         </div>
       </section>
 
@@ -276,7 +275,7 @@ export default function MyStoresPage() {
 
 /* ─────────────────── COMPOSANTS ─────────────────── */
 
-function KpiPill({
+function KpiChip({
   label,
   value,
   accent,
@@ -286,20 +285,20 @@ function KpiPill({
   accent: 'indigo' | 'emerald' | 'amber' | 'violet';
 }) {
   const tones: Record<string, string> = {
-    indigo: 'from-indigo-500/15 to-indigo-500/5 text-indigo-700 ring-indigo-500/20',
-    emerald: 'from-emerald-500/15 to-emerald-500/5 text-emerald-700 ring-emerald-500/20',
-    amber: 'from-amber-500/15 to-amber-500/5 text-amber-700 ring-amber-500/20',
-    violet: 'from-violet-500/15 to-violet-500/5 text-violet-700 ring-violet-500/20',
+    indigo: 'bg-indigo-500/10 text-indigo-700 ring-indigo-500/20',
+    emerald: 'bg-emerald-500/10 text-emerald-700 ring-emerald-500/20',
+    amber: 'bg-amber-500/10 text-amber-700 ring-amber-500/20',
+    violet: 'bg-violet-500/10 text-violet-700 ring-violet-500/20',
   };
   return (
     <div
       className={cn(
-        'rounded-2xl bg-gradient-to-br p-3 ring-1 ring-inset sm:p-4',
+        'hidden items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-semibold ring-1 ring-inset sm:inline-flex',
         tones[accent],
       )}
     >
-      <div className="text-[10px] font-semibold uppercase tracking-wider opacity-80">{label}</div>
-      <div className="mt-1 text-xl font-bold tabular-nums sm:text-2xl">{value}</div>
+      <span className="opacity-70">{label}</span>
+      <span className="tabular-nums">{value}</span>
     </div>
   );
 }

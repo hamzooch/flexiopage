@@ -174,11 +174,18 @@ export async function importCreateProduct(req: AuthRequest, res: Response): Prom
 export async function listProducts(req: AuthRequest, res: Response): Promise<void> {
   const store = req.store!;
   const publishedOnly = req.query.published === 'true';
+  const testCandidatesOnly = req.query.testCandidates === 'true';
+  const rawTestStatus = String(req.query.testStatus || '').trim();
+  const allowedTestStatus = ['pending', 'in_progress', 'tested', 'test_finished'] as const;
+  type TestStatus = (typeof allowedTestStatus)[number];
+  const testStatus = (allowedTestStatus as readonly string[]).includes(rawTestStatus)
+    ? (rawTestStatus as TestStatus)
+    : undefined;
   const limit = Math.min(parseInt(req.query.limit as string, 10) || 50, 200);
   const skip = parseInt(req.query.skip as string, 10) || 0;
   const search = String(req.query.search || '').trim() || undefined;
   const { products, total } = await productService.getProductsByStore(store._id.toString(), {
-    publishedOnly, limit, skip, search,
+    publishedOnly, limit, skip, search, testCandidatesOnly, testStatus,
   });
   res.json({ products, total, limit, skip });
 }
@@ -246,6 +253,14 @@ export async function updateProduct(req: AuthRequest, res: Response): Promise<vo
     seoDescription: body.seoDescription,
     pageSettings: body.pageSettings,
     bundle: body.bundle,
+    suppliers: body.suppliers,
+    isTestCandidate: body.isTestCandidate,
+    testStatus: body.testStatus,
+    wowEffect:
+      typeof body.wowEffect === 'number'
+        ? Math.max(0, Math.min(100, body.wowEffect))
+        : body.wowEffect,
+    testNotes: body.testNotes,
   });
   if (!updated) {
     res.status(404).json({ error: 'Product not found' });

@@ -72,8 +72,6 @@ interface ProductDoc {
     showGallery?: boolean;
     showDescription?: boolean;
     showTrustBadges?: boolean;
-    codFormTitle?: string;
-    reassuranceText?: string;
     // ── Sections "conversion" (phase 1) ──
     features?: Array<{
       icon: 'sparkles' | 'shield' | 'leaf' | 'zap' | 'heart' | 'award' | 'gift' | 'truck' | 'clock' | 'check' | 'star' | 'recycle';
@@ -249,22 +247,17 @@ export default async function PublicProductPage({ params }: Props) {
   const ppStyle = useCustom
     ? ppStyleRaw
     : ({ galleryLayout: ppStyleRaw.galleryLayout, showRatingStrip: ppStyleRaw.showRatingStrip } as typeof ppStyleRaw);
-  // Per-product overrides merged over the store-level COD form config +
-  // palette overrides from productPage.style. Order matters: store codForm
-  // = baseline, palette wins over codForm, per-product wins over palette.
+  // Single source of truth: the seller edits the COD form once in
+  // dashboard → Store settings → COD form. Product page and landing
+  // sections both render that exact config. Product-page palette can
+  // still override button visuals as part of the product-page theming.
   const codConfig: CodFormConfig = {
     ...(store?.settings?.codForm || {}),
-    // Palette overrides — the seller's chosen palette in Sections > Page produit
-    // owns the COD form visual. These fields only override when explicitly set
-    // so old stores without a palette keep their codForm settings.
     ...(ppStyle.buttonColor ? { buttonColor: ppStyle.buttonColor } : {}),
     ...(ppStyle.buttonTextColor ? { buttonTextColor: ppStyle.buttonTextColor } : {}),
     ...(ppStyle.buttonShape ? { buttonShape: ppStyle.buttonShape } : {}),
     ...(typeof ppStyle.buttonAnimated === 'boolean' ? { buttonAnimated: ppStyle.buttonAnimated } : {}),
     ...(ppStyle.buttonAnimation ? { buttonAnimation: ppStyle.buttonAnimation } : {}),
-    // Per-product overrides (highest priority) for copy.
-    ...(ps.codFormTitle ? { headline: ps.codFormTitle } : {}),
-    ...(ps.reassuranceText ? { reassurance: ps.reassuranceText } : {}),
   };
   const pageBg = ppStyle.backgroundColor;
 

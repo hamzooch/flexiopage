@@ -75,6 +75,8 @@ import {
   X,
   EyeOff,
   ChevronDown,
+  PanelLeftClose,
+  PanelLeftOpen,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -273,6 +275,26 @@ export default function StoreEditPage() {
   // vendeur voie le formulaire du block actif dès qu'il ouvre la page.
   type MobileTab = 'blocks' | 'editor' | 'preview';
   const [mobileTab, setMobileTab] = useState<MobileTab>('editor');
+
+  // Rail expansion (desktop only). Default: expanded — a first-time seller
+  // sees icon + label + hint and can tell what each block does at a glance.
+  // Persist so power users who prefer the compact 56px rail keep their pick
+  // across sessions. SSR-safe: read localStorage in an effect, not in init.
+  const [railExpanded, setRailExpanded] = useState(true);
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const saved = window.localStorage.getItem('flexiopage-store-editor-rail');
+    if (saved === 'collapsed') setRailExpanded(false);
+  }, []);
+  function toggleRail() {
+    setRailExpanded((v) => {
+      const next = !v;
+      if (typeof window !== 'undefined') {
+        window.localStorage.setItem('flexiopage-store-editor-rail', next ? 'expanded' : 'collapsed');
+      }
+      return next;
+    });
+  }
 
   /** Wrapper qui bascule vers l'éditeur sur mobile quand un block est
    *  choisi depuis le rail — sinon l'utilisateur cliquerait mais resterait
@@ -546,6 +568,8 @@ export default function StoreEditPage() {
           dirtyTopKeys={patch.keys}
           dirtySettingsPaths={patch.settingsPaths}
           hiddenOnMobile={mobileTab !== 'blocks'}
+          expanded={railExpanded}
+          onToggleExpanded={toggleRail}
         />
 
         {/* MIDDLE — Editor form. Desktop : colonne fixe 384px, toujours
@@ -636,6 +660,8 @@ function BlockList({
   dirtyTopKeys,
   dirtySettingsPaths,
   hiddenOnMobile,
+  expanded,
+  onToggleExpanded,
 }: {
   blocks: BlockDef[];
   activeId: string | null;
@@ -645,6 +671,11 @@ function BlockList({
   /** Si vrai, masqué sur < lg (l'utilisateur a switché vers
    *  l'éditeur ou la preview via la barre d'onglets mobile). */
   hiddenOnMobile: boolean;
+  /** Rail élargi (icône + label + hint + groupes visibles) vs compact
+   *  (icônes seules 56px). Ignoré sur mobile — la liste y est toujours
+   *  déployée avec labels puisqu'elle prend toute la largeur. */
+  expanded: boolean;
+  onToggleExpanded: () => void;
 }) {
   // Mapping clé → bloc concerné pour le petit dot « modifié ».
   const dirtyBlocks = useMemo(() => {
@@ -672,27 +703,57 @@ function BlockList({
   return (
     <aside
       className={cn(
-        // Desktop (lg+) : rail vertical icônes seules, 56px. Économise
-        // ~232px pour l'éditeur central + la preview vs l'ancien layout
-        // large. Tooltip natif au survol pour le nom du block.
-        // Mobile : prend toute la largeur quand actif via les onglets,
-        // avec labels visibles (l'espace horizontal n'est pas contraint).
-        'shrink-0 flex-col overflow-y-auto border-r border-border/60 bg-card/60 lg:flex lg:w-14',
+        // Mobile : plein écran quand actif (onglet 'blocks'). Desktop :
+        // largeur = 240px si expanded, 56px si compact. On garde overflow
+        // vertical pour scroller la liste longue.
+        'shrink-0 flex-col overflow-y-auto border-r border-border/60 bg-card/60 lg:flex',
         hiddenOnMobile ? 'hidden' : 'flex w-full',
+        expanded ? 'lg:w-60' : 'lg:w-14',
       )}
     >
-      <div className="flex-1 px-2 py-3 lg:px-1.5 lg:py-2">
+      {/* Toggle rail — desktop only. Placement sticky pour rester visible
+          quand la liste scrolle. Ancré à droite en mode expanded (chic),
+          centré en mode compact (visuellement équilibré). */}
+      <div
+        className={cn(
+          'sticky top-0 z-10 hidden border-b border-border/60 bg-card/80 py-2 backdrop-blur lg:flex',
+          expanded ? 'items-center justify-between px-3' : 'items-center justify-center px-1.5',
+        )}
+      >
+        {expanded && (
+          <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+            Éditer
+          </span>
+        )}
+        <button
+          type="button"
+          onClick={onToggleExpanded}
+          className="grid h-8 w-8 place-items-center rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+          title={expanded ? 'Réduire le menu' : 'Étendre le menu'}
+          aria-label={expanded ? 'Réduire le menu' : 'Étendre le menu'}
+        >
+          {expanded ? <PanelLeftClose className="h-4 w-4" /> : <PanelLeftOpen className="h-4 w-4" />}
+        </button>
+      </div>
+
+      <div className={cn('flex-1 py-3', expanded ? 'px-2 lg:px-2' : 'px-2 lg:px-1.5 lg:py-2')}>
         {groups.map((g, gi) => {
           const items = blocks.filter((b) => b.group === g);
           if (items.length === 0) return null;
           return (
-            <div key={g} className="mb-4 last:mb-0 lg:mb-2">
-              {/* Sur mobile on garde le label texte du groupe. Sur desktop
-                 on n'affiche qu'un séparateur fin (sauf le tout premier). */}
-              <div className="mb-1.5 px-2 text-[10px] font-bold uppercase tracking-wider text-muted-foreground lg:hidden">
+            <div key={g} className={cn('mb-4 last:mb-0', !expanded && 'lg:mb-2')}>
+              {/* Label du groupe : visible sur mobile ET sur desktop
+                 expanded. En mode compact desktop, on ne montre qu'un
+                 séparateur fin. */}
+              <div
+                className={cn(
+                  'mb-1.5 px-2 text-[10px] font-bold uppercase tracking-wider text-muted-foreground',
+                  expanded ? 'lg:block' : 'lg:hidden',
+                )}
+              >
                 {GROUP_LABELS[g]}
               </div>
-              {gi > 0 && (
+              {gi > 0 && !expanded && (
                 <div className="mx-1 mb-1.5 hidden h-px bg-border/60 lg:block" aria-hidden />
               )}
               <div className="space-y-0.5">
@@ -708,10 +769,11 @@ function BlockList({
                       title={b.label + ' — ' + b.hint}
                       aria-label={b.label}
                       className={cn(
-                        // Mobile : ligne complète avec label. Desktop : bouton
-                        // carré 40x40 centré, icône seule.
-                        'group relative flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left transition-colors',
-                        'lg:h-10 lg:w-10 lg:justify-center lg:px-0 lg:py-0 lg:mx-auto',
+                        // Mobile : ligne complète avec label + hint.
+                        // Desktop expanded : idem (largeur ~240px).
+                        // Desktop compact : carré 40x40 centré, icône seule.
+                        'group relative flex w-full items-start gap-2.5 rounded-lg px-2.5 py-2 text-left transition-colors',
+                        !expanded && 'lg:h-10 lg:w-10 lg:items-center lg:justify-center lg:px-0 lg:py-0 lg:mx-auto',
                         active
                           ? 'bg-primary/10 text-primary'
                           : 'text-foreground/80 hover:bg-muted hover:text-foreground',
@@ -719,26 +781,44 @@ function BlockList({
                     >
                       <Icon
                         className={cn(
-                          'h-4 w-4 shrink-0 lg:h-[18px] lg:w-[18px]',
+                          'shrink-0',
+                          expanded ? 'mt-0.5 h-[18px] w-[18px]' : 'h-4 w-4 lg:h-[18px] lg:w-[18px]',
                           active ? 'text-primary' : 'text-muted-foreground',
                         )}
                       />
-                      {/* Label mobile-only — masqué sur desktop rail. */}
-                      <span className="min-w-0 flex-1 truncate text-sm font-medium lg:hidden">{b.label}</span>
+                      {/* Label + hint : mobile toujours, desktop uniquement
+                         en mode expanded. */}
+                      <span
+                        className={cn(
+                          'min-w-0 flex-1',
+                          !expanded && 'lg:hidden',
+                        )}
+                      >
+                        <span className="block truncate text-sm font-medium leading-tight">{b.label}</span>
+                        <span className={cn(
+                          'mt-0.5 block truncate text-[11px] leading-tight',
+                          active ? 'text-primary/70' : 'text-muted-foreground',
+                        )}>{b.hint}</span>
+                      </span>
                       {dirty && (
                         <span
                           className={cn(
                             'shrink-0 rounded-full bg-amber-500',
-                            // Mobile : petit dot à droite. Desktop : dot en
-                            // haut-droite du bouton (badge de notification).
-                            'h-1.5 w-1.5 lg:absolute lg:right-1 lg:top-1 lg:h-2 lg:w-2 lg:border lg:border-card',
+                            expanded
+                              ? 'mt-1.5 h-2 w-2'
+                              : 'h-1.5 w-1.5 lg:absolute lg:right-1 lg:top-1 lg:h-2 lg:w-2 lg:border lg:border-card',
                           )}
                           title="Modifications non enregistrées"
                         />
                       )}
-                      {b.mode === 'link' ? (
-                        <ChevronRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground/60 lg:hidden" />
-                      ) : null}
+                      {b.mode === 'link' && (
+                        <ChevronRight
+                          className={cn(
+                            'mt-0.5 h-3.5 w-3.5 shrink-0 text-muted-foreground/60',
+                            !expanded && 'lg:hidden',
+                          )}
+                        />
+                      )}
                     </button>
                   );
                 })}
