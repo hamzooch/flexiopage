@@ -120,7 +120,7 @@ export default function EditLandingPagePage() {
   }
 
   return (
-    <div className="-mx-4 -my-6 flex h-[calc(100vh-64px)] flex-col bg-muted/30 sm:-mx-6 lg:-mx-8">
+    <div className="-mx-3 -my-3 flex h-[calc(100dvh-3.5rem)] flex-col bg-muted/30 sm:-mx-6 sm:-my-6 sm:h-[calc(100dvh-4rem)] lg:-mx-8">
       {/* Top bar */}
       <header className="flex shrink-0 items-center justify-between gap-3 border-b border-border/60 bg-card/80 px-4 py-3 backdrop-blur-xl sm:px-6">
         <div className="flex min-w-0 items-center gap-3">
