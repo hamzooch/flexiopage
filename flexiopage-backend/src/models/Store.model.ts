@@ -192,6 +192,37 @@ export interface IStore extends Document {
       pulse?: boolean;
     };
     /**
+     * Notifications automatiques envoyées au client par WhatsApp aux moments
+     * clés du cycle de vie d'une commande (création, confirmation, dispatch).
+     * Utilise la session WasenderAPI déjà connectée pour le chatbot vendeur —
+     * le vendeur active/désactive chaque trigger individuellement.
+     *
+     * Chaque template supporte les placeholders : {{customerName}},
+     * {{orderNumber}}, {{storeName}}, {{total}}, {{currency}}, {{trackingUrl}}.
+     */
+    clientNotifications?: {
+      /** Master switch. Si false, aucun trigger n'envoie. */
+      enabled?: boolean;
+      /** Trigger : commande créée. Envoie tout de suite après confirmation
+       *  du payment intent / de la commande COD. */
+      orderCreated?: {
+        enabled?: boolean;
+        template?: string;
+      };
+      /** Trigger : commande confirmée par l'agent au téléphone. Envoie
+       *  quand `confirmationStatus` bascule à `confirmed`. */
+      confirmed?: {
+        enabled?: boolean;
+        template?: string;
+      };
+      /** Trigger : colis envoyé au coursier. Envoie quand `delivery.externalId`
+       *  est posé pour la 1re fois (dispatch success). */
+      dispatched?: {
+        enabled?: boolean;
+        template?: string;
+      };
+    };
+    /**
      * Storefront sections — what to render on the public store page.
      * Sellers toggle each section on/off and customize hero copy.
      */

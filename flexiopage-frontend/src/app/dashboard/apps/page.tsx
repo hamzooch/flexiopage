@@ -65,7 +65,7 @@ interface StoreDoc {
   };
 }
 
-type AppId = 'google-sheets' | 'mailchimp' | 'slack' | 'zapier' | 'discord' | 'messenger-bot' | 'whatsapp-bot' | 'telegram-bot' | 'sales-popup';
+type AppId = 'google-sheets' | 'mailchimp' | 'slack' | 'zapier' | 'discord' | 'messenger-bot' | 'whatsapp-bot' | 'telegram-bot' | 'sales-popup' | 'whatsapp-notifications';
 
 interface AppDef {
   id: AppId;
@@ -112,6 +112,15 @@ const APPS: AppDef[] = [
     category: 'Marketing',
     icon: ShoppingBag,
     accent: 'from-pink-500 to-rose-600',
+    available: true,
+  },
+  {
+    id: 'whatsapp-notifications',
+    name: 'Notifications Client WhatsApp',
+    description: 'Envoie auto un WhatsApp au client à la création, confirmation et dispatch de sa commande. Utilise la session du chatbot.',
+    category: 'Notifications',
+    icon: Bell,
+    accent: 'from-emerald-500 to-teal-600',
     available: true,
   },
   {
@@ -262,6 +271,8 @@ export default function AppsPage() {
         return botStatus.whatsappBot;
       case 'sales-popup':
         return !!activeStore.settings?.salesPopup?.enabled;
+      case 'whatsapp-notifications':
+        return !!(activeStore.settings as { clientNotifications?: { enabled?: boolean } } | undefined)?.clientNotifications?.enabled;
       default:
         return false;
     }
@@ -273,6 +284,7 @@ export default function AppsPage() {
     if (id === 'messenger-bot') router.push(`/dashboard/apps/messenger-bot?storeId=${activeStore._id}`);
     else if (id === 'whatsapp-bot') router.push(`/dashboard/apps/whatsapp-bot?storeId=${activeStore._id}`);
     else if (id === 'telegram-bot') router.push(`/dashboard/apps/telegram-bot`);
+    else if (id === 'whatsapp-notifications') router.push(`/dashboard/apps/whatsapp-notifications?storeId=${activeStore._id}`);
     else setOpenApp(id);
   };
 

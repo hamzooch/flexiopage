@@ -680,6 +680,10 @@ export async function dispatchOrder(args: {
         responseBody: result.raw,
       },
     });
+    // Trigger "dispatched" pour la notif client WhatsApp (opt-in).
+    void import('./clientNotifications.service').then(({ sendClientNotification }) =>
+      sendClientNotification({ orderId: args.order._id, trigger: 'dispatched' }),
+    ).catch(() => {});
     return { ok: true, result };
   } catch (err) {
     const msg = (err as Error).message || 'Dispatch failed';

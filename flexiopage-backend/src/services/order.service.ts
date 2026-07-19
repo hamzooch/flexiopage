@@ -184,6 +184,12 @@ export async function createOrder(input: CreateOrderInput): Promise<IOrder> {
     orderId: order._id,
     metadata: { total: order.total, currency: order.currency, paymentMethod: order.paymentMethod, items: items.length },
   });
+  // Trigger "orderCreated" pour les notifications WhatsApp client (opt-in).
+  // Import dynamique + best-effort — la création de commande ne doit jamais
+  // échouer à cause d'une notif qui foire.
+  void import('./clientNotifications.service').then(({ sendClientNotification }) =>
+    sendClientNotification({ orderId: order._id, trigger: 'orderCreated' }),
+  ).catch(() => {});
   return order;
 }
 

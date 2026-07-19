@@ -416,5 +416,14 @@ export async function updateConfirmationStatus(req: AuthRequest, res: Response):
     },
   });
 
+  // Trigger "confirmed" pour la notif client WhatsApp — uniquement à la
+  // transition VERS confirmed (pas à chaque save de la même valeur, l'idem-
+  // potence côté service couvre en plus les retries).
+  if (confirmationStatus === 'confirmed' && previous !== 'confirmed') {
+    void import('../services/clientNotifications.service').then(({ sendClientNotification }) =>
+      sendClientNotification({ orderId: order._id, trigger: 'confirmed' }),
+    ).catch(() => {});
+  }
+
   res.json({ order, restockedItems });
 }
