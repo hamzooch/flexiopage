@@ -112,5 +112,5 @@ const WalletSchema = new Schema<IWallet>(
   { timestamps: true }
 );
 
-WalletSchema.index({ userId: 1 });
+// `userId` a déjà `unique: true` sur le champ (crée l'index) — pas de doublon.
 export const Wallet = mongoose.model<IWallet>('Wallet', WalletSchema);

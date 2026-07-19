@@ -37,6 +37,7 @@ import {
   Truck,
   CreditCard,
   Banknote,
+  Sparkles,
 } from 'lucide-react';
 import { useAuthStore } from '@/stores/auth-store';
 import { cn } from '@/lib/utils';
@@ -73,6 +74,7 @@ const SECTIONS: { title: string; items: NavItem[] }[] = [
       { href: '/admin/delivery', label: 'Livraison',  icon: Truck },
       { href: '/admin/audit',    label: 'Audit',      icon: FileText },
       { href: '/admin/pricing',  label: 'Tarifs AI',  icon: DollarSign },
+      { href: '/admin/ai-consumption', label: 'Conso IA', icon: Sparkles },
       { href: '/admin/settings', label: 'Réglages',   icon: Sliders },
       { href: '/admin/profile',  label: 'Profil',     icon: UserIcon },
     ],

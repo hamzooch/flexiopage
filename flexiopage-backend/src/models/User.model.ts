@@ -176,5 +176,5 @@ const UserSchema = new Schema<IUser>(
   { timestamps: true }
 );
 
-UserSchema.index({ email: 1 });
+// `email` a déjà `unique: true` sur le champ (crée l'index) — pas de doublon.
 export const User = mongoose.model<IUser>('User', UserSchema);

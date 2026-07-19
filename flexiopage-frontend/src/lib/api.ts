@@ -665,6 +665,42 @@ export const adminApi = {
       updatedAt: string;
     }>('/admin/settings/ai-pricing', data),
 
+  // ── AI consumption monitor (admin read) ──
+  // Agrège BotUsage (mensuel, USD réel bot) + Wallet transactions
+  // (kind='ai_generation', tokens débités) sur la plage donnée.
+  getAiConsumption: (params?: { from?: string; to?: string }) =>
+    api.get<{
+      range: { from: string; to: string };
+      totals: {
+        bot: {
+          messages: number;
+          conversations: number;
+          tokensIn: number;
+          tokensOut: number;
+          costUsd: number;
+          ordersCreated: number;
+        };
+        wallet: {
+          generations: number;
+          tokensDebited: number;
+        };
+      };
+      topUsers: Array<{
+        userId: string;
+        email?: string;
+        name?: string;
+        tokens: number;
+        count: number;
+        lastAt: string;
+      }>;
+      byFeature: Array<{
+        feature: 'chatbot' | 'landing' | 'product_description' | 'images' | 'other';
+        tokens: number;
+        count: number;
+      }>;
+      timeseries: Array<{ date: string; tokens: number; count: number }>;
+    }>('/admin/ai-consumption', { params }),
+
   // ── Auth toggles (admin reads, superadmin writes) ──
   getAuthSettings: () =>
     api.get<{

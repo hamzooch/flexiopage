@@ -851,7 +851,7 @@ const StoreSchema = new Schema<IStore>(
 );
 
 StoreSchema.index({ ownerId: 1 });
-StoreSchema.index({ slug: 1 });
-StoreSchema.index({ subdomain: 1 });
+// `slug` et `subdomain` ont déjà `unique: true` sur le champ (crée l'index) —
+// ne pas doubler ici sinon warning Mongoose « Duplicate schema index ».
 StoreSchema.index({ customDomain: 1 }, { sparse: true });
 export const Store = mongoose.model<IStore>('Store', StoreSchema);

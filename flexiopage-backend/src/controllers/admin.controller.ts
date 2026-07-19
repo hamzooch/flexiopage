@@ -19,6 +19,7 @@ import { Store } from '../models/Store.model';
 import { Product } from '../models/Product.model';
 import { Order } from '../models/Order.model';
 import { Wallet } from '../models/Wallet.model';
+import { BotUsage } from '../modules/messenger-bot/models/BotUsage.model';
 import { Complaint } from '../models/Complaint.model';
 import { credit, debit, usdToTokens, usdToTokensRate } from '../services/wallet.service';
 import { listActivities } from '../services/activity-log.service';
@@ -1216,4 +1217,204 @@ export async function listActivity(req: AuthRequest, res: Response): Promise<voi
   const type = typeof req.query.type === 'string' ? (req.query.type as ActivityType) : undefined;
   const { items, nextCursor } = await listActivities({ limit, cursor, type });
   res.json({ items, nextCursor });
+}
+
+/**
+ * GET /api/admin/ai-consumption
+ *
+ * Vue d'ensemble de toute la conso IA de la plateforme sur une plage.
+ * Deux sources agrégées :
+ *   - `BotUsage` (mensuel, par vendeur) : messages_count + tokens_input/output +
+ *     cost_usd RÉEL en dollars pour le chatbot uniquement.
+ *   - `Wallet.transactions` avec `kind='ai_generation'` (par débit,
+ *     append-only) : couvre TOUTES les features IA (bot, landing, product-
+ *     description, images), montant en tokens (négatif = débit).
+ *
+ * Query params : `?from=YYYY-MM-DD&to=YYYY-MM-DD` (défaut : 30 derniers jours).
+ * Réponse : totals plateforme + top consommateurs + série temporelle.
+ */
+export async function getAiConsumption(req: AuthRequest, res: Response): Promise<void> {
+  // Fenêtre par défaut : 30 derniers jours (UTC). Le vendeur admin peut
+  // resserrer ou élargir via ?from=&to=.
+  const toDate = req.query.to ? new Date(String(req.query.to)) : new Date();
+  const fromDate = req.query.from
+    ? new Date(String(req.query.from))
+    : new Date(toDate.getTime() - 30 * 24 * 60 * 60 * 1000);
+  // Borne haute inclusive : on ajoute 1 jour et on prend `<` dans le match.
+  const toExclusive = new Date(toDate.getTime() + 24 * 60 * 60 * 1000);
+  toExclusive.setUTCHours(0, 0, 0, 0);
+  fromDate.setUTCHours(0, 0, 0, 0);
+
+  // Périodes YYYY-MM couvertes par la fenêtre (pour BotUsage).
+  const monthsInRange: string[] = [];
+  {
+    const cur = new Date(fromDate.getUTCFullYear(), fromDate.getUTCMonth(), 1);
+    const end = new Date(toDate.getUTCFullYear(), toDate.getUTCMonth(), 1);
+    while (cur <= end) {
+      monthsInRange.push(`${cur.getUTCFullYear()}-${String(cur.getUTCMonth() + 1).padStart(2, '0')}`);
+      cur.setUTCMonth(cur.getUTCMonth() + 1);
+    }
+  }
+
+  // ── 1) Totals bot uniquement (source la plus précise en USD réel). ──
+  const botTotalsAgg = await BotUsage.aggregate([
+    { $match: { period: { $in: monthsInRange } } },
+    {
+      $group: {
+        _id: null,
+        messages: { $sum: '$messages_count' },
+        tokensIn: { $sum: '$tokens_input' },
+        tokensOut: { $sum: '$tokens_output' },
+        costUsd: { $sum: '$cost_usd' },
+        conversations: { $sum: '$conversations_count' },
+        ordersCreated: { $sum: '$orders_created' },
+      },
+    },
+  ]);
+  const botTotals = botTotalsAgg[0] || {
+    messages: 0, tokensIn: 0, tokensOut: 0, costUsd: 0, conversations: 0, ordersCreated: 0,
+  };
+
+  // ── 2) Toutes les générations IA (bot + landing + product + images) via
+  //       le ledger wallet. Amount = tokens débités (négatif). ─────────
+  const walletAgg = await Wallet.aggregate([
+    { $unwind: '$transactions' },
+    {
+      $match: {
+        'transactions.kind': 'ai_generation',
+        'transactions.createdAt': { $gte: fromDate, $lt: toExclusive },
+      },
+    },
+    {
+      $group: {
+        _id: null,
+        generations: { $sum: 1 },
+        tokensDebited: { $sum: { $abs: '$transactions.amount' } },
+      },
+    },
+  ]);
+  const walletTotals = walletAgg[0] || { generations: 0, tokensDebited: 0 };
+
+  // ── 3) Top 20 consommateurs (par tokens débités du wallet). Aggregation
+  //       lookup user pour récupérer email + name. ────────────────────
+  const topUsersAgg = await Wallet.aggregate([
+    { $unwind: '$transactions' },
+    {
+      $match: {
+        'transactions.kind': 'ai_generation',
+        'transactions.createdAt': { $gte: fromDate, $lt: toExclusive },
+      },
+    },
+    {
+      $group: {
+        _id: '$userId',
+        tokens: { $sum: { $abs: '$transactions.amount' } },
+        count: { $sum: 1 },
+        lastAt: { $max: '$transactions.createdAt' },
+      },
+    },
+    { $sort: { tokens: -1 } },
+    { $limit: 20 },
+    {
+      $lookup: {
+        from: 'users',
+        localField: '_id',
+        foreignField: '_id',
+        as: 'user',
+      },
+    },
+    { $unwind: { path: '$user', preserveNullAndEmptyArrays: true } },
+    {
+      $project: {
+        _id: 0,
+        userId: '$_id',
+        email: '$user.email',
+        name: { $ifNull: ['$user.fullName', '$user.name'] },
+        tokens: 1,
+        count: 1,
+        lastAt: 1,
+      },
+    },
+  ]);
+
+  // ── 4) Série temporelle par jour (wallet transactions). Utile pour un
+  //       petit graphique de tendance. ────────────────────────────────
+  const timeseriesAgg = await Wallet.aggregate([
+    { $unwind: '$transactions' },
+    {
+      $match: {
+        'transactions.kind': 'ai_generation',
+        'transactions.createdAt': { $gte: fromDate, $lt: toExclusive },
+      },
+    },
+    {
+      $group: {
+        _id: {
+          $dateToString: { format: '%Y-%m-%d', date: '$transactions.createdAt', timezone: 'UTC' },
+        },
+        tokens: { $sum: { $abs: '$transactions.amount' } },
+        count: { $sum: 1 },
+      },
+    },
+    { $sort: { _id: 1 } },
+    { $project: { _id: 0, date: '$_id', tokens: 1, count: 1 } },
+  ]);
+
+  // ── 5) Répartition par « feature » via un heuristique sur `note`. Le
+  //       `kind` transaction est toujours 'ai_generation' — on catégorise
+  //       via le texte de la note posée par le service qui débite. ─────
+  const byFeatureAgg = await Wallet.aggregate([
+    { $unwind: '$transactions' },
+    {
+      $match: {
+        'transactions.kind': 'ai_generation',
+        'transactions.createdAt': { $gte: fromDate, $lt: toExclusive },
+      },
+    },
+    {
+      $group: {
+        _id: {
+          $switch: {
+            branches: [
+              { case: { $regexMatch: { input: { $ifNull: ['$transactions.note', ''] }, regex: /chatbot/i } }, then: 'chatbot' },
+              { case: { $regexMatch: { input: { $ifNull: ['$transactions.note', ''] }, regex: /landing/i } }, then: 'landing' },
+              { case: { $regexMatch: { input: { $ifNull: ['$transactions.note', ''] }, regex: /product|description/i } }, then: 'product_description' },
+              { case: { $regexMatch: { input: { $ifNull: ['$transactions.note', ''] }, regex: /image/i } }, then: 'images' },
+            ],
+            default: 'other',
+          },
+        },
+        tokens: { $sum: { $abs: '$transactions.amount' } },
+        count: { $sum: 1 },
+      },
+    },
+    { $sort: { tokens: -1 } },
+    { $project: { _id: 0, feature: '$_id', tokens: 1, count: 1 } },
+  ]);
+
+  res.json({
+    range: {
+      from: fromDate.toISOString(),
+      to: toDate.toISOString(),
+    },
+    // Totaux bot en USD réel (source Anthropic pricing) + tokens débités du
+    // wallet (couvre tous les features IA facturés au vendeur).
+    totals: {
+      bot: {
+        messages: botTotals.messages,
+        conversations: botTotals.conversations,
+        tokensIn: botTotals.tokensIn,
+        tokensOut: botTotals.tokensOut,
+        costUsd: Number(botTotals.costUsd.toFixed(4)),
+        ordersCreated: botTotals.ordersCreated,
+      },
+      wallet: {
+        generations: walletTotals.generations,
+        tokensDebited: walletTotals.tokensDebited,
+      },
+    },
+    topUsers: topUsersAgg,
+    byFeature: byFeatureAgg,
+    timeseries: timeseriesAgg,
+  });
 }

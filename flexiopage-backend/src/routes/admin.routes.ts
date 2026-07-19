@@ -53,6 +53,10 @@ router.delete('/users/:userId', requireSuperAdmin, admin.deleteUser);
 router.get('/settings/ai-pricing', admin.getAiPricing);
 router.put('/settings/ai-pricing', requireSuperAdmin, admin.updateAiPricing);
 
+// AI consumption monitor — agrège BotUsage + Wallet transactions
+// (kind='ai_generation') sur une plage. Lecture admin (tous rôles staff).
+router.get('/ai-consumption', admin.getAiConsumption);
+
 // Auth toggles — kill-switch vérification email. Lecture admin, mutation
 // superadmin parce que ça touche à un mécanisme de sécurité du signup.
 router.get('/settings/auth', admin.getAuthSettings);

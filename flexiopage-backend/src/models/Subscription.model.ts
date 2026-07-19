@@ -29,5 +29,5 @@ const SubscriptionSchema = new Schema<ISubscription>(
   { timestamps: true }
 );
 
-SubscriptionSchema.index({ userId: 1 });
+// `userId` a déjà `unique: true` sur le champ (crée l'index) — pas de doublon.
 export const Subscription = mongoose.model<ISubscription>('Subscription', SubscriptionSchema);

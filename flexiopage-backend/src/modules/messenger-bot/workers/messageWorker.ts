@@ -219,37 +219,14 @@ export async function processIncomingMessage(job: IncomingMessageJob): Promise<P
     messages.push({ role: 'user', content: toolResults });
   }
 
-  // Persiste la réponse du bot.
-  if (replyText) {
-    await Message.create({
-      conversation_id: conversation._id,
-      vendor_id: config.vendor_id,
-      sender: 'bot',
-      content: replyText,
-      claude_model: lastModel,
-      tokens_input: totalIn,
-      tokens_output: totalOut,
-      cost_usd: totalCost,
-      tool_calls: toolsUsed.length ? toolsUsed.map((name) => ({ name })) : undefined,
-    });
-    conversation.message_count += 1;
-    conversation.total_tokens_used += totalIn + totalOut;
-    conversation.last_message_at = new Date();
-    await conversation.save();
-  }
-
-  // Usage mensuel + total config.
-  await BotConfig.updateOne({ _id: config._id }, { $inc: { total_tokens_consumed: totalIn + totalOut } });
-  await BotUsage.updateOne(
-    { vendor_id: config.vendor_id, period: currentPeriod() },
-    {
-      $inc: { messages_count: 1, tokens_input: totalIn, tokens_output: totalOut, cost_usd: totalCost },
-      $setOnInsert: { bot_config_id: config._id },
-    },
-    { upsert: true },
-  );
-
-  // Envoi de la réponse via le bon canal (sauf dry-run / token de test).
+  // ── Envoi AVANT persistence ─────────────────────────────────────────
+  // Auparavant on persistait + facturait AVANT l'envoi. Résultat : sur
+  // échec réseau/API le vendeur était facturé pour un message que le
+  // client n'a jamais reçu, ET la réponse "fantôme" polluait l'historique
+  // au tour suivant (Claude croyait avoir déjà répondu). On envoie d'abord,
+  // on persiste + facture uniquement si l'envoi réussit.
+  let sent = false;
+  let sendError: Error | null = null;
   if (replyText && !isDryRun()) {
     try {
       if (config.channel === 'whatsapp' && config.whatsapp_provider === 'wasender') {
@@ -272,30 +249,77 @@ export async function processIncomingMessage(job: IncomingMessageJob): Promise<P
         await messengerService.sendTypingIndicator({ pageAccessToken: token, recipientPsid: conversation.customer_psid });
         await messengerService.sendMessage({ pageAccessToken: token, recipientPsid: conversation.customer_psid, message: replyText });
       }
+      sent = true;
     } catch (err) {
+      sendError = err as Error;
       if (err instanceof MetaApiError && err.isAuthError) {
         await handleInvalidToken(config, err);
       } else if (err instanceof WasenderApiError && err.isAuthError) {
         await handleInvalidToken(config, err);
       } else {
-        logger.error({ err: (err as Error).message, channel: config.channel, provider: config.whatsapp_provider }, '[messenger-bot] envoi réponse échec');
-        captureRun({
-          at: new Date().toISOString(),
-          conversationId: String(conversation._id),
-          vendorId: String(config.vendor_id),
-          customerText: (job.text || '').slice(0, 100),
-          status: 'error',
-          step: 'send',
-          errorMessage: `Envoi ${config.whatsapp_provider || config.channel} échec : ${(err as Error).message}`,
-          modelUsed: lastModel,
-          toolsUsed,
-          replyPreview: replyText.slice(0, 200),
-          tokensInput: totalIn,
-          tokensOutput: totalOut,
-          costUsd: totalCost,
-        });
+        logger.error({ err: sendError.message, channel: config.channel, provider: config.whatsapp_provider }, '[messenger-bot] envoi réponse échec — pas de persist/facturation');
       }
     }
+  } else if (replyText && isDryRun()) {
+    // Dry-run : on considère l'envoi comme réussi pour tester le pipeline
+    // complet (persistence + facturation compris) sans hitter les APIs.
+    sent = true;
+  } else if (!replyText) {
+    // Pas de reply à envoyer (media fallback vide, Claude sans texte…) :
+    // pas de persist ni facturation — équivalent à un no-op.
+    sent = false;
+  }
+
+  // Persiste la réponse + incrémente les compteurs UNIQUEMENT si l'envoi
+  // a réussi (ou dry-run). En cas d'échec, on ne pollue ni l'historique
+  // ni la facturation — le BullMQ retry (si actif) pourra rejouer le tour.
+  if (sent && replyText) {
+    await Message.create({
+      conversation_id: conversation._id,
+      vendor_id: config.vendor_id,
+      sender: 'bot',
+      content: replyText,
+      claude_model: lastModel,
+      tokens_input: totalIn,
+      tokens_output: totalOut,
+      cost_usd: totalCost,
+      tool_calls: toolsUsed.length ? toolsUsed.map((name) => ({ name })) : undefined,
+    });
+    conversation.message_count += 1;
+    conversation.total_tokens_used += totalIn + totalOut;
+    conversation.last_message_at = new Date();
+    await conversation.save();
+
+    // Usage mensuel + total config — même règle : n'incrémente que si envoi OK.
+    await BotConfig.updateOne({ _id: config._id }, { $inc: { total_tokens_consumed: totalIn + totalOut } });
+    await BotUsage.updateOne(
+      { vendor_id: config.vendor_id, period: currentPeriod() },
+      {
+        $inc: { messages_count: 1, tokens_input: totalIn, tokens_output: totalOut, cost_usd: totalCost },
+        $setOnInsert: { bot_config_id: config._id },
+      },
+      { upsert: true },
+    );
+  }
+
+  // Trace debug de l'échec d'envoi (après le block sent/persist pour avoir
+  // la vraie décision de persistance dans le log).
+  if (sendError && !(sendError instanceof MetaApiError && sendError.isAuthError) && !(sendError instanceof WasenderApiError && sendError.isAuthError)) {
+    captureRun({
+      at: new Date().toISOString(),
+      conversationId: String(conversation._id),
+      vendorId: String(config.vendor_id),
+      customerText: (job.text || '').slice(0, 100),
+      status: 'error',
+      step: 'send',
+      errorMessage: `Envoi ${config.whatsapp_provider || config.channel} échec : ${sendError.message} (message non persisté, non facturé)`,
+      modelUsed: lastModel,
+      toolsUsed,
+      replyPreview: replyText.slice(0, 200),
+      tokensInput: totalIn,
+      tokensOutput: totalOut,
+      costUsd: totalCost,
+    });
   }
 
   // Capture du run global. Si replyText est vide, on flag explicitement
