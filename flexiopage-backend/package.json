@@ -16,6 +16,7 @@
     "test:payment-flow": "tsx scripts/test-payment-flow.ts",
     "seed:messenger-bot": "tsx scripts/seed-messenger-bot.ts",
     "test:messenger-bot": "tsx scripts/test-messenger-bot.ts",
+    "test:order-lifecycle": "tsx scripts/test-order-lifecycle.ts",
     "migrate:wallets-usd": "tsx scripts/migrate-wallets-to-usd.ts",
     "migrate:ai-balance-tokens": "tsx scripts/migrate-ai-balance-to-tokens.ts",
     "migrate:to-cloudinary": "tsx scripts/migrate-to-cloudinary.ts",

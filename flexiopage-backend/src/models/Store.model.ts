@@ -666,6 +666,21 @@ const StoreSchema = new Schema<IStore>(
         accentColor: { type: String, trim: true },
         pulse: { type: Boolean, default: true },
       },
+      clientNotifications: {
+        enabled: { type: Boolean, default: false },
+        orderCreated: {
+          enabled: { type: Boolean, default: false },
+          template: { type: String },
+        },
+        confirmed: {
+          enabled: { type: Boolean, default: false },
+          template: { type: String },
+        },
+        dispatched: {
+          enabled: { type: Boolean, default: false },
+          template: { type: String },
+        },
+      },
       storefront: {
         announcementBar: {
           enabled: { type: Boolean, default: false },
