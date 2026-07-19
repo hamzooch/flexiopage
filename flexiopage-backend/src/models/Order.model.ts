@@ -17,6 +17,28 @@ export type FulfillmentStatus = 'unfulfilled' | 'partial' | 'fulfilled' | 'cance
 export type ConfirmationStatus = 'pending' | 'confirmed' | 'no_answer' | 'callback' | 'declined';
 export const CONFIRMATION_STATUSES: ConfirmationStatus[] = ['pending', 'confirmed', 'no_answer', 'callback', 'declined'];
 
+/**
+ * Motifs structurés d'annulation / refus — permet d'agréger « top raisons de
+ * refus » dans les rapports vendeur. Chaque code = 1 action correctrice
+ * possible côté vendeur (ex: `wrong_address` → améliorer le form d'adresse,
+ * `too_expensive` → tester une baisse de prix, `duplicate` → détection
+ * doublon auto au checkout).
+ */
+export type CancelReasonCode =
+  | 'unreachable'      // client injoignable après plusieurs tentatives
+  | 'too_expensive'    // prix jugé trop cher
+  | 'not_interested'   // plus intéressé, changement d'avis
+  | 'wrong_address'    // adresse incorrecte, hors zone
+  | 'out_of_stock'     // produit indisponible côté vendeur
+  | 'duplicate'        // commande en double (même client)
+  | 'undeliverable'    // zone non desservie par le transporteur
+  | 'other';           // autre — devrait rester rare
+
+export const CANCEL_REASON_CODES: CancelReasonCode[] = [
+  'unreachable', 'too_expensive', 'not_interested', 'wrong_address',
+  'out_of_stock', 'duplicate', 'undeliverable', 'other',
+];
+
 /** Aggregator (one-to-many wrapper) or direct provider. */
 export type PaymentProvider =
   | 'cinetpay'        // aggregator: Wave, OM, MTN, Moov, Visa
@@ -149,6 +171,10 @@ export interface IOrder extends Document {
   inventoryRestored?: boolean;
   /** Free-text reason captured when the seller manually cancels/changes status. */
   cancelReason?: string;
+  /** Code motif structuré (8 raisons prédéfinies) — permet d'agréger
+   *  « top motifs de refus » dans les rapports vendeur. `cancelReason`
+   *  reste le texte libre saisi en complément. */
+  cancelReasonCode?: CancelReasonCode;
   /** Append-only audit trail of manual status changes (seller actions). */
   statusHistory?: Array<{
     at: Date;
@@ -247,6 +273,7 @@ const OrderSchema = new Schema<IOrder>(
     },
     inventoryRestored: { type: Boolean, default: false },
     cancelReason: { type: String, trim: true },
+    cancelReasonCode: { type: String, enum: CANCEL_REASON_CODES },
     statusHistory: [
       {
         _id: false,

@@ -1387,6 +1387,8 @@ export const storesApi = {
     note?: string;
     /** ISO datetime — only honoured when confirmationStatus === 'callback'. */
     callbackAt?: string;
+    /** Motif structuré — honoré uniquement pour `declined`. Un des 8 codes. */
+    cancelReasonCode?: string;
   }) =>
     api.patch<{ order: unknown; restockedItems: number }>(`/stores/${storeId}/orders/${orderId}/confirmation`, data),
   // Customers

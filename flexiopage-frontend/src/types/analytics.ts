@@ -90,4 +90,20 @@ export interface StoreAnalyticsRich {
     fulfillmentStatus: string;
     createdAt: string;
   }>;
+  /** Top motifs de refus/annulation sur la fenêtre — top 5 codes structurés. */
+  cancelReasons: Array<{ code: string; count: number }>;
+  /** Chiffre par pays (marketCountry snapshot). */
+  byCountry: Array<{ country: string; orders: number; revenue: number; delivered: number }>;
 }
+
+/** Codes de motifs de refus alignés sur le backend `CancelReasonCode`. */
+export const CANCEL_REASON_LABELS: Record<string, string> = {
+  unreachable:    'Client injoignable',
+  too_expensive:  'Prix jugé trop cher',
+  not_interested: 'Plus intéressé',
+  wrong_address:  'Adresse incorrecte',
+  out_of_stock:   'Rupture de stock',
+  duplicate:      'Commande en double',
+  undeliverable:  'Zone non desservie',
+  other:          'Autre',
+};

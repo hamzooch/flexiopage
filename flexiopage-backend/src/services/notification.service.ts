@@ -189,3 +189,35 @@ export async function notifyBotBalanceEmpty(args: {
     meta: { channel: args.channel },
   });
 }
+
+/**
+ * Alerte "pluie d'échecs dispatch" — déclenchée quand > seuil orders ont
+ * fait échouer leur dispatch vers le coursier en moins d'une heure.
+ * Souvent signe d'un secret HMAC désynchronisé ou d'un catalogue mal
+ * référencé côté transporteur. Le vendeur doit agir vite avant qu'une
+ * grosse journée de pub ne parte en fumée.
+ *
+ * Anti-spam : on ne notifie qu'une fois par heure et par store (dédup côté
+ * caller via un simple in-memory throttle, pas de state DB).
+ */
+export async function notifyDispatchStorm(args: {
+  userId: mongoose.Types.ObjectId | string;
+  storeId: mongoose.Types.ObjectId | string;
+  count: number;
+  topErrors: Array<{ error: string; count: number }>;
+  provider?: string;
+}) {
+  const topText = args.topErrors
+    .slice(0, 3)
+    .map((e) => `• ${e.count}× ${e.error.slice(0, 100)}`)
+    .join('\n');
+  return createNotification({
+    userId: args.userId,
+    storeId: args.storeId,
+    type: 'delivery.dispatch_storm',
+    title: `⚠ ${args.count} dispatchs échoués en 1h`,
+    body: `Beaucoup de commandes n'ont pas pu être envoyées${args.provider ? ' à ' + args.provider : ''} sur la dernière heure. Top erreurs :\n${topText}`,
+    link: '/dashboard/orders?status=pending',
+    meta: { count: args.count, topErrors: args.topErrors.slice(0, 3), provider: args.provider },
+  });
+}

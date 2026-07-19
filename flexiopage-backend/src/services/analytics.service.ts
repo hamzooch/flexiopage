@@ -249,6 +249,15 @@ export interface StoreAnalyticsRich {
     fulfillmentStatus: string;
     createdAt: string;
   }>;
+  /** Top motifs de refus/annulation sur la fenêtre — les 5 les plus fréquents
+   *  parmi les commandes cancelled qui ont un `cancelReasonCode`. Permet au
+   *  vendeur de voir « 40% de mes annulations c'est mauvaise adresse » et de
+   *  corriger sa cause racine (améliorer le form d'adresse, filtrer les
+   *  doublons, etc.). Vide tant qu'aucun code n'a été saisi. */
+  cancelReasons: Array<{ code: string; count: number }>;
+  /** Chiffre par pays (marketCountry snapshot au checkout). Aide à décider
+   *  où pousser la pub / où le funnel COD est le plus rentable. */
+  byCountry: Array<{ country: string; orders: number; revenue: number; delivered: number }>;
 }
 
 function pctDelta(curr: number, prev: number): number | null {
@@ -411,6 +420,8 @@ export async function getStoreAnalyticsRich(
     deviceAgg,
     trafficSourcesRaw,
     hourlySalesRaw,
+    cancelReasonsRaw,
+    byCountryRaw,
   ] = await Promise.all([
     // All-time totals (any status).
     Order.aggregate([
@@ -571,6 +582,31 @@ export async function getStoreAnalyticsRich(
       },
       { $sort: { _id: 1 } },
     ]),
+    // Top motifs de refus/annulation — les 5 codes structurés les plus
+    // fréquents parmi les commandes cancelled de la fenêtre. Ignore les
+    // orders sans code (backward-compat, avant l'ajout du dropdown).
+    Order.aggregate<{ _id: string; count: number }>([
+      { $match: { ...inWindow, fulfillmentStatus: 'cancelled', cancelReasonCode: { $exists: true, $ne: null } } },
+      { $group: { _id: '$cancelReasonCode', count: { $sum: 1 } } },
+      { $sort: { count: -1 } },
+      { $limit: 5 },
+    ]),
+    // Chiffre par pays (marketCountry snapshot). Utile pour multi-marché
+    // MogaDelivery — savoir où le funnel COD convertit le mieux. On garde
+    // le compteur des livrées séparément pour dériver un taux de succès.
+    Order.aggregate<{ _id: string | null; orders: number; revenue: number; delivered: number }>([
+      { $match: inWindow },
+      {
+        $group: {
+          _id: { $ifNull: ['$marketCountry', '$shippingAddress.country'] },
+          orders: { $sum: 1 },
+          revenue: { $sum: { $cond: [{ $eq: ['$paymentStatus', 'paid'] }, '$total', 0] } },
+          delivered: { $sum: { $cond: [{ $eq: ['$delivery.externalStatus', 'delivered'] }, 1, 0] } },
+        },
+      },
+      { $sort: { orders: -1 } },
+      { $limit: 10 },
+    ]),
   ]);
 
   const t = totals[0] || { orders: 0, revenue: 0, sales: 0, customers: 0, currency: storeCurrency };
@@ -713,6 +749,16 @@ export async function getStoreAnalyticsRich(
       paymentStatus: o.paymentStatus,
       fulfillmentStatus: o.fulfillmentStatus,
       createdAt: o.createdAt.toISOString(),
+    })),
+    cancelReasons: (cancelReasonsRaw as Array<{ _id: string; count: number }>).map((r) => ({
+      code: r._id,
+      count: r.count,
+    })),
+    byCountry: (byCountryRaw as Array<{ _id: string | null; orders: number; revenue: number; delivered: number }>).map((r) => ({
+      country: r._id || 'unknown',
+      orders: r.orders,
+      revenue: r.revenue,
+      delivered: r.delivered,
     })),
   };
 }

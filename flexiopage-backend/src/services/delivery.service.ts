@@ -13,6 +13,7 @@
  */
 import crypto from 'crypto';
 import * as soap from 'soap';
+import mongoose from 'mongoose';
 import type { IOrder, ConfirmationStatus } from '../models/Order.model';
 import { Order } from '../models/Order.model';
 import { Product } from '../models/Product.model';
@@ -701,8 +702,70 @@ export async function dispatchOrder(args: {
         requestBody: args.order.delivery?.providerRequest,
       },
     });
+    // Détection "pluie d'échecs" : si > seuil orders ont fait échouer leur
+    // dispatch sur la dernière heure pour ce store, on ping le vendeur.
+    // Best-effort — jamais bloquant même si la détection foire.
+    void maybeAlertDispatchStorm(args.order.storeId, providerId).catch((e) => {
+      console.error('[delivery] storm detection failed:', (e as Error).message);
+    });
     return { ok: false, error: msg };
   }
+}
+
+/**
+ * Seuil et fenêtre pour la détection de « pluie d'échecs dispatch » +
+ * throttle in-memory pour éviter de spammer le vendeur (max 1 notif/heure
+ * par store). Suffisant pour une instance mono-noeud ; en cluster il
+ * faudrait un flag Redis mais on garde simple pour l'instant.
+ */
+const DISPATCH_STORM_THRESHOLD = 5;
+const DISPATCH_STORM_WINDOW_MS = 60 * 60 * 1000;
+const dispatchStormNotifiedAt: Map<string, number> = new Map();
+
+async function maybeAlertDispatchStorm(
+  storeId: mongoose.Types.ObjectId | string,
+  provider: string,
+): Promise<void> {
+  const storeIdStr = String(storeId);
+  const now = Date.now();
+  const lastAt = dispatchStormNotifiedAt.get(storeIdStr) || 0;
+  if (now - lastAt < DISPATCH_STORM_WINDOW_MS) return; // déjà notifié dans l'heure
+
+  const since = new Date(now - DISPATCH_STORM_WINDOW_MS);
+  // Compte + top erreurs par message. On regarde uniquement les orders
+  // avec un error posé, updatedAt récent — pas d'externalId (sinon le
+  // dispatch a fini par passer et l'erreur n'est plus pertinente).
+  const rows = await Order.aggregate<{ _id: string; count: number }>([
+    {
+      $match: {
+        storeId: new mongoose.Types.ObjectId(storeIdStr),
+        'delivery.provider': provider,
+        'delivery.error': { $exists: true, $ne: null },
+        'delivery.externalId': { $in: [null, undefined] },
+        updatedAt: { $gte: since },
+      },
+    },
+    { $group: { _id: '$delivery.error', count: { $sum: 1 } } },
+    { $sort: { count: -1 } },
+    { $limit: 10 },
+  ]);
+  const totalCount = rows.reduce((sum, r) => sum + r.count, 0);
+  if (totalCount < DISPATCH_STORM_THRESHOLD) return;
+
+  // Marque le store comme notifié avant l'appel notification pour éviter
+  // une double notif en concurrence si 2 dispatch failed en même temps.
+  dispatchStormNotifiedAt.set(storeIdStr, now);
+
+  const { notifyDispatchStorm } = await import('./notification.service');
+  const store = await (await import('../models/Store.model')).Store.findById(storeIdStr).select('ownerId').lean();
+  if (!store?.ownerId) return;
+  await notifyDispatchStorm({
+    userId: store.ownerId,
+    storeId: storeIdStr,
+    count: totalCount,
+    topErrors: rows.map((r) => ({ error: r._id, count: r.count })),
+    provider,
+  });
 }
 
 /**

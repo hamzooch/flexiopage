@@ -19,7 +19,8 @@ export type NotificationType =
   | 'team.member_added'
   | 'team.member_removed'
   | 'bot.limit_reached'
-  | 'bot.balance_empty';
+  | 'bot.balance_empty'
+  | 'delivery.dispatch_storm';
 
 export interface INotification extends Document {
   /** Owner (seller) who sees this notification. */
@@ -45,7 +46,7 @@ const NotificationSchema = new Schema<INotification>(
     storeId: { type: Schema.Types.ObjectId, ref: 'Store' },
     type: {
       type: String,
-      enum: ['order.created', 'order.status_changed', 'team.member_added', 'team.member_removed', 'bot.limit_reached', 'bot.balance_empty'],
+      enum: ['order.created', 'order.status_changed', 'team.member_added', 'team.member_removed', 'bot.limit_reached', 'bot.balance_empty', 'delivery.dispatch_storm'],
       required: true,
     },
     title: { type: String, required: true },

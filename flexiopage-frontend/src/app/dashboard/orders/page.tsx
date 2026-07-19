@@ -52,6 +52,7 @@ import {
 } from 'lucide-react';
 import { PageHeader } from '@/components/dashboard/page-header';
 import { Pagination } from '@/components/ui/pagination';
+import { CANCEL_REASON_LABELS } from '@/types/analytics';
 
 interface StoreType {
   _id: string;
@@ -1859,6 +1860,7 @@ function OrderConfirmationActions({
   const [busy, setBusy] = useState<ConfirmationStatus | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [showCallbackPicker, setShowCallbackPicker] = useState(false);
+  const [showDeclineReasons, setShowDeclineReasons] = useState(false);
   const prompt = usePrompt();
   const [callbackAt, setCallbackAt] = useState<string>(() => {
     // Default callback = today + 2h, rounded to next half-hour, in the
@@ -1870,7 +1872,7 @@ function OrderConfirmationActions({
   });
   const [noteDraft, setNoteDraft] = useState<string>('');
 
-  async function apply(status: ConfirmationStatus, extra?: { note?: string; callbackAt?: string }) {
+  async function apply(status: ConfirmationStatus, extra?: { note?: string; callbackAt?: string; cancelReasonCode?: string }) {
     setBusy(status);
     setError(null);
     try {
@@ -1878,6 +1880,7 @@ function OrderConfirmationActions({
         confirmationStatus: status,
         note: extra?.note,
         callbackAt: extra?.callbackAt,
+        cancelReasonCode: extra?.cancelReasonCode,
       });
       await onChanged();
       setShowCallbackPicker(false);
@@ -1899,18 +1902,17 @@ function OrderConfirmationActions({
     await apply('callback', { callbackAt: iso, note: noteDraft || undefined });
   }
 
-  async function handleDeclined() {
-    const reason = await prompt({
-      title: 'Refus du client',
-      description: 'Note gardée dans l\'historique pour le suivi.',
-      defaultValue: 'Refusé à la confirmation',
-      placeholder: 'Ex: client a dit non, prix trop élevé, double commande…',
-      multiline: true,
-      confirmLabel: 'Marquer comme refusé',
-      tone: 'destructive',
-    });
-    if (reason === null) return;
-    await apply('declined', { note: reason });
+  // Ouvre le sélecteur inline de motif (au lieu d'une simple free-text
+  // prompt). Le code structuré permet d'agréger les motifs dans le rapport
+  // « Top raisons de refus » plus tard, alors qu'une note libre est du texte
+  // libre inexploitable pour l'agrégation.
+  function handleDeclined() {
+    setShowDeclineReasons(true);
+  }
+
+  async function submitDecline(code: string, label: string) {
+    setShowDeclineReasons(false);
+    await apply('declined', { note: label, cancelReasonCode: code });
   }
 
   const currentBadge = CONFIRMATION_BADGE[current];
@@ -1944,7 +1946,40 @@ function OrderConfirmationActions({
         <p className="mb-3 rounded-lg bg-red-500/10 px-2.5 py-1.5 text-[11px] font-medium text-red-700">{error}</p>
       )}
 
-      {!showCallbackPicker ? (
+      {showDeclineReasons ? (
+        // Sélecteur inline de motif de refus. Chaque bouton = un code
+        // structuré + son libellé (posté à la fois en `note` visible et en
+        // `cancelReasonCode` pour les rapports agrégés).
+        <div className="space-y-2">
+          <div className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+            Pourquoi refuser ?
+          </div>
+          <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-4">
+            {Object.entries(CANCEL_REASON_LABELS).map(([code, label]) => (
+              <Button
+                key={code}
+                size="sm"
+                variant="outline"
+                disabled={busy !== null}
+                onClick={() => submitDecline(code, label)}
+                className="justify-start gap-1.5 border-rose-500/20 text-[11px] text-rose-700 hover:bg-rose-500/10"
+              >
+                {busy === 'declined' && <Loader2 className="h-3 w-3 animate-spin" />}
+                <span className="truncate">{label}</span>
+              </Button>
+            ))}
+          </div>
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={() => setShowDeclineReasons(false)}
+            disabled={busy !== null}
+            className="text-[11px] text-muted-foreground"
+          >
+            Annuler
+          </Button>
+        </div>
+      ) : !showCallbackPicker ? (
         <div className="flex flex-wrap gap-2">
           <Button
             size="sm"

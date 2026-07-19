@@ -2,7 +2,7 @@ import { Response } from 'express';
 import { AuthRequest } from '../middleware/auth.middleware';
 import * as orderService from '../services/order.service';
 import { dispatchOrder } from '../services/delivery.service';
-import { Order, CONFIRMATION_STATUSES, type ConfirmationStatus } from '../models/Order.model';
+import { Order, CONFIRMATION_STATUSES, CANCEL_REASON_CODES, type ConfirmationStatus, type CancelReasonCode } from '../models/Order.model';
 import { Product } from '../models/Product.model';
 import { logActivity } from '../services/activity-log.service';
 
@@ -326,10 +326,11 @@ export async function manualStatusOverride(req: AuthRequest, res: Response): Pro
 export async function updateConfirmationStatus(req: AuthRequest, res: Response): Promise<void> {
   const store = req.store!;
   const userId = req.user?._id as { toString(): string } | undefined;
-  const { confirmationStatus, note, callbackAt } = req.body as {
+  const { confirmationStatus, note, callbackAt, cancelReasonCode } = req.body as {
     confirmationStatus?: ConfirmationStatus;
     note?: string;
     callbackAt?: string;
+    cancelReasonCode?: CancelReasonCode;
   };
 
   if (!confirmationStatus || !CONFIRMATION_STATUSES.includes(confirmationStatus)) {
@@ -383,6 +384,10 @@ export async function updateConfirmationStatus(req: AuthRequest, res: Response):
       );
       order.inventoryRestored = true;
       order.cancelReason = (note?.trim() || 'Refusé à la confirmation').slice(0, 500);
+      // Motif structuré si fourni — tolère l'absence pour compat descendante.
+      if (cancelReasonCode && CANCEL_REASON_CODES.includes(cancelReasonCode)) {
+        order.cancelReasonCode = cancelReasonCode;
+      }
     }
   }
 

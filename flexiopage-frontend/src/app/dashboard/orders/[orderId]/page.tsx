@@ -457,11 +457,18 @@ export default function OrderDetailPage() {
             </section>
           )}
 
-          {/* Status history — only shown when there is something to show. */}
+          {/* Timeline lifecycle — vue verticale des grandes étapes.
+              Dérive les timestamps de statusHistory + fields explicites de
+              l'order. Chaque étape a un état (done/current/upcoming) et
+              une couleur qui reflète le stade actuel. */}
+          <OrderLifecycleTimeline order={order} />
+
+          {/* Historique brut — restant utile pour l'audit détaillé (chaque
+              action manuelle du vendeur avec la note associée). */}
           {order.statusHistory && order.statusHistory.length > 0 && (
             <section className="rounded-2xl border border-border/60 bg-card">
               <div className="border-b border-border/40 px-4 py-3">
-                <h2 className="text-sm font-semibold">Historique</h2>
+                <h2 className="text-sm font-semibold">Historique détaillé</h2>
               </div>
               <ul className="divide-y divide-border/40">
                 {order.statusHistory.slice().reverse().map((h, i) => (
@@ -831,6 +838,122 @@ function ReliabilityPanel({ loading, data }: { loading: boolean; data: CustomerR
           </ul>
         </details>
       )}
+    </section>
+  );
+}
+
+/**
+ * Timeline verticale du cycle de vie d'une commande. Dérive les timestamps
+ * des grandes étapes depuis `order.statusHistory` + les fields directs
+ * (createdAt, delivery.dispatchedAt). Chaque étape a un état :
+ *   - done       : passée (timestamp connu)
+ *   - current    : en cours (dernière étape done)
+ *   - upcoming   : pas encore atteinte (grisée)
+ *   - cancelled  : commande annulée à cette étape (rouge)
+ *
+ * L'ordre est fixe (Créée → Contactée → Confirmée → Dispatchée → Livrée →
+ * Payée) — reflète le funnel COD standard.
+ */
+function OrderLifecycleTimeline({ order }: { order: OrderDoc }) {
+  // Trouve le 1er statusHistory entry où la confirmation a changé depuis
+  // 'pending' (= agent a contacté le client pour la première fois).
+  const contactedAt = order.statusHistory?.find(
+    (h) => h.confirmationStatus && h.confirmationStatus !== 'pending',
+  )?.at;
+  const confirmedAt = order.statusHistory?.find(
+    (h) => h.confirmationStatus === 'confirmed',
+  )?.at || (order.confirmationStatus === 'confirmed' ? order.confirmedAt : undefined);
+  const isCancelled = order.fulfillmentStatus === 'cancelled' || order.confirmationStatus === 'declined';
+  const dispatchedAt = order.delivery?.dispatchedAt;
+  const deliveredAt = order.delivery?.externalStatus === 'delivered'
+    ? order.statusHistory?.slice().reverse().find(
+      (h) => h.fulfillmentStatus === 'fulfilled',
+    )?.at
+    : undefined;
+  const paidAt = order.paymentStatus === 'paid'
+    ? order.statusHistory?.slice().reverse().find((h) => h.paymentStatus === 'paid')?.at
+    : undefined;
+
+  const steps = [
+    { key: 'created',    label: 'Commande créée',   icon: ShoppingCart,   at: order.createdAt as string | undefined },
+    { key: 'contacted',  label: 'Client contacté',  icon: PhoneCall,      at: contactedAt },
+    { key: 'confirmed',  label: 'Confirmée',        icon: CheckCircle2,   at: confirmedAt },
+    { key: 'dispatched', label: 'Dispatchée',       icon: Truck,          at: dispatchedAt },
+    { key: 'delivered',  label: 'Livrée',           icon: Package,        at: deliveredAt },
+    { key: 'paid',       label: 'Payée',            icon: Banknote,       at: paidAt },
+  ];
+
+  // Dernière étape done = "current" (highlighted). Les upcoming sont grisées.
+  const lastDoneIdx = steps.reduce((last, s, i) => (s.at ? i : last), -1);
+
+  return (
+    <section className="rounded-2xl border border-border/60 bg-card">
+      <div className="border-b border-border/40 px-4 py-3">
+        <h2 className="flex items-center gap-2 text-sm font-semibold">
+          <Calendar className="h-4 w-4 text-muted-foreground" />
+          Cycle de vie
+          {isCancelled && (
+            <span className="ml-auto inline-flex items-center gap-1 rounded-full bg-rose-500/10 px-2 py-0.5 text-[10px] font-bold text-rose-700">
+              <AlertTriangle className="h-2.5 w-2.5" />
+              Annulée
+            </span>
+          )}
+        </h2>
+      </div>
+      <ol className="relative space-y-3 px-4 py-4">
+        {/* Ligne verticale reliant les étapes — pos abs pour ne pas décaler
+            les items. Étend jusqu'à la dernière étape done + 1. */}
+        <div
+          className="absolute left-[27px] top-6 w-px bg-border"
+          style={{ height: `calc((100% - 3rem) * ${Math.max(0, lastDoneIdx) / Math.max(1, steps.length - 1)})` }}
+          aria-hidden
+        />
+        {steps.map((s, i) => {
+          const Icon = s.icon;
+          const done = !!s.at;
+          const current = done && i === lastDoneIdx;
+          const cancelled = isCancelled && !done;
+          return (
+            <li key={s.key} className="relative flex items-start gap-3">
+              <div
+                className={cn(
+                  'relative z-10 grid h-6 w-6 shrink-0 place-items-center rounded-full border-2 shadow-sm',
+                  done && current && 'border-primary bg-primary text-primary-foreground',
+                  done && !current && 'border-emerald-500 bg-emerald-500 text-white',
+                  !done && !cancelled && 'border-border bg-muted text-muted-foreground/60',
+                  cancelled && 'border-rose-300 bg-rose-100 text-rose-500',
+                )}
+              >
+                <Icon className="h-3 w-3" />
+              </div>
+              <div className="min-w-0 flex-1 pt-0.5">
+                <div className="flex flex-wrap items-baseline gap-x-2">
+                  <span
+                    className={cn(
+                      'text-sm font-medium',
+                      !done && !current && 'text-muted-foreground/70',
+                      current && 'text-primary',
+                    )}
+                  >
+                    {s.label}
+                  </span>
+                  {done && s.at && (
+                    <span className="text-[10px] text-muted-foreground">
+                      {formatDate(s.at)}
+                    </span>
+                  )}
+                  {current && (
+                    <span className="inline-flex items-center gap-1 rounded-full bg-primary/10 px-1.5 py-0.5 text-[9px] font-bold text-primary">
+                      <span className="h-1 w-1 animate-pulse rounded-full bg-primary" />
+                      En cours
+                    </span>
+                  )}
+                </div>
+              </div>
+            </li>
+          );
+        })}
+      </ol>
     </section>
   );
 }

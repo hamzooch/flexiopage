@@ -20,7 +20,7 @@ import {
 } from 'lucide-react';
 import { storesApi } from '@/lib/api';
 import { useScopedStoreId } from '@/lib/use-scoped-store';
-import { formatCurrency } from '@/lib/utils';
+import { formatCurrency, cn } from '@/lib/utils';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { KpiCard } from '@/components/charts/KpiCard';
 import { RangeSwitcher } from '@/components/charts/RangeSwitcher';
@@ -30,6 +30,7 @@ import { FunnelChart } from '@/components/charts/FunnelChart';
 import { TopProductsList } from '@/components/charts/TopProductsList';
 import { RecentOrdersPanel } from '@/components/charts/RecentOrdersPanel';
 import type { RangeKey, StoreAnalyticsRich } from '@/types/analytics';
+import { CANCEL_REASON_LABELS } from '@/types/analytics';
 
 interface StoreType {
   _id: string;
@@ -321,6 +322,38 @@ export default function DashboardAnalyticsPage() {
             </Card>
           </div>
 
+          {/* Top motifs de refus + Pays */}
+          {(data.cancelReasons?.length > 0 || data.byCountry?.length > 0) && (
+            <div className="grid gap-3 sm:gap-4 lg:grid-cols-2">
+              {data.cancelReasons?.length > 0 && (
+                <Card>
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-sm sm:text-base">Top motifs de refus</CardTitle>
+                    <p className="text-[11px] text-muted-foreground sm:text-xs">
+                      Où corriger la cause racine — chaque motif suggère une action.
+                    </p>
+                  </CardHeader>
+                  <CardContent>
+                    <CancelReasonsWidget items={data.cancelReasons} />
+                  </CardContent>
+                </Card>
+              )}
+              {data.byCountry?.length > 0 && (
+                <Card>
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-sm sm:text-base">Performance par pays</CardTitle>
+                    <p className="text-[11px] text-muted-foreground sm:text-xs">
+                      CA + taux de livraison — sur la période.
+                    </p>
+                  </CardHeader>
+                  <CardContent>
+                    <ByCountryWidget items={data.byCountry} currency={currency} />
+                  </CardContent>
+                </Card>
+              )}
+            </div>
+          )}
+
           {/* Payment mix + Recent orders */}
           <div className="grid gap-3 sm:gap-4 lg:grid-cols-2">
             <Card>
@@ -397,6 +430,86 @@ function LoadingSkeleton() {
         <div className="h-[280px] animate-pulse rounded-xl border border-border/60 bg-card lg:col-span-2" />
         <div className="h-[280px] animate-pulse rounded-xl border border-border/60 bg-card" />
       </div>
+    </div>
+  );
+}
+
+/** Top motifs de refus — bar chart CSS-only avec % + libellé humain. */
+function CancelReasonsWidget({ items }: { items: Array<{ code: string; count: number }> }) {
+  const total = items.reduce((s, i) => s + i.count, 0);
+  if (total === 0) {
+    return <p className="text-sm text-muted-foreground">Aucun motif structuré saisi sur cette période.</p>;
+  }
+  return (
+    <div className="space-y-2.5">
+      {items.map((r) => {
+        const pct = (r.count / total) * 100;
+        return (
+          <div key={r.code}>
+            <div className="mb-1 flex items-center justify-between text-xs">
+              <span className="font-medium">{CANCEL_REASON_LABELS[r.code] || r.code}</span>
+              <span className="tabular-nums text-muted-foreground">
+                <span className="font-bold text-foreground">{r.count}</span>
+                <span className="ml-1.5">({pct.toFixed(0)}%)</span>
+              </span>
+            </div>
+            <div className="h-2 overflow-hidden rounded-full bg-muted">
+              <div
+                className="h-full rounded-full bg-gradient-to-r from-rose-500 to-orange-500 transition-all duration-500"
+                style={{ width: `${pct}%` }}
+              />
+            </div>
+          </div>
+        );
+      })}
+      <p className="mt-3 text-[10px] text-muted-foreground">
+        Total {total} refus/annulations. Chaque motif suggère une action corrective
+        (adresse incorrecte → améliorer le form, prix trop cher → tester A/B, doublons → détection auto).
+      </p>
+    </div>
+  );
+}
+
+/** Performance par pays — table compacte CA + livraisons + taux. */
+function ByCountryWidget({ items, currency }: { items: Array<{ country: string; orders: number; revenue: number; delivered: number }>; currency: string }) {
+  const fmt = (n: number) => {
+    try { return new Intl.NumberFormat(undefined, { style: 'currency', currency, maximumFractionDigits: 0 }).format(n); }
+    catch { return `${n} ${currency}`; }
+  };
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full min-w-[280px] text-sm">
+        <thead className="text-left text-[10px] uppercase tracking-wider text-muted-foreground">
+          <tr>
+            <th className="py-1.5 pr-2 font-semibold">Pays</th>
+            <th className="py-1.5 px-2 text-right font-semibold">CA</th>
+            <th className="py-1.5 px-2 text-right font-semibold">Cmd</th>
+            <th className="py-1.5 pl-2 text-right font-semibold">Livrées</th>
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-border/40">
+          {items.map((c) => {
+            const rate = c.orders > 0 ? (c.delivered / c.orders) * 100 : 0;
+            return (
+              <tr key={c.country}>
+                <td className="py-2 pr-2 font-medium">{c.country || '—'}</td>
+                <td className="py-2 px-2 text-right tabular-nums font-semibold">{fmt(c.revenue)}</td>
+                <td className="py-2 px-2 text-right tabular-nums text-muted-foreground">{c.orders}</td>
+                <td className="py-2 pl-2 text-right tabular-nums">
+                  <span className={cn(
+                    'inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[10px] font-bold',
+                    rate >= 60 ? 'bg-emerald-500/10 text-emerald-700'
+                      : rate >= 40 ? 'bg-amber-500/10 text-amber-700'
+                      : 'bg-rose-500/10 text-rose-700',
+                  )}>
+                    {rate.toFixed(0)}%
+                  </span>
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
     </div>
   );
 }
