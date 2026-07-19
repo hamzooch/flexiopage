@@ -633,19 +633,40 @@ export default function DashboardOrdersPage() {
         />
       ) : (
         <>
-          <ul className="space-y-2.5">
-            {filteredOrders.map((o) => (
-              <OrderCard
-                key={o._id}
-                order={o}
-                storeId={selectedStoreId || ''}
-                expanded={expandedId === o._id}
-                onToggle={() => setExpandedId((id) => (id === o._id ? null : o._id))}
-                onChanged={refreshOrders}
-                productImages={productImages}
-              />
-            ))}
-          </ul>
+          {/* Vue tableau standard type Shopify — plus dense qu'une carte,
+              scan plus rapide sur beaucoup de commandes. Overflow-x sur
+              petit écran pour ne rien tronquer. Ligne de détail dépliable
+              sous chaque row au clic. */}
+          <div className="overflow-hidden rounded-2xl border border-border/60 bg-card">
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[880px] text-sm">
+                <thead className="border-b border-border/60 bg-muted/40 text-left text-[10px] uppercase tracking-wider text-muted-foreground">
+                  <tr>
+                    <th className="px-3 py-2.5 font-semibold sm:px-4">Commande</th>
+                    <th className="px-3 py-2.5 font-semibold sm:px-4">Client</th>
+                    <th className="px-3 py-2.5 font-semibold sm:px-4">Produits</th>
+                    <th className="px-3 py-2.5 text-right font-semibold sm:px-4">Total</th>
+                    <th className="px-3 py-2.5 font-semibold sm:px-4">Paiement</th>
+                    <th className="px-3 py-2.5 font-semibold sm:px-4">Statut</th>
+                    <th className="w-10 px-2 py-2.5" aria-label="Actions"></th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border/60">
+                  {filteredOrders.map((o) => (
+                    <OrderCard
+                      key={o._id}
+                      order={o}
+                      storeId={selectedStoreId || ''}
+                      expanded={expandedId === o._id}
+                      onToggle={() => setExpandedId((id) => (id === o._id ? null : o._id))}
+                      onChanged={refreshOrders}
+                      productImages={productImages}
+                    />
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
           <div className="mt-4 rounded-2xl border border-border/60 bg-card">
             <Pagination
               total={total}
@@ -1141,171 +1162,162 @@ function OrderCard({
   }
 
   const stage = STAGE[computeStage(o)];
+  const firstItemImg = mediaUrl(productImages[o.items[0]?.productId || '']);
+  const pendingConfirm = (!o.confirmationStatus || o.confirmationStatus === 'pending');
 
   return (
-    <li
-      className={cn(
-        'relative overflow-hidden rounded-2xl border bg-card transition-all',
-        expanded
-          ? 'border-primary/40 shadow-md shadow-primary/5'
-          : 'border-border/60 hover:border-primary/30 hover:shadow-md'
-      )}
-    >
-      {/* Barre latérale — couleur = statut de la commande, repérable d'un
-          coup d'œil même en scrollant vite une longue liste. */}
-      <span className={cn('absolute inset-y-0 left-0 w-1.5', stage.stripe)} aria-hidden />
-
-      {/* Header — always visible. `div role=button` (pas `button`) pour
-          pouvoir imbriquer le menu ⋯ et le lien téléphone sans HTML invalide. */}
-      <div
-        role="button"
-        tabIndex={0}
+    <>
+      {/* Row principale — cliquable pour déplier les détails. */}
+      <tr
         onClick={onToggle}
-        onKeyDown={(e) => {
-          if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onToggle(); }
-        }}
-        className="flex w-full cursor-pointer items-center gap-3 py-3.5 pl-5 pr-3.5 text-left transition-colors hover:bg-muted/20 sm:gap-4 sm:py-4 sm:pl-6 sm:pr-4"
+        className={cn(
+          'cursor-pointer transition-colors',
+          expanded ? 'bg-primary/5' : 'hover:bg-muted/30',
+        )}
       >
-        {/* Customer avatar — initials in colored gradient */}
-        <div
-          className={cn(
-            'grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-gradient-to-br text-sm font-bold text-white shadow-md',
-            avatarGrad
-          )}
-          aria-hidden
-        >
-          {initials}
-        </div>
+        {/* Commande — numéro + date, avec la barre de statut à gauche */}
+        <td className="relative px-3 py-3 sm:px-4">
+          <span className={cn('absolute inset-y-0 left-0 w-1', stage.stripe)} aria-hidden />
+          <div className="font-mono text-xs font-semibold">{o.orderNumber}</div>
+          <div className="mt-0.5 inline-flex items-center gap-1 text-[10px] text-muted-foreground">
+            <Calendar className="h-3 w-3" />
+            {formatDate(o.createdAt)}
+          </div>
+        </td>
 
-        <div className="min-w-0 flex-1">
-          <div className="flex flex-wrap items-start justify-between gap-2">
-            <div className="min-w-0">
-              {/* Customer name + order number */}
-              <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
-                <span className="truncate text-sm font-semibold text-foreground">
-                  {o.customerName || 'Client anonyme'}
-                </span>
-                <span className="font-mono text-[11px] text-muted-foreground">{o.orderNumber}</span>
-              </div>
-              {/* Meta row — date / phone / city */}
-              <div className="mt-0.5 flex flex-wrap items-center gap-x-2.5 gap-y-0.5 text-[11px] text-muted-foreground">
-                <span className="inline-flex items-center gap-1">
-                  <Calendar className="h-3 w-3" />
-                  {formatDate(o.createdAt)}
-                </span>
-                {o.customerPhone && (
-                  <>
-                    <span className="opacity-40">·</span>
-                    <a
-                      href={`tel:${o.customerPhone}`}
-                      className="inline-flex items-center gap-1 hover:text-foreground"
-                      onClick={(e) => e.stopPropagation()}
-                    >
-                      <Phone className="h-3 w-3" />
-                      {o.customerPhone}
-                    </a>
-                  </>
-                )}
-                {o.shippingAddress?.city && (
-                  <>
-                    <span className="opacity-40">·</span>
-                    <span className="inline-flex items-center gap-1">
-                      <MapPin className="h-3 w-3" />
-                      {o.shippingAddress.city}
-                    </span>
-                  </>
-                )}
-              </div>
+        {/* Client — avatar + nom + téléphone cliquable */}
+        <td className="px-3 py-3 sm:px-4">
+          <div className="flex items-center gap-2.5">
+            <div
+              className={cn(
+                'grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-gradient-to-br text-[11px] font-bold text-white shadow-sm',
+                avatarGrad,
+              )}
+              aria-hidden
+            >
+              {initials}
             </div>
-
-            <div className="text-right">
-              <div className="text-lg font-bold tabular-nums sm:text-xl">
-                {formatCurrency(o.total, o.currency)}
+            <div className="min-w-0">
+              <div className="truncate text-sm font-medium">
+                {o.customerName || 'Anonyme'}
               </div>
-              <div className="text-[10px] text-muted-foreground">
-                {totalQty} article{totalQty > 1 ? 's' : ''}
-              </div>
+              {o.customerPhone ? (
+                <a
+                  href={`tel:${o.customerPhone}`}
+                  onClick={(e) => e.stopPropagation()}
+                  className="inline-flex items-center gap-1 text-[10px] text-muted-foreground hover:text-foreground"
+                >
+                  <Phone className="h-2.5 w-2.5" />
+                  {o.customerPhone}
+                </a>
+              ) : o.shippingAddress?.city ? (
+                <span className="inline-flex items-center gap-1 text-[10px] text-muted-foreground">
+                  <MapPin className="h-2.5 w-2.5" />
+                  {o.shippingAddress.city}
+                </span>
+              ) : null}
             </div>
           </div>
+        </td>
 
-          {/* Aperçu produits — thumbnail + nom du 1er article + « +N autres »
-              si la commande a plusieurs lignes. Ce qui manquait aux cartes :
-              on voit immédiatement CE QUI a été commandé sans dérouler. */}
-          <div className="mt-2 flex items-center gap-2">
-            <div className="flex -space-x-1.5">
-              {o.items.slice(0, 3).map((it, i) => {
-                const img = mediaUrl(productImages[it.productId]);
-                return (
-                  <div
-                    key={`${it.productId}-${i}`}
-                    className="grid h-8 w-8 shrink-0 place-items-center overflow-hidden rounded-md border-2 border-card bg-muted"
-                    title={it.name}
-                  >
-                    {img ? (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img src={img} alt={it.name} className="h-full w-full object-cover" loading="lazy" />
-                    ) : (
-                      <Package className="h-3.5 w-3.5 text-muted-foreground" />
-                    )}
-                  </div>
-                );
-              })}
-              {o.items.length > 3 && (
-                <div className="grid h-8 w-8 shrink-0 place-items-center rounded-md border-2 border-card bg-muted text-[10px] font-bold text-muted-foreground">
-                  +{o.items.length - 3}
+        {/* Produits — thumbnail + nom du 1er + « +N » */}
+        <td className="px-3 py-3 sm:px-4">
+          <div className="flex items-center gap-2.5">
+            <div
+              className="grid h-10 w-10 shrink-0 place-items-center overflow-hidden rounded-md border border-border/60 bg-muted"
+              title={o.items[0]?.name}
+            >
+              {firstItemImg ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={firstItemImg} alt={o.items[0]?.name || ''} className="h-full w-full object-cover" loading="lazy" />
+              ) : (
+                <Package className="h-4 w-4 text-muted-foreground" />
+              )}
+            </div>
+            <div className="min-w-0">
+              <div className="truncate text-sm font-medium">
+                {o.items[0]?.name || 'Produit'}
+                {o.items[0]?.quantity > 1 && <span className="ml-1 text-muted-foreground">×{o.items[0].quantity}</span>}
+              </div>
+              {o.items.length > 1 && (
+                <div className="text-[10px] text-muted-foreground">
+                  +{o.items.length - 1} autre{o.items.length > 2 ? 's' : ''}
                 </div>
               )}
             </div>
-            <div className="min-w-0 flex-1 text-[11px] text-muted-foreground">
-              <span className="truncate font-medium text-foreground">
-                {o.items[0]?.name || 'Produit'}
-                {o.items[0]?.quantity > 1 && ` ×${o.items[0].quantity}`}
-              </span>
-              {o.items.length > 1 && (
-                <span className="ml-1">
-                  +{o.items.length - 1} autre{o.items.length > 2 ? 's' : ''}
-                </span>
+          </div>
+        </td>
+
+        {/* Total — grand + nombre d'articles en sous-titre */}
+        <td className="px-3 py-3 text-right sm:px-4">
+          <div className="text-sm font-bold tabular-nums">
+            {formatCurrency(o.total, o.currency)}
+          </div>
+          <div className="text-[10px] text-muted-foreground">
+            {totalQty} art.
+          </div>
+        </td>
+
+        {/* Paiement — pastille + label + badge COD */}
+        <td className="px-3 py-3 sm:px-4">
+          <span className="inline-flex items-center gap-1.5 text-xs font-medium">
+            <span
+              className={cn(
+                'h-1.5 w-1.5 rounded-full',
+                o.paymentStatus === 'paid'
+                  ? 'bg-emerald-500'
+                  : o.paymentStatus === 'refunded'
+                    ? 'bg-slate-400'
+                    : o.paymentStatus === 'failed'
+                      ? 'bg-rose-500'
+                      : 'bg-amber-500',
               )}
+            />
+            {payment.label}
+          </span>
+          {o.paymentMethod === 'cod' && (
+            <div className="mt-0.5">
+              <span className="rounded bg-muted/70 px-1 py-px text-[9px] font-semibold uppercase text-muted-foreground">
+                COD
+              </span>
             </div>
-          </div>
-
-          {/* Statut unifié — LE statut de la commande, en grand + bien coloré.
-              Le paiement reste en indicateur secondaire (c'est l'argent). */}
-          <div className="mt-2.5 flex flex-wrap items-center gap-2.5">
-            <OrderStepper order={o} />
-            <span className="inline-flex items-center gap-1.5 text-[11px] font-medium text-muted-foreground">
-              <span className={cn('h-1.5 w-1.5 rounded-full', o.paymentStatus === 'paid' ? 'bg-emerald-500' : o.paymentStatus === 'refunded' ? 'bg-slate-400' : o.paymentStatus === 'failed' ? 'bg-rose-500' : 'bg-amber-500')} />
-              {payment.label}
-              {o.paymentMethod === 'cod' && <span className="rounded bg-muted/70 px-1 py-px text-[9px] font-semibold uppercase text-muted-foreground">COD</span>}
-            </span>
-          </div>
-        </div>
-
-        {/* Menu ⋯ — change le statut (confirmation / dispatch / paiement / annulation) */}
-        <StatusMenu order={o} storeId={storeId} onChanged={onChanged} />
-
-        {/* Expand chevron */}
-        <ChevronDown
-          className={cn(
-            'h-5 w-5 shrink-0 text-muted-foreground transition-transform',
-            expanded && 'rotate-180 text-primary'
           )}
-        />
-      </div>
+        </td>
 
-      {/* Quick-confirm strip — visible UNIQUEMENT pour les commandes en
-          attente de confirmation (pending). Permet à l'agent de cliquer
-          Confirmé / Pas de réponse / À rappeler directement depuis la
-          liste, sans déplier. Mode COD-heavy : c'est l'action #1 du
-          quotidien — chaque clic économisé = 50× par jour. Caché dès que
-          la commande passe à un autre statut pour ne pas polluer. */}
-      {(!o.confirmationStatus || o.confirmationStatus === 'pending') && !expanded && (
-        <QuickConfirmBar order={o} storeId={storeId} onChanged={onChanged} />
+        {/* Statut — stepper compact */}
+        <td className="px-3 py-3 sm:px-4">
+          <OrderStepper order={o} />
+        </td>
+
+        {/* Actions — menu ⋯ + chevron d'expand */}
+        <td className="w-10 px-2 py-3">
+          <div className="flex items-center justify-end gap-1" onClick={(e) => e.stopPropagation()}>
+            <StatusMenu order={o} storeId={storeId} onChanged={onChanged} />
+            <ChevronDown
+              className={cn(
+                'h-4 w-4 shrink-0 text-muted-foreground transition-transform',
+                expanded && 'rotate-180 text-primary',
+              )}
+            />
+          </div>
+        </td>
+      </tr>
+
+      {/* Quick-confirm — row auxiliaire visible seulement pour les commandes
+          en attente de confirmation, non dépliées. Colspan = 7 pour couvrir
+          toute la largeur. Économise 50 clics/jour à l'agent de confirmation. */}
+      {pendingConfirm && !expanded && (
+        <tr className="border-t border-border/40">
+          <td colSpan={7} className="bg-amber-500/5 px-4 py-1.5">
+            <QuickConfirmBar order={o} storeId={storeId} onChanged={onChanged} />
+          </td>
+        </tr>
       )}
 
-      {/* Expanded details */}
+      {/* Détails dépliés — row avec colspan qui prend toute la largeur. */}
       {expanded && (
-        <div className="border-t border-border/60 bg-muted/20 p-4 sm:p-6">
+        <tr>
+          <td colSpan={7} className="bg-muted/20 p-4 sm:p-6">
           {/* Confirmation client (appel) — promue tout en haut.
               Pour un funnel COD c'est l'action #1 que l'agent fait quand
               il ouvre une commande : confirmer / rappel / refus. Avoir les
@@ -1573,9 +1585,10 @@ function OrderCard({
               </a>
             )}
           </div>
-        </div>
+          </td>
+        </tr>
       )}
-    </li>
+    </>
   );
 }
 
