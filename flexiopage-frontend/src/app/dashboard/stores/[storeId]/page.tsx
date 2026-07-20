@@ -4397,7 +4397,7 @@ function PreviewPane({
         {path ? (
           <ViewportPreview
             device={previewDevice}
-            src={`${path}${path.includes('?') ? '&' : '?'}preview=1`}
+            src={path}
             previewBust={previewBust}
           />
         ) : (
