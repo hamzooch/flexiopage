@@ -20,7 +20,7 @@ import { ProductDescriptionEditor } from '@/components/dashboard/product-descrip
 import { Loader2, Link2, X, Check } from 'lucide-react';
 
 interface Preview {
-  source: 'aliexpress' | 'alibaba' | 'amazon';
+  source: 'aliexpress' | 'alibaba' | 'amazon' | 'other';
   sourceUrl: string;
   title: string;
   description?: string;
@@ -37,6 +37,7 @@ const SOURCE_LABEL: Record<Preview['source'], string> = {
   aliexpress: 'AliExpress',
   alibaba: 'Alibaba',
   amazon: 'Amazon',
+  other: 'Boutique en ligne',
 };
 
 export function ImportProductPanel({ storeId }: Props) {

@@ -69,6 +69,10 @@ router.post('/:storeId/pages/generate-from-product', pageController.generateFrom
 router.post('/:storeId/pages/generate-from-product/async', pageController.generateFromProductAsync);
 router.post('/:storeId/pages/generate-from-image', pageController.generateFromImage);
 router.post('/:storeId/pages/generate-from-image/async', pageController.generateFromImageAsync);
+// URL → landing : scrape (AliExpress/Alibaba/Amazon) + create product + run
+// standard landing pipeline. Async car ça enchaîne scraping + import images
+// + génération LLM + génération d'images (typiquement 30-90s).
+router.post('/:storeId/pages/generate-from-url/async', pageController.generateFromUrlAsync);
 router.post('/:storeId/pages/generate-poster', pageController.generatePosterPage);
 router.post('/:storeId/pages/generate-landing-image', pageController.generateLandingImagePage);
 router.post('/:storeId/pages/from-template', pageController.getSectionsFromTemplateId);

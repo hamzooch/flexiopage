@@ -21,10 +21,6 @@ import fs from 'fs/promises';
 import type { TemplateSection } from '../data/landing-templates';
 import {
   generateImagesParallel,
-  getHeroModel,
-  getGalleryModel,
-  getAvatarModel,
-  getBannerModel,
   isBannerPrompt,
   type ImageGenInput,
 } from './image-generation.service';
@@ -261,8 +257,16 @@ export interface ProductInput {
   slug?: string;
   description?: string;
   price?: number;
+  compareAtPrice?: number;
   type?: 'physical' | 'digital';
   images?: string[];
+  /**
+   * Tags produit (fashion, luxury, beauty, electronics…). Utilisés par le
+   * routing d'image pour choisir un modèle premium sur les catégories
+   * haut de gamme. Optionnel — le fallback est le nom + la catégorie
+   * explicite du seller.
+   */
+  tags?: string[];
 }
 
 export interface GenerationContext {
@@ -1123,29 +1127,6 @@ const ASPECT_FOR_KIND: Record<ImageSlot['kind'], 'square' | 'portrait' | 'landsc
 };
 
 /**
- * Pick the model to use for a given slot kind. Each kind has a configurable
- * default in the image-generation service (env-overridable).
- *   hero    → FLUX pro 1.1
- *   gallery → FLUX schnell
- *   avatar  → FLUX realism
- *   banner  → Ideogram v3 (text-in-image specialist)
- *   product / video / generic → gallery default
- */
-function modelForKind(kind: ImageSlot['kind']): string | undefined {
-  switch (kind) {
-    case 'hero':    return getHeroModel();
-    case 'gallery': return getGalleryModel();
-    case 'avatar':  return getAvatarModel();
-    case 'banner':  return getBannerModel();
-    case 'product':
-    case 'video':
-    case 'generic':
-    default:
-      return getGalleryModel();
-  }
-}
-
-/**
  * House visual style — appended to EVERY product / lifestyle image prompt so
  * the whole page reads as one art-directed photoshoot instead of 12 unrelated
  * stock photos. This is the single biggest lever for visual COHERENCE and a
@@ -1164,7 +1145,35 @@ const PORTRAIT_STYLE =
   'authentic genuine smile, sharp catchlight in the eyes, subtle film grain, editorial portrait photography, ' +
   '85mm lens, shallow depth of field, ultra detailed, 4k, no text, no logos, no watermark';
 
-async function buildImageGenInput(slot: ImageSlot): Promise<ImageGenInput> {
+/**
+ * Mappe le `kind` du slot local (fal-landing) vers le `slot` typé de
+ * image-generation.service — permet à ce dernier de faire le routing
+ * catégorie + le post-processing + le quality gate au bon niveau.
+ */
+function toGenSlot(kind: ImageSlot['kind']): 'hero' | 'gallery' | 'product' | 'avatar' | 'banner' | 'video-poster' | 'other' {
+  switch (kind) {
+    case 'hero': return 'hero';
+    case 'gallery': return 'gallery';
+    case 'product': return 'product';
+    case 'avatar': return 'avatar';
+    case 'banner': return 'banner';
+    case 'video': return 'video-poster';
+    case 'generic':
+    default: return 'other';
+  }
+}
+
+/**
+ * Slots qui portent une mise en scène produit : quand un produit existe côté
+ * store, ces slots DOIVENT recevoir la reference photo (sinon le modèle
+ * invente un look-alike). Sert au warn `expectsProductReference`.
+ */
+const PRODUCT_BEARING_KINDS = new Set<ImageSlot['kind']>(['hero', 'gallery', 'product', 'video']);
+
+async function buildImageGenInput(
+  slot: ImageSlot,
+  ctx?: { productCategory?: string; productExists?: boolean },
+): Promise<ImageGenInput> {
   const aspect = ASPECT_FOR_KIND[slot.kind];
 
   // Banner prompts ASK for legible text in the image — leave them untouched.
@@ -1226,10 +1235,38 @@ async function buildImageGenInput(slot: ImageSlot): Promise<ImageGenInput> {
   return {
     prompt: finalPrompt,
     aspect,
-    model: modelForKind(slot.kind),
+    // `model` volontairement omis : image-generation.service.ts fera le
+    // routing via `resolveModelForCategory(slot, productCategory)`. Les
+    // vendeurs de fashion/luxury basculent auto sur FLUX pro partout, les
+    // vendeurs de beauty/food basculent sur FLUX Realism, le reste garde
+    // les défauts par slot. Les env FAL_*_MODEL restent respectées.
     negativePrompt,
     referenceImages,
+    slot: toGenSlot(slot.kind),
+    productCategory: ctx?.productCategory,
+    // Warn si un slot produit attend une reference et n'en a pas — permet
+    // de repérer les cas où le pipeline régénère un look-alike au lieu du
+    // vrai produit du vendeur.
+    expectsProductReference:
+      !!ctx?.productExists && PRODUCT_BEARING_KINDS.has(slot.kind) && !slot.referenceImage,
   };
+}
+
+/**
+ * Détecte la catégorie produit pour le routing d'image. Priorité :
+ *   1. `input.context.category` défini par le seller (le plus fiable)
+ *   2. Concat des tags produit
+ *   3. Nom du produit (dernier recours, moins précis)
+ * Retourne `undefined` si rien de significatif → routing par slot par défaut.
+ */
+function detectProductCategory(input: FalGenerateInput): string | undefined {
+  const explicit = input.category?.trim();
+  if (explicit) return explicit;
+  const tags = input.product?.tags && Array.isArray(input.product.tags)
+    ? (input.product.tags as string[]).join(' ')
+    : '';
+  if (tags.trim()) return tags;
+  return input.product?.name;
 }
 
 /**
@@ -1627,7 +1664,13 @@ async function runFullPipeline(
     console.log(`[landing-gen] image slots collected: ${slots.length} (${refCount} with product reference for img2img)`);
     if (slots.length > 0) {
       const t2 = Date.now();
-      const inputs = await Promise.all(slots.map(buildImageGenInput));
+      // Contexte partagé pour tous les slots : catégorie détectée + présence
+      // d'un produit référence (drive le warn `expectsProductReference`).
+      const genCtx = {
+        productCategory: detectProductCategory(input),
+        productExists: !!productImageRef,
+      };
+      const inputs = await Promise.all(slots.map((s) => buildImageGenInput(s, genCtx)));
       const results = await generateImagesParallel(inputs);
 
       // Persist generated images to our own storage (fal.media URLs expire in ~24h).

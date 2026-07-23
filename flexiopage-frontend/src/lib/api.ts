@@ -1178,7 +1178,7 @@ export const storesApi = {
   importProductPreview: (storeId: string, url: string) =>
     api.post<{
       preview: {
-        source: 'aliexpress' | 'alibaba' | 'amazon';
+        source: 'aliexpress' | 'alibaba' | 'amazon' | 'other';
         sourceUrl: string;
         title: string;
         description?: string;
@@ -1305,6 +1305,32 @@ export const storesApi = {
       pageKind?: 'landing' | 'product';
     }
   ) => api.post<{ jobId: string }>(`/stores/${storeId}/pages/generate-from-image/async`, data),
+  /**
+   * URL → landing : le backend scrape le lien AliExpress / Alibaba / Amazon,
+   * crée le produit dans le catalogue (draft, non publié) et lance la même
+   * pipeline landing que `generateFromProductAsync`. Retourne le jobId à
+   * poller + productId créé pour que le front puisse pré-remplir des
+   * champs si besoin.
+   */
+  generateFromUrlAsync: (
+    storeId: string,
+    data: {
+      url: string;
+      tone?: 'professional' | 'friendly' | 'minimal';
+      language?: string;
+      country?: string;
+      category?: string;
+      priceBefore?: number;
+      priceAfter?: number;
+      currency?: string;
+      pageKind?: 'landing' | 'product';
+      productName?: string;
+    }
+  ) => api.post<{
+    jobId: string;
+    productId: string;
+    scraped: { source: 'aliexpress' | 'alibaba' | 'amazon' | 'other'; title: string; imagesImported: number };
+  }>(`/stores/${storeId}/pages/generate-from-url/async`, data),
   generatePoster: (
     storeId: string,
     data: {

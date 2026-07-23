@@ -30,6 +30,8 @@ import {
   X,
   Smartphone,
   Monitor,
+  Link2,
+  Globe,
 } from 'lucide-react';
 import { cn, formatCurrency } from '@/lib/utils';
 
@@ -37,6 +39,7 @@ type Step =
   | 'choice'
   | 'choose-product'
   | 'from-image'
+  | 'from-url'
   | 'template'
   | 'template-preview'
   | 'generating'
@@ -149,6 +152,22 @@ export default function NewLandingPagePage() {
   const [generating, setGenerating] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [imageCaption, setImageCaption] = useState('');
+
+  // ── URL → landing (AliExpress / Alibaba / Amazon) ────────────────────
+  // On offre au vendeur d'obtenir un aperçu (titre, images, prix) AVANT de
+  // lancer la génération — évite qu'il dépense un crédit sur un lien cassé
+  // ou une page de recherche.
+  const [sourceUrl, setSourceUrl] = useState('');
+  const [urlPreview, setUrlPreview] = useState<{
+    source: 'aliexpress' | 'alibaba' | 'amazon' | 'other';
+    title: string;
+    description?: string;
+    price?: number;
+    currency?: string;
+    images: string[];
+  } | null>(null);
+  const [urlPreviewLoading, setUrlPreviewLoading] = useState(false);
+  const [urlPreviewError, setUrlPreviewError] = useState('');
 
   // generation context (locale + pricing)
   const [language, setLanguage] = useState<string>('en');
@@ -284,14 +303,14 @@ export default function NewLandingPagePage() {
           setJobId(null);
         } else if (j.status === 'failed') {
           setError(j.error || 'Génération échouée. Réessaie.');
-          setStep(selectedProductId ? 'choose-product' : 'from-image');
+          setStep(sourceUrl ? 'from-url' : selectedProductId ? 'choose-product' : 'from-image');
           setJobId(null);
         }
       } catch (err) {
         tries++;
         if (tries >= 5) {
           setError('Le serveur ne répond pas. Réessaie plus tard.');
-          setStep(selectedProductId ? 'choose-product' : 'from-image');
+          setStep(sourceUrl ? 'from-url' : selectedProductId ? 'choose-product' : 'from-image');
           setJobId(null);
         }
       }
@@ -470,6 +489,100 @@ export default function NewLandingPagePage() {
     }
   }
 
+  /**
+   * URL → aperçu du produit scrap depuis AliExpress/Alibaba/Amazon.
+   * On sépare l'aperçu de la génération pour laisser au vendeur la chance
+   * de corriger le lien (page 404, URL de recherche, produit hors-stock)
+   * AVANT de payer un crédit de génération.
+   */
+  async function handlePreviewUrl() {
+    if (!storeId || !sourceUrl.trim()) return;
+    setUrlPreviewLoading(true);
+    setUrlPreviewError('');
+    setUrlPreview(null);
+    try {
+      const res = await storesApi.importProductPreview(storeId, sourceUrl.trim());
+      const p = res.data.preview;
+      setUrlPreview(p);
+      // On ne pré-remplit PAS priceAfter : le prix scrap n'est jamais le
+      // prix de vente dans un flow dropshipping (marge à ajouter). Le
+      // vendeur clique explicitement sur "Reprendre le prix scrap" dans le
+      // PricingCard s'il veut partir de là. On pré-remplit juste la devise
+      // (contextuelle, pas une décision de pricing).
+      if (p.currency && !currency) setCurrency(p.currency);
+    } catch (err: unknown) {
+      const msg =
+        err && typeof err === 'object' && 'response' in err
+          ? (err as { response?: { data?: { error?: string } } }).response?.data?.error
+          : null;
+      setUrlPreviewError(msg || "Impossible d'extraire ce lien. Vérifie que c'est bien une page produit (AliExpress / Alibaba / Amazon).");
+    } finally {
+      setUrlPreviewLoading(false);
+    }
+  }
+
+  /**
+   * URL → landing page complète. Le backend fait tout : scrape, importe le
+   * produit dans le catalogue, lance la pipeline landing habituelle.
+   */
+  async function handleGenerateFromUrl() {
+    if (!storeId || !sourceUrl.trim()) {
+      setError('Colle une URL AliExpress, Alibaba ou Amazon.');
+      return;
+    }
+    setGenerating(true);
+    setError('');
+    setJob(null);
+    try {
+      const res = await storesApi.generateFromUrlAsync(storeId, {
+        url: sourceUrl.trim(),
+        tone,
+        language: language || undefined,
+        country: country || undefined,
+        category: category || undefined,
+        priceBefore: priceBefore ? Number(priceBefore) : undefined,
+        priceAfter: priceAfter ? Number(priceAfter) : undefined,
+        currency: currency || undefined,
+        pageKind,
+        productName: urlPreview?.title,
+      });
+      // Le produit vient d'être créé côté serveur — on l'ajoute à la liste
+      // locale et on le marque comme sélectionné pour que le polling résolve
+      // le sourceSlug de la même façon que pour le flow from-product.
+      const newProductId = res.data.productId;
+      const scrapedTitle = res.data.scraped.title;
+      setSelectedProductId(newProductId);
+      setProducts((prev) => {
+        if (prev.some((p) => p._id === newProductId)) return prev;
+        const slug = scrapedTitle.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+        return [
+          ...prev,
+          {
+            _id: newProductId,
+            name: scrapedTitle,
+            slug,
+            images: urlPreview?.images.slice(0, 1) || [],
+            price: urlPreview?.price,
+          },
+        ];
+      });
+      setJobId(res.data.jobId);
+      setStep('generating');
+    } catch (err: unknown) {
+      const msg =
+        err && typeof err === 'object' && 'response' in err
+          ? (err as { response?: { data?: { error?: string } } }).response?.data?.error
+          : null;
+      setError(
+        isAdmin
+          ? (msg || 'Génération URL → landing échouée. Vérifie le lien et FAL_KEY.')
+          : (sanitizeAiError(msg) || "La génération a échoué. Vérifie le lien produit et réessaie."),
+      );
+    } finally {
+      setGenerating(false);
+    }
+  }
+
   async function handleUploadImage(file: File) {
     if (!storeId) return;
     setUploading(true);
@@ -583,7 +696,16 @@ export default function NewLandingPagePage() {
           </p>
         </div>
 
-        <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
+          <ChoiceCard
+            icon={Link2}
+            badge="Nouveau"
+            title="From a URL"
+            desc="Colle un lien produit (AliExpress, Amazon, Shopify…). L'IA scrape et génère tout."
+            accent="from-sky-500 to-cyan-600"
+            glow="shadow-sky-500/30"
+            onClick={() => setStep('from-url')}
+          />
           <ChoiceCard
             icon={Package}
             badge="Recommended"
@@ -736,6 +858,170 @@ export default function NewLandingPagePage() {
   }
 
   // ────────────────────────────── Step: From image
+  // ────────────────────────────── Step: From URL (AliExpress/Alibaba/Amazon/autre)
+  if (step === 'from-url') {
+    const supportedIcon = (src: 'aliexpress' | 'alibaba' | 'amazon' | 'other' | null) => {
+      // Petite pastille couleur pour que le vendeur vérifie d'un coup d'œil
+      // que le scraping a bien identifié la source. 'other' → sky (extraction
+      // AI via Jina Reader + Claude, tout type de site e-commerce).
+      if (src === 'aliexpress') return { label: 'AliExpress', color: 'bg-orange-500' };
+      if (src === 'alibaba') return { label: 'Alibaba', color: 'bg-amber-500' };
+      if (src === 'amazon') return { label: 'Amazon', color: 'bg-yellow-500' };
+      if (src === 'other') return { label: 'Boutique en ligne', color: 'bg-sky-500' };
+      return { label: 'Marketplace', color: 'bg-neutral-500' };
+    };
+    const detected = supportedIcon(urlPreview?.source || null);
+
+    return (
+      <div className="mx-auto max-w-2xl space-y-6 animate-fade-in-up">
+        <Button variant="ghost" size="sm" onClick={() => setStep('choice')} className="-ml-2 gap-1.5">
+          <ArrowLeft className="h-4 w-4" /> Back
+        </Button>
+        <div>
+          <h1 className="text-3xl font-bold tracking-tight">Générer depuis une URL</h1>
+          <p className="text-muted-foreground">
+            Colle un lien produit — AliExpress, Alibaba, Amazon, Shopify ou toute autre boutique.
+            L'IA extrait titre, images et prix, puis génère une landing page complète.
+          </p>
+        </div>
+
+        {error && <ErrorBox message={error} />}
+
+        <div className="space-y-4 rounded-2xl border border-border/60 bg-card p-5">
+          {/* URL input + Preview */}
+          <div className="space-y-2">
+            <Label htmlFor="src-url">URL du produit</Label>
+            <div className="flex gap-2">
+              <Input
+                id="src-url"
+                type="url"
+                placeholder="https://www.aliexpress.com/item/1005006…"
+                value={sourceUrl}
+                onChange={(e) => {
+                  setSourceUrl(e.target.value);
+                  setUrlPreview(null);
+                  setUrlPreviewError('');
+                }}
+                className="flex-1"
+              />
+              <Button
+                variant="outline"
+                onClick={handlePreviewUrl}
+                disabled={!sourceUrl.trim() || urlPreviewLoading}
+                className="gap-1.5 shrink-0"
+              >
+                {urlPreviewLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Globe className="h-4 w-4" />}
+                Aperçu
+              </Button>
+            </div>
+            <p className="text-[11px] text-muted-foreground">
+              Compatible : AliExpress · Alibaba · Amazon · Shopify · WooCommerce · toute page produit
+              (extraction via Jina Reader + Claude Haiku).
+            </p>
+          </div>
+
+          {urlPreviewError && (
+            <div className="rounded-lg border border-rose-500/30 bg-rose-500/5 p-3 text-xs text-rose-700">
+              {urlPreviewError}
+            </div>
+          )}
+
+          {/* Preview card */}
+          {urlPreview && (
+            <div className="space-y-3 rounded-xl border border-emerald-500/30 bg-emerald-500/5 p-4">
+              <div className="flex items-center gap-2">
+                <span className={cn('inline-block h-2 w-2 rounded-full', detected.color)} />
+                <span className="text-[11px] font-semibold uppercase tracking-wider text-emerald-700">
+                  Détecté sur {detected.label}
+                </span>
+              </div>
+              <div className="flex gap-3">
+                {urlPreview.images[0] && (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={urlPreview.images[0]}
+                    alt={urlPreview.title}
+                    className="h-20 w-20 shrink-0 rounded-lg object-cover"
+                  />
+                )}
+                <div className="min-w-0 flex-1">
+                  <div className="text-sm font-semibold leading-tight line-clamp-2">
+                    {urlPreview.title}
+                  </div>
+                  {typeof urlPreview.price === 'number' && (
+                    <div className="mt-1 text-xs text-muted-foreground">
+                      Prix scrap : <span className="font-medium text-foreground">
+                        {urlPreview.price} {urlPreview.currency || currency || 'USD'}
+                      </span>
+                    </div>
+                  )}
+                  <div className="mt-1 text-[11px] text-muted-foreground">
+                    {urlPreview.images.length} image{urlPreview.images.length > 1 ? 's' : ''} détectée{urlPreview.images.length > 1 ? 's' : ''}
+                  </div>
+                </div>
+              </div>
+              {urlPreview.description && (
+                <p className="text-xs text-muted-foreground line-clamp-3">{urlPreview.description}</p>
+              )}
+            </div>
+          )}
+
+          {/* Info sur le produit auto-créé */}
+          <div className="rounded-lg border border-sky-500/30 bg-sky-500/5 p-3 text-xs text-sky-900">
+            <div className="flex items-start gap-2">
+              <PackagePlus className="mt-0.5 h-3.5 w-3.5 shrink-0 text-sky-600" />
+              <div>
+                Le produit sera importé dans ton catalogue en <strong>brouillon</strong> (non publié)
+                avec ses images. Le bloc COD form de la landing sera automatiquement lié à ce produit
+                pour que les clients puissent commander.
+              </div>
+            </div>
+          </div>
+
+          {/* Prix affichés — bloc dédié rendu prominent. Le vendeur DOIT fixer
+              son prix de vente ici (le prix scrap n'est jamais fiable pour du
+              dropshipping — marge à ajouter). Prix avant = prix barré pour
+              l'effet promo, optionnel. */}
+          <PricingCard
+            priceAfter={priceAfter} setPriceAfter={setPriceAfter}
+            priceBefore={priceBefore} setPriceBefore={setPriceBefore}
+            currency={currency} setCurrency={setCurrency}
+            scrapedPrice={urlPreview?.price}
+            scrapedCurrency={urlPreview?.currency}
+          />
+
+          <ContextForm
+            tone={tone} setTone={setTone}
+            language={language} setLanguage={(v) => { setLanguage(v); setLanguageTouched(true); }}
+            languageTouched={languageTouched}
+            country={country} setCountry={setCountry}
+            category={category} setCategory={setCategory}
+            priceBefore={priceBefore} setPriceBefore={setPriceBefore}
+            priceAfter={priceAfter} setPriceAfter={setPriceAfter}
+            currency={currency} setCurrency={setCurrency}
+            pageKind={pageKind} setPageKind={setPageKind}
+            hidePricing
+          />
+
+          <Button
+            disabled={!sourceUrl.trim() || generating || !priceAfter.trim()}
+            onClick={handleGenerateFromUrl}
+            className="h-11 w-full gap-2 rounded-xl gradient-brand text-white shadow-lg shadow-primary/25 hover:opacity-95"
+          >
+            {generating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
+            {generating
+              ? 'Import du produit + génération landing…'
+              : !priceAfter.trim()
+                ? 'Fixe ton prix de vente pour continuer'
+                : urlPreview
+                  ? `Générer la ${pageKind === 'product' ? 'page produit' : 'landing page'} complète`
+                  : 'Générer sans aperçu (auto-scrape)'}
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
   if (step === 'from-image') {
     return (
       <div className="mx-auto max-w-2xl space-y-6 animate-fade-in-up">
@@ -1082,7 +1368,7 @@ export default function NewLandingPagePage() {
             onClick={() => {
               setJobId(null);
               setJob(null);
-              setStep(selectedProductId ? 'choose-product' : 'from-image');
+              setStep(sourceUrl ? 'from-url' : selectedProductId ? 'choose-product' : 'from-image');
             }}
           >
             Annuler
@@ -1534,6 +1820,12 @@ function ContextForm(props: {
   priceAfter: string; setPriceAfter: (v: string) => void;
   currency: string; setCurrency: (v: string) => void;
   pageKind: PageKind; setPageKind: (k: PageKind) => void;
+  /**
+   * Cache le bloc prix (priceBefore/priceAfter/currency). Utilisé par le flow
+   * from-url qui affiche un bloc pricing dédié en amont — évite d'avoir 2
+   * saisies visuelles pour les mêmes champs.
+   */
+  hidePricing?: boolean;
 }) {
   const {
     tone, setTone,
@@ -1545,6 +1837,7 @@ function ContextForm(props: {
     priceAfter, setPriceAfter,
     currency, setCurrency,
     pageKind, setPageKind,
+    hidePricing,
   } = props;
 
   const before = priceBefore ? Number(priceBefore) : NaN;
@@ -1563,7 +1856,7 @@ function ContextForm(props: {
           <h3 className="text-sm font-semibold">Generation context</h3>
           <p className="text-xs text-muted-foreground">Help the AI write copy that fits your market.</p>
         </div>
-        {hasDiscount && (
+        {hasDiscount && !hidePricing && (
           <span className="rounded-full bg-emerald-500/10 px-2.5 py-1 text-xs font-semibold text-emerald-700">
             -{discountPct}%
           </span>
@@ -1662,11 +1955,153 @@ function ContextForm(props: {
         />
       </div>
 
-      <div className="grid gap-4 sm:grid-cols-3">
-        <div className="space-y-2">
-          <Label htmlFor="ctx-pb">Price before</Label>
+      {!hidePricing && (
+        <div className="grid gap-4 sm:grid-cols-3">
+          <div className="space-y-2">
+            <Label htmlFor="ctx-pb">Price before</Label>
+            <Input
+              id="ctx-pb"
+              type="number"
+              inputMode="decimal"
+              min="0"
+              step="0.01"
+              value={priceBefore}
+              onChange={(e) => setPriceBefore(e.target.value)}
+              placeholder="129"
+            />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="ctx-pa">Price after</Label>
+            <Input
+              id="ctx-pa"
+              type="number"
+              inputMode="decimal"
+              min="0"
+              step="0.01"
+              value={priceAfter}
+              onChange={(e) => setPriceAfter(e.target.value)}
+              placeholder="89"
+            />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="ctx-cur">Currency</Label>
+            <select
+              id="ctx-cur"
+              value={currency}
+              onChange={(e) => setCurrency(e.target.value)}
+              className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+            >
+              <optgroup label="Arab world">
+                {CURRENCIES.filter((c) => c.group === 'arab').map((c) => (
+                  <option key={c.code} value={c.code}>
+                    {c.code} — {c.label} ({c.symbol})
+                  </option>
+                ))}
+              </optgroup>
+              <optgroup label="Africa">
+                {CURRENCIES.filter((c) => c.group === 'africa').map((c) => (
+                  <option key={c.code} value={c.code}>
+                    {c.code} — {c.label} ({c.symbol})
+                  </option>
+                ))}
+              </optgroup>
+              <optgroup label="Europe & nearby">
+                {CURRENCIES.filter((c) => c.group === 'eu').map((c) => (
+                  <option key={c.code} value={c.code}>
+                    {c.code} — {c.label} ({c.symbol})
+                  </option>
+                ))}
+              </optgroup>
+              <optgroup label="Other">
+                {CURRENCIES.filter((c) => c.group === 'other').map((c) => (
+                  <option key={c.code} value={c.code}>
+                    {c.code} — {c.label} ({c.symbol})
+                  </option>
+                ))}
+              </optgroup>
+            </select>
+          </div>
+        </div>
+      )}
+
+      <ToneSelect tone={tone} setTone={setTone} />
+    </div>
+  );
+}
+
+/**
+ * Bloc prix dédié affiché en amont dans le flow `from-url` (et réutilisable
+ * ailleurs). Sépare la fixation du prix affiché (crucial pour du dropshipping :
+ * le prix scrap n'est jamais le prix de vente) du reste du contexte.
+ *
+ * Prix de vente = obligatoire = ce que verra le client
+ * Prix avant   = optionnel   = prix barré à côté pour l'effet promo
+ */
+function PricingCard(props: {
+  priceAfter: string; setPriceAfter: (v: string) => void;
+  priceBefore: string; setPriceBefore: (v: string) => void;
+  currency: string; setCurrency: (v: string) => void;
+  scrapedPrice?: number;
+  scrapedCurrency?: string;
+}) {
+  const { priceAfter, setPriceAfter, priceBefore, setPriceBefore, currency, setCurrency, scrapedPrice, scrapedCurrency } = props;
+  const after = Number(priceAfter);
+  const before = Number(priceBefore);
+  const hasAfter = Number.isFinite(after) && after > 0;
+  const hasBefore = Number.isFinite(before) && before > 0;
+  const hasDiscount = hasAfter && hasBefore && before > after;
+  const discountPct = hasDiscount ? Math.round(((before - after) / before) * 100) : 0;
+
+  const applyScrapedPrice = () => {
+    if (typeof scrapedPrice === 'number') setPriceAfter(String(scrapedPrice));
+    if (scrapedCurrency && !currency) setCurrency(scrapedCurrency);
+  };
+
+  return (
+    <div className="space-y-4 rounded-2xl border-2 border-primary/30 bg-primary/5 p-5 animate-fade-in">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <h3 className="flex items-center gap-2 text-sm font-bold">
+            💰 Prix affichés sur la page
+            <span className="rounded-full bg-rose-500/10 px-2 py-0.5 text-[10px] font-semibold text-rose-700">
+              Obligatoire
+            </span>
+          </h3>
+          <p className="mt-0.5 text-[11px] text-muted-foreground">
+            Ce sont ces prix que verront tes clients — pas ceux du site source. Fixe ton prix de vente
+            (avec ta marge) et un prix avant si tu veux un effet promo barré.
+          </p>
+        </div>
+        {hasDiscount && (
+          <span className="shrink-0 rounded-full bg-emerald-500 px-2.5 py-1 text-xs font-bold text-white shadow-sm">
+            -{discountPct}%
+          </span>
+        )}
+      </div>
+
+      <div className="grid gap-3 sm:grid-cols-3">
+        <div className="space-y-1.5">
+          <Label htmlFor="pc-after" className="text-xs">
+            Prix de vente <span className="text-rose-600">*</span>
+          </Label>
           <Input
-            id="ctx-pb"
+            id="pc-after"
+            type="number"
+            inputMode="decimal"
+            min="0"
+            step="0.01"
+            value={priceAfter}
+            onChange={(e) => setPriceAfter(e.target.value)}
+            placeholder="89"
+            className="text-base font-semibold"
+          />
+        </div>
+        <div className="space-y-1.5">
+          <Label htmlFor="pc-before" className="text-xs">
+            Prix avant <span className="text-muted-foreground">(optionnel)</span>
+          </Label>
+          <Input
+            id="pc-before"
             type="number"
             inputMode="decimal"
             min="0"
@@ -1676,60 +2111,74 @@ function ContextForm(props: {
             placeholder="129"
           />
         </div>
-        <div className="space-y-2">
-          <Label htmlFor="ctx-pa">Price after</Label>
-          <Input
-            id="ctx-pa"
-            type="number"
-            inputMode="decimal"
-            min="0"
-            step="0.01"
-            value={priceAfter}
-            onChange={(e) => setPriceAfter(e.target.value)}
-            placeholder="89"
-          />
-        </div>
-        <div className="space-y-2">
-          <Label htmlFor="ctx-cur">Currency</Label>
+        <div className="space-y-1.5">
+          <Label htmlFor="pc-cur" className="text-xs">Devise</Label>
           <select
-            id="ctx-cur"
+            id="pc-cur"
             value={currency}
             onChange={(e) => setCurrency(e.target.value)}
             className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
           >
             <optgroup label="Arab world">
               {CURRENCIES.filter((c) => c.group === 'arab').map((c) => (
-                <option key={c.code} value={c.code}>
-                  {c.code} — {c.label} ({c.symbol})
-                </option>
+                <option key={c.code} value={c.code}>{c.code} — {c.symbol}</option>
               ))}
             </optgroup>
             <optgroup label="Africa">
               {CURRENCIES.filter((c) => c.group === 'africa').map((c) => (
-                <option key={c.code} value={c.code}>
-                  {c.code} — {c.label} ({c.symbol})
-                </option>
+                <option key={c.code} value={c.code}>{c.code} — {c.symbol}</option>
               ))}
             </optgroup>
             <optgroup label="Europe & nearby">
               {CURRENCIES.filter((c) => c.group === 'eu').map((c) => (
-                <option key={c.code} value={c.code}>
-                  {c.code} — {c.label} ({c.symbol})
-                </option>
+                <option key={c.code} value={c.code}>{c.code} — {c.symbol}</option>
               ))}
             </optgroup>
             <optgroup label="Other">
               {CURRENCIES.filter((c) => c.group === 'other').map((c) => (
-                <option key={c.code} value={c.code}>
-                  {c.code} — {c.label} ({c.symbol})
-                </option>
+                <option key={c.code} value={c.code}>{c.code} — {c.symbol}</option>
               ))}
             </optgroup>
           </select>
         </div>
       </div>
 
-      <ToneSelect tone={tone} setTone={setTone} />
+      {/* Live preview de l'affichage */}
+      {(hasAfter || hasBefore) && (
+        <div className="rounded-lg border border-border/60 bg-background p-3">
+          <div className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+            Aperçu affiché sur la page
+          </div>
+          <div className="flex items-baseline gap-2">
+            {hasAfter && (
+              <span className="text-2xl font-bold text-foreground">
+                {priceAfter} {currency}
+              </span>
+            )}
+            {hasDiscount && (
+              <>
+                <span className="text-base text-muted-foreground line-through decoration-rose-500">
+                  {priceBefore} {currency}
+                </span>
+                <span className="rounded-full bg-emerald-500/10 px-2 py-0.5 text-[10px] font-bold text-emerald-700">
+                  Économise {(before - after).toFixed(2)} {currency}
+                </span>
+              </>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* CTA pour reprendre le prix scrap (utile si le vendeur veut partir de là comme base) */}
+      {typeof scrapedPrice === 'number' && !hasAfter && (
+        <button
+          type="button"
+          onClick={applyScrapedPrice}
+          className="text-[11px] font-medium text-primary underline decoration-dotted underline-offset-2 hover:decoration-solid"
+        >
+          Reprendre le prix scrap : {scrapedPrice} {scrapedCurrency || currency}
+        </button>
+      )}
     </div>
   );
 }

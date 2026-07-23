@@ -1,18 +1,25 @@
 import { Response } from 'express';
 import { AuthRequest } from '../middleware/auth.middleware';
 import * as pageService from '../services/page.service';
+import * as productService from '../services/product.service';
 import { LANDING_TEMPLATES } from '../data/landing-templates';
 import { getSectionsFromTemplate, generateLandingWithAI } from '../services/ai-landing.service';
 import { generateLandingFromProduct, generateLandingFromImage } from '../services/fal-landing.service';
 import { generatePoster, type PosterTheme, type PosterFormat } from '../services/poster.service';
 import { generateLandingImage } from '../services/landing-image.service';
+import { extractProductFromUrl, ImportError } from '../services/product-import.service';
+import { persistRemoteImage } from '../services/storage.service';
 import { Product } from '../models/Product.model';
 import * as jobService from '../services/generation-job.service';
 import { chargeAiGeneration, aiCostInCurrency } from '../services/wallet.service';
 import { getOrCreateWallet } from '../services/wallet.service';
 import type { AiKind } from '../models/Settings.model';
 import validator from 'validator';
+import { logger } from '../lib/logger';
 import { notifyRevalidate } from '../lib/revalidate';
+
+/** Nombre max d'images téléchargées quand on importe un produit depuis une URL. */
+const MAX_URL_IMPORT_IMAGES = 8;
 
 /**
  * Debit the seller's AI balance before launching a generation. Throws a
@@ -353,8 +360,10 @@ export async function generateFromProductAsync(req: AuthRequest, res: Response):
       name: product.name,
       description: product.description,
       price: product.price,
+      compareAtPrice: product.compareAtPrice,
       type: product.type,
       images: product.images,
+      tags: product.tags,
     },
     tone: body.tone,
     context: {
@@ -437,6 +446,150 @@ export async function generateFromImageAsync(req: AuthRequest, res: Response): P
     },
   });
   res.status(202).json({ jobId: job._id.toString() });
+}
+
+/**
+ * POST /api/stores/:storeId/pages/generate-from-url/async
+ *
+ * Flow complet : URL AliExpress/Alibaba/Amazon → produit importé dans le
+ * catalogue → landing page complète (toutes les sections) générée en async.
+ *
+ * 1. Scrape la page produit (title, description, price, currency, images).
+ * 2. Télécharge les images dans notre stockage (persistRemoteImage) — évite
+ *    le hotlink sur les CDN externes et évite les 403 depuis FAL/Anthropic.
+ * 3. Crée un Product dans le catalogue de la boutique (draft, non publié).
+ * 4. Lance le pipeline landing habituel avec ce nouveau productId — la
+ *    landing embarque automatiquement le bloc COD form linké au vrai produit.
+ * 5. Retourne { jobId, productId } — le front polle le job et redirige vers
+ *    l'éditeur une fois terminé.
+ *
+ * Le billing est identique à `generate-from-product/async` — le seller paie
+ * une seule génération landing. L'import produit est offert (pas de facture
+ * séparée) parce que c'est un prérequis technique de la landing.
+ */
+export async function generateFromUrlAsync(req: AuthRequest, res: Response): Promise<void> {
+  if (!req.user) { res.status(401).json({ error: 'Not authenticated' }); return; }
+  const store = req.store!;
+  const body = req.body as {
+    url?: string;
+    tone?: 'professional' | 'friendly' | 'minimal';
+    language?: string;
+    country?: string;
+    category?: string;
+    priceBefore?: number | string;
+    priceAfter?: number | string;
+    currency?: string;
+    pageKind?: 'landing' | 'product';
+    /** Override optionnel — sinon on prend le titre scrap depuis l'URL. */
+    productName?: string;
+  };
+
+  // sanitizeMiddleware HTML-escape les strings du body ; on dé-escape l'URL
+  // pour ne pas casser les paramètres (?spm=..., &sku=...).
+  const url = validator.unescape((body.url ?? '').toString()).trim();
+  if (!url || !/^https?:\/\//i.test(url)) {
+    res.status(400).json({ error: 'URL requise (http/https)' });
+    return;
+  }
+
+  const num = (v: number | string | undefined): number | undefined => {
+    if (v === undefined || v === null || v === '') return undefined;
+    const n = typeof v === 'number' ? v : Number(v);
+    return Number.isFinite(n) ? n : undefined;
+  };
+
+  const kind = body.pageKind === 'product' ? 'product_page' : 'landing';
+  const charge = await chargeOrFail(req, res, kind);
+  if (!charge) return;
+
+  // ── 1. Scrape la page produit ────────────────────────────────────────
+  let scraped;
+  try {
+    scraped = await extractProductFromUrl(url);
+  } catch (err) {
+    const e = err as ImportError;
+    // On rembourse pas ici (rien de généré côté LLM/FAL) — juste un 4xx net.
+    res.status(e.statusCode || 502).json({ error: e.message || 'URL non supportée ou produit introuvable.' });
+    return;
+  }
+
+  const storeId = (store._id as { toString(): string }).toString();
+
+  // ── 2. Rapatrie les images dans notre stockage (best-effort) ─────────
+  const persistedImages: string[] = [];
+  for (const raw of scraped.images.slice(0, MAX_URL_IMPORT_IMAGES)) {
+    try {
+      persistedImages.push(await persistRemoteImage(raw, `products/${storeId}`));
+    } catch (err) {
+      logger.warn({ err: (err as Error).message, url: raw }, '[url-to-landing] image non rapatriée — ignorée');
+    }
+  }
+
+  // ── 3. Crée le produit dans le catalogue ────────────────────────────
+  // On le laisse non publié : le seller peut le publier depuis l'éditeur
+  // de landing s'il veut, ou continuer de le retravailler.
+  const productName = (body.productName?.trim() || scraped.title || 'Produit importé').slice(0, 200);
+  const product = await productService.createProduct({
+    storeId,
+    name: productName,
+    description: scraped.description,
+    type: 'physical',
+    price: num(body.priceAfter) ?? scraped.price ?? 0,
+    compareAtPrice: num(body.priceBefore),
+    stock: 0,
+    images: persistedImages,
+    isPublished: false,
+    tags: [`import:${scraped.source}`],
+  });
+  const productId = (product._id as { toString(): string }).toString();
+
+  // ── 4. Lance le pipeline landing habituel avec ce productId ─────────
+  const job = await jobService.createJob({
+    storeId,
+    ownerId: req.user._id.toString(),
+    kind: 'landing-from-product',
+    input: {
+      productId,
+      sourceUrl: url,
+      source: scraped.source,
+      tone: body.tone,
+      country: body.country,
+      language: body.language,
+    },
+  });
+  void jobService.runLandingPipeline(job._id.toString(), {
+    kind: 'landing-from-product',
+    storeName: store.name,
+    product: {
+      name: product.name,
+      description: product.description,
+      price: product.price,
+      compareAtPrice: product.compareAtPrice,
+      type: product.type,
+      images: product.images,
+      tags: product.tags,
+    },
+    tone: body.tone,
+    context: {
+      language: body.language || store.settings?.language,
+      country: body.country || store.settings?.country,
+      category: body.category,
+      priceBefore: num(body.priceBefore) ?? product.compareAtPrice,
+      priceAfter: num(body.priceAfter) ?? product.price,
+      currency: body.currency || scraped.currency || store.settings?.currency,
+      pageKind: body.pageKind,
+    },
+  });
+
+  res.status(202).json({
+    jobId: job._id.toString(),
+    productId,
+    scraped: {
+      source: scraped.source,
+      title: scraped.title,
+      imagesImported: persistedImages.length,
+    },
+  });
 }
 
 /** GET /api/jobs/:jobId — poll endpoint. */

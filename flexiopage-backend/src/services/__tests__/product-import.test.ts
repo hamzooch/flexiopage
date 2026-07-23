@@ -16,9 +16,14 @@ describe('detectSource', () => {
     expect(detectSource('https://amzn.to/abc')).toBe('amazon');
   });
 
-  it('refuse les autres domaines et les URLs invalides', () => {
-    expect(detectSource('https://example.com/p/1')).toBeNull();
+  it("route les autres domaines vers 'other' (extraction via Jina + LLM) et refuse le non-URL", () => {
+    // Depuis l'intégration Jina+LLM, toute URL http(s) valide est acceptée :
+    // les sites non-listés retombent sur 'other' qui déclenche le fallback IA.
+    expect(detectSource('https://example.com/p/1')).toBe('other');
+    expect(detectSource('https://shop.mycooldrop.com/products/mug')).toBe('other');
+    // Rejet ferme : parsing URL cassé OU protocole non-http(s).
     expect(detectSource('pas une url')).toBeNull();
+    expect(detectSource('ftp://example.com/x')).toBeNull();
   });
 
   it('reste détectable après escape→unescape du sanitizeMiddleware (régression 400)', () => {

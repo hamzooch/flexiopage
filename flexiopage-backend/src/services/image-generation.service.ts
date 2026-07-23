@@ -19,24 +19,58 @@
  */
 import fs from 'fs/promises';
 import path from 'path';
+import Anthropic from '@anthropic-ai/sdk';
 
 const FAL_BASE = 'https://fal.run';
 
 export type ImageAspect = 'square' | 'portrait' | 'landscape' | 'wide' | 'tall';
 
+/**
+ * Slot pour lequel l'image est générée. Détermine :
+ *   - Le modèle par défaut (hero → FLUX pro, avatar → Realism, etc.)
+ *   - Si le post-processing (upscale/face restore) s'applique
+ *   - Si l'absence de reference image doit émettre un warning
+ *   - Le prompt d'évaluation du quality gate (product fidelity vs face quality)
+ */
+export type ImageSlot = 'hero' | 'gallery' | 'product' | 'avatar' | 'banner' | 'video-poster' | 'other';
+
 export interface ImageGenInput {
   prompt: string;
   aspect?: ImageAspect;
-  /** Override the model for a single call. */
+  /** Override explicite du modèle. Prime sur le routing par catégorie. */
   model?: string;
-  /** Optional negative prompt to steer FLUX away from artifacts (ignored by Nano Banana). */
+  /** Prompt négatif pour éloigner FLUX des artefacts (ignoré par Nano Banana). */
   negativePrompt?: string;
   /**
-   * Reference image URL(s) — when set, image-to-image / edit endpoint is used
-   * so the generated variant CONTAINS the actual reference product. For
-   * Nano Banana, this routes to `fal-ai/nano-banana/edit`.
+   * Reference image URL(s) — quand set, l'endpoint image-to-image / edit est
+   * utilisé pour que la sortie CONTIENNE le vrai produit référence. Pour
+   * Nano Banana, ça route vers `fal-ai/nano-banana/edit`.
    */
   referenceImages?: string[];
+  /**
+   * Slot de destination (hero / gallery / avatar / …). Active le routing par
+   * catégorie, le post-processing adapté et le quality gate contextualisé.
+   * Absent → traité comme 'other' (comportement legacy identique).
+   */
+  slot?: ImageSlot;
+  /**
+   * Catégorie produit (« fashion », « beauty », « electronics », « food »,
+   * « luxury », etc.). Utilisée par le routing pour choisir un modèle plus
+   * qualitatif sur les catégories haut de gamme (fashion → FLUX pro partout).
+   * Case-insensitive, fuzzy-matched. Absent → défauts par slot.
+   */
+  productCategory?: string;
+  /**
+   * Quand true : si l'appel n'a PAS de referenceImages alors qu'il attend un
+   * produit (hero/product/gallery avec un produit existant), on log un warn
+   * pour repérer les régressions (le produit généré est alors un look-alike
+   * inventé, pas le vrai produit du vendeur).
+   */
+  expectsProductReference?: boolean;
+  /** Désactive le quality gate pour cet appel (usage interne des retries). */
+  skipQualityGate?: boolean;
+  /** Désactive le post-processing pour cet appel (usage interne des retries). */
+  skipPostProcessing?: boolean;
 }
 
 export interface ImageGenResult {
@@ -253,15 +287,143 @@ function defaultDimsFor(model: string, aspect: ImageAspect): { width: number; he
 }
 
 /**
- * Generate one image. Returns a public URL (fal hosts the asset for ~24h —
- * for a real SaaS you'd download and re-upload to your own storage).
+ * Génère une image sur fal.ai + assessment qualité + post-processing.
+ *
+ * Pipeline complet :
+ *   1. Résolution modèle : override explicite > routing par catégorie/slot > défaut
+ *   2. Warning si un slot produit attend une reference et n'en a pas
+ *   3. Appel fal → URL image
+ *   4. Quality gate (Claude Haiku vision) — si score < seuil, retry UNE fois
+ *      avec un prompt renforcé (max 2 tentatives)
+ *   5. Post-processing selon slot (upscale + face restore)
+ *
+ * Chaque étape est best-effort : les échecs de gate/upscale ne bloquent pas
+ * la génération, ils dégradent gracieusement vers l'image brute.
  */
 export async function generateImage(input: ImageGenInput): Promise<ImageGenResult> {
+  const slot = input.slot || 'other';
+
+  // ── 1. Résolution du modèle ──────────────────────────────────────────
+  // Ordre de priorité : `input.model` explicite > routing (slot+catégorie)
+  // > DEFAULT_MODEL. Le routing permet à un vendeur de fashion d'avoir
+  // FLUX pro partout sans changer d'env vars.
+  const model = input.model || resolveModelForCategory(slot, input.productCategory);
+
+  // ── 2. Reference product check ──────────────────────────────────────
+  // Si l'appelant attend explicitement une reference et n'en a pas, on log
+  // un warn : ça signale les régressions où le pipeline landing perd la
+  // photo produit et régénère un look-alike inventé.
+  const hasRef = !!input.referenceImages?.length;
+  if (input.expectsProductReference && !hasRef) {
+    console.warn(
+      `[image-gen] slot='${slot}' attendait une reference product mais aucune n'a été fournie — ` +
+      `le produit dans l'image sera INVENTÉ par le modèle (pas le vrai produit du vendeur). ` +
+      `Prompt: "${input.prompt.slice(0, 80)}…"`,
+    );
+  }
+
+  // ── 3. Génération initiale ──────────────────────────────────────────
+  const initial = await callFalDirect({ ...input, model });
+
+  // ── 4. Quality gate + retry ─────────────────────────────────────────
+  let finalUrl = initial.url;
+  let finalDims = { width: initial.width, height: initial.height };
+  if (QUALITY_GATE_ENABLED && !input.skipQualityGate) {
+    const refUrl = input.referenceImages?.[0];
+    // Ne passe une URL http/https à Claude (skip les data: du refs inlinés).
+    const refForRating = refUrl && /^https?:\/\//.test(refUrl) ? refUrl : undefined;
+    const score = await assessImageQuality(initial.url, slot, refForRating);
+    if (score && score.total < QUALITY_GATE_THRESHOLD) {
+      console.info(
+        `[image-gen] quality gate: ${score.total}/30 < ${QUALITY_GATE_THRESHOLD} (slot=${slot}, ` +
+        `fidelity=${score.productFidelity} defects=${score.defects} brand=${score.brandQuality}). ` +
+        `Reason: ${score.reason}. Retrying…`,
+      );
+      try {
+        // Retry avec prompt renforcé + skip gate/upscale sur le retry lui-même
+        // pour ne pas boucler + éviter le coût du double post-process.
+        const retry = await callFalDirect({
+          ...input,
+          model,
+          prompt: reinforcePrompt(input.prompt, score, slot),
+          negativePrompt: reinforceNegativePrompt(input.negativePrompt, slot),
+          skipQualityGate: true,
+          skipPostProcessing: true,
+        });
+        // On garde le retry seulement s'il note mieux (ou pas dispo → on garde).
+        const retryScore = await assessImageQuality(retry.url, slot, refForRating);
+        if (!retryScore || retryScore.total >= score.total) {
+          finalUrl = retry.url;
+          finalDims = { width: retry.width, height: retry.height };
+        }
+      } catch (err) {
+        console.warn('[image-gen] retry failed, keeping original:', (err as Error).message);
+      }
+    }
+  }
+
+  // ── 5. Post-processing (upscale + face restore) ─────────────────────
+  if (!input.skipPostProcessing && shouldUpscale(slot)) {
+    finalUrl = await enhanceImage(finalUrl, slot);
+  }
+
+  return {
+    url: finalUrl,
+    width: finalDims.width,
+    height: finalDims.height,
+  };
+}
+
+/**
+ * Renforce le prompt pour un retry après un mauvais score. Injecte des
+ * indices ciblés selon les faiblesses détectées par le quality gate.
+ */
+function reinforcePrompt(originalPrompt: string, score: QualityScore, slot: ImageSlot): string {
+  const boosters: string[] = [];
+  if (score.defects < 6) {
+    boosters.push('photograph without any visual defects, no distorted hands, no broken text, no artifacts');
+  }
+  if (score.brandQuality < 6) {
+    boosters.push('premium editorial photography, magazine quality, real photo not AI-generated look');
+  }
+  if (score.productFidelity < 6 && slot !== 'avatar' && slot !== 'banner') {
+    boosters.push('the product must be IDENTICAL to the reference, same shape same color same materials');
+  }
+  if (slot === 'avatar' && score.productFidelity < 6) {
+    boosters.push('natural authentic human face, real skin texture with pores, symmetry not forced');
+  }
+  return `${originalPrompt}\n\n${boosters.join(', ')}`.trim();
+}
+
+/**
+ * Épaissit le prompt négatif pour un retry, en ciblant les défauts fréquents
+ * selon le slot.
+ */
+function reinforceNegativePrompt(base: string | undefined, slot: ImageSlot): string {
+  const extras: string[] = [
+    'AI-generated look',
+    'smooth plastic',
+    'over-processed',
+    'artificial lighting',
+    'generic stock photo',
+    'digital art',
+    'render',
+    '3d',
+  ];
+  if (slot === 'avatar') extras.push('uncanny symmetrical face', 'glossy skin', 'wax figure');
+  else if (slot === 'banner') extras.push('misspelled text', 'garbled letters');
+  else extras.push('multiple products', 'wrong product variant', 'similar look-alike product');
+  return [base?.trim(), extras.join(', ')].filter(Boolean).join(', ');
+}
+
+/**
+ * Appel brut à fal.ai (isolé du orchestrator pour permettre les retries
+ * internes du generateImage sans re-passer par la logique gate/upscale).
+ */
+async function callFalDirect(input: ImageGenInput): Promise<ImageGenResult> {
   const key = getFalKey();
   const model = input.model || DEFAULT_MODEL;
   const aspect = input.aspect || 'square';
-  // Inline any private/loopback reference URLs as data URIs so fal.ai can
-  // actually receive the bytes (it cannot reach `localhost`).
   const inlinedRefs = input.referenceImages?.length
     ? await Promise.all(input.referenceImages.map(inlinePrivateUrl))
     : input.referenceImages;
@@ -272,10 +434,7 @@ export async function generateImage(input: ImageGenInput): Promise<ImageGenResul
 
   const res = await fetch(`${FAL_BASE}/${endpoint}`, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Key ${key}`,
-    },
+    headers: { 'Content-Type': 'application/json', Authorization: `Key ${key}` },
     body: JSON.stringify(body),
   });
   if (!res.ok) {
@@ -328,6 +487,319 @@ export async function generateImagesParallel(
       }
     })
   );
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// Category-based model routing
+// ─────────────────────────────────────────────────────────────────────
+// Certaines catégories bénéficient énormément d'un modèle premium (fashion +
+// luxury sur FLUX pro), d'autres marchent parfaitement en modèle rapide
+// (electronics sur nano-banana). Le routing ci-dessous permet à un vendeur
+// de bijoux d'avoir toute sa galerie en FLUX pro sans changer de config.
+//
+// Les catégories acceptent des synonymes multilingues (fr/en/ar romanisé)
+// pour matcher les tags que le vendeur pose sur ses produits.
+
+type CategoryClass = 'luxury' | 'fashion' | 'beauty' | 'food' | 'electronics' | 'generic';
+
+const CATEGORY_KEYWORDS: Array<{ class: CategoryClass; patterns: RegExp[] }> = [
+  {
+    class: 'luxury',
+    patterns: [
+      /\b(luxury|luxe|premium|haut[\s-]?de[\s-]?gamme|prestige|jewelry|jewellery|bijou|bijoux|watch|montre|horlogerie|leather|cuir|handbag|sac[\s-]?à[\s-]?main|perfume|parfum)\b/i,
+    ],
+  },
+  {
+    class: 'fashion',
+    patterns: [
+      /\b(fashion|mode|apparel|clothing|v[êe]tement|vetement|habit|chaussure|shoes|sneaker|boot|robe|dress|shirt|chemise|pantalon|jean|tenue|streetwear|outfit)\b/i,
+    ],
+  },
+  {
+    class: 'beauty',
+    patterns: [
+      /\b(beauty|beaut[ée]|cosmetic|cosm[ée]tique|makeup|maquillage|skincare|soin|serum|s[ée]rum|cream|cr[èe]me|lipstick|rouge[\s-]?à[\s-]?l[èe]vres|foundation|fond[\s-]?de[\s-]?teint|shampoo|shampoing|hair[\s-]?care|coiffure)\b/i,
+    ],
+  },
+  {
+    class: 'food',
+    patterns: [
+      /\b(food|nourriture|cuisine|drink|boisson|snack|dessert|cake|g[âa]teau|coffee|caf[ée]|th[ée]|tea|chocolat|chocolate|epicerie|grocery|organic|bio)\b/i,
+    ],
+  },
+  {
+    class: 'electronics',
+    patterns: [
+      /\b(electronic|tech|gadget|phone|smartphone|laptop|ordinateur|casque|headphone|earphone|speaker|enceinte|smartwatch|montre[\s-]?connect[ée]e|charger|chargeur|cable|c[âa]ble|accessoire[\s-]?tech)\b/i,
+    ],
+  },
+];
+
+/**
+ * Détecte la classe catégorie à partir d'un texte libre (tag produit, nom,
+ * catégorie brute). Retourne 'generic' quand rien ne matche — les défauts par
+ * slot s'appliquent alors.
+ */
+export function classifyCategory(input?: string): CategoryClass {
+  if (!input) return 'generic';
+  const text = input.trim();
+  if (!text) return 'generic';
+  for (const { class: cls, patterns } of CATEGORY_KEYWORDS) {
+    if (patterns.some((r) => r.test(text))) return cls;
+  }
+  return 'generic';
+}
+
+/**
+ * Modèle recommandé pour (slot, catégorie). Les vendeurs de fashion / luxury
+ * / beauty méritent FLUX pro (ou Realism pour la peau) partout car leur
+ * conversion dépend crucialement de la qualité photo. Les vendeurs
+ * d'electronics/generic gardent le mix rapide/économique par défaut.
+ *
+ * Les env `FAL_*_MODEL` restent prioritaires (override manuel > routing).
+ */
+export function resolveModelForCategory(
+  slot: ImageSlot,
+  category?: string,
+): string {
+  const cls = classifyCategory(category);
+  // Banner reste sur Ideogram (spécialiste texte) quelle que soit la catégorie.
+  if (slot === 'banner') return BANNER_MODEL;
+  // Avatar : Realism partout — c'est LE modèle pour les visages humains.
+  if (slot === 'avatar') return AVATAR_MODEL;
+
+  // Slots visuels produit (hero / gallery / product / video-poster).
+  if (cls === 'luxury' || cls === 'fashion') {
+    // Luxury/fashion : FLUX pro partout — la qualité prime sur le coût.
+    return process.env.FAL_HERO_MODEL || 'fal-ai/flux-pro/v1.1';
+  }
+  if (cls === 'beauty' || cls === 'food') {
+    // Beauty / food : FLUX Realism (meilleur rendu peau/matière/texture).
+    return process.env.FAL_AVATAR_MODEL || 'fal-ai/flux-realism';
+  }
+  // Electronics / generic → défauts par slot.
+  switch (slot) {
+    case 'hero':
+    case 'video-poster':
+      return HERO_MODEL;
+    case 'gallery':
+    case 'product':
+      return GALLERY_MODEL;
+    default:
+      return DEFAULT_MODEL;
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// Quality gate — évaluation par Claude Haiku vision
+// ─────────────────────────────────────────────────────────────────────
+// Après génération, on demande à Claude Haiku 4.5 (vision-capable, ~$0.001
+// par image) de noter la sortie sur 3 axes :
+//   1. product_fidelity : le produit dans l'image correspond-il à la référence ?
+//   2. defects           : mains cassées, texte illisible, artefacts flagrants ?
+//   3. brand_quality     : rendu pro/éditorial vs. AI générique ?
+//
+// Si le score total < seuil → on retry UNE fois avec un seed différent + un
+// renforcement de prompt. Borné à 2 tentatives pour garder le coût sous
+// contrôle.
+
+const QUALITY_GATE_ENABLED = process.env.IMAGE_QUALITY_GATE_ENABLED !== 'false';
+// Seuil de retry sur 30 (=3 critères × 10). 18 = "acceptable" côté Claude,
+// 21+ = "clairement bon". On garde 18 par défaut pour n'automatiser le retry
+// que sur les vraies ratés (mains cassées, texte illisible, produit inventé
+// alors qu'il y a une reference). Bumper à 21+ via env pour un mode qualité
+// premium qui accepte de payer ~2× pour de meilleures images en moyenne.
+const QUALITY_GATE_THRESHOLD = Number(process.env.IMAGE_QUALITY_GATE_THRESHOLD || 18); // /30
+const QUALITY_GATE_MODEL = process.env.IMAGE_QUALITY_GATE_MODEL || 'claude-haiku-4-5-20251001';
+
+let _anthropicQualityClient: Anthropic | null = null;
+function getQualityClient(): Anthropic | null {
+  if (_anthropicQualityClient) return _anthropicQualityClient;
+  if (!process.env.ANTHROPIC_API_KEY) return null;
+  _anthropicQualityClient = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+  return _anthropicQualityClient;
+}
+
+interface QualityScore {
+  productFidelity: number; // 0-10
+  defects: number;         // 0-10 (10 = zero défaut)
+  brandQuality: number;    // 0-10
+  total: number;           // 0-30
+  reason: string;
+}
+
+/**
+ * Note l'image générée. Best-effort — en cas d'échec du LLM, retourne un
+ * score neutre (7/10 sur tout) pour ne pas bloquer le pipeline.
+ */
+async function assessImageQuality(
+  imageUrl: string,
+  slot: ImageSlot,
+  referenceUrl?: string,
+): Promise<QualityScore | null> {
+  const client = getQualityClient();
+  if (!client) return null;
+
+  // Adapte le prompt selon le slot : les avatars n'ont pas de « produit », les
+  // banners sont évalués sur la lisibilité du texte.
+  let criteria: string;
+  if (slot === 'avatar') {
+    criteria = [
+      '1. face_quality (0-10) : visage réaliste, sans doigts en trop, pas de traits déformés, catchlight naturel dans les yeux',
+      '2. defects (0-10, 10 = zéro défaut) : pas d\'artefacts (main cassée, œil déformé, texture peau plastique)',
+      '3. authenticity (0-10) : ressemble à une vraie photo humaine (pas AI-glossy, pas symétrique)',
+    ].join('\n');
+  } else if (slot === 'banner') {
+    criteria = [
+      '1. text_legibility (0-10) : texte parfaitement lisible sans faute',
+      '2. defects (0-10, 10 = zéro défaut) : pas d\'artefacts, pas de caractères déformés',
+      '3. brand_quality (0-10) : rendu pro, contraste, hiérarchie visuelle',
+    ].join('\n');
+  } else {
+    criteria = [
+      referenceUrl
+        ? '1. product_fidelity (0-10) : le produit dans la sortie est IDENTIQUE à celui de la référence (même forme, couleur, matière, hardware)'
+        : '1. product_clarity (0-10) : le produit est bien visible, net, mis en scène clairement',
+      '2. defects (0-10, 10 = zéro défaut) : pas d\'artefacts visibles (texte cassé, main déformée, watermark, doublon produit)',
+      '3. brand_quality (0-10) : rendu photo éditorial pro (pas d\'aspect AI générique, plastique, over-processed)',
+    ].join('\n');
+  }
+
+  const systemPrompt = [
+    'Tu es un directeur artistique senior pour un site e-commerce. Tu évalues une image générée par IA.',
+    'Note l\'image sur 3 critères, sur 10 chacun :',
+    criteria,
+    '',
+    'Réponds UNIQUEMENT en JSON, aucun autre texte :',
+    '{ "productFidelity": <0-10>, "defects": <0-10>, "brandQuality": <0-10>, "reason": "<phrase courte>" }',
+    '',
+    'Sois honnête : si tu vois un défaut visible, mets < 5. Si l\'image est acceptable pour un site e-commerce sérieux, mets 7-8. Réserve 9-10 aux images vraiment excellentes.',
+  ].join('\n');
+
+  try {
+    const content: Anthropic.ContentBlockParam[] = [];
+    // Reference d'abord si présente (pour comparaison).
+    if (referenceUrl && /^https?:\/\//.test(referenceUrl)) {
+      content.push({
+        type: 'image',
+        source: { type: 'url', url: referenceUrl },
+      });
+      content.push({ type: 'text', text: 'Image de RÉFÉRENCE (le produit à préserver) :' });
+    }
+    content.push({
+      type: 'image',
+      source: { type: 'url', url: imageUrl },
+    });
+    content.push({
+      type: 'text',
+      text: `Image GÉNÉRÉE à évaluer (slot: ${slot}). Note et retourne le JSON.`,
+    });
+
+    const resp = await client.messages.create({
+      model: QUALITY_GATE_MODEL,
+      max_tokens: 256,
+      system: [{ type: 'text', text: systemPrompt }],
+      messages: [{ role: 'user', content }],
+    });
+
+    const text = resp.content
+      .filter((b): b is Anthropic.TextBlock => b.type === 'text')
+      .map((b) => b.text)
+      .join('\n')
+      .trim()
+      .replace(/^```(?:json)?\s*/i, '')
+      .replace(/\s*```$/, '');
+
+    const parsed = JSON.parse(text) as {
+      productFidelity?: number;
+      defects?: number;
+      brandQuality?: number;
+      reason?: string;
+    };
+    const productFidelity = Math.max(0, Math.min(10, Number(parsed.productFidelity) || 0));
+    const defects = Math.max(0, Math.min(10, Number(parsed.defects) || 0));
+    const brandQuality = Math.max(0, Math.min(10, Number(parsed.brandQuality) || 0));
+    return {
+      productFidelity,
+      defects,
+      brandQuality,
+      total: productFidelity + defects + brandQuality,
+      reason: typeof parsed.reason === 'string' ? parsed.reason : '',
+    };
+  } catch (err) {
+    console.warn('[image-gen] quality gate failed (best-effort):', (err as Error).message);
+    return null;
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// Post-processing : upscale + face restoration via fal
+// ─────────────────────────────────────────────────────────────────────
+// Après génération, on peut passer l'image dans fal-ai/clarity-upscaler qui
+// 1) upscale 2× (résolution supérieure) 2) débruit + resharpe 3) offre une
+// option face_enhancer pour les visages. Coût ~$0.01/image, ~15s.
+//
+// Par défaut on n'upscale que les slots à fort impact visuel (hero, product,
+// avatar). Gallery est skippée sauf si le vendeur active FAL_UPSCALE_GALLERY.
+
+const UPSCALE_ENABLED = process.env.FAL_UPSCALE_ENABLED !== 'false';
+const UPSCALER_MODEL = process.env.FAL_UPSCALER_MODEL || 'fal-ai/clarity-upscaler';
+const UPSCALE_GALLERY = process.env.FAL_UPSCALE_GALLERY === 'true';
+
+/**
+ * Slots qui bénéficient réellement de l'upscale. Gallery est opt-in car ça
+ * multiplie le coût (4 gallery images × $0.01 = +$0.04 par landing) pour un
+ * gain visuel moins critique que sur le hero.
+ */
+function shouldUpscale(slot: ImageSlot): boolean {
+  if (!UPSCALE_ENABLED) return false;
+  if (slot === 'banner') return false; // Ideogram sort déjà en haute qualité
+  if (slot === 'gallery') return UPSCALE_GALLERY;
+  return slot === 'hero' || slot === 'product' || slot === 'avatar' || slot === 'video-poster';
+}
+
+/**
+ * Passe l'image dans clarity-upscaler. Sur avatars, on active `face_enhance`
+ * pour restaurer les visages (GFPGAN interne). Best-effort — en cas d'échec,
+ * on retourne l'URL originale.
+ */
+async function enhanceImage(url: string, slot: ImageSlot): Promise<string> {
+  const key = getFalKey();
+  const isFace = slot === 'avatar';
+  try {
+    const body: Record<string, unknown> = {
+      image_url: url,
+      upscale_factor: 2,
+      // Guidance conservatrice — on veut préserver l'image, pas la ré-inventer.
+      // creativity ∈ [0, 1], resemblance ∈ [0, 1] côté clarity-upscaler.
+      creativity: 0.35,
+      resemblance: 0.95,
+      num_inference_steps: 18,
+      output_format: 'jpeg',
+    };
+    if (isFace) {
+      body.prompt = 'high quality face, natural skin, sharp catchlight, editorial portrait';
+    }
+    const res = await fetch(`${FAL_BASE}/${UPSCALER_MODEL}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Key ${key}` },
+      body: JSON.stringify(body),
+    });
+    if (!res.ok) {
+      console.warn(`[image-gen] upscaler HTTP ${res.status} — using original`);
+      return url;
+    }
+    const out = (await res.json()) as { image?: { url?: string }; images?: Array<{ url?: string }> };
+    const upscaledUrl = out.image?.url || out.images?.[0]?.url;
+    if (!upscaledUrl) {
+      console.warn('[image-gen] upscaler returned no image — using original');
+      return url;
+    }
+    return upscaledUrl;
+  } catch (err) {
+    console.warn('[image-gen] upscaler failed (best-effort):', (err as Error).message);
+    return url;
+  }
 }
 
 export function isAvatarPrompt(prompt: string): boolean {
