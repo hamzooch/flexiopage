@@ -57,6 +57,12 @@ router.put('/settings/ai-pricing', requireSuperAdmin, admin.updateAiPricing);
 // (kind='ai_generation') sur une plage. Lecture admin (tous rôles staff).
 router.get('/ai-consumption', admin.getAiConsumption);
 
+// Statut des fournisseurs IA externes (Anthropic, OpenRouter, OpenAI, FAL).
+// Ne retourne QUE des booleans/modèles publics — aucune clé n'est jamais
+// exposée. Sert à la page /admin/ai-providers qui liste les consoles où le
+// vrai suivi de conso $$$ se fait.
+router.get('/ai-providers', admin.getAiProviders);
+
 // Auth toggles — kill-switch vérification email. Lecture admin, mutation
 // superadmin parce que ça touche à un mécanisme de sécurité du signup.
 router.get('/settings/auth', admin.getAuthSettings);

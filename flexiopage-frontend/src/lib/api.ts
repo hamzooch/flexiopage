@@ -701,6 +701,25 @@ export const adminApi = {
       timeseries: Array<{ date: string; tokens: number; count: number }>;
     }>('/admin/ai-consumption', { params }),
 
+  // ── AI providers ── Statut des fournisseurs IA externes (Anthropic,
+  // OpenRouter, OpenAI, FAL). Retourne uniquement des booleans + modèles
+  // publics — aucune clé n'est jamais exposée.
+  getAiProviders: () =>
+    api.get<{
+      providers: Array<{
+        id: 'anthropic' | 'openrouter' | 'openai' | 'fal';
+        envVar: string;
+        configured: boolean;
+        primaryModel?: string | null;
+        fallbackModel?: string | null;
+        llmModel?: string | null;
+        imageModel?: string | null;
+        avatarModel?: string | null;
+        imagesEnabled?: boolean;
+      }>;
+      checkedAt: string;
+    }>('/admin/ai-providers'),
+
   // ── Auth toggles (admin reads, superadmin writes) ──
   getAuthSettings: () =>
     api.get<{

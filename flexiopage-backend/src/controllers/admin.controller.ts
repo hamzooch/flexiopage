@@ -1418,3 +1418,47 @@ export async function getAiConsumption(req: AuthRequest, res: Response): Promise
     timeseries: timeseriesAgg,
   });
 }
+
+/**
+ * Liste des fournisseurs IA externes utilisés par FlexioPage + statut de
+ * configuration (env vars présentes). Ne retourne JAMAIS les valeurs des
+ * clés — uniquement un boolean `configured` pour chaque, plus les modèles
+ * par défaut qui sont non sensibles.
+ *
+ * Utilisé par la page /admin/ai-providers pour offrir un dashboard unique
+ * de suivi (avec liens vers les consoles Anthropic / OpenAI / OpenRouter /
+ * FAL, où le vrai suivi de conso $$$ se fait).
+ */
+export async function getAiProviders(_req: AuthRequest, res: Response): Promise<void> {
+  res.json({
+    providers: [
+      {
+        id: 'anthropic',
+        envVar: 'ANTHROPIC_API_KEY',
+        configured: !!process.env.ANTHROPIC_API_KEY,
+      },
+      {
+        id: 'openrouter',
+        envVar: 'OPENROUTER_API_KEY',
+        configured: !!process.env.OPENROUTER_API_KEY,
+        primaryModel: process.env.OPENROUTER_MODEL_PRIMARY || null,
+        fallbackModel: process.env.OPENROUTER_MODEL_FALLBACK || null,
+      },
+      {
+        id: 'openai',
+        envVar: 'OPENAI_API_KEY',
+        configured: !!process.env.OPENAI_API_KEY,
+      },
+      {
+        id: 'fal',
+        envVar: 'FAL_KEY',
+        configured: !!process.env.FAL_KEY,
+        llmModel: process.env.FAL_LLM_MODEL || null,
+        imageModel: process.env.FAL_IMAGE_MODEL || null,
+        avatarModel: process.env.FAL_AVATAR_MODEL || null,
+        imagesEnabled: process.env.LANDING_AI_IMAGES_ENABLED !== 'false',
+      },
+    ],
+    checkedAt: new Date().toISOString(),
+  });
+}
