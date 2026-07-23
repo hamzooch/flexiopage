@@ -26,6 +26,7 @@ import { pushOrderToSheets } from '../services/sheets.service';
 import { resolveBundlePricing } from '../lib/bundle';
 import { resolveMarketForRequest, resolveProductPricing } from '../lib/market';
 import { recordEvent, deviceFromUserAgent, classifySource } from '../services/tracking.service';
+import { botstoreChat, type BotstoreMessage } from '../services/botstore.service';
 import mongoose from 'mongoose';
 import jwt from 'jsonwebtoken';
 
@@ -322,6 +323,69 @@ router.get('/store-by-domain', async (req: Request, res: Response): Promise<void
     store: publicSafeStore(store),
     market: { country: market.country, currency: market.currency, source: market.source },
   });
+});
+
+/**
+ * Botstore chat — endpoint public appelé par la bulle de chat sur la
+ * storefront. Reçoit `{ history, message }`, charge le store + ses produits
+ * publiés, et retourne la réponse générée par Claude Haiku 4.5.
+ *
+ * Rate limit : le middleware `rateLimiter` global s'applique déjà — pas de
+ * quota per-store spécifique dans le MVP (à ajouter si abus constaté).
+ */
+router.post('/botstore/:storeSlug/chat', async (req: Request, res: Response): Promise<void> => {
+  const store = await storeService.getStoreBySlug(req.params.storeSlug);
+  if (!store) {
+    res.status(404).json({ error: 'Store not found' });
+    return;
+  }
+  const botCfg = (store.settings as { botstore?: { enabled?: boolean } } | undefined)?.botstore;
+  if (!botCfg?.enabled) {
+    // Volontairement 403 (pas 404) : la boutique existe, mais le vendeur n'a
+    // pas activé le bot. Permet au widget frontend de dégrader silencieusement.
+    res.status(403).json({ error: 'Botstore disabled for this store' });
+    return;
+  }
+
+  const { message, history } = req.body as { message?: unknown; history?: unknown };
+  if (typeof message !== 'string' || !message.trim() || message.length > 2000) {
+    res.status(400).json({ error: 'message required (1-2000 chars)' });
+    return;
+  }
+
+  // Historique : on accepte uniquement des tours user/assistant ; tout le
+  // reste est jeté pour éviter l'injection de rôles inattendus (system, etc.).
+  const cleanHistory: BotstoreMessage[] = Array.isArray(history)
+    ? (history as Array<{ role?: unknown; content?: unknown }>)
+        .filter(
+          (m): m is { role: 'user' | 'assistant'; content: string } =>
+            typeof m?.content === 'string' &&
+            m.content.length > 0 &&
+            m.content.length <= 4000 &&
+            (m.role === 'user' || m.role === 'assistant'),
+        )
+        .map((m) => ({ role: m.role, content: m.content }))
+    : [];
+
+  // Produits publiés (limite haute — la service tronque à MAX_PRODUCTS_IN_CONTEXT).
+  const { products } = await productService.getProductsByStore(store._id.toString(), {
+    publishedOnly: true,
+    limit: 50,
+  });
+
+  try {
+    const result = await botstoreChat({
+      store,
+      products,
+      history: cleanHistory,
+      message: message.trim(),
+    });
+    res.json(result);
+  } catch (err) {
+    // Le service catche déjà les erreurs Claude et renvoie une réponse dégradée
+    // ; ce catch attrape uniquement les erreurs de config (clé API manquante).
+    res.status(503).json({ error: (err as Error).message });
+  }
 });
 
 /** Public products for a store (published only) */

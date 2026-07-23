@@ -192,6 +192,50 @@ export interface IStore extends Document {
       pulse?: boolean;
     };
     /**
+     * Botstore — chatbot IA en direct sur la storefront. Répond aux questions
+     * des clients à partir du contexte du store (nom, description, produits,
+     * livraison, devise). Alternative au bouton WhatsApp classique.
+     *
+     * Fallback WhatsApp : quand activé, la conversation propose un CTA
+     * « Contacter sur WhatsApp » (via `settings.whatsapp.phoneNumber`) au
+     * client si le bot ne peut pas répondre — ou tout le temps si l'option
+     * `alwaysOfferWhatsapp` est activée.
+     */
+    botstore?: {
+      enabled?: boolean;          // default false
+      /**
+       * Ton / personnalité du bot en une phrase — mixé au system prompt.
+       * Exemple : « Amical, tutoie le client, réponds en français simple. »
+       */
+      persona?: string;
+      /**
+       * Consignes libres ajoutées au system prompt (politique retour,
+       * horaires, livraison, promo en cours, etc.). Pas de FAQ structurée
+       * dans le MVP — ça viendra dans un PR suivant.
+       */
+      instructions?: string;
+      /** Où placer la bulle de chat sur la storefront. */
+      position?: 'bottom-right' | 'bottom-left';
+      /** Couleur d'accent de la bulle + entête (hex). */
+      accentColor?: string;
+      /** Texte affiché en 1er message du bot quand le client ouvre le chat. */
+      greeting?: string;
+      /** Label du bouton (mobile bar / FAB tooltip). */
+      launcherLabel?: string;
+      whatsappFallback?: {
+        /** Master switch. Si false, aucun CTA WhatsApp ne s'affiche dans le chat. */
+        enabled?: boolean;
+        /**
+         * Quand true, le CTA WhatsApp est proposé à chaque réponse du bot.
+         * Quand false, on l'affiche uniquement si le bot signale qu'il ne
+         * sait pas répondre.
+         */
+        alwaysOffer?: boolean;
+        /** Texte du CTA (défaut « Discuter avec un humain sur WhatsApp »). */
+        ctaLabel?: string;
+      };
+    };
+    /**
      * Notifications automatiques envoyées au client par WhatsApp aux moments
      * clés du cycle de vie d'une commande (création, confirmation, dispatch).
      * Utilise la session WasenderAPI déjà connectée pour le chatbot vendeur —
@@ -685,6 +729,24 @@ const StoreSchema = new Schema<IStore>(
         },
         accentColor: { type: String, trim: true },
         pulse: { type: Boolean, default: true },
+      },
+      botstore: {
+        enabled: { type: Boolean, default: false },
+        persona: { type: String, trim: true },
+        instructions: { type: String },
+        position: {
+          type: String,
+          enum: ['bottom-right', 'bottom-left'],
+          default: 'bottom-right',
+        },
+        accentColor: { type: String, trim: true },
+        greeting: { type: String, trim: true },
+        launcherLabel: { type: String, trim: true },
+        whatsappFallback: {
+          enabled: { type: Boolean, default: true },
+          alwaysOffer: { type: Boolean, default: false },
+          ctaLabel: { type: String, trim: true },
+        },
       },
       clientNotifications: {
         enabled: { type: Boolean, default: false },

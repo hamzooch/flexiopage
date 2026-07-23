@@ -17,6 +17,7 @@ import type { Metadata } from 'next';
 import { cookies } from 'next/headers';
 import { mediaUrl, storeAbsoluteUrl } from '@/lib/utils';
 import { WhatsappButton, type WhatsappConfig } from '@/components/storefront/whatsapp-button';
+import { BotstoreWidget, type BotstoreConfig } from '@/components/storefront/botstore-widget';
 import { NewsletterPopup, type NewsletterConfig } from '@/components/storefront/newsletter-popup';
 import { SalesPopup, type SalesPopupConfig } from '@/components/storefront/sales-popup';
 import { LocaleBootstrap } from '@/components/storefront/locale-bootstrap';
@@ -43,6 +44,7 @@ interface StoreLite {
   slug?: string;
   settings?: {
     whatsapp?: WhatsappConfig;
+    botstore?: BotstoreConfig;
     newsletter?: NewsletterConfig;
     salesPopup?: SalesPopupConfig;
     language?: string;
@@ -167,11 +169,23 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 export default async function StoreLayout({ children, params }: Props) {
   const { storeSlug } = await params;
   const store = await fetchStore(storeSlug);
+  // Botstore vs bouton WhatsApp : mutuellement exclusifs à l'affichage pour
+  // éviter deux bulles flottantes qui se chevauchent. Quand le Botstore est
+  // actif, il porte lui-même le CTA WhatsApp (fallback dans la conversation).
+  const botstoreActive = !!store?.settings?.botstore?.enabled;
   return (
     <>
       <LocaleBootstrap storeSlug={storeSlug} defaultLocale={store?.settings?.language} />
       {children}
-      <WhatsappButton config={store?.settings?.whatsapp} />
+      {botstoreActive ? (
+        <BotstoreWidget
+          storeSlug={storeSlug}
+          config={store?.settings?.botstore}
+          whatsapp={store?.settings?.whatsapp}
+        />
+      ) : (
+        <WhatsappButton config={store?.settings?.whatsapp} />
+      )}
       <NewsletterPopup
         storeSlug={storeSlug}
         storeName={store?.name}

@@ -12,7 +12,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { storesApi, messengerBotApi, whatsappBotApi } from '@/lib/api';
 import { useStoreStore } from '@/stores/store-store';
 import { Button } from '@/components/ui/button';
@@ -20,13 +20,10 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { cn } from '@/lib/utils';
 import { PageHeader } from '@/components/dashboard/page-header';
+import { APPS, type AppDef, type AppId } from '@/lib/apps-catalog';
 import {
   AppWindow,
   FileSpreadsheet,
-  Mail,
-  Bell,
-  Zap,
-  MessageSquare,
   Loader2,
   Save,
   Sparkles,
@@ -35,7 +32,6 @@ import {
   AlertTriangle,
   ArrowLeft,
   Plug,
-  Bot,
   ShoppingBag,
   Plus,
   Trash2,
@@ -62,120 +58,24 @@ interface StoreDoc {
   };
   settings?: {
     salesPopup?: SalesPopupSettings;
+    botstore?: { enabled?: boolean };
   };
 }
 
-type AppId = 'google-sheets' | 'mailchimp' | 'slack' | 'zapier' | 'discord' | 'messenger-bot' | 'whatsapp-bot' | 'telegram-bot' | 'sales-popup' | 'whatsapp-notifications';
-
-interface AppDef {
-  id: AppId;
-  name: string;
-  description: string;
-  category: 'Productivity' | 'Marketing' | 'Notifications' | 'Automation';
-  icon: React.ComponentType<{ className?: string }>;
-  accent: string;
-  available: boolean;
-}
-
-const APPS: AppDef[] = [
-  {
-    id: 'messenger-bot',
-    name: 'Messenger Bot',
-    description: 'Chatbot IA qui répond en darija/français et crée les commandes COD depuis ta page Facebook.',
-    category: 'Automation',
-    icon: Bot,
-    accent: 'from-blue-500 to-indigo-600',
-    available: true,
-  },
-  {
-    id: 'whatsapp-bot',
-    name: 'WhatsApp Bot',
-    description: 'Même assistant IA, sur WhatsApp : répond aux clients et crée les commandes COD automatiquement.',
-    category: 'Automation',
-    icon: MessageSquare,
-    accent: 'from-green-500 to-emerald-600',
-    available: true,
-  },
-  {
-    id: 'telegram-bot',
-    name: 'Telegram Bot',
-    description: 'Notifications de commandes, messages et alertes directement sur Telegram. Gratuit!',
-    category: 'Notifications',
-    icon: MessageSquare,
-    accent: 'from-sky-500 to-blue-600',
-    available: true,
-  },
-  {
-    id: 'sales-popup',
-    name: 'Sales Popup',
-    description: 'Preuve sociale : petite notif qui affiche les achats récents à chaque visiteur de ta boutique.',
-    category: 'Marketing',
-    icon: ShoppingBag,
-    accent: 'from-pink-500 to-rose-600',
-    available: true,
-  },
-  {
-    id: 'whatsapp-notifications',
-    name: 'Notifications Client WhatsApp',
-    description: 'Envoie auto un WhatsApp au client à la création, confirmation et dispatch de sa commande. Utilise la session du chatbot.',
-    category: 'Notifications',
-    icon: Bell,
-    accent: 'from-emerald-500 to-teal-600',
-    available: true,
-  },
-  {
-    id: 'google-sheets',
-    name: 'Google Sheets',
-    description: 'Pousse chaque commande vers une feuille de calcul Google.',
-    category: 'Productivity',
-    icon: FileSpreadsheet,
-    accent: 'from-emerald-500 to-green-600',
-    available: true,
-  },
-  {
-    id: 'mailchimp',
-    name: 'Mailchimp',
-    description: 'Synchronise tes clients vers ta liste d\'emails.',
-    category: 'Marketing',
-    icon: Mail,
-    accent: 'from-amber-500 to-orange-600',
-    available: false,
-  },
-  {
-    id: 'slack',
-    name: 'Slack',
-    description: 'Reçois une notif Slack à chaque nouvelle commande.',
-    category: 'Notifications',
-    icon: MessageSquare,
-    accent: 'from-violet-500 to-purple-600',
-    available: false,
-  },
-  {
-    id: 'discord',
-    name: 'Discord',
-    description: 'Notifications dans ton serveur Discord.',
-    category: 'Notifications',
-    icon: Bell,
-    accent: 'from-indigo-500 to-blue-600',
-    available: false,
-  },
-  {
-    id: 'zapier',
-    name: 'Zapier',
-    description: 'Connecte ta boutique à 5 000+ apps via webhook.',
-    category: 'Automation',
-    icon: Zap,
-    accent: 'from-orange-500 to-red-600',
-    available: false,
-  },
-];
-
 export default function AppsPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { currentStoreId, setCurrentStore } = useStoreStore();
   const [stores, setStores] = useState<StoreDoc[]>([]);
   const [loading, setLoading] = useState(true);
-  const [openApp, setOpenApp] = useState<AppId | null>(null);
+  // Ouverture inline utilisée par les apps qui n'ont pas de page dédiée
+  // (Google Sheets, Sales Popup). Initialisée depuis `?open=<id>` — la page
+  // détail y renvoie via son bouton « Installer », ce qui recrée un flux
+  // cohérent : carte → détail → installer → configurateur inline.
+  const initialOpen = searchParams.get('open') as AppId | null;
+  const [openApp, setOpenApp] = useState<AppId | null>(
+    initialOpen === 'google-sheets' || initialOpen === 'sales-popup' ? initialOpen : null,
+  );
   /**
    * Statut de connexion des apps qui vivent en dehors du modèle Store (les
    * bots dépendent de leur propre BotConfig). On fetch en arrière-plan une
@@ -273,6 +173,8 @@ export default function AppsPage() {
         return !!activeStore.settings?.salesPopup?.enabled;
       case 'whatsapp-notifications':
         return !!(activeStore.settings as { clientNotifications?: { enabled?: boolean } } | undefined)?.clientNotifications?.enabled;
+      case 'botstore':
+        return !!activeStore.settings?.botstore?.enabled;
       default:
         return false;
     }
@@ -280,12 +182,28 @@ export default function AppsPage() {
 
   const installedApps = APPS.filter((a) => connected(a.id));
 
+  /**
+   * Router les cartes selon l'état :
+   *   - App INSTALLÉE → route directe vers l'écran de config (raccourci
+   *     « Gérer » — pas besoin de re-lire la fiche marketing).
+   *   - App AVAILABLE mais pas installée → route vers /browse/<id> (fiche
+   *     descriptive + bouton Installer).
+   *   - Apps inline (google-sheets, sales-popup) déjà installées → ouverture
+   *     inline directe.
+   */
   const openAppHandler = (id: AppId) => {
-    if (id === 'messenger-bot') router.push(`/dashboard/apps/messenger-bot?storeId=${activeStore._id}`);
-    else if (id === 'whatsapp-bot') router.push(`/dashboard/apps/whatsapp-bot?storeId=${activeStore._id}`);
-    else if (id === 'telegram-bot') router.push(`/dashboard/apps/telegram-bot`);
-    else if (id === 'whatsapp-notifications') router.push(`/dashboard/apps/whatsapp-notifications?storeId=${activeStore._id}`);
-    else setOpenApp(id);
+    const isConnected = connected(id);
+    if (isConnected) {
+      if (id === 'messenger-bot') router.push(`/dashboard/apps/messenger-bot?storeId=${activeStore._id}`);
+      else if (id === 'whatsapp-bot') router.push(`/dashboard/apps/whatsapp-bot?storeId=${activeStore._id}`);
+      else if (id === 'telegram-bot') router.push(`/dashboard/apps/telegram-bot`);
+      else if (id === 'whatsapp-notifications') router.push(`/dashboard/apps/whatsapp-notifications?storeId=${activeStore._id}`);
+      else if (id === 'botstore') router.push(`/dashboard/apps/botstore?storeId=${activeStore._id}`);
+      else setOpenApp(id); // google-sheets, sales-popup — configuration inline
+      return;
+    }
+    // Pas installée : passe par la fiche descriptive avant d'installer.
+    router.push(`/dashboard/apps/browse/${id}`);
   };
 
   return (
