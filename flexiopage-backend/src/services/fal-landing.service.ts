@@ -22,7 +22,9 @@ import type { TemplateSection } from '../data/landing-templates';
 import {
   generateImagesParallel,
   isBannerPrompt,
+  classifyCategory,
   type ImageGenInput,
+  type CategoryClass,
 } from './image-generation.service';
 import { persistRemoteImage } from './storage.service';
 
@@ -601,6 +603,163 @@ async function falQueueRequest<T>(
 }
 
 // ─────────────────────────────────────────────────────────────────────
+// Templates par catégorie — structure de landing éprouvée par verticale
+// ─────────────────────────────────────────────────────────────────────
+// Chaque catégorie (beauty / fashion / tech / food / luxury) a un funnel
+// qui convertit mieux qu'une structure générique. Le template définit
+// l'ordre de sections idéal + les points de focus copywriting. Le LLM
+// reçoit ces instructions PAR-DESSUS le schema générique — il compose
+// alors dans l'ordre optimal pour la catégorie détectée.
+//
+// Sources : patterns observés sur les top landings DTC 2024-2025 (Curology,
+// Glossier, Away, Warby Parker, Kettle & Fire, Loewe, Aesop). Les "focus"
+// sont extraits des messages qui reviennent le plus dans leurs meilleurs
+// hero + testimonials.
+
+interface CategoryTemplate {
+  /** Ordre de sections recommandé (le LLM peut ajuster mais doit s'en approcher). */
+  sectionOrder: string[];
+  /** Focus copywriting court : ce que la copy doit absolument transmettre. */
+  focus: string;
+  /** Angles hero éprouvés pour la catégorie — few-shots pour l'ouverture. */
+  heroAngles: string;
+}
+
+const CATEGORY_TEMPLATES: Record<CategoryClass, CategoryTemplate> = {
+  beauty: {
+    sectionOrder: ['hero', 'features', 'gallery', 'steps', 'testimonials', 'stats', 'cod-form', 'faq', 'cta'],
+    focus:
+      'Transformation visible (avant/après implicite), résultats dans un TIMELINE clair (7j, 14j, 30j), ingrédients transparents, sécurité rassurante. La preuve sociale doit inclure un chiffre de satisfaction ("94% des utilisatrices…"). Le hero attaque un point de douleur physique concret (teint terne, boutons, dents jaunes), pas un désir abstrait.',
+    heroAngles: [
+      'Star-Problem-Solution : "Ton [zone] mérite mieux que [problème actuel]. Le [produit] transforme ça en [résultat] en [délai]."',
+      'Result-first : "Une peau visiblement plus lumineuse en 7 jours. Sans irritation, sans effet rebond."',
+      'Before-After tease : "Ce que 12 000 femmes marocaines ont changé dans leur routine — et pourquoi ça marche vraiment."',
+    ].join('\n  '),
+  },
+  fashion: {
+    sectionOrder: ['hero', 'gallery', 'features', 'testimonials', 'brands', 'stats', 'cod-form', 'faq', 'cta'],
+    focus:
+      'Style + occasion (quand/où tu vas le porter), fit et taille précis (avec guide taille dans FAQ), matière détaillée, versatilité styling. Pas de blabla "premium" — décris la matière, la coupe, la finition. Le hero doit projeter l\'acheteur portant le produit dans SA vie, pas dans un studio parisien fictif.',
+    heroAngles: [
+      'Occasion-first : "L\'ensemble que tu vas porter du bureau au dîner sans changer."',
+      'Style-story : "Coupe italienne, cuir tanné à la main, prix qui reste correct."',
+      'Confidence-hook : "Les compliments commencent avant même que tu ouvres la bouche."',
+    ].join('\n  '),
+  },
+  electronics: {
+    sectionOrder: ['hero', 'product', 'video', 'features', 'stats', 'gallery', 'testimonials', 'cod-form', 'faq', 'cta'],
+    focus:
+      'Bénéfice concret AVANT la spec (pas "batterie 5000mAh" mais "2 jours d\'autonomie sans recharger"). Vidéo démo courte, compatibilité listée (marques, systèmes), garantie explicite. La FAQ doit couvrir 5 questions techniques réalistes (autonomie, connectivité, réparation, compatibilité, retour).',
+    heroAngles: [
+      'Benefit-over-spec : "2 jours d\'autonomie. Chargement 15 min. Tiens dans une poche."',
+      'Problem-solve : "Fatigué que ton chargeur casse tous les 3 mois ? Celui-ci est garanti 2 ans."',
+      'Use-case direct : "Le compagnon de voyage qui règle 90% des galères de câble."',
+    ].join('\n  '),
+  },
+  food: {
+    sectionOrder: ['hero', 'features', 'stats', 'gallery', 'steps', 'testimonials', 'cod-form', 'faq', 'cta'],
+    focus:
+      'Bénéfice santé mesurable + ingrédients naturels + traçabilité. Rassure sur la sécurité (certifications, tests, dosage). Le FAQ doit être une réponse HONNÊTE aux objections santé (effets secondaires, contre-indications, quand voir résultats). Ne surpromets JAMAIS ("perdez 10 kg en 7 jours" = interdit).',
+    heroAngles: [
+      'Benefit + timeframe : "Plus d\'énergie dès la 2e semaine. Sans sucre ajouté, sans caféine."',
+      'Ingredient-first : "3 super-aliments marocains. 1 sachet par jour. Résultat visible en 21 jours."',
+      'Anti-pattern hook : "Les compléments qui promettent tout ne tiennent rien. Voilà ce qu\'on peut vraiment prouver."',
+    ].join('\n  '),
+  },
+  luxury: {
+    sectionOrder: ['hero', 'features', 'gallery', 'brands', 'testimonials', 'video', 'cod-form', 'faq', 'cta'],
+    focus:
+      'Craftsmanship + héritage + rareté + histoire. Pas de "premium" — décris LE savoir-faire spécifique (tannage végétal 21 jours, cousu main, atelier familial depuis 1960). La preuve sociale doit venir de figures d\'autorité (presse, célébrités locales) plus que de clients anonymes.',
+    heroAngles: [
+      'Heritage-story : "Cousu main à Fès depuis 1960. Chaque pièce prend 3 jours à un artisan."',
+      'Rarity-hook : "Édition de 200 exemplaires. Numérotés. Livrés avec le certificat de l\'artisan."',
+      'Ritual : "Pour ceux qui savent que le luxe n\'est pas un logo, c\'est un détail."',
+    ].join('\n  '),
+  },
+  generic: {
+    // Structure par défaut — le LLM garde sa logique actuelle.
+    sectionOrder: [],
+    focus: '',
+    heroAngles: '',
+  },
+};
+
+/**
+ * Frameworks copywriting DTC éprouvés. Injectés au system prompt pour que le
+ * LLM utilise des structures qui convertissent (PAS, BAB, SSS, AIDA) au lieu
+ * de sa moyenne corporate. Universel — pas spécifique à une catégorie.
+ */
+const DTC_COPY_FORMULAS = `
+# 🧠 FRAMEWORKS COPY À UTILISER (obligatoire — pas de copy générique)
+
+## HERO — Utilise PAS (Problem → Agitate → Solve)
+   Structure :
+     Ligne 1 (title) : Nomme le problème du prospect en 6-11 mots avec un angle spécifique
+     Ligne 2 (subtitle, partie 1) : Amplifie la douleur — décris CE QU'IL RESSENT dans son quotidien
+     Ligne 2 (subtitle, partie 2) : Introduis la solution avec un chiffre/preuve concret
+   Exemple beauty : "Ton sourire mérite mieux que du blanchiment agressif." / "94% des rouges à dents sont abrasifs. Notre kit V34 blanchit en 14 jours SANS abîmer l'émail — validé par 12 000 utilisatrices."
+   Exemple tech    : "Ton chargeur casse tous les 3 mois." / "C'est normal — les câbles standards sont conçus pour tenir 200 branchements. Le nôtre en tient 8 000, garanti 2 ans."
+
+## FEATURES — Utilise BAB (Before → After → Bridge) sur chaque item
+   Structure : titre = le RÉSULTAT concret, description = le BÉNÉFICE + le POURQUOI CE PRODUIT le délivre
+   Bad  : "Qualité premium" — "Fabriqué avec des matériaux de haute qualité"
+   Good : "Ne casse pas au 3e mois" — "Testé sur 10 000 cycles. Cuir véritable, coutures renforcées — pas de plastique premier prix qui craque au premier hiver."
+
+## TESTIMONIALS — Utilise SSS (Star → Story → Solution) dans chaque quote
+   Star     : présente le témoin (nom, âge, ville, situation initiale)
+   Story    : décris SON problème avant (2 phrases spécifiques)
+   Solution : le déclic + le résultat mesurable après X temps
+   Exemple : "Sarah (32 ans, Casablanca) avait honte de sourire depuis 2 ans à cause de ses dents jaunies par le café. Après 3 semaines avec le kit V34, elle poste des selfies sourire ouvert sur Instagram — et 4 amies lui ont demandé la marque."
+
+## CTA — Utilise AIDA (Attention → Interest → Desire → Action)
+   title      (Attention) : STOP-scroll — question directe ou fait choquant
+   subtitle   (Interest+Desire) : la promesse + l'urgence crédible + la levée d'objection COD
+   buttonText (Action) : verbe direct à la 2e personne + bénéfice ("Reçois le mien", pas "Acheter")
+   urgency    : chiffre crédible ("38 pièces restantes", "réappro dans 2 semaines"), JAMAIS "vite vite"
+
+## FAQ — Adresse les VRAIES objections COD, pas des questions marketing bidon
+   Les 5 questions doivent couvrir dans cet ordre :
+   1. Prix + comment payer (COD, retard, refus)
+   2. Livraison (délai, ville de livraison, ce qui se passe si absent)
+   3. Qualité + garantie (si ça casse, si ça ne convient pas)
+   4. Retour + remboursement (procédure concrète, pas de blabla)
+   5. Une objection spécifique à la CATÉGORIE (allergie pour beauty, taille pour fashion, compatibilité pour tech…)
+
+# ❌ INTERDIT dans TOUT le copy :
+   - Mots vides : "premium", "exception", "univers", "expérience", "engagement", "excellence", "innovation"
+   - Impératifs vides : "Achetez maintenant !", "Découvrez !", "Profitez !"
+   - Slogans "nous vous proposons", "notre engagement", "chez [marque], on croit que…"
+   - Superlatifs non prouvés : "meilleur du marché", "le plus efficace"
+
+# ✅ OBLIGATOIRE partout :
+   - Chiffres spécifiques (94%, 12 000 clients, 21 jours, 2 semaines)
+   - 2e personne directe (tu/إنتي/إنت — jamais "vous" sauf B2B explicite)
+   - Nom de ville locale au moins 2 fois dans la page (Casablanca, Dakar, Tunis, Alger, etc.)
+   - Levée d'objection COD dans hero + testimonial + FAQ + CTA
+`;
+
+/**
+ * Récupère le template landing pour une catégorie donnée. Retourne un objet
+ * vide pour 'generic' → le LLM garde sa liberté par défaut.
+ */
+function getCategoryTemplateBlock(category?: string): string {
+  const cls = classifyCategory(category);
+  const tpl = CATEGORY_TEMPLATES[cls];
+  if (cls === 'generic' || !tpl.sectionOrder.length) return '';
+  return `
+# 📐 TEMPLATE STRUCTURE — CATÉGORIE DÉTECTÉE : ${cls.toUpperCase()}
+Ordre de sections recommandé (à respecter — c'est le funnel qui convertit pour cette catégorie) :
+  ${tpl.sectionOrder.join(' → ')}
+
+Focus copywriting spécifique à la catégorie :
+${tpl.focus}
+
+Angles hero éprouvés (mime l'un des 3, ne copie pas les mots — adapte au produit) :
+  ${tpl.heroAngles}
+`;
+}
+
+// ─────────────────────────────────────────────────────────────────────
 // PROMPT v2 — dialect-precise + image prompt slots
 // ─────────────────────────────────────────────────────────────────────
 function buildPrompt(input: FalGenerateInput, language: string, direction: 'ltr' | 'rtl'): string {
@@ -899,6 +1058,12 @@ FAQ (Maroc FR):
   - Zéro mot-jargon : pas de "premium", "exception", "engagement", "expérience", "univers"
 ` : '';
 
+  // Templates + frameworks copywriting — injectés avant le schema pour
+  // que le LLM voie d'abord LA STRUCTURE optimale (template catégorie) et
+  // LES FORMULES qui convertissent (PAS / BAB / SSS / AIDA), puis compose
+  // dans le schema générique en respectant ces contraintes.
+  const categoryTemplateBlock = getCategoryTemplateBlock(input.category);
+
   return `You are an elite conversion copywriter who has written 800+ winning COD dropshipping landing pages for the Maghreb and West Africa markets. Your voice is direct, vivid, locally idiomatic, and obsessively specific — never corporate, never generic. You think in scrolls and tap-zones, not in paragraphs. You output ONE valid JSON object only.
 
 # Brand
@@ -914,6 +1079,7 @@ ${pageKind}${productPageRules}
 # Product
 ${productBlock}
 ${priceLines ? `\n# Pricing\n${priceLines}` : ''}${imageBlock}
+${categoryTemplateBlock}${DTC_COPY_FORMULAS}
 ${arabFewShots}${frenchFewShots}
 # Section schema
 ${sectionsSchema}

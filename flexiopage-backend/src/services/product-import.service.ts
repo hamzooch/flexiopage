@@ -355,7 +355,86 @@ async function fetchViaJina(url: string): Promise<string> {
       responseType: 'text',
       transformResponse: (data) => data, // évite le auto-parse JSON
       maxContentLength: 8 * 1024 * 1024,
+      // Accepte tous les status pour parser le corps d'erreur nous-mêmes
+      // (Jina renvoie ses erreurs en JSON avec des detail exploitables).
+      validateStatus: () => true,
     });
+    // Jina renvoie ses erreurs en JSON avec des codes parlants — on les
+    // parse pour donner un message actionnable au vendeur/admin plutôt
+    // qu'un opaque 502. Les cas fréquents :
+    //   403 + AbuseAlleviationError : le domaine est banni en anonyme →
+    //     l'admin doit configurer JINA_API_KEY pour ré-attribuer les
+    //     requêtes à son compte.
+    //   422 + SubmittedDataMalformedError : URL non résolue (DNS/typo).
+    //   429 : rate-limit du free-tier → JINA_API_KEY débloque.
+    if (res.status < 200 || res.status >= 300) {
+      // Jina renvoie ses erreurs sous DEUX formats selon l'Accept :
+      //   - JSON `{ code, name, message }` quand Accept: application/json
+      //   - PLAIN TEXT `"AbuseAlleviationError: <message>"` quand Accept: text/plain
+      //     (comportement observé — c'est notre cas puisqu'on demande du markdown).
+      // On gère les 2 pour surfacer un motif précis.
+      let jinaCode: string | undefined;
+      let jinaMsg: string | undefined;
+      const raw = typeof res.data === 'string' ? res.data : String(res.data || '');
+      if (raw.trim().startsWith('{')) {
+        try {
+          const parsed = JSON.parse(raw) as { code?: number; name?: string; message?: string };
+          jinaCode = parsed.name;
+          jinaMsg = parsed.message;
+        } catch { /* pas de JSON exploitable */ }
+      } else if (res.data && typeof res.data === 'object') {
+        const p = res.data as { name?: string; message?: string };
+        jinaCode = p.name;
+        jinaMsg = p.message;
+      } else {
+        // Format plain text : "<ErrorName>: <message>"
+        const m = raw.match(/^([A-Za-z]+Error):\s*(.+)$/s);
+        if (m) {
+          jinaCode = m[1];
+          jinaMsg = m[2].trim();
+        }
+      }
+
+      // Blocage anti-abuse : le seul remède est de configurer une clé Jina.
+      if (jinaCode === 'AbuseAlleviationError' && !process.env.JINA_API_KEY) {
+        const domain = (() => {
+          try { return new URL(url).hostname; } catch { return 'ce domaine'; }
+        })();
+        logger.warn(
+          { url, domain, jinaMsg },
+          '[product-import] Jina bloque le domaine en anonyme — configure JINA_API_KEY',
+        );
+        throw new ImportError(
+          `Jina Reader a bloqué l'accès anonyme à ${domain} (abus signalé sur ce domaine par un autre utilisateur). ` +
+          `Solution : ajoute JINA_API_KEY dans .env (clé gratuite sur https://jina.ai/reader/). ` +
+          `Avec une clé, les requêtes sont attribuées à ton compte et le blocage anonyme ne s'applique plus.`,
+          502,
+        );
+      }
+      // Autres 403/429 : on donne quand même un indice utile.
+      if (res.status === 403 || res.status === 429) {
+        logger.warn(
+          { url, status: res.status, jinaCode, jinaMsg },
+          '[product-import] Jina refuse la requête',
+        );
+        throw new ImportError(
+          `Jina Reader a refusé la requête (HTTP ${res.status}${jinaCode ? ` — ${jinaCode}` : ''}). ` +
+          `${!process.env.JINA_API_KEY ? 'Ajouter JINA_API_KEY dans .env peut résoudre le blocage (free-tier généreux sur https://jina.ai/reader/). ' : ''}` +
+          (jinaMsg || 'Sans détail supplémentaire.'),
+          502,
+        );
+      }
+      // 4xx/5xx génériques.
+      logger.warn(
+        { url, status: res.status, jinaCode, jinaMsg },
+        '[product-import] Jina Reader échec',
+      );
+      throw new ImportError(
+        `Jina Reader n'a pas pu lire la page (HTTP ${res.status}${jinaCode ? ` — ${jinaCode}` : ''}). ${jinaMsg || ''}`.trim(),
+        502,
+      );
+    }
+
     const md = typeof res.data === 'string' ? res.data : String(res.data);
     if (!md || md.length < 200) {
       throw new ImportError('Jina Reader a renvoyé une page vide.', 502);
@@ -363,8 +442,8 @@ async function fetchViaJina(url: string): Promise<string> {
     return md.slice(0, JINA_MAX_CHARS);
   } catch (err) {
     if (err instanceof ImportError) throw err;
-    logger.warn({ err: (err as Error).message, url }, '[product-import] Jina Reader échec');
-    throw new ImportError('Impossible de récupérer la page via Jina.', 502);
+    logger.warn({ err: (err as Error).message, url }, '[product-import] Jina Reader échec (réseau/timeout)');
+    throw new ImportError('Impossible de récupérer la page via Jina (réseau/timeout).', 502);
   }
 }
 
@@ -452,16 +531,25 @@ async function extractWithLLM(
 
 /**
  * Pipeline Jina + LLM : récupère le markdown puis fait extraire par Claude.
- * Retourne `null` si l'un des deux échoue (pour laisser l'appelant remonter
- * une erreur claire au vendeur).
+ * Retourne { product | null, error? } — l'appelant peut remonter le motif
+ * précis (blocage anti-abuse, DNS, LLM manquant, etc.) au lieu du générique
+ * "impossible d'extraire".
  */
-async function fetchViaJinaLLM(url: string, source: ImportSource): Promise<ImportedProduct | null> {
+async function fetchViaJinaLLM(
+  url: string,
+  source: ImportSource,
+): Promise<{ product: ImportedProduct | null; error?: string }> {
   try {
     const markdown = await fetchViaJina(url);
-    return await extractWithLLM(markdown, url, source);
+    const product = await extractWithLLM(markdown, url, source);
+    if (!product) {
+      return { product: null, error: 'Claude Haiku n\'a rien extrait d\'exploitable du markdown Jina.' };
+    }
+    return { product };
   } catch (err) {
-    logger.warn({ err: (err as Error).message, url }, '[product-import] Jina+LLM pipeline échec');
-    return null;
+    const message = (err as Error).message;
+    logger.warn({ err: message, url }, '[product-import] Jina+LLM pipeline échec');
+    return { product: null, error: message };
   }
 }
 
@@ -498,6 +586,10 @@ export async function extractProductFromUrl(rawUrl: string): Promise<ImportedPro
     images: [],
   };
   let data = empty;
+  // Dernière raison d'échec (Jina blocage, LLM manquant, HTTP 404, etc.) —
+  // remontée dans le message d'erreur final pour que le vendeur/admin voit
+  // exactement où le pipeline a bloqué (au lieu du générique "impossible").
+  let lastError: string | undefined;
 
   // Stratégie de cascade :
   //   - Marketplaces connus (AliExpress/Alibaba/Amazon) : Cheerio en premier
@@ -513,6 +605,7 @@ export async function extractProductFromUrl(rawUrl: string): Promise<ImportedPro
       const html = await fetchHtml(url);
       data = extractFreeFromHtml(html, source, url);
     } catch (err) {
+      lastError = `Fetch direct: ${(err as Error).message}`;
       logger.info(
         { url, err: (err as Error).message },
         '[product-import] fetch direct impossible — bascule fallback Jina/LLM',
@@ -522,16 +615,19 @@ export async function extractProductFromUrl(rawUrl: string): Promise<ImportedPro
     if (!data.title || data.images.length === 0) {
       const viaApi = await fetchViaScraperApi(url, source);
       if (viaApi) data = mergePreferring(viaApi, data);
+      else if (process.env.PRODUCT_SCRAPER_API_URL) lastError = 'ScraperAPI tiers a échoué';
     }
 
     if (!data.title || data.images.length === 0) {
-      const viaLlm = await fetchViaJinaLLM(url, source);
+      const { product: viaLlm, error } = await fetchViaJinaLLM(url, source);
       if (viaLlm) data = mergePreferring(viaLlm, data);
+      else if (error) lastError = error;
     }
   } else {
     // 'other' → Jina+LLM d'abord (extraction AI = source de vérité).
-    const viaLlm = await fetchViaJinaLLM(url, source);
+    const { product: viaLlm, error } = await fetchViaJinaLLM(url, source);
     if (viaLlm) data = viaLlm;
+    else if (error) lastError = error;
 
     // Complète avec ce que Cheerio peut ajouter (rare mais bonus quand
     // l'HTML a un beau JSON-LD Product). On MERGE en préférant le LLM.
@@ -552,8 +648,12 @@ export async function extractProductFromUrl(rawUrl: string): Promise<ImportedPro
   }
 
   if (!data.title && data.images.length === 0) {
+    // On remonte la vraie raison au vendeur/admin — pas juste "impossible".
+    // Ça permet de savoir immédiatement s'il faut ajouter JINA_API_KEY, si
+    // c'est un DNS bidon, ou si le LLM a bug.
+    const detail = lastError ? `\n\nDétail : ${lastError}` : '';
     throw new ImportError(
-      "Impossible d'extraire les infos de ce lien. Vérifie l'URL, ou ajoute le produit manuellement.",
+      `Impossible d'extraire les infos de ce lien. Vérifie l'URL, ou ajoute le produit manuellement.${detail}`,
       422,
     );
   }

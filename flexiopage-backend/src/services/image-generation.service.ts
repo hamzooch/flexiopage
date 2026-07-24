@@ -500,7 +500,7 @@ export async function generateImagesParallel(
 // Les catégories acceptent des synonymes multilingues (fr/en/ar romanisé)
 // pour matcher les tags que le vendeur pose sur ses produits.
 
-type CategoryClass = 'luxury' | 'fashion' | 'beauty' | 'food' | 'electronics' | 'generic';
+export type CategoryClass = 'luxury' | 'fashion' | 'beauty' | 'food' | 'electronics' | 'generic';
 
 const CATEGORY_KEYWORDS: Array<{ class: CategoryClass; patterns: RegExp[] }> = [
   {
@@ -800,6 +800,88 @@ async function enhanceImage(url: string, slot: ImageSlot): Promise<string> {
     console.warn('[image-gen] upscaler failed (best-effort):', (err as Error).message);
     return url;
   }
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// Cleanup des images produit scrapées (AliExpress / Alibaba / Amazon)
+// ─────────────────────────────────────────────────────────────────────
+// Les images scrapées arrivent souvent avec fond chargé, watermarks
+// chinois/logos vendeur, résolution moyenne. Sans traitement, elles se
+// retrouvent telles quelles dans les cartes produit du storefront et
+// affaiblissent la perception qualité.
+//
+// Le pipeline en 2 étapes :
+//   1. Background removal (fal-ai/imageutils/rembg) — isole le produit
+//      sur fond transparent → propre pour e-commerce, ~$0.001/image.
+//   2. Upscale (clarity-upscaler) — ×2 résolution, denoise, resharpe,
+//      atténue les micro-watermarks. ~$0.01/image.
+//
+// Total : ~$0.011/image, ~$0.05 pour un import de 4-6 images.
+// Env off pour désactiver : PRODUCT_IMAGE_CLEANUP_ENABLED=false
+
+const IMAGE_CLEANUP_ENABLED = process.env.PRODUCT_IMAGE_CLEANUP_ENABLED !== 'false';
+const BG_REMOVAL_MODEL = process.env.FAL_BG_REMOVAL_MODEL || 'fal-ai/imageutils/rembg';
+
+/**
+ * Retire le fond d'une image via fal. Retourne l'URL de la version cutout.
+ * Best-effort : retourne l'URL originale en cas d'échec réseau/API.
+ */
+async function removeBackground(url: string): Promise<string> {
+  const key = getFalKey();
+  try {
+    const res = await fetch(`${FAL_BASE}/${BG_REMOVAL_MODEL}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Key ${key}` },
+      body: JSON.stringify({ image_url: url }),
+    });
+    if (!res.ok) {
+      console.warn(`[image-cleanup] bg removal HTTP ${res.status} — using original`);
+      return url;
+    }
+    const out = (await res.json()) as { image?: { url?: string }; images?: Array<{ url?: string }> };
+    const cutoutUrl = out.image?.url || out.images?.[0]?.url;
+    if (!cutoutUrl) {
+      console.warn('[image-cleanup] bg removal returned no image — using original');
+      return url;
+    }
+    return cutoutUrl;
+  } catch (err) {
+    console.warn('[image-cleanup] bg removal failed (best-effort):', (err as Error).message);
+    return url;
+  }
+}
+
+/**
+ * Nettoie une image produit scrapée : bg removal + upscale.
+ *
+ * Retourne l'URL de la version finale nettoyée (upscalée sur fond
+ * transparent). En cas d'échec à n'importe quelle étape, dégrade
+ * gracieusement vers l'étape précédente réussie — jamais de perte totale.
+ *
+ * Contexte d'usage : appelé sur chaque image scrapée AliExpress/Alibaba/
+ * Amazon avant persistance en catalogue et avant utilisation comme reference
+ * pour la génération landing.
+ */
+export async function cleanScrapedImage(url: string): Promise<string> {
+  if (!IMAGE_CLEANUP_ENABLED) return url;
+  if (!url || !/^https?:\/\//i.test(url)) return url;
+
+  // 1. Isole le produit sur fond transparent.
+  const cutoutUrl = await removeBackground(url);
+  // 2. Upscale ×2 + denoise (réutilise enhanceImage avec slot 'product'
+  //    qui active l'upscale sans face_enhance).
+  const finalUrl = await enhanceImage(cutoutUrl, 'product');
+  return finalUrl;
+}
+
+/**
+ * Nettoie plusieurs images en parallèle avec bornes de concurrence.
+ * Retourne les URLs nettoyées dans le MÊME ORDRE que l'entrée — les images
+ * qui n'ont pas pu être nettoyées reviennent inchangées (pas de perte).
+ */
+export async function cleanScrapedImages(urls: string[]): Promise<string[]> {
+  if (!urls.length || !IMAGE_CLEANUP_ENABLED) return urls;
+  return Promise.all(urls.map((u) => cleanScrapedImage(u)));
 }
 
 export function isAvatarPrompt(prompt: string): boolean {
