@@ -21,6 +21,9 @@ import { fireMarketingEvent } from '@/components/storefront/TrackEvent';
 import type { CouponValidationResponse } from '@/types/coupon';
 import { getAvailableMethods, type StoreType } from '@/lib/payment-methods';
 import { PaymentMethodSelector, methodKey } from '@/components/storefront/payment-method-selector';
+import { VariantSwatches } from '@/components/storefront/variant-swatches';
+import { BumpOffers, type BumpOffer } from '@/components/storefront/bump-offers';
+import { DeliveryEta } from '@/components/storefront/delivery-eta';
 
 const API_BASE = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5001').replace(/\/$/, '');
 
@@ -76,6 +79,9 @@ interface Props {
   bundle?: ProductBundle;
   /** Per-product variants (Couleur/Taille). When set, the buyer must pick one. */
   variants?: CodVariant[];
+  /** Enriched upsells from /public/stores/:s/products/:p — bump offers rendered
+   *  inline above the submit button. Empty/undefined → section hidden. */
+  upsells?: BumpOffer[];
   theme: ThemeTokens;
   radius: string;
 }
@@ -136,6 +142,7 @@ export function CodOrderForm({
   config,
   bundle,
   variants,
+  upsells,
   theme,
   radius,
 }: Props) {
@@ -301,6 +308,22 @@ export function CodOrderForm({
       ]
     : [];
 
+  // ── Bump offers (upsells) ─────────────────────────────────────────
+  // The buyer ticks one or more inline offers just above the submit
+  // button; each selected offer adds its full price to the running total
+  // and its productId is sent to the server. The server re-fetches each
+  // upsell product and its seller-configured discount to compute the
+  // authoritative charge, so a tampered client can't change prices.
+  const [selectedUpsellIds, setSelectedUpsellIds] = useState<string[]>([]);
+  const toggleUpsell = (id: string) => {
+    setSelectedUpsellIds((cur) => (cur.includes(id) ? cur.filter((x) => x !== id) : [...cur, id]));
+  };
+  const upsellsTotal = useMemo(() => {
+    if (!upsells || upsells.length === 0 || selectedUpsellIds.length === 0) return 0;
+    const byId = new Map(upsells.map((u) => [u._id, u]));
+    return selectedUpsellIds.reduce((sum, id) => sum + (byId.get(id)?.price ?? 0), 0);
+  }, [upsells, selectedUpsellIds]);
+
   // Server-side flat shipping fee applied once per COD order. Display-only —
   // the backend re-reads the same value from the store doc to compute the
   // authoritative total, so a tampered client never charges the wrong amount.
@@ -316,7 +339,7 @@ export function CodOrderForm({
     }
     return Math.min(couponApplied.value, productsTotal);
   }, [couponApplied, productsTotal]);
-  const total = Math.max(0, productsTotal - liveDiscount + shippingFee);
+  const total = Math.max(0, productsTotal - liveDiscount + shippingFee + upsellsTotal);
 
   // Re-validate the coupon when the subtotal changes — the server may flip
   // it to invalid if minPurchase is no longer met. We don't block the buyer
@@ -460,6 +483,7 @@ export function CodOrderForm({
             storeSlug,
             productSlug,
             quantity,
+            upsellIds: selectedUpsellIds.length > 0 ? selectedUpsellIds : undefined,
             email: email.trim() || `pay-${phone.replace(/\D/g, '')}@flexiopage.local`,
             customerName: name.trim(),
             phone: phone.trim(),
@@ -501,7 +525,17 @@ export function CodOrderForm({
         body: JSON.stringify({
           storeSlug,
           sessionId: getSessionId(),
-          items: [{ productSlug, quantity, variantId: activeVariant?.name }],
+          items: [
+            { productSlug, quantity, variantId: activeVariant?.name },
+            // Bump offers — each ticked upsell ships as its own line item
+            // resolved by slug. The server re-fetches every product to
+            // compute the authoritative charge, so a tampered client
+            // can't change bump-offer prices.
+            ...selectedUpsellIds
+              .map((id) => (upsells || []).find((u) => u._id === id))
+              .filter((u): u is BumpOffer => !!u)
+              .map((u) => ({ productSlug: u.slug, quantity: 1 })),
+          ],
           email: email.trim() || `cod-${phone.replace(/\D/g, '')}@flexiopage.local`,
           customerName: name.trim(),
           customerPhone: phone.trim(),
@@ -636,55 +670,35 @@ export function CodOrderForm({
         </div>
       )}
 
+      {/* Delivery ETA — computes an estimated arrival day from the buyer's
+          country + city + current time vs cutoff. Removes the "quand ça
+          arrive ?" hesitation right at the point where the answer is most
+          convincing (buyer just typed their city). */}
+      {storeType === 'physical' && (
+        <DeliveryEta city={city} countryCode={country} theme={theme} radius={radius} />
+      )}
+
       {showNotes && (
         <Field label="Note pour le livreur (optionnel)" value={notes} onChange={setNotes} placeholder="Sonnez à la porte de droite…" theme={theme} radius={radius} />
       )}
 
-      {/* Variant picker — Couleur/Taille swatches. Shown only when the
-          seller configured variants. Selecting one updates the unit
-          price + stock used by the rest of the form. */}
+      {/* Variant picker — grouped color dots + size pills. When the seller
+          configures variants, each option key (Couleur / Taille / …) gets
+          its own row of swatches. Selecting one updates the unit price +
+          stock used by the rest of the form. */}
       {hasVariants && (
         <div className="border-t pt-4" style={{ borderColor: theme.border }}>
-          <div className="mb-2 text-xs font-semibold uppercase tracking-wider" style={{ color: theme.muted }}>
-            Choisis une variante
-          </div>
-          <div className="flex flex-wrap gap-1.5">
-            {variants!.map((v, i) => {
-              const active = i === variantIdx;
-              const outOfStock = (v.stock ?? 0) <= 0 && trackInventory && !allowBackorder;
-              return (
-                <button
-                  key={i}
-                  type="button"
-                  disabled={outOfStock}
-                  onClick={() => setVariantIdx(i)}
-                  className={cn(
-                    'inline-flex items-center gap-1.5 border px-3 py-1.5 text-xs font-semibold transition-all disabled:cursor-not-allowed disabled:line-through disabled:opacity-50'
-                  )}
-                  style={{
-                    borderColor: active ? theme.primary : theme.border,
-                    backgroundColor: active ? theme.primary : 'transparent',
-                    color: active ? theme.primaryFg : theme.foreground,
-                    borderRadius: radius,
-                    borderWidth: active ? 2 : 1,
-                  }}
-                  title={outOfStock ? 'En rupture' : v.name}
-                >
-                  {v.name}
-                  {typeof v.price === 'number' && v.price !== productPrice && (
-                    <span className="ml-1 opacity-80">· {formatCurrency(v.price, currency)}</span>
-                  )}
-                </button>
-              );
-            })}
-          </div>
-          {activeVariant && (
-            <p className="mt-1.5 text-[10px]" style={{ color: theme.muted }}>
-              {(activeVariant.stock ?? 0) > 0
-                ? `✓ ${activeVariant.stock} en stock`
-                : 'Rupture de stock'}
-            </p>
-          )}
+          <VariantSwatches
+            variants={variants!}
+            activeIdx={variantIdx}
+            onSelect={setVariantIdx}
+            productPrice={productPrice}
+            currency={currency}
+            trackInventory={trackInventory}
+            allowBackorder={allowBackorder}
+            theme={theme}
+            radius={radius}
+          />
         </div>
       )}
 
@@ -888,6 +902,21 @@ export function CodOrderForm({
         )}
       </div>
 
+      {/* Bump offers (upsells) — seller-configured "add-on" products rendered
+          as inline checkboxes. Ticking adds the offer to the running total.
+          Placed just above the payment method so the buyer sees the full
+          cart before the final confirmation. */}
+      {upsells && upsells.length > 0 && (
+        <BumpOffers
+          offers={upsells}
+          selectedIds={selectedUpsellIds}
+          onToggle={toggleUpsell}
+          currency={currency}
+          theme={theme}
+          radius={radius}
+        />
+      )}
+
       {/* Payment method picker — shown only when more than one method is
           available for this country/store (online + COD, or several online). */}
       <PaymentMethodSelector
@@ -899,13 +928,20 @@ export function CodOrderForm({
       />
 
       {/* Total — adds a discount line when a coupon is applied, on top of
-          the existing shipping line when shipping is non-zero. */}
-      {(shippingFee > 0 || liveDiscount > 0) ? (
+          the existing shipping line when shipping is non-zero. Also
+          surfaces bump-offer additions so the buyer sees the breakdown. */}
+      {(shippingFee > 0 || liveDiscount > 0 || upsellsTotal > 0) ? (
         <div className="space-y-1.5 border-t pt-4" style={{ borderColor: theme.border }}>
           <div className="flex items-center justify-between text-sm" style={{ color: theme.muted }}>
             <span>Sous-total</span>
             <span>{formatCurrency(productsTotal, currency)}</span>
           </div>
+          {upsellsTotal > 0 && (
+            <div className="flex items-center justify-between text-sm" style={{ color: theme.muted }}>
+              <span>Ajouts ({selectedUpsellIds.length})</span>
+              <span>+ {formatCurrency(upsellsTotal, currency)}</span>
+            </div>
+          )}
           {liveDiscount > 0 && couponApplied && (
             <div className="flex items-center justify-between text-sm" style={{ color: theme.primary }}>
               <span className="inline-flex items-center gap-1">

@@ -479,9 +479,71 @@ router.get('/stores/:storeSlug/products/:productSlug', async (req: Request, res:
       .map(({ order: _o, ...rest }) => { void _o; return rest; });
   }
 
+  // ── Upsells — enriched the same way as crossSells but rendered as
+  // bump offers inside the COD form (inline checkboxes above submit).
+  // Buyer can add an upsell to their order without a second decision.
+  let upsells: Array<{
+    _id: string;
+    name: string;
+    slug: string;
+    price: number;
+    compareAtPrice?: number;
+    image?: string;
+    label?: string;
+    discountPct?: number;
+  }> = [];
+  const upsellOffers = (product.upsells || []).filter((o) => o?.productId);
+  if (upsellOffers.length > 0) {
+    const ids = upsellOffers.map((o) => o.productId);
+    const docs = await Product.find({
+      _id: { $in: ids },
+      storeId: store._id,
+      isPublished: true,
+    })
+      .select('_id name slug price compareAtPrice images pricing stock')
+      .lean<
+        Array<{
+          _id: unknown;
+          name: string;
+          slug: string;
+          price: number;
+          compareAtPrice?: number;
+          images?: string[];
+          pricing?: Array<{ country?: string; price?: number; compareAtPrice?: number; currency?: string; available?: boolean; stock?: number }>;
+          stock?: number;
+        }>
+      >();
+    const byId = new Map(docs.map((d) => [String(d._id), d]));
+    upsells = upsellOffers
+      .map((o) => {
+        const d = byId.get(String(o.productId));
+        if (!d) return null;
+        const priced = applyMarketPricing(d, market.country, market.currency);
+        // Discount metadata is displayed to make the bump feel like an
+        // exclusive deal, but the server charges the target product's
+        // regular price (identical pattern to crossSells). Sellers who
+        // want a real discount lower the target product's price.
+        return {
+          _id: String(d._id),
+          name: d.name,
+          slug: d.slug,
+          price: priced.price,
+          compareAtPrice: priced.compareAtPrice,
+          image: d.images?.[0],
+          label: o.label,
+          discountPct: o.discountPct && o.discountPct > 0 && o.discountPct < 100 ? o.discountPct : undefined,
+          order: o.order ?? 0,
+        };
+      })
+      .filter((x): x is NonNullable<typeof x> => x !== null)
+      .sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
+      .map(({ order: _o, ...rest }) => { void _o; return rest; });
+  }
+
   res.json({
     product: pricedProduct,
     crossSells,
+    upsells,
     market: { country: market.country, currency: market.currency, source: market.source },
   });
 });

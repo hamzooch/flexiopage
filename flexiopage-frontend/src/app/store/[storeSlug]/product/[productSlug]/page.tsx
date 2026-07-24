@@ -27,10 +27,13 @@ import { cookies } from 'next/headers';
 import { StorefrontTestimonials } from '@/components/storefront/Testimonials';
 import { MobileStickyCta } from '@/components/storefront/mobile-sticky-cta';
 import { CrossSells, type CrossSellItem } from '@/components/storefront/cross-sells';
+import type { BumpOffer } from '@/components/storefront/bump-offers';
 import { WishlistButton } from '@/components/storefront/wishlist-button';
 import { ProductGallery } from '@/components/storefront/product-gallery';
 import { AddToCartButton } from '@/components/storefront/add-to-cart-button';
 import { ProductReviews } from '@/components/storefront/product-reviews';
+import { ProductTrustBar } from '@/components/storefront/product-trust-bar';
+import { ProductSocialProof } from '@/components/storefront/product-social-proof';
 import type { ThemeTokens as ThemeTokensType } from '@/data/store-themes';
 import {
   Sparkles, Shield, Leaf, Zap, Heart, Award, Gift, Truck, Clock, Check, Star, Recycle,
@@ -104,6 +107,9 @@ interface StoreDoc {
   slug: string;
   storeType?: 'physical' | 'digital';
   logo?: string;
+  /** True when the store owns a verified custom domain — used by the
+   *  social proof strip to show the "Boutique vérifiée" pill. */
+  customDomainVerified?: boolean;
   theme?: { templateId?: string };
   markets?: PublicMarket[];
   settings?: {
@@ -112,6 +118,14 @@ interface StoreDoc {
     direction?: 'ltr' | 'rtl';
     country?: string;
     codForm?: CodFormConfig;
+    /** Seller-configurable trust bar contents — falls back to platform defaults. */
+    trustBar?: {
+      whatsappNumber?: string;
+      returnDays?: number;
+      hideCod?: boolean;
+      hideReturns?: boolean;
+      hideDelivery?: boolean;
+    };
     storefront?: { navbar?: NavbarConfig; productPage?: ProductPageSettings };
   };
   integrations?: { marketing?: MarketingConfig };
@@ -162,6 +176,7 @@ export default async function PublicProductPage({ params }: Props) {
   let product: ProductDoc | null = null;
   let store: StoreDoc | null = null;
   let crossSells: CrossSellItem[] = [];
+  let upsells: BumpOffer[] = [];
   let market: ResolvedMarketHint | null = null;
 
   // Forward le cookie pour que le backend résolve le market par buyer.
@@ -187,10 +202,12 @@ export default async function PublicProductPage({ params }: Props) {
       const body = (await pRes.json()) as {
         product?: ProductDoc;
         crossSells?: CrossSellItem[];
+        upsells?: BumpOffer[];
         market?: ResolvedMarketHint;
       };
       product = body.product ?? null;
       crossSells = Array.isArray(body.crossSells) ? body.crossSells : [];
+      upsells = Array.isArray(body.upsells) ? body.upsells : [];
       market = body.market ?? null;
     }
     if (sRes.ok) {
@@ -339,6 +356,11 @@ export default async function PublicProductPage({ params }: Props) {
                 >
                   {product.name}
                 </h1>
+                <ProductSocialProof
+                  storeVerified={store?.customDomainVerified}
+                  storeName={store?.name || storeSlug}
+                  theme={theme}
+                />
                 {store?.settings?.storefront?.productPage?.style?.showRatingStrip && (() => {
                   const ppStyle2 = store.settings!.storefront!.productPage!.style!;
                   const stars = Math.max(0, Math.min(5, ppStyle2.ratingStripStars ?? 5));
@@ -444,6 +466,15 @@ export default async function PublicProductPage({ params }: Props) {
                       radius={radius}
                     />
                   )}
+                  <ProductTrustBar
+                    theme={theme}
+                    radius={radius}
+                    returnDays={ps.shippingInfo?.returnDays ?? store?.settings?.trustBar?.returnDays ?? 14}
+                    whatsappNumber={store?.settings?.trustBar?.whatsappNumber}
+                    showCod={store?.settings?.trustBar?.hideCod !== true}
+                    showReturns={store?.settings?.trustBar?.hideReturns !== true}
+                    showDelivery={store?.settings?.trustBar?.hideDelivery !== true}
+                  />
                   <div className="scroll-mt-24" id="cod-form">
                     <CodOrderForm
                       storeSlug={storeSlug}
@@ -461,6 +492,7 @@ export default async function PublicProductPage({ params }: Props) {
                       config={codConfig}
                       bundle={product.bundle}
                       variants={product.variants}
+                      upsells={upsells}
                       theme={theme}
                       radius={radius}
                     />
