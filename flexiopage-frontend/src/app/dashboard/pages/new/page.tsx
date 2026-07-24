@@ -93,23 +93,27 @@ interface TemplateLite {
   sectionCount: number;
 }
 
+// Section palette shown in the manual "+ ajouter" grid. COD form is
+// placed FIRST and flagged `primary` so it stands out — most physical
+// landings are useless without it, yet sellers used to skip past it
+// buried at position 14/16.
 const SECTION_TYPES = [
-  { id: 'hero', label: 'Hero' },
-  { id: 'features', label: 'Features' },
-  { id: 'steps', label: 'How it works' },
-  { id: 'stats', label: 'Stats' },
-  { id: 'gallery', label: 'Gallery' },
-  { id: 'image', label: 'Image (bloc photo)' },
-  { id: 'product', label: 'Product detail' },
-  { id: 'products', label: 'Products grid' },
-  { id: 'brands', label: 'Brands / press' },
-  { id: 'video', label: 'Vidéo (YouTube / Vimeo)' },
-  { id: 'pricing', label: 'Pricing' },
-  { id: 'testimonials', label: 'Testimonials' },
-  { id: 'cta', label: 'Call to action' },
-  { id: 'cod-form', label: 'Order form (COD)' },
-  { id: 'faq', label: 'FAQ' },
-  { id: 'footer', label: 'Footer' },
+  { id: 'cod-form',     label: '📞 Formulaire de commande (COD)', primary: true },
+  { id: 'hero',         label: 'Hero (titre + image)' },
+  { id: 'product',      label: 'Détail produit' },
+  { id: 'gallery',      label: 'Galerie photos' },
+  { id: 'features',     label: 'Points forts' },
+  { id: 'steps',        label: 'Comment ça marche' },
+  { id: 'stats',        label: 'Chiffres clés' },
+  { id: 'testimonials', label: 'Témoignages' },
+  { id: 'video',        label: 'Vidéo (YouTube / Vimeo)' },
+  { id: 'image',        label: 'Bloc image' },
+  { id: 'brands',       label: 'Logos / presse' },
+  { id: 'products',     label: 'Grille de produits' },
+  { id: 'pricing',      label: 'Grille tarifaire' },
+  { id: 'cta',          label: 'Appel à l\'action' },
+  { id: 'faq',          label: 'FAQ' },
+  { id: 'footer',       label: 'Pied de page' },
 ] as const;
 
 /**
@@ -178,6 +182,11 @@ export default function NewLandingPagePage() {
   const [priceAfter, setPriceAfter] = useState<string>('');
   const [currency, setCurrency] = useState<string>('USD');
   const [pageKind, setPageKind] = useState<PageKind>('landing');
+  // Whether to guarantee a cod-form section in the final page. Defaults ON
+  // for physical stores — the buyer should always be able to order without
+  // hopping to another screen. Sellers can flip it off if they only want
+  // the page to funnel to WhatsApp / the standalone product page.
+  const [includeCodForm, setIncludeCodForm] = useState<boolean>(true);
 
   // template
   const [templates, setTemplates] = useState<TemplateLite[]>([]);
@@ -348,7 +357,11 @@ export default function NewLandingPagePage() {
   // l'emploi : un vendeur qui clique « Créer » obtient une page qui sait
   // déjà encaisser une commande sans avoir à composer manuellement le bloc.
   // Si l'IA ou le template a déjà inséré un cod-form on n'en ajoute pas.
+  // Le vendeur peut décocher "Formulaire COD inclus" dans le context form
+  // pour construire une page "warm-up" qui redirige ailleurs (WhatsApp,
+  // page produit) — dans ce cas on n'ajoute rien.
   function withDefaultCodForm(input: PageSection[], productSlug?: string): PageSection[] {
+    if (!includeCodForm) return input;
     if (input.some((s) => s.type === 'cod-form')) return input;
     const codSection: PageSection = {
       id: `sec-cod-${Date.now()}`,
@@ -835,6 +848,7 @@ export default function NewLandingPagePage() {
           priceAfter={priceAfter} setPriceAfter={setPriceAfter}
           currency={currency} setCurrency={setCurrency}
           pageKind={pageKind} setPageKind={setPageKind}
+          includeCodForm={includeCodForm} setIncludeCodForm={setIncludeCodForm}
         />
 
         <div className="flex flex-wrap gap-2">
@@ -1000,6 +1014,7 @@ export default function NewLandingPagePage() {
             priceAfter={priceAfter} setPriceAfter={setPriceAfter}
             currency={currency} setCurrency={setCurrency}
             pageKind={pageKind} setPageKind={setPageKind}
+            includeCodForm={includeCodForm} setIncludeCodForm={setIncludeCodForm}
             hidePricing
           />
 
@@ -1118,6 +1133,7 @@ export default function NewLandingPagePage() {
             priceAfter={priceAfter} setPriceAfter={setPriceAfter}
             currency={currency} setCurrency={setCurrency}
             pageKind={pageKind} setPageKind={setPageKind}
+            includeCodForm={includeCodForm} setIncludeCodForm={setIncludeCodForm}
           />
 
           <Button
@@ -1500,23 +1516,56 @@ export default function NewLandingPagePage() {
             {/* Sections editor — only when "Modifier" is on */}
             {editPanelOpen ? (
               <section className="mt-4 rounded-2xl border border-primary/30 bg-card p-4 ring-2 ring-primary/10">
-                <div className="mb-3 flex items-center justify-between">
+                <div className="mb-3 flex items-center justify-between gap-3">
                   <div>
                     <h2 className="text-sm font-semibold">Sections ({sections.length})</h2>
                     <p className="text-xs text-muted-foreground">Édite ou ajoute des blocs.</p>
                   </div>
+                  {/* COD form presence badge — green pill when the page has a
+                      cod-form section (buyer can order inline), amber warning
+                      otherwise so the seller sees the missing conversion point
+                      before publishing. */}
+                  {sections.some((s) => s.type === 'cod-form') ? (
+                    <span
+                      className="inline-flex items-center gap-1 rounded-full bg-emerald-500/15 px-2.5 py-1 text-[11px] font-bold text-emerald-700"
+                      title="Le client peut commander directement sur cette page."
+                    >
+                      ✓ Formulaire COD inclus
+                    </span>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => addSection('cod-form')}
+                      className="inline-flex items-center gap-1 rounded-full bg-amber-500/15 px-2.5 py-1 text-[11px] font-bold text-amber-800 hover:bg-amber-500/25"
+                      title="Ajouter le formulaire de commande à cette page"
+                    >
+                      ⚠ Aucun formulaire COD — cliquer pour ajouter
+                    </button>
+                  )}
                 </div>
                 <div className="flex flex-wrap gap-1.5 pb-3">
-                  {SECTION_TYPES.map((t) => (
-                    <button
-                      key={t.id}
-                      type="button"
-                      onClick={() => addSection(t.id)}
-                      className="inline-flex h-7 items-center rounded-md border border-border/60 bg-background px-2 text-[11px] font-medium hover:border-primary/40 hover:bg-muted"
-                    >
-                      + {t.label}
-                    </button>
-                  ))}
+                  {SECTION_TYPES.map((t) => {
+                    const isPrimary = 'primary' in t && t.primary;
+                    return (
+                      <button
+                        key={t.id}
+                        type="button"
+                        onClick={() => addSection(t.id)}
+                        className={
+                          isPrimary
+                            ? 'inline-flex h-7 items-center gap-1 rounded-md border-2 border-primary bg-primary/10 px-2 text-[11px] font-bold text-primary shadow-sm hover:bg-primary/15'
+                            : 'inline-flex h-7 items-center rounded-md border border-border/60 bg-background px-2 text-[11px] font-medium hover:border-primary/40 hover:bg-muted'
+                        }
+                      >
+                        + {t.label}
+                        {isPrimary && (
+                          <span className="ml-1 rounded-sm bg-primary px-1 py-0.5 text-[9px] font-bold uppercase tracking-wide text-primary-foreground">
+                            Recommandé
+                          </span>
+                        )}
+                      </button>
+                    );
+                  })}
                 </div>
                 <div className="space-y-3">
                   {sections.map((sec, index) => (
@@ -1820,6 +1869,7 @@ function ContextForm(props: {
   priceAfter: string; setPriceAfter: (v: string) => void;
   currency: string; setCurrency: (v: string) => void;
   pageKind: PageKind; setPageKind: (k: PageKind) => void;
+  includeCodForm: boolean; setIncludeCodForm: (v: boolean) => void;
   /**
    * Cache le bloc prix (priceBefore/priceAfter/currency). Utilisé par le flow
    * from-url qui affiche un bloc pricing dédié en amont — évite d'avoir 2
@@ -1837,6 +1887,7 @@ function ContextForm(props: {
     priceAfter, setPriceAfter,
     currency, setCurrency,
     pageKind, setPageKind,
+    includeCodForm, setIncludeCodForm,
     hidePricing,
   } = props;
 
@@ -1880,6 +1931,29 @@ function ContextForm(props: {
             </button>
           ))}
         </div>
+      </div>
+
+      {/* Where does the buyer place the order? — checked ON by default so
+          every landing has a visible conversion point. When toggled OFF the
+          seller is opting for a "warm-up" page that funnels somewhere else
+          (WhatsApp, product page, external checkout). */}
+      <div className="rounded-lg border border-primary/40 bg-primary/5 p-3">
+        <label className="flex items-start gap-2.5 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={includeCodForm}
+            onChange={(e) => setIncludeCodForm(e.target.checked)}
+            className="mt-0.5 h-4 w-4 shrink-0 rounded border-border accent-primary"
+          />
+          <span className="min-w-0">
+            <span className="block text-xs font-semibold text-foreground">
+              📞 Formulaire de commande (COD) inclus
+            </span>
+            <span className="mt-0.5 block text-[11px] text-muted-foreground leading-snug">
+              Le client remplit nom + téléphone + adresse et paie à la livraison, sans quitter la page. Recommandé pour les produits physiques.
+            </span>
+          </span>
+        </label>
       </div>
 
       <div className="grid gap-4 sm:grid-cols-2">
