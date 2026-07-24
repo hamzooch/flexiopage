@@ -932,9 +932,66 @@ Per-section schema:
   For Arab markets, paymentMethods should include "cod" (cash on delivery) which is the dominant method.
 `;
 
+  // Two very different narratives — same section vocabulary, different
+  // sequence + copy register. If we let both flows share the same order,
+  // sellers get identical-looking pages and can't tell why they'd pick
+  // one over the other.
   const productPageRules = pageKind === 'product'
-    ? '\nThis is a PRODUCT detail page. Order: hero (split, with product image) → product → gallery → features → stats → testimonials → cod-form → faq → cta → footer.\n⚠️ MANDATORY: every output MUST contain exactly one "cod-form" section, placed right after testimonials. Omitting it = invalid output. The cod-form productSlug should match the product on this page.'
-    : '\nThis is a LANDING page for a single offer. Order: hero → features → stats → gallery → product → testimonials → brands → cod-form → faq → cta → footer.\n⚠️ MANDATORY: every output MUST contain exactly one "cod-form" section, placed before the faq. Omitting it = invalid output (the page has no conversion point).';
+    ? `
+# 📖 PAGE INTENT: PRODUCT DETAIL PAGE
+This page targets a buyer who ALREADY WANTS THIS CATEGORY and is deciding
+between products. They need INFORMATION and PROOF, not persuasion.
+
+TONE: informative, specific, credible. Zero hype words ("révolutionnaire",
+"incroyable"). Every claim is concrete and verifiable (materials,
+dimensions, usage). Short sentences. No storytelling arc.
+
+STRUCTURE (mandatory order, 9-11 sections):
+hero (split layout with product image on one side + name + price + short
+benefit + CTA) → product (detailed spec-oriented block) → gallery
+(4-6 angles, close-ups, lifestyle) → features (technical benefits, not
+emotional) → video (product demo if relevant) → testimonials (2-3 short
+factual quotes about the product) → cod-form → faq (product-specific:
+sizing, care, compatibility, warranty) → footer.
+
+DO NOT USE on a product page: "steps" (buying flow is obvious),
+"brands" (irrelevant on product detail), "stats" (this is not a company
+pitch), "cta" as a section (the hero + cod-form already carry the CTA).
+
+⚠️ MANDATORY: exactly one "cod-form" section, placed right after
+testimonials. The cod-form productSlug MUST match the product on this
+page. Omitting cod-form = invalid output.
+`
+    : `
+# 📖 PAGE INTENT: LANDING PAGE (single-offer marketing)
+This page targets COLD TRAFFIC that hasn't decided anything yet. It has
+to hook, tell a story, prove the offer works, and close with urgency.
+Product details are secondary — the OFFER + PROOF + RISK REVERSAL win.
+
+TONE: emotional, benefit-driven, conversational. Short punchy hooks.
+Talk to the buyer directly ("tu" in French, second person elsewhere).
+Every section pushes toward the cod-form. Repetition of the core promise
+across hero → features → cta is welcome.
+
+STRUCTURE (mandatory order, 10-13 sections):
+hero (full-width, big benefit headline + subheadline + CTA button
+pointing to cod-form) → stats (3 social-proof numbers: buyers /
+satisfaction / delivery) → features (3-6 benefits, each solves a
+buyer pain) → steps (3-4 steps of how it works or how to order) →
+gallery (product in context / lifestyle) → testimonials (3-5 emotional
+quotes with names + city) → brands (press logos or "as seen in" —
+optional but boosts trust) → video (30-60s pitch) → cod-form →
+faq (objection handling: "is it real?", "can I return?", "how fast?")
+→ cta (final push, may include urgency: last chance, stock warning) →
+footer.
+
+DO NOT USE on a landing: "product" as a detail block (too technical
+for cold traffic — the gallery + features cover it), "pricing" table
+(one offer only).
+
+⚠️ MANDATORY: exactly one "cod-form" section, placed before the faq.
+Omitting cod-form = invalid output (the page has no conversion point).
+`;
 
   const imageBlock = imageCaption
     ? `\n# 🛑 PRODUCT IDENTITY — ABSOLUTE SOURCE OF TRUTH 🛑
