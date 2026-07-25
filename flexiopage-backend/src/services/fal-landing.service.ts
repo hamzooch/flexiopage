@@ -625,6 +625,21 @@ interface CategoryTemplate {
   heroAngles: string;
 }
 
+/**
+ * ETA de livraison par pays — même table que le composant DeliveryEta côté
+ * storefront, dupliquée ici pour que le cod-form auto-injecté annonce un
+ * délai crédible et local ("livrée en 48h à Casablanca" > "livrée sous peu").
+ * Coarse-grained : la vraie ETA est confirmée par MogaDelivery après la
+ * commande. Objectif = tuer l'hésitation "ça arrive quand ?" au moment de
+ * décider.
+ */
+const LANDING_ETA: Record<string, string> = {
+  SN: 'en 48h', CI: 'en 48h', ML: 'en 3-4j', BF: 'en 3-4j', BJ: 'en 3-4j',
+  TG: 'en 3-4j', GN: 'en 3-5j', NE: 'en 4-5j', GM: 'en 3-4j', GH: 'en 3-4j',
+  NG: 'en 3-5j', CM: 'en 3-5j', MA: 'en 48h', TN: 'en 48h', DZ: 'en 3-4j',
+  LY: 'en 4-6j',
+};
+
 const CATEGORY_TEMPLATES: Record<CategoryClass, CategoryTemplate> = {
   beauty: {
     sectionOrder: ['hero', 'features', 'gallery', 'steps', 'testimonials', 'stats', 'cod-form', 'faq', 'cta'],
@@ -933,64 +948,115 @@ Per-section schema:
 `;
 
   // Two very different narratives — same section vocabulary, different
-  // sequence + copy register. If we let both flows share the same order,
-  // sellers get identical-looking pages and can't tell why they'd pick
-  // one over the other.
+  // sequence + copy register + per-section prop shape. Without this
+  // per-kind blueprint the LLM produces two visually identical pages
+  // and sellers can't tell why they'd pick one over the other.
   const productPageRules = pageKind === 'product'
     ? `
 # 📖 PAGE INTENT: PRODUCT DETAIL PAGE
-This page targets a buyer who ALREADY WANTS THIS CATEGORY and is deciding
-between products. They need INFORMATION and PROOF, not persuasion.
+Buyer already WANTS THIS CATEGORY and is comparing options. They need
+INFORMATION + PROOF, not persuasion. Sell the SPECIFIC ITEM.
 
-TONE: informative, specific, credible. Zero hype words ("révolutionnaire",
-"incroyable"). Every claim is concrete and verifiable (materials,
-dimensions, usage). Short sentences. No storytelling arc.
+TONE: informative, specific, credible. Zero hype ("révolutionnaire",
+"incroyable"). Every claim concrete and verifiable (materials, dimensions,
+usage, warranty). Short sentences. No storytelling arc.
 
-STRUCTURE (mandatory order, 9-11 sections):
-hero (split layout with product image on one side + name + price + short
-benefit + CTA) → product (detailed spec-oriented block) → gallery
-(4-6 angles, close-ups, lifestyle) → features (technical benefits, not
-emotional) → video (product demo if relevant) → testimonials (2-3 short
-factual quotes about the product) → cod-form → faq (product-specific:
-sizing, care, compatibility, warranty) → footer.
+STRUCTURE (mandatory order, 9-11 sections). Each section MUST include
+the props listed — omitting a listed prop = invalid output:
 
-DO NOT USE on a product page: "steps" (buying flow is obvious),
-"brands" (irrelevant on product detail), "stats" (this is not a company
-pitch), "cta" as a section (the hero + cod-form already carry the CTA).
+1. hero (split — image on one side, copy on the other)
+   props: { title (product-focused: "Sac anti-vol USB — cuir véritable, garanti 2 ans"), subtitle (1-line factual benefit + delivery), ctaText: "Commander · paiement à la livraison", ctaHref: "#cod-order-form-section", trustLine ("Livré en 48h · Retour 14j"), imageUrl: "__PRODUCT_IMAGE_1__" }
 
-⚠️ MANDATORY: exactly one "cod-form" section, placed right after
-testimonials. The cod-form productSlug MUST match the product on this
-page. Omitting cod-form = invalid output.
+2. product (detailed block — front and center)
+   props: { name, price, priceBefore (if any), currency, benefits: array of 3-5 concrete bullets, ctaText, ctaHref: "#cod-order-form-section" }
+
+3. gallery (4-6 images: angles, close-ups, in-use)
+   props: { title ("Chaque détail compte" style), images: ["__PRODUCT_IMAGE_1__", ...] OR imagePrompts (list of ENGLISH scene descriptions) }
+
+4. features (3-6 TECHNICAL benefits, use Truck/Shield/Zap/Clock icon keys)
+   Each item: { icon, title (result), description (why: material + test data) }
+
+5. video (product demo — 15-45s in-use footage)
+   props: { title, url (leave empty if none), posterPrompt (english scene) }
+
+6. testimonials (2-3 SHORT factual quotes, native names, city)
+   Each: { quote (2-3 sentences, mentions a spec), author, role, avatarPrompt }
+
+7. cod-form (auto-injected — you MAY still emit one; server will keep only one)
+   props: { title ("Commander · paiement à la livraison"), reassurance, productSlug }
+
+8. faq (5 product-specific questions: sizing/care/compatibility/warranty/return)
+   Each: { question, answer (concrete, 2-4 sentences) }
+
+9. footer
+   props: { brandName, tagline, links, paymentMethods: ["cod", "wave", "orangeMoney", "card"] }
+
+DO NOT USE on a product page: "steps" (obvious how to buy), "brands"
+(irrelevant), "stats" (company pitch, not product), "cta" as a section
+(hero + cod-form already carry it), "pricing" table (single item).
+
+⚠️ MANDATORY: hero.ctaHref MUST be "#cod-order-form-section". Every
+image reference MUST be "__PRODUCT_IMAGE_N__" (N=1..8) or a real https
+URL — never invent filenames.
 `
     : `
-# 📖 PAGE INTENT: LANDING PAGE (single-offer marketing)
-This page targets COLD TRAFFIC that hasn't decided anything yet. It has
-to hook, tell a story, prove the offer works, and close with urgency.
-Product details are secondary — the OFFER + PROOF + RISK REVERSAL win.
+# 📖 PAGE INTENT: LANDING PAGE (single-offer conversion funnel)
+Cold traffic — hasn't decided anything. Hook, story, proof, risk
+reversal, urgency, close. OFFER + PROOF + RISK REVERSAL beat product
+details every time. Repeat the core promise across hero → features → cta.
 
 TONE: emotional, benefit-driven, conversational. Short punchy hooks.
-Talk to the buyer directly ("tu" in French, second person elsewhere).
-Every section pushes toward the cod-form. Repetition of the core promise
-across hero → features → cta is welcome.
+Direct "tu" in French / إنتي in Arabic. Every section pushes toward the
+cod-form. Adress the COD-payment objection ("tu payes seulement quand
+tu l'as en main") in hero + testimonial + faq + cta.
 
-STRUCTURE (mandatory order, 10-13 sections):
-hero (full-width, big benefit headline + subheadline + CTA button
-pointing to cod-form) → stats (3 social-proof numbers: buyers /
-satisfaction / delivery) → features (3-6 benefits, each solves a
-buyer pain) → steps (3-4 steps of how it works or how to order) →
-gallery (product in context / lifestyle) → testimonials (3-5 emotional
-quotes with names + city) → brands (press logos or "as seen in" —
-optional but boosts trust) → video (30-60s pitch) → cod-form →
-faq (objection handling: "is it real?", "can I return?", "how fast?")
-→ cta (final push, may include urgency: last chance, stock warning) →
-footer.
+STRUCTURE (mandatory order, 10-13 sections). Each section MUST include
+the props listed — omitting a listed prop = invalid output:
 
-DO NOT USE on a landing: "product" as a detail block (too technical
-for cold traffic — the gallery + features cover it), "pricing" table
-(one offer only).
+1. hero (full-width, big BENEFIT headline — not product name)
+   props: { title (buyer OUTCOME, e.g. "Protège ton laptop en plein marché"), subtitle (specific promise + delivery + COD reassurance), ctaText ("Commander · paiement à la livraison"), ctaHref: "#cod-order-form-section", ctaBadge ("−${discountPct}% aujourd'hui" if discount), trustLine ("Paiement à la livraison · Livraison 48h · Retour 14j"), imagePrompt (english lifestyle scene) }
 
-⚠️ MANDATORY: exactly one "cod-form" section, placed before the faq.
-Omitting cod-form = invalid output (the page has no conversion point).
+2. stats (3-4 social-proof numbers — MUST include "clients au ${country || 'target country'}")
+   props: { items: [{ value: "3 200+", label: "clients au Maroc" }, { value: "48h", label: "livraison Casa+régions" }, { value: "97%", label: "recommandent" }] }
+
+3. features (4-6 emotional benefits — each solves a real buyer pain)
+   Each item: { icon (Shield/Truck/Zap/Heart/Award/Gift/Clock/Star), title (result), description (BAB — Before/After/Bridge) }
+
+4. steps (3-4 steps of how it works OR how to order)
+   Each: { number, title (verb + outcome), description (1-2 sentences) }
+
+5. gallery (product in CONTEXT / LIFESTYLE — real people using it)
+   props: { title, imagePrompts (list of ENGLISH lifestyle scenes) }
+
+6. testimonials (3-5 emotional quotes — SSS pattern: Star/Story/Solution)
+   Each: { quote (mentions specific pain solved), author (native name), role ("Cliente — Casablanca"), avatarPrompt }
+
+7. brands (press logos OR "as seen in" — 4-6 items, boosts trust; use text labels since we can't render real logos)
+   props: { title ("Vu dans" / "Recommandé par"), items: [{ name }, { name }, ...] }
+
+8. video (30-60s pitch — the offer explained)
+   props: { title ("Voir en action"), url (empty if none), posterPrompt }
+
+9. cod-form (auto-injected — you MAY still emit one; server keeps only one)
+   props: { title ("Commande maintenant — paiement à la livraison"), reassurance ("Zéro avance. Tu payes en main propre au livreur."), productSlug }
+
+10. faq (5 objection-crushing questions — see DTC_COPY_FORMULAS FAQ block)
+    Each: { question, answer (concrete, addresses the buyer's fear) }
+
+11. cta (FINAL push with real urgency — MUST include a number)
+    props: { title ("Il reste 38 pièces à ce prix"), subtitle (levée d'objection COD + delivery), buttonText ("Commander maintenant"), buttonHref: "#cod-order-form-section", urgency ("Stock limité · réappro dans 2 semaines"), ${hasDiscount ? `discountBadge ("−${discountPct}% jusqu'à minuit")` : ''} }
+
+12. footer
+    props: { brandName, tagline, links, paymentMethods: ["cod", "wave", "orangeMoney"] }
+
+DO NOT USE on a landing: "product" as a detail block (too much info for
+cold traffic — features + gallery already cover it), "pricing" table
+(this is a single offer, not a plan comparison).
+
+⚠️ MANDATORY: hero.ctaHref AND cta.buttonHref MUST both be
+"#cod-order-form-section" (they scroll the buyer to the form). Every
+image reference MUST be "__PRODUCT_IMAGE_N__" (N=1..8) or a real https
+URL — never invent filenames.
 `;
 
   const imageBlock = imageCaption
@@ -1499,7 +1565,9 @@ function detectProductCategory(input: FalGenerateInput): string | undefined {
 function finalize(
   sections: Array<{ type: string; props: Record<string, unknown> }>,
   fallbackProduct?: ProductInput,
-  currency?: string
+  currency?: string,
+  pageKind?: 'landing' | 'product',
+  country?: string,
 ): TemplateSection[] {
   const productImages = fallbackProduct?.images?.filter((u) => typeof u === 'string' && u.length > 0) || [];
   const firstImage = productImages[0];
@@ -1570,13 +1638,25 @@ function finalize(
           ? fallbackProduct.name.normalize('NFD').replace(/\p{Diacritic}/gu, '')
               .toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 60)
           : undefined);
+      // Copy tuned per pageKind — a product-detail page has a buyer who
+      // already understood the product; a landing has a buyer who just met
+      // the offer 15 seconds ago. Different friction levels, different
+      // reassurance.
+      const isProductKind = pageKind === 'product';
+      const eta = country ? LANDING_ETA[country.toUpperCase()] : undefined;
       const codFormSection = {
         type: 'cod-form',
         props: {
-          title: 'Commandez maintenant',
-          subtitle: 'Remplis tes coordonnées — on te rappelle pour confirmer, puis on livre. Pas d\'acompte, paiement à la livraison.',
-          submitLabel: 'Confirmer ma commande',
-          reassurance: 'Paiement uniquement à la réception · Livraison rapide',
+          title: isProductKind
+            ? 'Commande maintenant · paiement à la livraison'
+            : 'Reçois-le chez toi — tu payes à la livraison',
+          subtitle: isProductKind
+            ? `Remplis tes coordonnées, on te rappelle pour confirmer${eta ? ` et on te livre ${eta}` : ' et on livre'}. Zéro avance, zéro carte.`
+            : 'Zéro avance. Zéro carte. Tu payes en main propre au livreur — refuse sans frais si le produit ne te plaît pas.',
+          submitLabel: isProductKind ? 'Confirmer ma commande' : 'Je le veux — commander',
+          reassurance: isProductKind
+            ? 'Paiement uniquement à la réception · Livraison 48h · Retour 14j'
+            : '✅ Paiement cash au livreur · ✅ Livraison en 48h · ✅ Retour possible',
           productSlug,
           // Minimal-friction defaults: 3 essential fields only
           showEmail: false,
@@ -1929,7 +2009,7 @@ async function runFullPipeline(
 
   // STEP 3 — finalize / inject fallbacks
   await tick('assemble', 'running');
-  const finalSections = finalize(sections, input.product, input.currency);
+  const finalSections = finalize(sections, input.product, input.currency, input.pageKind, input.country);
   console.log(`[landing-gen] done in ${Date.now() - t0}ms — ${finalSections.length} sections, ${imagesGenerated} images`);
   await tick('assemble', 'done');
 
