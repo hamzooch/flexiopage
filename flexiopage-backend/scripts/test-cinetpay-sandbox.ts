@@ -38,21 +38,22 @@ function log(color: string, tag: string, msg: string): void {
 function assertEnv(): void {
   const missing: string[] = [];
   if (!process.env.CINETPAY_API_KEY) missing.push('CINETPAY_API_KEY');
+  if (!process.env.CINETPAY_API_PASSWORD) missing.push('CINETPAY_API_PASSWORD');
   if (!process.env.CINETPAY_SITE_ID) missing.push('CINETPAY_SITE_ID');
   if (missing.length) {
     log(RED, '❌', `Env manquantes: ${missing.join(', ')}`);
     log(YELLOW, '💡', 'Ajoute-les dans flexiopage-backend/.env');
     process.exit(1);
   }
-  const base = process.env.CINETPAY_BASE_URL || 'https://api-checkout.cinetpay.com/v1';
-  if (base.includes('.com')) {
-    log(YELLOW, '⚠️ ', `CINETPAY_BASE_URL pointe sur PROD (${base}) — les charges seront réelles.`);
-    log(YELLOW, '💡', 'Pour la sandbox: CINETPAY_BASE_URL=https://api-checkout.cinetpay.net/v1');
+  // The SDK auto-detects sandbox vs prod from the API key prefix.
+  const key = process.env.CINETPAY_API_KEY!;
+  if (key.startsWith('sk_test_')) {
+    log(GREEN, '✅', 'Sandbox (auto-détecté via sk_test_) → api.cinetpay.net');
+  } else if (key.startsWith('sk_live_')) {
+    log(YELLOW, '⚠️ ', 'PROD (auto-détecté via sk_live_) → api.cinetpay.co');
+    log(YELLOW, '   ', 'Les charges seront réelles. Utilise un petit montant (500 XOF ~ 0,75 €).');
   } else {
-    log(GREEN, '✅', `Sandbox: ${base}`);
-  }
-  if (!/\/v1$/.test(base)) {
-    log(YELLOW, '⚠️ ', `L'URL doit se terminer par /v1 pour la nouvelle API (tu as ${base}).`);
+    log(YELLOW, '⚠️ ', `Clé au format inattendu (${key.slice(0, 10)}...) — le SDK peut refuser.`);
   }
 }
 
