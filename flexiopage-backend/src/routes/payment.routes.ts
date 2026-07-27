@@ -24,6 +24,7 @@ import { initOrderPaymentWith, getProviderById, isMockMode } from '../services/p
 import {
   getAvailableMethods,
   isMethodAllowed,
+  cinetpayOverrideForStore,
   type Gateway,
   type PaymentMethodId,
   type StoreType,
@@ -56,10 +57,14 @@ router.get('/methods', async (req: Request, res: Response): Promise<void> => {
     return;
   }
   const storeType = (store.storeType === 'digital' ? 'digital' : 'physical') as StoreType;
+  // Per-store CinetPay opt-in wins over the default matrix. This is scoped by
+  // slug via CINETPAY_TEST_STORE_SLUG so only the opted-in test store is
+  // affected — all other stores keep their normal rail.
+  const cinetpayMethods = storeType === 'digital' ? cinetpayOverrideForStore(storeSlug, country) : null;
   res.json({
     storeType,
     country,
-    methods: getAvailableMethods(country, storeType),
+    methods: cinetpayMethods || getAvailableMethods(country, storeType),
   });
 });
 
@@ -101,11 +106,16 @@ router.post('/initiate', async (req: Request, res: Response): Promise<void> => {
   const storeType = (store.storeType === 'digital' ? 'digital' : 'physical') as StoreType;
 
   // Matrix guard — reject spoofed client choices before touching a gateway.
-  if (!isMethodAllowed(country, storeType, body.gateway, body.method)) {
+  // The per-store CinetPay opt-in gets its own allow list so the guard doesn't
+  // reject legitimate CinetPay picks on the opted-in store.
+  const cinetpayMethods = storeType === 'digital' ? cinetpayOverrideForStore(body.storeSlug, country) : null;
+  const allowedForRequest = cinetpayMethods || getAvailableMethods(country, storeType);
+  const isAllowed = allowedForRequest.some((m) => m.gateway === body.gateway && m.id === body.method);
+  if (!isAllowed && !isMethodAllowed(country, storeType, body.gateway, body.method)) {
     res.status(400).json({
       error: 'Payment method not available for this country/store.',
       code: 'method_not_allowed',
-      available: getAvailableMethods(country, storeType),
+      available: allowedForRequest,
     });
     return;
   }

@@ -51,13 +51,38 @@ export function zoneOf(country: string | undefined | null): Zone {
 
 const COD_OPTION: PaymentMethodOption = { id: 'cod', gateway: 'cod', label: 'Paiement à la livraison' };
 
+/** Countries where CinetPay is a viable rail. Only used when CinetPay is
+ *  explicitly opted-in via `CINETPAY_TEST_STORE_SLUG` — never overrides
+ *  Moneróo for real stores in prod. */
+const CINETPAY_ELIGIBLE_COUNTRIES = new Set(['CI', 'BF', 'SN', 'ML', 'BJ', 'TG', 'NE', 'CM']);
+
 /** Online methods for a given zone (no COD here). */
-function onlineMethodsForZone(zone: Zone): PaymentMethodOption[] {
+function onlineMethodsForZone(zone: Zone, country: string): PaymentMethodOption[] {
   if (zone === 'moneróo') {
     return [{ id: 'mobile_money', gateway: 'moneróo', label: 'Mobile Money', channel: 'all' }];
   }
   // "Other": international card via Flutterwave as the only online fallback.
   return [{ id: 'card', gateway: 'flutterwave', label: 'Carte bancaire', channel: 'card' }];
+}
+
+/**
+ * Per-store CinetPay opt-in. When `CINETPAY_TEST_STORE_SLUG` is set to a
+ * specific store's slug, that ONE store routes to CinetPay instead of Moneróo
+ * — every other store keeps its normal rail. Small blast radius by design:
+ * a bug in the CinetPay path can only break the test store's checkout.
+ *
+ * Returns null when the store is not opted-in, so the caller falls through
+ * to the country-wide matrix. `country` must be a supported CFA country.
+ */
+export function cinetpayOverrideForStore(
+  storeSlug: string | undefined,
+  country: string,
+): PaymentMethodOption[] | null {
+  const targetSlug = process.env.CINETPAY_TEST_STORE_SLUG?.trim();
+  if (!targetSlug || !storeSlug) return null;
+  if (targetSlug !== storeSlug) return null;
+  if (!CINETPAY_ELIGIBLE_COUNTRIES.has(country.toUpperCase())) return null;
+  return [{ id: 'mobile_money', gateway: 'cinetpay', label: 'Mobile Money (CinetPay)', channel: 'all' }];
 }
 
 /**
@@ -67,7 +92,7 @@ function onlineMethodsForZone(zone: Zone): PaymentMethodOption[] {
 export function getAvailableMethods(country: string, storeType: StoreType): PaymentMethodOption[] {
   if (storeType === 'digital') {
     // Digital: online only. onlineMethodsForZone always returns ≥1 (card fallback).
-    return onlineMethodsForZone(zoneOf(country));
+    return onlineMethodsForZone(zoneOf(country), country);
   }
   // Physical: COD only — online payment restricted to digital stores.
   return [COD_OPTION];
