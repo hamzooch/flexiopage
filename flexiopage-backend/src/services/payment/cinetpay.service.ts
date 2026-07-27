@@ -1,23 +1,31 @@
 /**
  * CinetPay v1 API — Wave, Orange Money, MTN MoMo, Moov Money (CFA countries).
- * Docs: CinetPay's newer API (a.k.a. Sunu Checkout). Sandbox: `.net`, prod: `.com`.
+ * Docs: CinetPay's newer API (a.k.a. Sunu Checkout). Same host for sandbox
+ * and prod — the API key alone decides which account/mode is targeted.
+ *
+ * Auth (two-step, cached):
+ *   1. POST /v1/auth/login with { account_key, account_password } →
+ *      returns a short-lived token.
+ *   2. All other calls use `Authorization: Bearer <token>`.
+ *   The token is cached in-process until ~10s before its documented TTL so
+ *   we never re-authenticate on every payment. Miss & re-auth on 401/1002.
  *
  * Env:
- *   CINETPAY_API_KEY      — required. Secret key from Dashboard → API & sécurité.
- *   CINETPAY_SITE_ID      — required. Site/Caisse ID from Dashboard → Caisses.
- *                           NOTE: v1 API does not send site_id in the body, but we
- *                           still validate it's set as a coherence check and to keep
- *                           the seller aware of which caisse is receiving payments.
- *   CINETPAY_SECRET_KEY   — optional, kept for HMAC verification if CinetPay
- *                           re-adds it. In v1 the primary verification path is
- *                           the notify_token → /v1/payment/check re-verify.
- *   CINETPAY_NOTIFY_URL   — fallback webhook URL (defaults to API_PUBLIC_URL/api/webhooks/cinetpay)
- *   CINETPAY_BASE_URL     — override the API base host. Defaults to
- *                           https://api.cinetpay.net/v1 (the v1 API endpoint
- *                           for both sandbox and prod — the API key alone
- *                           determines which account/mode is targeted).
- *   API_PUBLIC_URL        — used to build notify_url
- *   FRONTEND_URL          — used to build success_url + failed_url
+ *   CINETPAY_API_KEY       — required. The `account_key` (sk_live_…) from
+ *                            Dashboard → API & sécurité.
+ *   CINETPAY_API_PASSWORD  — required. The `account_password` (a.k.a. "Mot
+ *                            de passe API") from Dashboard → API & sécurité.
+ *   CINETPAY_SITE_ID       — required. Site/Caisse ID from Dashboard → Caisses.
+ *                            NOTE: v1 doesn't send site_id in the body, but
+ *                            we still validate it as a coherence check.
+ *   CINETPAY_SECRET_KEY    — optional, for future HMAC verification.
+ *   CINETPAY_NOTIFY_URL    — fallback webhook URL (defaults to API_PUBLIC_URL/api/webhooks/cinetpay)
+ *   CINETPAY_BASE_URL      — override the API base host. Defaults to
+ *                            https://api.cinetpay.net/v1.
+ *   CINETPAY_AUTH_PATH     — override the auth path if CinetPay renames it.
+ *                            Defaults to `/auth/login`.
+ *   API_PUBLIC_URL         — used to build notify_url
+ *   FRONTEND_URL           — used to build success_url + failed_url
  *
  * Verification model (v1):
  *   1. Webhook arrives with { merchant_transaction_id, transaction_id, notify_token, status }.
@@ -71,18 +79,77 @@ export class CinetPayProvider implements PaymentProviderImpl {
     ).replace(/\/$/, '');
   }
 
-  /** v1 API uses `Authorization: Bearer <api_key>` for every call. The API key
-   *  is the `sk_live_...` / `sk_test_...` value from Dashboard → API & sécurité. */
-  private authHeaders(): Record<string, string> {
+  /** In-memory cache for the session token from /auth/login. Cleared on 401
+   *  so the next call re-authenticates automatically. */
+  private static cachedToken: { token: string; expiresAt: number } | null = null;
+
+  isConfigured(): boolean {
+    return !!(
+      process.env.CINETPAY_API_KEY &&
+      process.env.CINETPAY_API_PASSWORD &&
+      process.env.CINETPAY_SITE_ID
+    );
+  }
+
+  /**
+   * Two-step auth: exchange (account_key, account_password) for a short-lived
+   * bearer token. Cached in-process — a fresh worker/pod re-auths on first
+   * payment which is fine since /auth/login is a cheap round-trip.
+   */
+  private async getAuthToken(force = false): Promise<string> {
+    const now = Date.now();
+    if (!force && CinetPayProvider.cachedToken && CinetPayProvider.cachedToken.expiresAt > now) {
+      return CinetPayProvider.cachedToken.token;
+    }
+    const authPath = process.env.CINETPAY_AUTH_PATH || '/auth/login';
+    const res = await fetch(`${this.base}${authPath}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+      body: JSON.stringify({
+        account_key: process.env.CINETPAY_API_KEY,
+        account_password: process.env.CINETPAY_API_PASSWORD,
+      }),
+    });
+    const raw = await res.text();
+    let json: {
+      code?: number | string;
+      status?: string;
+      description?: string;
+      message?: string;
+      token?: string;
+      access_token?: string;
+      expires_in?: number;
+      data?: { token?: string; access_token?: string; expires_in?: number };
+    } = {};
+    try { json = raw ? JSON.parse(raw) : {}; } catch { /* leave empty */ }
+    // CinetPay wraps the token either at top level or inside `data`.
+    const token = json.token || json.access_token || json.data?.token || json.data?.access_token;
+    if (!res.ok || !token) {
+      const detail = json.description || json.message || `HTTP ${res.status} — ${raw.slice(0, 200)}`;
+      throw new Error(`CinetPay v1 auth failed (${json.code || res.status}): ${detail}`);
+    }
+    // TTL defaults to 1h if the server doesn't tell us. Refresh 30s early
+    // so a token doesn't expire mid-request.
+    const ttlSec = Number(json.expires_in || json.data?.expires_in || 3600);
+    CinetPayProvider.cachedToken = { token, expiresAt: now + (ttlSec - 30) * 1000 };
+    return token;
+  }
+
+  /** Standard auth headers for authenticated v1 calls. Getting the token
+   *  transparently handles the /auth/login round-trip when the cache is cold. */
+  private async authHeaders(): Promise<Record<string, string>> {
+    const token = await this.getAuthToken();
     return {
       'Content-Type': 'application/json',
       Accept: 'application/json',
-      Authorization: `Bearer ${process.env.CINETPAY_API_KEY!}`,
+      Authorization: `Bearer ${token}`,
     };
   }
 
-  isConfigured(): boolean {
-    return !!(process.env.CINETPAY_API_KEY && process.env.CINETPAY_SITE_ID);
+  /** Force a token refresh (used after a 401/1002 response — the token may
+   *  have been revoked earlier than its documented TTL). */
+  private invalidateToken(): void {
+    CinetPayProvider.cachedToken = null;
   }
 
   async initPayment(args: InitPaymentArgs): Promise<InitPaymentResult> {
@@ -126,31 +193,30 @@ export class CinetPayProvider implements PaymentProviderImpl {
     };
     if (paymentMethod) body.payment_method = paymentMethod;
 
-    const res = await fetch(`${this.base}/payment`, {
-      method: 'POST',
-      headers: this.authHeaders(),
-      body: JSON.stringify(body),
-    });
-    const json = (await res.json()) as {
-      code?: number | string;
-      status?: string;
-      message?: string;
-      payment_url?: string;
-      payment_token?: string;
-      transaction_id?: string;
-      merchant_transaction_id?: string;
-      notify_token?: string;
-      details?: {
-        code?: number;
-        status?: CinetPayV1Status;
-        message?: string;
-        must_be_redirected?: boolean;
-      };
+    // Two-step auth: first attempt uses the cached token; on 401/INVALID_TOKEN
+    // we drop the cache and retry once. Prevents a permanently-broken flow
+    // when the token expires earlier than its documented TTL.
+    const doRequest = async (): Promise<{ res: Response; raw: string }> => {
+      const res = await fetch(`${this.base}/payment`, {
+        method: 'POST',
+        headers: await this.authHeaders(),
+        body: JSON.stringify(body),
+      });
+      const raw = await res.text();
+      return { res, raw };
     };
+    let attempt = await doRequest();
+    let json = safeJson(attempt.raw);
+    if (isAuthRejection(attempt.res.status, json)) {
+      this.invalidateToken();
+      attempt = await doRequest();
+      json = safeJson(attempt.raw);
+    }
+    const { res } = attempt;
 
     const codeOk = Number(json.code) === 200 && String(json.status || '').toUpperCase() === 'OK';
     if (!res.ok || !codeOk || !json.payment_url) {
-      const detail = json.details?.message || json.message || `HTTP ${res.status}`;
+      const detail = json.details?.message || json.description || json.message || `HTTP ${res.status} — ${attempt.raw.slice(0, 300)}`;
       throw new Error(`CinetPay v1 init failed (${json.code || res.status}): ${detail}`);
     }
     return {
@@ -236,12 +302,23 @@ export class CinetPayProvider implements PaymentProviderImpl {
     transaction_id?: string;
     notify_token?: string;
   }): Promise<{ status?: CinetPayV1Status; code?: number; message?: string } & Record<string, unknown>> {
-    const res = await fetch(`${this.base}/payment/check`, {
-      method: 'POST',
-      headers: this.authHeaders(),
-      body: JSON.stringify(args),
-    });
-    const json = (await res.json()) as {
+    const doRequest = async (): Promise<{ res: Response; raw: string }> => {
+      const res = await fetch(`${this.base}/payment/check`, {
+        method: 'POST',
+        headers: await this.authHeaders(),
+        body: JSON.stringify(args),
+      });
+      const raw = await res.text();
+      return { res, raw };
+    };
+    let attempt = await doRequest();
+    let jsonRaw = safeJson(attempt.raw);
+    if (isAuthRejection(attempt.res.status, jsonRaw)) {
+      this.invalidateToken();
+      attempt = await doRequest();
+      jsonRaw = safeJson(attempt.raw);
+    }
+    const json = jsonRaw as {
       code?: number;
       status?: string;
       message?: string;
@@ -310,4 +387,29 @@ function channelToPaymentMethod(channel: InitPaymentArgs['channel']): string | u
 function firstUrl(v: string | undefined): string | undefined {
   if (!v) return undefined;
   return v.split(',')[0].trim().replace(/\/$/, '') || undefined;
+}
+
+/** Parse JSON safely — returns {} on garbage so callers can `?.` fields. */
+function safeJson(raw: string): Record<string, unknown> & {
+  code?: number | string;
+  status?: string;
+  message?: string;
+  description?: string;
+  payment_url?: string;
+  payment_token?: string;
+  transaction_id?: string;
+  merchant_transaction_id?: string;
+  notify_token?: string;
+  details?: { code?: number; status?: CinetPayV1Status; message?: string; must_be_redirected?: boolean };
+} {
+  try { return JSON.parse(raw); } catch { return {}; }
+}
+
+/** Detect the two ways CinetPay signals an expired/invalid session token so
+ *  we can drop the cache and retry once. */
+function isAuthRejection(status: number, body: { code?: number | string; status?: string }): boolean {
+  if (status === 401 || status === 403) return true;
+  if (Number(body.code) === 1002) return true;
+  if (String(body.status || '').toUpperCase() === 'INVALID_TOKEN') return true;
+  return false;
 }
