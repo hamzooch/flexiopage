@@ -108,12 +108,16 @@ async function main(): Promise<void> {
     log(YELLOW, '   👉', 'Ouvre le checkoutUrl dans un navigateur pour finaliser un test.');
     console.log('      En sandbox, choisis Wave / OM / MTN et complète le paiement fictif.');
   } catch (err) {
-    log(RED, '   ❌', `Init a échoué: ${(err as Error).message}`);
+    const e = err as Error & { cause?: Error & { code?: string } };
+    const cause = e.cause ? ` [${e.cause.code || 'unknown'}] ${e.cause.message || ''}`.trim() : '';
+    log(RED, '   ❌', `Init a échoué: ${e.message}${cause ? ` — ${cause}` : ''}`);
     console.log('');
     log(YELLOW, '   💡', 'Causes fréquentes:');
-    console.log('      • IP non whitelistée côté CinetPay (sandbox: normalement pas de restriction)');
-    console.log('      • CINETPAY_API_KEY / CINETPAY_SITE_ID invalides');
-    console.log('      • Montant non multiple de 5 pour XOF/XAF (le code arrondit auto)');
+    console.log('      • ENOTFOUND : le domaine dans CINETPAY_BASE_URL n\'existe pas — mauvais sous-domaine.');
+    console.log('      • ECONNREFUSED / ETIMEDOUT : firewall du VPS bloque la sortie vers CinetPay.');
+    console.log('      • 401 / 403 : clé invalide, IP non whitelistée, ou schéma d\'auth différent (essayer X-API-KEY).');
+    console.log('      • 422 : payload rejeté — le message CinetPay indique le champ fautif.');
+    console.log('      • Montant non multiple de 5 pour XOF/XAF (le code arrondit auto).');
     process.exit(1);
   }
 
