@@ -334,7 +334,7 @@ export default async function PublicProductPage({ params }: Props) {
               radius={radius}
               hasDiscount={hasDiscount}
               discountPct={discountPct}
-              discountAnim={store.settings?.storefront?.discountBadgeAnimation}
+              discountAnim={store?.settings?.storefront?.discountBadgeAnimation}
               showGallery={showGallery}
               isDigital={isDigital}
               kindMeta={kindMeta ? { icon: kindMeta.icon, label: kindMeta.label } : null}
