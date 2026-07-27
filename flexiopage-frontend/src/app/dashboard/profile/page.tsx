@@ -631,7 +631,7 @@ export default function ProfilePage() {
                         Utiliser
                       </Button>
                     )}
-                    <Link href={`/dashboard/stores/${store._id}`}>
+                    <Link href={`/dashboard/stores/${store.slug || store._id}`}>
                       <Button variant="outline" size="sm" className="h-9 gap-1.5 rounded-lg">
                         <SettingsIcon className="h-3.5 w-3.5" />
                         Réglages

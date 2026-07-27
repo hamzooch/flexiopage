@@ -246,7 +246,7 @@ export default function DashboardOverviewPage() {
             <span className="flex flex-wrap items-center gap-1.5">
               Vue d&apos;ensemble de{' '}
               <Link
-                href={`/dashboard/stores/${activeStore._id}`}
+                href={`/dashboard/stores/${activeStore.slug || activeStore._id}`}
                 className="inline-flex items-center gap-1 rounded-full bg-primary/10 px-2 py-0.5 text-xs font-semibold text-primary hover:bg-primary/20"
               >
                 <Store className="h-3 w-3" />
@@ -264,7 +264,7 @@ export default function DashboardOverviewPage() {
         actions={
           <>
             {activeStore && (
-              <Link href={`/dashboard/stores/${activeStore._id}`}>
+              <Link href={`/dashboard/stores/${activeStore.slug || activeStore._id}`}>
                 <Button variant="outline" size="sm" className="h-9 gap-1.5 rounded-xl">
                   <SettingsIcon className="h-3.5 w-3.5" />
                   Configurer
@@ -405,7 +405,7 @@ export default function DashboardOverviewPage() {
       {/* ── Draft banner — la #1 raison "mon dash est vide" ────
             Placé juste avant les KPIs pour être vu tout de suite. ── */}
       {activeStore && activeStore.isPublished === false && (
-        <DraftBanner storeId={activeStore._id} storeName={activeStore.name} />
+        <DraftBanner storeId={activeStore.slug || activeStore._id} storeName={activeStore.name} />
       )}
 
       {/* ── KPI cards (5 principaux) — 2 col en mobile pour lire les
@@ -685,7 +685,7 @@ export default function DashboardOverviewPage() {
                       {s.isPublished ? 'Live' : 'Brouillon'}
                     </span>
                     <Link
-                      href={`/dashboard/stores/${s._id}`}
+                      href={`/dashboard/stores/${s.slug || s._id}`}
                       onClick={(e) => e.stopPropagation()}
                       className="grid h-7 w-7 place-items-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"
                       aria-label="Configurer"

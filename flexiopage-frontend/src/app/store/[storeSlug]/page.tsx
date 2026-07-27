@@ -7,7 +7,7 @@ import {
   resolveSectionOrder,
   type MovableSectionId,
 } from '@/lib/section-order';
-import { formatCurrency, mediaUrl } from '@/lib/utils';
+import { formatCurrency, mediaUrl, discountBadgeAnimClass, type DiscountBadgeAnimation } from '@/lib/utils';
 import {
   STORE_THEME_TEMPLATES,
   RADIUS_PX,
@@ -46,6 +46,7 @@ interface StorefrontConfig {
   heroVideo?: string;
   heroVideoMobile?: string;
   showProductsGrid?: boolean;
+  discountBadgeAnimation?: 'none' | 'pulse' | 'shimmer' | 'bounce' | 'flash';
   productsGridTitle?: string;
   productsGridSubtitle?: string;
   productsGridMaxItems?: number;
@@ -354,6 +355,7 @@ export default async function PublicStorePage({ params }: Props) {
                 title={sf.productsGridTitle}
                 subtitle={sf.productsGridSubtitle}
                 columnsOverride={sf.productsGridColumns}
+                discountAnim={sf.discountBadgeAnimation}
               />
             ) : null,
             testimonials: <StorefrontTestimonials config={sf.testimonials} theme={theme} />,
@@ -778,6 +780,7 @@ function ProductCard({
   currency,
   isDigital,
   index = 0,
+  discountAnim,
 }: {
   product: ProductDoc;
   theme: ThemeTokens;
@@ -786,6 +789,7 @@ function ProductCard({
   isDigital: boolean;
   /** Position in the grid — drives the stagger animation delay. */
   index?: number;
+  discountAnim?: DiscountBadgeAnimation;
 }) {
   const cardStyle = theme.layout?.productCard || 'classic';
   const radius = RADIUS_PX[theme.borderRadius];
@@ -825,7 +829,7 @@ function ProductCard({
 
   const discountBadge = hasDiscount && (
     <span
-      className="pc-badge-pulse absolute left-3 top-3 px-2 py-1 text-[10px] font-bold uppercase tracking-wider"
+      className={`${discountBadgeAnimClass(discountAnim)} absolute left-3 top-3 px-2 py-1 text-[10px] font-bold uppercase tracking-wider`}
       style={{ backgroundColor: theme.primary, color: theme.primaryFg, borderRadius: pillRadius }}
     >
       −{discountPct}%
@@ -1034,6 +1038,7 @@ function ProductsGrid({
   title,
   subtitle,
   columnsOverride,
+  discountAnim,
 }: {
   theme: ThemeTokens;
   products: ProductDoc[];
@@ -1045,6 +1050,8 @@ function ProductsGrid({
   subtitle?: string;
   /** Override du nombre de colonnes (sinon, valeur du thème). */
   columnsOverride?: 2 | 3 | 4;
+  /** Motion class for the "-XX%" discount pill. Undefined → default pulse. */
+  discountAnim?: DiscountBadgeAnimation;
 }) {
   const radius = RADIUS_PX[theme.borderRadius];
   // "Bold" nav themes (Volt, Studio) also use loud uppercase section heads.
@@ -1112,6 +1119,7 @@ function ProductsGrid({
                 currency={currency}
                 isDigital={isDigital}
                 index={i}
+                discountAnim={discountAnim}
               />
             ))}
           </div>
@@ -1344,7 +1352,7 @@ function UnpublishedStoreView({ store }: { store: DraftStoreInfo }) {
                 Active la publication depuis ton dashboard pour la rendre visible à tes clients.
               </p>
               <Link
-                href={`/dashboard/stores/${store._id}`}
+                href={`/dashboard/stores/${store.slug || store._id}`}
                 className="mt-3 inline-flex items-center gap-1.5 rounded-xl bg-gradient-to-br from-amber-500 to-orange-600 px-4 py-2 text-xs font-semibold text-white shadow-md shadow-orange-500/30 transition-transform hover:scale-105"
               >
                 Ouvrir mon dashboard

@@ -44,7 +44,7 @@ export function Header({ onOpenMobileNav }: Props = {}) {
   const currentStoreId = useStoreStore((s) => s.currentStoreId);
   const setCurrentStore = useStoreStore((s) => s.setCurrentStore);
   const [activeStoreName, setActiveStoreName] = useState<string | null>(null);
-  const [storeList, setStoreList] = useState<{ _id: string; name: string; isPublished?: boolean }[]>([]);
+  const [storeList, setStoreList] = useState<{ _id: string; name: string; slug?: string; isPublished?: boolean }[]>([]);
   const [storeMenuOpen, setStoreMenuOpen] = useState(false);
   const { t } = useT();
 
@@ -63,7 +63,7 @@ export function Header({ onOpenMobileNav }: Props = {}) {
       .list()
       .then((res) => {
         if (cancelled) return;
-        const list = (res.data as { stores: { _id: string; name: string; isPublished?: boolean }[] }).stores || [];
+        const list = (res.data as { stores: { _id: string; name: string; slug?: string; isPublished?: boolean }[] }).stores || [];
         setStoreList(list);
       })
       .catch(() => {});
@@ -87,12 +87,18 @@ export function Header({ onOpenMobileNav }: Props = {}) {
 
   const segments = pathname.split('/').filter(Boolean);
   const lastSeg = segments[segments.length - 1] || '';
+  const storeSegIdx = segments.indexOf('stores');
+  const storeSeg = storeSegIdx >= 0 ? segments[storeSegIdx + 1] : undefined;
+  // Resolve the store segment (id OR slug) to a real name from the loaded list.
+  const matchedStore = storeSeg
+    ? storeList.find((s) => s._id === storeSeg || s.slug === storeSeg)
+    : undefined;
   let title: string;
   if (segments.length <= 1) {
     title = t('header.overview');
-  } else if (isObjectId(lastSeg) && lastSeg === currentStoreId && activeStoreName) {
-    // Landing on /dashboard/stores/<storeId> — show the store's name.
-    title = activeStoreName;
+  } else if (matchedStore && storeSeg === lastSeg) {
+    // Landing on /dashboard/stores/<id|slug> — show the store's name.
+    title = matchedStore.name;
   } else if (isObjectId(lastSeg)) {
     // Generic ObjectId (order, product…) — keep the last 6 chars so it stays
     // visually distinct from a slug but doesn't dominate the header.

@@ -236,13 +236,14 @@ export function CreateStoreWizard({ onCreated, triggerLabel = 'Créer une boutiq
         language: newLanguage || undefined,
         currency: newCurrency || undefined,
       });
-      const newId = (res.data as { store?: { _id?: string } }).store?._id;
+      const newStore = (res.data as { store?: { _id?: string; slug?: string } }).store;
+      const newId = newStore?._id;
       if (newId) {
         setCurrentStore(newId);
         if (onCreated) {
           onCreated(newId);
         } else {
-          router.push(`/dashboard/stores/${newId}`);
+          router.push(`/dashboard/stores/${newStore?.slug || newId}`);
         }
       }
       reset();
