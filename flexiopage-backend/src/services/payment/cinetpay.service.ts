@@ -12,8 +12,10 @@
  *                           re-adds it. In v1 the primary verification path is
  *                           the notify_token → /v1/payment/check re-verify.
  *   CINETPAY_NOTIFY_URL   — fallback webhook URL (defaults to API_PUBLIC_URL/api/webhooks/cinetpay)
- *   CINETPAY_BASE_URL     — sandbox: https://api-checkout.cinetpay.net/v1
- *                           prod  : https://api-checkout.cinetpay.com/v1
+ *   CINETPAY_BASE_URL     — override the API base host. Defaults to
+ *                           https://api.cinetpay.net/v1 (the v1 API endpoint
+ *                           for both sandbox and prod — the API key alone
+ *                           determines which account/mode is targeted).
  *   API_PUBLIC_URL        — used to build notify_url
  *   FRONTEND_URL          — used to build success_url + failed_url
  *
@@ -56,13 +58,16 @@ export class CinetPayProvider implements PaymentProviderImpl {
   id: PaymentProvider = 'cinetpay';
 
   /**
-   * CinetPay Sandbox lives on `.net`, prod on `.com`. Sellers running end-to-end
-   * validation tests point `CINETPAY_BASE_URL` at the sandbox host; leaving it
-   * unset falls back to prod so nothing changes for live merchants.
+   * CinetPay v1 API lives on `api.cinetpay.net/v1` — same host for both
+   * sandbox and prod, the API key alone determines which account/mode is
+   * hit. The legacy v2 API on `api-checkout.cinetpay.com` is a different
+   * beast (different field names, different auth) and is NOT what this
+   * provider talks to. Override `CINETPAY_BASE_URL` only if CinetPay
+   * migrates the host again.
    */
   private get base(): string {
     return (
-      process.env.CINETPAY_BASE_URL || 'https://api-checkout.cinetpay.com/v1'
+      process.env.CINETPAY_BASE_URL || 'https://api.cinetpay.net/v1'
     ).replace(/\/$/, '');
   }
 
