@@ -249,6 +249,9 @@ export interface StorefrontSettings {
   productsGridSort?: 'recent' | 'price-asc' | 'price-desc' | 'name-asc';
   /** Masquer les produits en rupture (par défaut : affichés grisés). */
   productsGridHideOutOfStock?: boolean;
+  /** Motion appliquée au badge "-XX%" affiché sur les cartes produit et la
+   *  galerie. Défaut 'pulse' (comportement historique). */
+  discountBadgeAnimation?: 'none' | 'pulse' | 'shimmer' | 'bounce' | 'flash';
   showFeatures?: boolean;
   testimonials?: TestimonialsSettings;
   showFooter?: boolean;

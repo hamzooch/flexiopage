@@ -42,6 +42,29 @@ export function formatDate(date: string | Date): string {
 }
 
 /**
+ * Motion the seller picks for the "-XX%" discount pill shown on cards,
+ * product galleries, bumps and cross-sells. `pulse` preserves the historic
+ * default; `none` gives a calmer, more premium look.
+ */
+export type DiscountBadgeAnimation = 'none' | 'pulse' | 'shimmer' | 'bounce' | 'flash';
+
+/**
+ * Map the seller's animation choice to the matching CSS class (defined in
+ * globals.css). Returns an empty string for `none` so the badge stays static
+ * without extra layout/animation cost.
+ */
+export function discountBadgeAnimClass(anim?: DiscountBadgeAnimation | null): string {
+  switch (anim) {
+    case 'none':    return '';
+    case 'shimmer': return 'flexio-badge-shimmer';
+    case 'bounce':  return 'flexio-badge-bounce';
+    case 'flash':   return 'flexio-badge-flash';
+    case 'pulse':
+    default:        return 'flexio-badge-pulse';
+  }
+}
+
+/**
  * Build a relative path inside the same storefront. Use this for links
  * rendered ON a storefront page — once the visitor is on
  * `macaftans.flexiopage.com`, a relative href like `/product/foo` stays

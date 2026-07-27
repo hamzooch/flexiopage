@@ -17,7 +17,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import Image from 'next/image';
 import { X, ChevronLeft, ChevronRight } from 'lucide-react';
-import { mediaUrl } from '@/lib/utils';
+import { mediaUrl, discountBadgeAnimClass, type DiscountBadgeAnimation } from '@/lib/utils';
 import { IMAGE_BLUR_DATA_URL } from '@/lib/image-placeholder';
 import type { ThemeTokens } from '@/data/store-themes';
 import { WishlistButton } from '@/components/storefront/wishlist-button';
@@ -29,6 +29,8 @@ interface Props {
   radius: string;
   hasDiscount: boolean;
   discountPct: number;
+  /** Motion class for the "-XX%" discount pill. Undefined → default pulse. */
+  discountAnim?: DiscountBadgeAnimation;
   showGallery: boolean;
   isDigital: boolean;
   kindMeta: { icon: string; label: string } | null;
@@ -58,12 +60,14 @@ export function ProductGallery({
   radius,
   hasDiscount,
   discountPct,
+  discountAnim,
   showGallery,
   isDigital,
   kindMeta,
   storeSlug,
   wishlistItem,
 }: Props) {
+  const badgeAnimClass = discountBadgeAnimClass(discountAnim);
   const [activeIndex, setActiveIndex] = useState(0);
   const [lightboxOpen, setLightboxOpen] = useState(false);
   const stripRef = useRef<HTMLDivElement | null>(null);
@@ -168,7 +172,7 @@ export function ProductGallery({
               )}
               {i === safeIndex && hasDiscount && (
                 <span
-                  className="absolute left-3 top-3 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider"
+                  className={`${badgeAnimClass} absolute left-3 top-3 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider`}
                   style={{ backgroundColor: '#10b981', color: '#fff', borderRadius: pillRadius }}
                 >
                   −{discountPct}%
@@ -246,7 +250,7 @@ export function ProductGallery({
           )}
           {hasDiscount && (
             <span
-              className="absolute left-4 top-4 px-2.5 py-1 text-[11px] font-bold uppercase tracking-wider"
+              className={`${badgeAnimClass} absolute left-4 top-4 px-2.5 py-1 text-[11px] font-bold uppercase tracking-wider`}
               style={{ backgroundColor: '#10b981', color: '#fff', borderRadius: pillRadius }}
             >
               −{discountPct}%

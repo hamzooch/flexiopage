@@ -126,7 +126,11 @@ interface StoreDoc {
       hideReturns?: boolean;
       hideDelivery?: boolean;
     };
-    storefront?: { navbar?: NavbarConfig; productPage?: ProductPageSettings };
+    storefront?: {
+      navbar?: NavbarConfig;
+      productPage?: ProductPageSettings;
+      discountBadgeAnimation?: 'none' | 'pulse' | 'shimmer' | 'bounce' | 'flash';
+    };
   };
   integrations?: { marketing?: MarketingConfig };
 }
@@ -330,6 +334,7 @@ export default async function PublicProductPage({ params }: Props) {
               radius={radius}
               hasDiscount={hasDiscount}
               discountPct={discountPct}
+              discountAnim={store.settings?.storefront?.discountBadgeAnimation}
               showGallery={showGallery}
               isDigital={isDigital}
               kindMeta={kindMeta ? { icon: kindMeta.icon, label: kindMeta.label } : null}

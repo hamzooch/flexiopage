@@ -17,7 +17,7 @@ import {
   withLayoutFallback,
   type ThemeTokens,
 } from '@/data/store-themes';
-import { formatCurrency, mediaUrl } from '@/lib/utils';
+import { formatCurrency, mediaUrl, discountBadgeAnimClass } from '@/lib/utils';
 import { StoreNavbar, type NavbarConfig } from '@/components/storefront/StoreNavbar';
 import { StoreFooter, type FooterConfig } from '@/components/storefront/StoreFooter';
 import { AnnouncementBar, type AnnouncementBarConfig } from '@/components/storefront/AnnouncementBar';
@@ -47,6 +47,7 @@ interface StoreDoc {
       showFooter?: boolean;
       footerNote?: string;
       footer?: FooterConfig;
+      discountBadgeAnimation?: 'none' | 'pulse' | 'shimmer' | 'bounce' | 'flash';
     };
   };
   integrations?: { marketing?: MarketingConfig };
@@ -276,7 +277,7 @@ export default async function CollectionPage({ params }: Props) {
                           )}
                           {hasDiscount && (
                             <span
-                              className="absolute left-3 top-3 px-2 py-1 text-[10px] font-bold uppercase"
+                              className={`${discountBadgeAnimClass(sf.discountBadgeAnimation)} absolute left-3 top-3 px-2 py-1 text-[10px] font-bold uppercase`}
                               style={{
                                 backgroundColor: theme.primary,
                                 color: theme.primaryFg,

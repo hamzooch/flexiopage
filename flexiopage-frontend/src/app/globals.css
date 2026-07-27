@@ -206,6 +206,54 @@ body {
   }
 }
 
+/* Storefront discount badge — seller-picked motion on the "-XX%" pill that
+   appears on product cards, gallery, bumps and cross-sells. Keep GPU-only
+   (transform / opacity) so it never jank-scrolls on cheap Android. Shimmer
+   uses a pseudo-element gloss so the badge's inline background colour stays
+   authoritative. */
+@keyframes flexio-badge-pulse {
+  0%, 100% { transform: scale(1);    box-shadow: 0 0 0 0 rgba(0,0,0,0.14); }
+  50%      { transform: scale(1.08); box-shadow: 0 0 0 6px rgba(0,0,0,0); }
+}
+@keyframes flexio-badge-shimmer {
+  0%   { transform: translateX(-120%) skewX(-18deg); }
+  100% { transform: translateX(220%)  skewX(-18deg); }
+}
+@keyframes flexio-badge-bounce {
+  0%, 100% { transform: translateY(0); }
+  50%      { transform: translateY(-3px); }
+}
+@keyframes flexio-badge-flash {
+  0%, 100% { opacity: 1; }
+  50%      { opacity: 0.55; }
+}
+.flexio-badge-pulse  { animation: flexio-badge-pulse 2.2s ease-in-out infinite; }
+.flexio-badge-bounce { animation: flexio-badge-bounce 1.4s ease-in-out infinite; }
+.flexio-badge-flash  { animation: flexio-badge-flash 1.6s ease-in-out infinite; }
+.flexio-badge-shimmer {
+  position: relative;
+  overflow: hidden;
+}
+.flexio-badge-shimmer::after {
+  content: '';
+  position: absolute;
+  top: 0; bottom: 0;
+  left: 0;
+  width: 40%;
+  background: linear-gradient(90deg,
+    transparent 0%,
+    rgba(255,255,255,0.55) 50%,
+    transparent 100%);
+  pointer-events: none;
+  animation: flexio-badge-shimmer 2.4s linear infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .flexio-badge-pulse,
+  .flexio-badge-bounce,
+  .flexio-badge-flash { animation: none !important; }
+  .flexio-badge-shimmer::after { animation: none !important; opacity: 0; }
+}
+
 /* Storefront info pages (Conditions, FAQ, About…) — light typographic
    reset so seller-edited markdown reads cleanly on every store theme. */
 .prose-storefront h1 { font-size: 2rem; font-weight: 800; line-height: 1.2; margin: 1.5em 0 0.5em; }

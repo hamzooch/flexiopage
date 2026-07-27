@@ -1456,6 +1456,37 @@ function ProductsGridEditor({ block, store, setStore, markDirty }: EditorCtx) {
               checked={!!storefront.productsGridHideOutOfStock}
               onChange={(v) => patchGrid({ productsGridHideOutOfStock: v })}
             />
+            <Field
+              label="Animation du badge remise (-XX%)"
+              hint="La pastille verte / colorée qui s'affiche sur chaque produit en promotion. Choisis « Aucune » pour un look premium plus calme."
+            >
+              <div className="grid grid-cols-3 gap-1.5 sm:grid-cols-5">
+                {([
+                  { v: 'none',    label: 'Aucune' },
+                  { v: 'pulse',   label: 'Pulse' },
+                  { v: 'shimmer', label: 'Shimmer' },
+                  { v: 'bounce',  label: 'Bounce' },
+                  { v: 'flash',   label: 'Flash' },
+                ] as const).map((opt) => {
+                  const active = (storefront.discountBadgeAnimation || 'pulse') === opt.v;
+                  return (
+                    <button
+                      key={opt.v}
+                      type="button"
+                      onClick={() => patchGrid({ discountBadgeAnimation: opt.v })}
+                      className={cn(
+                        'rounded-md border px-2 py-1.5 text-xs font-medium transition-colors',
+                        active
+                          ? 'border-primary bg-primary/10 text-primary'
+                          : 'border-input bg-background text-muted-foreground hover:bg-muted/50 hover:text-foreground',
+                      )}
+                    >
+                      {opt.label}
+                    </button>
+                  );
+                })}
+              </div>
+            </Field>
           </>
         )}
       </div>

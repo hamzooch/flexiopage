@@ -37,6 +37,7 @@ interface BotstoreConfig {
   accentColor?: string;
   greeting?: string;
   launcherLabel?: string;
+  iconAnimation?: 'none' | 'pulse' | 'bounce' | 'wiggle';
   whatsappFallback?: WhatsappFallbackCfg;
 }
 
@@ -296,6 +297,41 @@ export default function BotstorePage() {
               disabled={!config.enabled}
               className="mt-1"
             />
+          </div>
+          <div className="sm:col-span-2">
+            <Label className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+              Animation de l&apos;icône
+            </Label>
+            <p className="mt-0.5 text-xs text-muted-foreground">
+              Une motion discrète attire l&apos;œil du visiteur. Laisse « Aucune » pour un rendu plus premium.
+            </p>
+            <div className="mt-2 grid grid-cols-2 gap-1.5 sm:grid-cols-4">
+              {([
+                { v: 'none',   label: 'Aucune',  hint: 'Statique' },
+                { v: 'pulse',  label: 'Pulse',   hint: 'Halo lumineux' },
+                { v: 'bounce', label: 'Bounce',  hint: 'Petit saut' },
+                { v: 'wiggle', label: 'Wiggle',  hint: 'Coucou !' },
+              ] as const).map((opt) => {
+                const active = (config.iconAnimation || 'none') === opt.v;
+                return (
+                  <button
+                    key={opt.v}
+                    type="button"
+                    disabled={!config.enabled}
+                    onClick={() => patch({ iconAnimation: opt.v })}
+                    className={cn(
+                      'rounded-md border px-3 py-2 text-left transition-colors disabled:cursor-not-allowed disabled:opacity-50',
+                      active
+                        ? 'border-primary bg-primary/10 text-primary'
+                        : 'border-input bg-background text-muted-foreground hover:bg-muted/50 hover:text-foreground',
+                    )}
+                  >
+                    <div className="text-sm font-semibold">{opt.label}</div>
+                    <div className="text-[10px] opacity-70">{opt.hint}</div>
+                  </button>
+                );
+              })}
+            </div>
           </div>
         </CardContent>
       </Card>

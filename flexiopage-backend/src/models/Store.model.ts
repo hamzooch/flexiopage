@@ -222,6 +222,12 @@ export interface IStore extends Document {
       greeting?: string;
       /** Label du bouton (mobile bar / FAB tooltip). */
       launcherLabel?: string;
+      /**
+       * Motion appliquée à l'icône FAB tant que le chat est fermé — sert à
+       * attirer l'attention sans être intrusif. 'none' pour un rendu premium
+       * plus calme.
+       */
+      iconAnimation?: 'none' | 'pulse' | 'bounce' | 'wiggle';
       whatsappFallback?: {
         /** Master switch. Si false, aucun CTA WhatsApp ne s'affiche dans le chat. */
         enabled?: boolean;
@@ -309,6 +315,12 @@ export interface IStore extends Document {
       /** Vidéo dédiée mobile (recadrage portrait). Vide → fallback heroVideo. */
       heroVideoMobile?: string;
       showProductsGrid?: boolean;    // default true
+      /**
+       * Animation on the "-XX%" discount badge shown over product cards,
+       * gallery, bumps and cross-sells. Sellers pick their vibe or turn it
+       * off entirely for a calmer, more premium storefront.
+       */
+      discountBadgeAnimation?: 'none' | 'pulse' | 'shimmer' | 'bounce' | 'flash';
       productsGridTitle?: string;    // default "Nos produits"
       /** Sous-titre court sous le titre (vide → texte par défaut). */
       productsGridSubtitle?: string;
@@ -742,6 +754,11 @@ const StoreSchema = new Schema<IStore>(
         accentColor: { type: String, trim: true },
         greeting: { type: String, trim: true },
         launcherLabel: { type: String, trim: true },
+        iconAnimation: {
+          type: String,
+          enum: ['none', 'pulse', 'bounce', 'wiggle'],
+          default: 'none',
+        },
         whatsappFallback: {
           enabled: { type: Boolean, default: true },
           alwaysOffer: { type: Boolean, default: false },
@@ -789,6 +806,11 @@ const StoreSchema = new Schema<IStore>(
         heroVideo: { type: String, trim: true },
         heroVideoMobile: { type: String, trim: true },
         showProductsGrid: { type: Boolean, default: true },
+        discountBadgeAnimation: {
+          type: String,
+          enum: ['none', 'pulse', 'shimmer', 'bounce', 'flash'],
+          default: 'pulse',
+        },
         productsGridTitle: { type: String },
         productsGridSubtitle: { type: String },
         productsGridMaxItems: { type: Number },

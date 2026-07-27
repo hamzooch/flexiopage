@@ -19,6 +19,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { WhatsappConfig } from './whatsapp-button';
 
+export type BotstoreIconAnimation = 'none' | 'pulse' | 'bounce' | 'wiggle';
+
 export interface BotstoreConfig {
   enabled?: boolean;
   persona?: string;
@@ -27,11 +29,24 @@ export interface BotstoreConfig {
   accentColor?: string;
   greeting?: string;
   launcherLabel?: string;
+  /** Motion for the closed FAB — draws the eye without being intrusive. */
+  iconAnimation?: BotstoreIconAnimation;
   whatsappFallback?: {
     enabled?: boolean;
     alwaysOffer?: boolean;
     ctaLabel?: string;
   };
+}
+
+function iconAnimationClass(anim: BotstoreIconAnimation | undefined, open: boolean): string {
+  if (open) return '';
+  switch (anim) {
+    case 'pulse':  return 'flexio-bs-fab-pulse';
+    case 'bounce': return 'flexio-bs-fab-bounce';
+    case 'wiggle': return 'flexio-bs-fab-wiggle';
+    case 'none':
+    default:       return '';
+  }
 }
 
 interface ChatMessage {
@@ -223,7 +238,7 @@ export function BotstoreWidget({ storeSlug, config, whatsapp }: Props) {
         type="button"
         onClick={() => setOpen((v) => !v)}
         aria-label={launcherLabel}
-        className={`flexio-bs-fab fixed z-50 grid h-14 w-14 place-items-center rounded-full shadow-lg transition-transform hover:scale-110 active:scale-95 ${positionClasses.fab}`}
+        className={`flexio-bs-fab fixed z-50 grid h-14 w-14 place-items-center rounded-full shadow-lg transition-transform hover:scale-110 active:scale-95 ${positionClasses.fab} ${iconAnimationClass(config?.iconAnimation, open)}`}
         style={{ backgroundColor: accent, color: '#ffffff' }}
       >
         {open ? (
@@ -341,9 +356,44 @@ export function BotstoreWidget({ storeSlug, config, whatsapp }: Props) {
           0%, 60%, 100% { transform: translateY(0); opacity: 0.4; }
           30%           { transform: translateY(-4px); opacity: 1; }
         }
+
+        /* FAB attention-getters — the seller picks one to draw the visitor's
+           eye when the chat is closed. GPU-only (transform / box-shadow) so
+           they never cost a layout pass. Hover keeps the base transition scale
+           feedback; the loop pauses on hover so the click target stays stable. */
+        @keyframes flexioBsFabPulse {
+          0%, 100% { box-shadow: 0 8px 20px -6px rgba(0,0,0,0.35), 0 0 0 0 currentColor; }
+          50%      { box-shadow: 0 8px 20px -6px rgba(0,0,0,0.35), 0 0 0 14px transparent; }
+        }
+        @keyframes flexioBsFabBounce {
+          0%, 100%   { transform: translateY(0); }
+          20%, 60%   { transform: translateY(-8px); }
+          40%, 80%   { transform: translateY(0); }
+        }
+        @keyframes flexioBsFabWiggle {
+          0%, 100%       { transform: rotate(0deg); }
+          15%            { transform: rotate(-12deg); }
+          30%            { transform: rotate(10deg); }
+          45%            { transform: rotate(-8deg); }
+          60%            { transform: rotate(6deg); }
+          75%            { transform: rotate(-3deg); }
+        }
+        .flexio-bs-fab-pulse  { animation: flexioBsFabPulse 2s ease-out infinite; }
+        .flexio-bs-fab-bounce { animation: flexioBsFabBounce 2.6s ease-in-out infinite; }
+        .flexio-bs-fab-wiggle {
+          animation: flexioBsFabWiggle 2.4s ease-in-out infinite;
+          transform-origin: 50% 90%;
+        }
+        .flexio-bs-fab-pulse:hover,
+        .flexio-bs-fab-bounce:hover,
+        .flexio-bs-fab-wiggle:hover { animation-play-state: paused; }
+
         @media (prefers-reduced-motion: reduce) {
           .flexio-bs-fab { transition: none !important; }
-          .flexio-bs-typing span { animation: none; }
+          .flexio-bs-typing span,
+          .flexio-bs-fab-pulse,
+          .flexio-bs-fab-bounce,
+          .flexio-bs-fab-wiggle { animation: none !important; }
         }
       `}</style>
     </>
