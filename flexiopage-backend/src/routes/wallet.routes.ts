@@ -6,11 +6,15 @@
  *                                       once integrated.
  */
 import { Router, Response } from 'express';
+import mongoose from 'mongoose';
 import { authMiddleware, type AuthRequest } from '../middleware/auth.middleware';
 import { sanitizeMiddleware } from '../middleware/validate';
 import { getOrCreateWallet, credit, commissionFor, aiCostTokens, usdToTokensRate, usdToTokens } from '../services/wallet.service';
 import { getSettings, type AiKind } from '../models/Settings.model';
 import { Payout, type PayoutMethod } from '../models/Payout.model';
+import { Store } from '../models/Store.model';
+import { Order } from '../models/Order.model';
+import { PaymentLog } from '../models/PaymentLog.model';
 
 const router = Router();
 router.use(authMiddleware);
@@ -57,6 +61,157 @@ router.get('/', async (req: AuthRequest, res: Response): Promise<void> => {
       usdToTokens: rate,
       transactions,
       updatedAt: wallet.updatedAt,
+    },
+  });
+});
+
+/**
+ * GET /api/wallet/sales-breakdown — where the seller's earnings came from.
+ *
+ * The generic /api/wallet endpoint only exposes the payout balance and the
+ * wallet ledger (sale_credit / payout_debit entries), which doesn't say
+ * which mobile-money rail funded each sale. Sellers want to know if their
+ * customers pay via Wave, OM, MTN… so this endpoint joins recent orders
+ * with the CinetPay webhook PaymentLog to surface the actual method used
+ * per transaction, plus a monthly per-method breakdown for the KPI cards.
+ */
+router.get('/sales-breakdown', async (req: AuthRequest, res: Response): Promise<void> => {
+  const userId = req.user?._id?.toString();
+  if (!userId) {
+    res.status(401).json({ error: 'Unauthorized' });
+    return;
+  }
+
+  // Find every store this seller owns — sales are aggregated across all of them.
+  const stores = await Store.find({ ownerId: userId }).select('_id name slug').lean();
+  if (stores.length === 0) {
+    res.json({
+      recentSales: [],
+      methodBreakdown: [],
+      thisMonth: { revenue: 0, txCount: 0, paidOutTotal: 0 },
+    });
+    return;
+  }
+  const storeIds = stores.map((s) => s._id);
+  const storeMap = new Map(stores.map((s) => [String(s._id), s]));
+
+  const now = new Date();
+  const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+
+  // Pull the last 20 paid orders across all the seller's stores. We fetch a
+  // wider window than strictly needed so joining with PaymentLog doesn't
+  // leave the table sparse when some orders lack a webhook log.
+  const recentOrders = await Order.find({
+    storeId: { $in: storeIds },
+    paymentStatus: 'paid',
+    paymentProvider: { $in: ['cinetpay', 'moneróo', 'flutterwave'] },
+  })
+    .sort({ createdAt: -1 })
+    .limit(20)
+    .select({
+      orderNumber: 1, total: 1, currency: 1, email: 1, paymentReference: 1,
+      paymentProvider: 1, createdAt: 1, storeId: 1,
+    })
+    .lean();
+
+  // Map order → payment_method via the webhook payload. The reference
+  // stored on Order is the CinetPay transactionId, which is what we log
+  // in rawPayload.transaction_id — index-friendly lookup.
+  const refs = recentOrders.map((o) => o.paymentReference).filter(Boolean) as string[];
+  const webhookLogs = refs.length
+    ? await PaymentLog.find({
+        event: 'webhook',
+        status: 'paid',
+        reference: { $in: refs },
+      })
+        .select({ reference: 1, rawPayload: 1 })
+        .lean()
+    : [];
+  const methodByRef = new Map<string, string>();
+  for (const log of webhookLogs) {
+    const method = (log.rawPayload as { payment_method?: string })?.payment_method;
+    if (log.reference && method) methodByRef.set(log.reference, method);
+  }
+
+  const commissionRate = Number(process.env.COMMISSION_RATE || 0.03);
+  const recentSales = recentOrders.map((o) => {
+    const store = storeMap.get(String(o.storeId));
+    const gross = o.total || 0;
+    const commission = commissionFor(gross);
+    return {
+      orderId: String(o._id),
+      orderNumber: o.orderNumber,
+      gross,
+      commission,
+      net: gross - commission,
+      currency: o.currency,
+      buyerEmail: o.email,
+      paymentProvider: o.paymentProvider,
+      paymentMethod: o.paymentReference ? methodByRef.get(o.paymentReference) : undefined,
+      createdAt: o.createdAt,
+      storeName: store?.name,
+      storeSlug: store?.slug,
+    };
+  });
+
+  // Monthly per-method breakdown — same join, but scoped to current month
+  // and computed as an aggregation for scale.
+  const paidThisMonth = await Order.find({
+    storeId: { $in: storeIds },
+    paymentStatus: 'paid',
+    createdAt: { $gte: startOfMonth },
+  })
+    .select({ total: 1, paymentReference: 1 })
+    .lean();
+
+  let monthlyRevenue = 0;
+  const methodCounts = new Map<string, { count: number; revenue: number }>();
+  const monthRefs = paidThisMonth.map((o) => o.paymentReference).filter(Boolean) as string[];
+  const monthMethodLogs = monthRefs.length
+    ? await PaymentLog.find({
+        event: 'webhook',
+        status: 'paid',
+        reference: { $in: monthRefs },
+      })
+        .select({ reference: 1, rawPayload: 1 })
+        .lean()
+    : [];
+  const monthMethodByRef = new Map<string, string>();
+  for (const log of monthMethodLogs) {
+    const method = (log.rawPayload as { payment_method?: string })?.payment_method;
+    if (log.reference && method) monthMethodByRef.set(log.reference, method);
+  }
+  for (const o of paidThisMonth) {
+    monthlyRevenue += o.total || 0;
+    const method =
+      (o.paymentReference && monthMethodByRef.get(o.paymentReference)) || 'AUTRE';
+    const prev = methodCounts.get(method) || { count: 0, revenue: 0 };
+    methodCounts.set(method, { count: prev.count + 1, revenue: prev.revenue + (o.total || 0) });
+  }
+  const txCount = paidThisMonth.length;
+  const methodBreakdown = Array.from(methodCounts.entries())
+    .map(([method, v]) => ({
+      method,
+      count: v.count,
+      revenue: v.revenue,
+      share: txCount > 0 ? v.count / txCount : 0,
+    }))
+    .sort((a, b) => b.count - a.count);
+
+  // Already paid out by admin — sum of Payout.status='paid' for this user.
+  const paidOutAgg = await Payout.aggregate<{ _id: null; total: number }>([
+    { $match: { userId: new mongoose.Types.ObjectId(userId), status: 'paid' } },
+    { $group: { _id: null, total: { $sum: '$amount' } } },
+  ]);
+
+  res.json({
+    recentSales,
+    methodBreakdown,
+    thisMonth: {
+      revenue: monthlyRevenue,
+      txCount,
+      commissionRate,
+      paidOutTotal: paidOutAgg[0]?.total || 0,
     },
   });
 });

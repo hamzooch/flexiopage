@@ -29,6 +29,25 @@ import {
   ArrowUpRight,
 } from 'lucide-react';
 import { walletApi, type WalletState, type Payout, type PayoutMethod } from '@/lib/api';
+
+type SalesBreakdown = Awaited<ReturnType<typeof walletApi.salesBreakdown>>['data'];
+
+const PAYMENT_METHOD_META: Record<string, { label: string; emoji: string; gradient: string }> = {
+  WAVE:    { label: 'Wave',         emoji: '🌊', gradient: 'from-cyan-500 to-blue-600' },
+  OM:      { label: 'Orange Money', emoji: '🟠', gradient: 'from-orange-500 to-orange-700' },
+  ORANGE:  { label: 'Orange Money', emoji: '🟠', gradient: 'from-orange-500 to-orange-700' },
+  MTN:     { label: 'MTN MoMo',     emoji: '🟡', gradient: 'from-yellow-400 to-amber-600' },
+  MOOV:    { label: 'Moov Money',   emoji: '🔵', gradient: 'from-sky-500 to-indigo-600' },
+  CARD:    { label: 'Carte',        emoji: '💳', gradient: 'from-slate-700 to-slate-900' },
+  VISA:    { label: 'Visa',         emoji: '💳', gradient: 'from-slate-700 to-slate-900' },
+  AUTRE:   { label: 'Autre',        emoji: '❓', gradient: 'from-gray-400 to-gray-600' },
+};
+
+const PAYMENT_PROVIDER_LABELS: Record<string, string> = {
+  cinetpay:   'CinetPay',
+  'moneróo':  'Monéroo',
+  flutterwave:'Flutterwave',
+};
 import { cn } from '@/lib/utils';
 
 function fmt(amount: number, currency: string): string {
@@ -60,6 +79,7 @@ const METHOD_LABELS: Record<PayoutMethod, string> = {
 export default function EarningsPage() {
   const [wallet, setWallet] = useState<WalletState | null>(null);
   const [payouts, setPayouts] = useState<Payout[]>([]);
+  const [breakdown, setBreakdown] = useState<SalesBreakdown | null>(null);
   const [loading, setLoading] = useState(true);
   const [showRequestForm, setShowRequestForm] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -77,9 +97,14 @@ export default function EarningsPage() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [w, p] = await Promise.all([walletApi.get(), walletApi.listPayouts()]);
+      const [w, p, b] = await Promise.all([
+        walletApi.get(),
+        walletApi.listPayouts(),
+        walletApi.salesBreakdown().catch(() => null),
+      ]);
       setWallet(w.data.wallet);
       setPayouts(p.data.payouts);
+      if (b) setBreakdown(b.data);
     } finally {
       setLoading(false);
     }
@@ -383,6 +408,100 @@ export default function EarningsPage() {
           )}
         </CardContent>
       </Card>
+
+      {/* Payment method breakdown — how buyers paid this month */}
+      {breakdown && breakdown.methodBreakdown.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Comment vos clients paient ({new Date().toLocaleString('fr-FR', { month: 'long' })})</CardTitle>
+            <CardDescription className="text-xs">
+              Répartition des méthodes utilisées par vos acheteurs — utile pour proposer les bonnes options en checkout.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-3">
+              {breakdown.methodBreakdown.map((m) => {
+                const meta = PAYMENT_METHOD_META[m.method] || PAYMENT_METHOD_META.AUTRE;
+                const pct = m.share * 100;
+                return (
+                  <div key={m.method} className="space-y-1.5">
+                    <div className="flex items-center gap-2">
+                      <div className={cn('grid h-7 w-7 shrink-0 place-items-center rounded-md bg-gradient-to-br text-sm text-white', meta.gradient)}>
+                        {meta.emoji}
+                      </div>
+                      <span className="text-sm font-medium">{meta.label}</span>
+                      <span className="ml-auto text-xs font-semibold">{pct.toFixed(0)}%</span>
+                      <span className="text-[11px] text-muted-foreground">
+                        {m.count} vente{m.count > 1 ? 's' : ''} · {fmt(m.revenue, wallet.currency)}
+                      </span>
+                    </div>
+                    <div className="h-2 overflow-hidden rounded-full bg-muted">
+                      <div
+                        className={cn('h-full rounded-full bg-gradient-to-r', meta.gradient)}
+                        style={{ width: `${Math.max(2, pct)}%` }}
+                      />
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Recent online sales with payment method */}
+      {breakdown && breakdown.recentSales.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Ventes en ligne récentes</CardTitle>
+            <CardDescription className="text-xs">
+              20 dernières commandes payées — voyez d&apos;où vient chaque paiement (Wave, OM, MTN…).
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="p-0">
+            <ul className="divide-y divide-border/60">
+              {breakdown.recentSales.map((sale) => {
+                const meta = sale.paymentMethod
+                  ? PAYMENT_METHOD_META[sale.paymentMethod] || PAYMENT_METHOD_META.AUTRE
+                  : PAYMENT_METHOD_META.AUTRE;
+                return (
+                  <li key={sale.orderId} className="flex items-center gap-3 p-3">
+                    <div className={cn('grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-gradient-to-br text-base text-white', meta.gradient)}>
+                      {meta.emoji}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2 text-sm font-medium">
+                        <span>#{sale.orderNumber}</span>
+                        <span className="rounded-full bg-muted px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wider text-muted-foreground">
+                          {meta.label}
+                        </span>
+                        {sale.paymentProvider && sale.paymentProvider !== 'cinetpay' && (
+                          <span className="text-[10px] text-muted-foreground">
+                            via {PAYMENT_PROVIDER_LABELS[sale.paymentProvider] || sale.paymentProvider}
+                          </span>
+                        )}
+                      </div>
+                      <div className="text-[11px] text-muted-foreground">
+                        {sale.buyerEmail}
+                        {sale.storeName && <span> · {sale.storeName}</span>}
+                        <span> · {fmtDate(sale.createdAt)}</span>
+                      </div>
+                    </div>
+                    <div className="shrink-0 text-right">
+                      <div className="text-sm font-semibold tabular-nums text-emerald-600">
+                        +{fmt(sale.net, sale.currency)}
+                      </div>
+                      <div className="text-[10px] text-muted-foreground">
+                        brut {fmt(sale.gross, sale.currency)} · −{fmt(sale.commission, sale.currency)}
+                      </div>
+                    </div>
+                  </li>
+                );
+              })}
+            </ul>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Sales ledger */}
       <Card>

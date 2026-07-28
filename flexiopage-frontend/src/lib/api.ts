@@ -261,6 +261,26 @@ export const walletApi = {
   }) => api.post<{ ok: boolean; payout: Payout }>('/wallet/payouts', data),
   /** Historique des demandes de payout du vendeur. */
   listPayouts: () => api.get<{ payouts: Payout[] }>('/wallet/payouts'),
+  /** Ventes récentes + répartition par méthode (Wave/OM/MTN/…) */
+  salesBreakdown: () =>
+    api.get<{
+      recentSales: Array<{
+        orderId: string;
+        orderNumber: string;
+        gross: number;
+        commission: number;
+        net: number;
+        currency: string;
+        buyerEmail: string;
+        paymentProvider?: string;
+        paymentMethod?: string;
+        createdAt: string;
+        storeName?: string;
+        storeSlug?: string;
+      }>;
+      methodBreakdown: Array<{ method: string; count: number; revenue: number; share: number }>;
+      thisMonth: { revenue: number; txCount: number; commissionRate: number; paidOutTotal: number };
+    }>('/wallet/sales-breakdown'),
 };
 
 // ─────────────────────────────────────────────────────────────────────
