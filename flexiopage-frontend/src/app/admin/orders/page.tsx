@@ -20,6 +20,8 @@ import {
   RotateCcw,
   TrendingUp,
   Download,
+  EyeOff,
+  Eye,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
@@ -34,20 +36,25 @@ function fmt(amount: number, currency: string): string {
 export default function AdminOrdersStatsPage() {
   const [orders, setOrders] = useState<AdminOrder[]>([]);
   const [total, setTotal] = useState(0);
+  const [abandonedCount, setAbandonedCount] = useState(0);
+  const [includeAbandoned, setIncludeAbandoned] = useState(false);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    adminApi.orders().then((res) => {
+    setLoading(true);
+    adminApi.orders({ includeAbandoned: includeAbandoned ? '1' : '0' }).then((res) => {
       setOrders(res.data.orders);
       setTotal(res.data.total);
+      setAbandonedCount(res.data.abandonedCount ?? 0);
     }).finally(() => setLoading(false));
-  }, []);
+  }, [includeAbandoned]);
 
   const stats = useMemo(() => {
     const paid = orders.filter((o) => o.paymentStatus === 'paid');
     const pending = orders.filter((o) => o.paymentStatus === 'pending');
     const failed = orders.filter((o) => o.paymentStatus === 'failed');
     const refunded = orders.filter((o) => o.paymentStatus === 'refunded');
+    const abandoned = orders.filter((o) => o.paymentStatus === 'abandoned');
     const delivered = orders.filter((o) => o.fulfillmentStatus === 'fulfilled');
 
     // Pick the most common currency as the display currency. Mixing
@@ -111,14 +118,32 @@ export default function AdminOrdersStatsPage() {
                 Vue d&apos;ensemble plateforme — pour le détail commande par commande, consulte le dashboard du vendeur.
               </CardDescription>
             </div>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => adminApi.downloadExport('orders')}
-              className="gap-2"
-            >
-              <Download className="h-3.5 w-3.5" /> CSV
-            </Button>
+            <div className="flex items-center gap-2">
+              {(abandonedCount > 0 || includeAbandoned) && (
+                <Button
+                  variant={includeAbandoned ? 'default' : 'outline'}
+                  size="sm"
+                  onClick={() => setIncludeAbandoned((v) => !v)}
+                  className="gap-2"
+                  title={
+                    includeAbandoned
+                      ? 'Masquer les commandes abandonnées'
+                      : `Voir les ${abandonedCount} commandes abandonnées (panier non finalisé)`
+                  }
+                >
+                  {includeAbandoned ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+                  {includeAbandoned ? 'Masquer' : `Abandons (${abandonedCount})`}
+                </Button>
+              )}
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => adminApi.downloadExport('orders')}
+                className="gap-2"
+              >
+                <Download className="h-3.5 w-3.5" /> CSV
+              </Button>
+            </div>
           </div>
         </CardHeader>
         <CardContent>

@@ -619,8 +619,8 @@ export const adminApi = {
     api.delete<{ ok: boolean; email: string }>(`/admin/users/${userId}`),
   stores: (params?: { limit?: number; skip?: number }) =>
     api.get<{ stores: AdminStore[]; total: number; limit: number; skip: number }>('/admin/stores', { params }),
-  orders: (params?: { limit?: number; skip?: number }) =>
-    api.get<{ orders: AdminOrder[]; total: number; limit: number; skip: number }>('/admin/orders', { params }),
+  orders: (params?: { limit?: number; skip?: number; includeAbandoned?: '1' | '0' }) =>
+    api.get<{ orders: AdminOrder[]; total: number; limit: number; skip: number; abandonedCount: number }>('/admin/orders', { params }),
   wallets: () => api.get<{ wallets: AdminWallet[] }>('/admin/wallets'),
   activity: (params?: { limit?: number; cursor?: string; type?: string }) =>
     api.get<{ items: AdminActivityEvent[]; nextCursor: string | null }>('/admin/activity', { params }),

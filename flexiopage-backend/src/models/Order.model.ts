@@ -1,6 +1,14 @@
 import mongoose, { Document, Schema } from 'mongoose';
 
-export type PaymentStatus = 'pending' | 'paid' | 'failed' | 'refunded' | 'manual';
+/**
+ * Payment lifecycle. `abandoned` is set automatically by the background job in
+ * `abandon-orders.service.ts` when a `pending` order sits idle for >15 min —
+ * long enough that Wave/OM OTP delays or slow buyer typing don't false-positive
+ * a real payment attempt, short enough to keep the admin uncluttered. Sellers
+ * see abandoned orders hidden by default and can toggle them on to analyse the
+ * cart abandonment rate.
+ */
+export type PaymentStatus = 'pending' | 'paid' | 'failed' | 'refunded' | 'manual' | 'abandoned';
 export type FulfillmentStatus = 'unfulfilled' | 'partial' | 'fulfilled' | 'cancelled';
 
 /**
@@ -241,7 +249,7 @@ const OrderSchema = new Schema<IOrder>(
     total: { type: Number, required: true },
     currency: { type: String, default: 'USD' },
     marketCountry: { type: String, trim: true, uppercase: true },
-    paymentStatus: { type: String, enum: ['pending', 'paid', 'failed', 'refunded', 'manual'], default: 'pending' },
+    paymentStatus: { type: String, enum: ['pending', 'paid', 'failed', 'refunded', 'manual', 'abandoned'], default: 'pending' },
     paymentMethod: { type: String, enum: ['stripe', 'manual', 'other', 'mobile_money', 'card', 'cod'], default: 'manual' },
     paymentProvider: {
       type: String,

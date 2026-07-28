@@ -396,7 +396,12 @@ export async function getStoreAnalyticsRich(
     w = resolveRange(range, new Date(), range === 'custom' ? custom : undefined);
   }
 
-  const baseMatch = { storeId: storeObjectId };
+  // Analytics never include cart-abandoned orders — they'd inflate the order
+  // count without corresponding revenue, and the seller already sees them
+  // separately in /admin/orders under the "Abandons" toggle. The abandonment
+  // rate itself lives on the payments dashboard, computed from the raw
+  // `abandoned` bucket rather than mixed in with real orders here.
+  const baseMatch = { storeId: storeObjectId, paymentStatus: { $ne: 'abandoned' } };
   const inWindow = { ...baseMatch, createdAt: { $gte: w.from, $lte: w.to } };
   const inPrev = { ...baseMatch, createdAt: { $gte: w.prevFrom, $lte: w.prevTo } };
 

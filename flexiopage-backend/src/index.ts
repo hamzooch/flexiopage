@@ -24,6 +24,7 @@ import telegramRoutes from './routes/telegram.routes';
 import paymentRoutes from './routes/payment.routes';
 import { setupTelegramWebhook } from './services/telegram.service';
 import { startSecurityMonitor } from './services/security-monitor.service';
+import { startAbandonOrdersJob } from './services/abandon-orders.service';
 import { registerMessengerBot } from './modules/messenger-bot';
 import walletRoutes from './routes/wallet.routes';
 import adminRoutes from './routes/admin.routes';
@@ -237,6 +238,8 @@ async function start() {
   void setupTelegramWebhook();
   // Security monitor — flushes in-memory attack buckets to DB + fires alerts.
   startSecurityMonitor();
+  // Cart-abandonment sweeper — flips stale `pending` orders → `abandoned`.
+  startAbandonOrdersJob();
 }
 
 start().catch((err) => {

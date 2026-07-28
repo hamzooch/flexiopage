@@ -536,20 +536,31 @@ export async function listStores(req: AuthRequest, res: Response): Promise<void>
   res.json({ stores, total, limit, skip });
 }
 
-/** GET /api/admin/orders */
+/**
+ * GET /api/admin/orders
+ *
+ * By default, hides `abandoned` orders (buyers who clicked "Payer" but never
+ * completed) so the seller-facing list matches revenue-relevant activity.
+ * Pass `?includeAbandoned=1` to see them (with `abandonedCount` returned
+ * separately so the UI can offer a "Voir X commandes abandonnées" toggle).
+ */
 export async function listOrders(req: AuthRequest, res: Response): Promise<void> {
   const limit = Math.min(parseInt(String(req.query.limit || DEFAULT_LIMIT), 10) || DEFAULT_LIMIT, 200);
   const skip = parseInt(String(req.query.skip || '0'), 10) || 0;
-  const [orders, total] = await Promise.all([
-    Order.find()
+  const includeAbandoned = req.query.includeAbandoned === '1' || req.query.includeAbandoned === 'true';
+
+  const filter = includeAbandoned ? {} : { paymentStatus: { $ne: 'abandoned' } };
+  const [orders, total, abandonedCount] = await Promise.all([
+    Order.find(filter)
       .populate('storeId', 'name slug')
       .sort({ createdAt: -1 })
       .limit(limit)
       .skip(skip)
       .lean(),
-    Order.countDocuments(),
+    Order.countDocuments(filter),
+    includeAbandoned ? Promise.resolve(0) : Order.countDocuments({ paymentStatus: 'abandoned' }),
   ]);
-  res.json({ orders, total, limit, skip });
+  res.json({ orders, total, limit, skip, abandonedCount });
 }
 
 /** GET /api/admin/wallets */
