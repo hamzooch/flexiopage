@@ -282,7 +282,7 @@ async function computeMonthlyGoal(storeObjectId: mongoose.Types.ObjectId) {
   const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0);
 
   const agg = await Order.aggregate([
-    { $match: { storeId: storeObjectId, createdAt: { $gte: startOfMonth } } },
+    { $match: { storeId: storeObjectId, createdAt: { $gte: startOfMonth }, paymentStatus: { $ne: 'abandoned' } } },
     { $group: { _id: null, sales: { $sum: '$total' } } },
   ]);
   const current = agg[0]?.sales || 0;
@@ -321,7 +321,7 @@ export async function getStoreAnalytics(storeId: string): Promise<StoreAnalytics
 
   const [total, thisMonth, store, viewsTotal, viewsMonth] = await Promise.all([
     Order.aggregate([
-      { $match: { storeId: storeObjectId } },
+      { $match: { storeId: storeObjectId, paymentStatus: { $ne: 'abandoned' } } },
       {
         $group: {
           _id: null,
@@ -332,7 +332,7 @@ export async function getStoreAnalytics(storeId: string): Promise<StoreAnalytics
       },
     ]),
     Order.aggregate([
-      { $match: { storeId: storeObjectId, createdAt: { $gte: startOfMonth } } },
+      { $match: { storeId: storeObjectId, createdAt: { $gte: startOfMonth }, paymentStatus: { $ne: 'abandoned' } } },
       {
         $group: {
           _id: null,
