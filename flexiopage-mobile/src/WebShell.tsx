@@ -138,7 +138,11 @@ export function WebShell() {
   }
 
   return (
-    <SafeAreaView style={styles.flex} edges={['top']}>
+    // `bottom` edge inclus → sur téléphones à gesture bar (iPhones home
+    // indicator, Android 10+), le bas de la WebView reste au-dessus de la
+    // zone de swipe. Sans ça, sur small screens, les CTA de bas de page
+    // (Payer, Confirmer…) tombent sous la barre système et sont durs à taper.
+    <SafeAreaView style={styles.flex} edges={['top', 'bottom']}>
       {/* Barre de progression en haut pendant le chargement des pages. */}
       {progress < 1 ? (
         <View style={styles.progressTrack}>
@@ -148,8 +152,16 @@ export function WebShell() {
 
       <ScrollView
         style={styles.flex}
-        contentContainerStyle={styles.flex}
+        // `flexGrow: 1` (au lieu de `flex: 1`) laisse la WebView occuper la
+        // hauteur mais N'IMPOSE PAS que le contenu tienne exactement dedans —
+        // avec `flex: 1` en contentContainerStyle, RN clampait la hauteur et
+        // le scroll interne de la WebView pouvait geler en fin de page.
+        contentContainerStyle={styles.grow}
         scrollEnabled={false}
+        // Évite le bounce iOS parasite quand ScrollView.scrollEnabled est
+        // false — il apparaissait quand un swipe démarrait sur un pixel géré
+        // par le RefreshControl puis se propageait à la ScrollView vide.
+        bounces={false}
         refreshControl={
           <RefreshControl
             // Android : n'intercepte le geste que quand on est déjà en haut,
@@ -178,6 +190,15 @@ export function WebShell() {
           // UA marqué pour que le web puisse détecter l'app si besoin.
           applicationNameForUserAgent="FlexioPageApp"
           pullToRefreshEnabled={Platform.OS === 'ios'}
+          // Android : autorise le scroll interne de la WebView même quand
+          // elle est enfant d'un ScrollView (le nôtre pour le RefreshControl).
+          // Sans ça, l'événement de scroll partait dans le ScrollView parent
+          // qui l'ignorait (scrollEnabled=false) → la page semblait figée
+          // sur small screens où le viewport est très étroit.
+          nestedScrollEnabled
+          // Retire le "glow" bleu Android en fin de scroll — visuel étranger
+          // à l'UI web + confondait certains users pensant que ça bloquait.
+          overScrollMode="never"
           // Suit la position de scroll interne → pilote l'activation du
           // RefreshControl (voir onWebScroll / atTop).
           onScroll={onWebScroll}
@@ -215,6 +236,9 @@ export function WebShell() {
 
 const styles = StyleSheet.create({
   flex: { flex: 1, backgroundColor: colors.bg },
+  // contentContainerStyle du ScrollView — `flexGrow` (pas `flex`) pour que
+  // la WebView remplisse la hauteur sans clamper le scroll interne.
+  grow: { flexGrow: 1 },
   progressTrack: { height: 3, backgroundColor: colors.border },
   progressBar: { height: 3, backgroundColor: colors.primary },
   overlay: {
