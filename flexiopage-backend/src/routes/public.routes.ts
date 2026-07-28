@@ -1096,6 +1096,18 @@ router.post('/checkout/init', async (req: Request, res: Response): Promise<void>
     res.status(404).json({ error: 'Product not found' });
     return;
   }
+  // Refuse the sale when a digital product has nothing to deliver (seller
+  // forgot to upload the file / attach the drive link / define course
+  // modules). Otherwise the buyer pays, lands on an empty /d/<token> page,
+  // and files a refund. Better to fail fast at checkout with a clear
+  // error the storefront can surface.
+  if (!productService.hasDigitalContent(product)) {
+    res.status(409).json({
+      error: 'Ce produit n\'est pas encore disponible au téléchargement. Le vendeur doit finaliser la mise en ligne.',
+      code: 'product_missing_content',
+    });
+    return;
+  }
   const quantity = Math.max(1, Math.min(body.quantity || 1, 99));
   const subtotal = product.price * quantity;
 

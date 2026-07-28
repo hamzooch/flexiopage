@@ -118,6 +118,46 @@ export async function getProductBySlug(storeId: string, slug: string): Promise<I
   return Product.findOne({ storeId, slug, isPublished: true }).lean<IProduct | null>();
 }
 
+/**
+ * True if a digital product actually has something to deliver to the buyer
+ * after payment. Sellers occasionally publish a digital product then forget
+ * to attach the file / drive link / course modules, and the buyer ends up on
+ * an empty download portal after paying — this predicate is the guard used
+ * at checkout time to refuse the sale.
+ *
+ * Rules per `digitalKind` (defaults to 'download' when unset):
+ *   - download   → needs at least one digitalAsset or the legacy digitalFileUrl
+ *   - course     → needs at least one courseModule
+ *   - license    → needs a licenseKeyTemplate (key generated per sale)
+ *   - membership → seller grants access manually, no on-file content required
+ *   - service    → real-world service, no on-file content required
+ *
+ * Physical products always return true — this predicate only gates digital.
+ */
+export function hasDigitalContent(product: Pick<
+  IProduct,
+  'type' | 'digitalKind' | 'digitalAssets' | 'digitalFileUrl' | 'courseModules' | 'licenseKeyTemplate'
+>): boolean {
+  if (product.type !== 'digital') return true;
+  const kind = product.digitalKind || 'download';
+  switch (kind) {
+    case 'download':
+      return (
+        (product.digitalAssets?.length ?? 0) > 0 ||
+        !!product.digitalFileUrl?.trim()
+      );
+    case 'course':
+      return (product.courseModules?.length ?? 0) > 0;
+    case 'license':
+      return !!product.licenseKeyTemplate?.trim();
+    case 'membership':
+    case 'service':
+      return true;
+    default:
+      return false;
+  }
+}
+
 export async function deleteProduct(productId: string, storeId: string): Promise<boolean> {
   const result = await Product.deleteOne({ _id: productId, storeId });
   return result.deletedCount > 0;

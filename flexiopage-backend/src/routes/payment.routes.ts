@@ -125,6 +125,16 @@ router.post('/initiate', async (req: Request, res: Response): Promise<void> => {
     res.status(404).json({ error: 'Product not found' });
     return;
   }
+  // Refuse the sale when a digital product has nothing to deliver — same
+  // guard as /api/public/checkout/init. Prevents a "paid but empty portal"
+  // situation that leads to disputes.
+  if (!productService.hasDigitalContent(product)) {
+    res.status(409).json({
+      error: 'Ce produit n\'est pas encore disponible au téléchargement. Le vendeur doit finaliser la mise en ligne.',
+      code: 'product_missing_content',
+    });
+    return;
+  }
 
   // Recompute amount server-side — never trust a client-sent total.
   const quantity = Math.max(1, Math.min(body.quantity || 1, 99));
