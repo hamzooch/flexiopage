@@ -112,8 +112,16 @@ export class CinetPayProvider implements PaymentProviderImpl {
       credentials[cc] = { apiKey, apiPassword };
     }
 
+    // Optional override — force a specific host (usually sandbox
+    // `https://api.cinetpay.net`) even with a live-prefixed key. The SDK
+    // auto-detects sandbox vs prod from the sk_test_/sk_live_ prefix; this
+    // env var lets a support agent hand out live-looking credentials that
+    // must still be validated against the sandbox host before switching.
+    const baseUrlOverride = process.env.CINETPAY_BASE_URL?.trim();
+
     CinetPayProvider.sdkClient = new CinetPayClient({
       credentials: credentials as Record<CountryCode, CountryCredentials>,
+      ...(baseUrlOverride ? { baseUrl: baseUrlOverride } : {}),
       // debug logs go through console.log with a [cinetpay] prefix — useful
       // during validation, silence in prod by flipping to false.
       debug: process.env.CINETPAY_DEBUG === '1',
