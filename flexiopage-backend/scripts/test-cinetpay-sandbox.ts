@@ -13,8 +13,8 @@
  *   3. verifyTransaction → hits `/v2/payment/check` for the same transaction
  *                          and reports ACCEPTED / REFUSED / PENDING.
  *
- * Prerequisites: CINETPAY_API_KEY, CINETPAY_SITE_ID (and CINETPAY_BASE_URL
- * pointing at the sandbox) set in .env.
+ * Prerequisites: CINETPAY_API_KEY + CINETPAY_API_PASSWORD set in .env.
+ * The SDK auto-detects sandbox vs prod from the key prefix (sk_test_ vs sk_live_).
  *
  * Usage:
  *   npm run test:cinetpay-sandbox           # runs init + verify with a mock order
@@ -39,7 +39,6 @@ function assertEnv(): void {
   const missing: string[] = [];
   if (!process.env.CINETPAY_API_KEY) missing.push('CINETPAY_API_KEY');
   if (!process.env.CINETPAY_API_PASSWORD) missing.push('CINETPAY_API_PASSWORD');
-  if (!process.env.CINETPAY_SITE_ID) missing.push('CINETPAY_SITE_ID');
   if (missing.length) {
     log(RED, '❌', `Env manquantes: ${missing.join(', ')}`);
     log(YELLOW, '💡', 'Ajoute-les dans flexiopage-backend/.env');

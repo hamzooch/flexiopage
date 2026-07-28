@@ -119,10 +119,10 @@ async function main(): Promise<void> {
   console.log('  Next steps :');
   console.log('   1. Ensure .env contains:');
   console.log('        CINETPAY_API_KEY=<sk_... from Dashboard → API & sécurité>');
-  console.log('        CINETPAY_SITE_ID=<numeric ID from Dashboard → Caisses>');
-  console.log('        CINETPAY_BASE_URL=https://api-checkout.cinetpay.net/v1');
+  console.log('        CINETPAY_API_PASSWORD=<Mot de passe API — same page>');
   console.log(`        CINETPAY_TEST_STORE_SLUG=${STORE_SLUG}`);
   console.log('        API_PUBLIC_URL=https://<ton-tunnel>.ngrok-free.app');
+  console.log('      (SDK auto-detects sandbox/prod from the key prefix — no BASE_URL to set.)');
   console.log('      Only this specific store slug routes to CinetPay — all others');
   console.log('      keep their normal rail (Moneróo / Flutterwave).');
   console.log('   2. Restart the backend so env changes are picked up.');

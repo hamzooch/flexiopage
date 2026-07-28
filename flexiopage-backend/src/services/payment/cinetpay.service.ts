@@ -8,15 +8,17 @@
  * so there's no host env var to set — swap the credentials and the SDK
  * routes to the right environment.
  *
- * Env (all required):
+ * Env (required):
  *   CINETPAY_API_KEY       — `account_key` from Dashboard → API & sécurité.
  *   CINETPAY_API_PASSWORD  — "Mot de passe API" from the same page.
- *   CINETPAY_SITE_ID       — Site/Caisse ID (informational — the SDK doesn't
- *                            need it, but we keep it as a coherence check so
- *                            sellers know which caisse receives payments).
- *   CINETPAY_NOTIFY_URL    — optional. Defaults to API_PUBLIC_URL/api/webhooks/cinetpay
+ *
+ * Env (optional):
+ *   CINETPAY_NOTIFY_URL    — defaults to API_PUBLIC_URL/api/webhooks/cinetpay
  *   API_PUBLIC_URL         — used to build notify_url
  *   FRONTEND_URL           — used to build success_url + failed_url
+ *
+ * NB: v1 API has no `site_id` — each `account_key` IS the site identity.
+ * (SITE_ID was a v2 guichet concept — no longer used.)
  *
  * Country routing: the SDK's credentials map is keyed by ISO country code.
  * We build the map lazily on first use, pulling credentials from env. Adding
@@ -79,11 +81,7 @@ export class CinetPayProvider implements PaymentProviderImpl {
   private static sdkClient: CinetPayClient | null = null;
 
   isConfigured(): boolean {
-    return !!(
-      process.env.CINETPAY_API_KEY &&
-      process.env.CINETPAY_API_PASSWORD &&
-      process.env.CINETPAY_SITE_ID
-    );
+    return !!(process.env.CINETPAY_API_KEY && process.env.CINETPAY_API_PASSWORD);
   }
 
   /**
