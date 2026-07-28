@@ -1,7 +1,18 @@
-import type { Request } from 'express';
+import type { Request, Response } from 'express';
 import rateLimit from 'express-rate-limit';
+import { record as recordSecurityEvent } from '../services/security-monitor.service';
 
 const isDev = process.env.NODE_ENV !== 'production';
+
+/** Called by express-rate-limit each time a client is 429'd. */
+function onLimitReached(req: Request, _res: Response): void {
+  const xff = (req.headers['x-forwarded-for'] as string | undefined)?.split(',')[0]?.trim();
+  recordSecurityEvent({
+    type: 'rate_limit_hit',
+    sourceIp: xff || req.ip,
+    target: req.path,
+  });
+}
 
 /**
  * Endpoints that are polled by design (job status, wallet badge refresh,
@@ -29,6 +40,10 @@ export const rateLimiter = rateLimit({
   legacyHeaders: false,
   // Don't count high-frequency polling endpoints against the limit.
   skip: isPollingRequest,
+  handler: (req, res, _next, options) => {
+    onLimitReached(req, res);
+    res.status(options.statusCode).json(options.message);
+  },
 });
 
 export const authRateLimiter = rateLimit({
@@ -37,4 +52,9 @@ export const authRateLimiter = rateLimit({
   message: { error: 'Too many login attempts' },
   standardHeaders: true,
   legacyHeaders: false,
+  handler: (req, res, _next, options) => {
+    const xff = (req.headers['x-forwarded-for'] as string | undefined)?.split(',')[0]?.trim();
+    recordSecurityEvent({ type: 'auth_bruteforce', sourceIp: xff || req.ip, target: req.path });
+    res.status(options.statusCode).json(options.message);
+  },
 });

@@ -72,6 +72,7 @@ const SECTIONS: { title: string; items: NavItem[] }[] = [
     title: 'Système',
     items: [
       { href: '/admin/health',   label: 'Santé',      icon: HeartPulse },
+      { href: '/admin/security', label: 'Sécurité',   icon: ShieldAlert },
       { href: '/admin/delivery', label: 'Livraison',  icon: Truck },
       { href: '/admin/audit',    label: 'Audit',      icon: FileText },
       { href: '/admin/pricing',  label: 'Tarifs AI',  icon: DollarSign },

@@ -757,6 +757,10 @@ export const adminApi = {
   audit: (params?: { limit?: number; cursor?: string; action?: string; actorId?: string; targetId?: string }) =>
     api.get<{ items: AdminAuditLog[]; nextCursor: string | null }>('/admin/audit', { params }),
 
+  // ── Security events (attaques détectées) ──
+  securityEvents: (params?: { type?: SecurityEventType; sourceIp?: string; since?: string; limit?: number }) =>
+    api.get<{ items: AdminSecurityEvent[]; summary: AdminSecuritySummaryRow[] }>('/admin/security/events', { params }),
+
   // ── Staff (pour l'assignation des tickets) ──
   staff: () =>
     api.get<{ staff: Array<{ _id: string; email: string; name: string; role: StaffRole }> }>('/admin/staff'),
@@ -941,6 +945,31 @@ export interface AdminAuditLog {
   metadata?: Record<string, unknown>;
   ip?: string;
   createdAt: string;
+}
+
+export type SecurityEventType =
+  | 'cert_flood'
+  | 'rate_limit_hit'
+  | 'auth_bruteforce'
+  | 'webhook_forged'
+  | 'suspicious_signup';
+
+export interface AdminSecurityEvent {
+  _id: string;
+  type: SecurityEventType;
+  sourceIp: string;
+  hits: number;
+  firstSeen: string;
+  lastSeen: string;
+  target?: string;
+  sample?: Record<string, unknown>;
+  notifiedAt?: string;
+}
+
+export interface AdminSecuritySummaryRow {
+  type: SecurityEventType;
+  hits: number;
+  distinctIps: number;
 }
 
 export interface AdminReportRow {

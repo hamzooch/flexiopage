@@ -20,6 +20,8 @@ import { dispatchOrder } from '../services/delivery.service';
 import { listAudit } from '../services/audit-log.service';
 import { logAudit } from '../services/audit-log.service';
 import type { AuditAction } from '../models/AuditLog.model';
+import { SecurityEvent, type SecurityEventType } from '../models/SecurityEvent.model';
+import { flushNow as flushSecurityMonitor } from '../services/security-monitor.service';
 
 // ─────────────────────────────────────────────────────────────────────
 // AUDIT LOGS
@@ -34,6 +36,50 @@ export async function listAuditLogs(req: AuthRequest, res: Response): Promise<vo
   const targetId = typeof req.query.targetId === 'string' ? req.query.targetId : undefined;
   const { items, nextCursor } = await listAudit({ limit, cursor, action, actorId, targetId });
   res.json({ items, nextCursor });
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// SECURITY EVENTS
+// ─────────────────────────────────────────────────────────────────────
+
+const VALID_TYPES: SecurityEventType[] = [
+  'cert_flood',
+  'rate_limit_hit',
+  'auth_bruteforce',
+  'webhook_forged',
+  'suspicious_signup',
+];
+
+/**
+ * GET /api/admin/security/events?type=&sourceIp=&since=&limit=
+ *
+ * Force a fresh flush so the admin sees the current attack in real time
+ * instead of having to wait up to 60s for the next natural flush.
+ */
+export async function listSecurityEvents(req: AuthRequest, res: Response): Promise<void> {
+  await flushSecurityMonitor();
+
+  const q: Record<string, unknown> = {};
+  const type = typeof req.query.type === 'string' ? req.query.type : undefined;
+  if (type && VALID_TYPES.includes(type as SecurityEventType)) q.type = type;
+  const sourceIp = typeof req.query.sourceIp === 'string' ? req.query.sourceIp.trim() : undefined;
+  if (sourceIp) q.sourceIp = sourceIp;
+  const since = typeof req.query.since === 'string' ? new Date(req.query.since) : undefined;
+  if (since && !isNaN(since.getTime())) q.lastSeen = { $gte: since };
+
+  const limit = Math.min(Number(req.query.limit) || 50, 200);
+  const items = await SecurityEvent.find(q)
+    .sort({ lastSeen: -1 })
+    .limit(limit)
+    .lean();
+
+  // Also return a summary so the UI can show counters even before scrolling.
+  const summary = await SecurityEvent.aggregate([
+    { $group: { _id: '$type', hits: { $sum: '$hits' }, distinctIps: { $addToSet: '$sourceIp' } } },
+    { $project: { _id: 0, type: '$_id', hits: 1, distinctIps: { $size: '$distinctIps' } } },
+  ]);
+
+  res.json({ items, summary });
 }
 
 // ─────────────────────────────────────────────────────────────────────

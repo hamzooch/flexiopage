@@ -23,6 +23,7 @@ import webhooksRoutes from './routes/webhooks.routes';
 import telegramRoutes from './routes/telegram.routes';
 import paymentRoutes from './routes/payment.routes';
 import { setupTelegramWebhook } from './services/telegram.service';
+import { startSecurityMonitor } from './services/security-monitor.service';
 import { registerMessengerBot } from './modules/messenger-bot';
 import walletRoutes from './routes/wallet.routes';
 import adminRoutes from './routes/admin.routes';
@@ -83,6 +84,22 @@ const corsOrigins = (process.env.FRONTEND_URL || 'http://localhost:3000,http://l
   .split(',')
   .map(normalizeOrigin)
   .filter(Boolean);
+
+// Boot-time guard: if we're in prod but FRONTEND_URL is missing/localhost, the
+// browser will hit us cross-origin from the real dashboard and CORS will
+// reject every preflight silently. Surface it loudly instead of shipping a
+// dead API.
+if (process.env.NODE_ENV === 'production') {
+  const looksLikeProd = corsOrigins.some((o) => o.startsWith('https://') && !o.includes('localhost'));
+  if (!process.env.FRONTEND_URL || !looksLikeProd) {
+    logger.error(
+      { FRONTEND_URL: process.env.FRONTEND_URL, corsOrigins },
+      '[boot] FRONTEND_URL is missing or points at localhost while NODE_ENV=production. ' +
+        'Every browser request from your real domain will be rejected by CORS. ' +
+        'Set FRONTEND_URL=https://your-domain.com in .env and restart.',
+    );
+  }
+}
 
 // Pre-compute apex hostnames so subdomain matching is a cheap endsWith().
 const allowedApexHosts = corsOrigins
@@ -218,6 +235,8 @@ async function start() {
   });
   // Configure le webhook du bot Telegram vendeur (no-op si non configuré / URL locale).
   void setupTelegramWebhook();
+  // Security monitor — flushes in-memory attack buckets to DB + fires alerts.
+  startSecurityMonitor();
 }
 
 start().catch((err) => {

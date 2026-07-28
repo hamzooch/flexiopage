@@ -85,6 +85,7 @@ router.post('/complaints/:id/messages', complaint.postAdminMessage);
 
 // ── Quality-of-life admin endpoints ──
 router.get('/audit', adminExtras.listAuditLogs);
+router.get('/security/events', adminExtras.listSecurityEvents);
 router.get('/staff', adminExtras.listStaff);
 router.get('/health', adminExtras.getHealth);
 router.get('/reports', adminExtras.getReports);
