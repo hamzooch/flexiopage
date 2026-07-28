@@ -66,6 +66,24 @@ interface ExpoMessage {
   data: Record<string, unknown>;
 }
 
+/**
+ * Préfixe de marque appliqué à chaque titre de notif — sans ça, le vendeur
+ * voyait juste "Nouvelle commande ORD-1025" sur son écran de verrouillage,
+ * sans le contexte "quel app m'a notifié". Le préfixe rend l'app
+ * immédiatement identifiable dans le centre de notifications à côté des
+ * autres apps (WhatsApp, Instagram, etc.). Le point médian visuel · aère
+ * mieux que ":" ou "-" dans les inbox.
+ */
+const BRAND_PREFIX = 'FlexioPage · ';
+
+/**
+ * Ajoute le préfixe FlexioPage sauf s'il est déjà présent (idempotent —
+ * évite le double préfixe si un appelant l'ajoute manuellement).
+ */
+function brandTitle(title: string): string {
+  return title.startsWith(BRAND_PREFIX) ? title : `${BRAND_PREFIX}${title}`;
+}
+
 /** Construit un message Expo par token. Pur & testable. */
 export function buildExpoMessages(tokens: string[], soundKey: string | undefined, payload: PushPayload): ExpoMessage[] {
   const sound = resolveSound(soundKey);
@@ -74,7 +92,7 @@ export function buildExpoMessages(tokens: string[], soundKey: string | undefined
     .filter(isExpoPushToken)
     .map((to) => ({
       to,
-      title: payload.title,
+      title: brandTitle(payload.title),
       body: payload.body,
       sound: sound.file,
       channelId: sound.channelId,
