@@ -124,6 +124,7 @@ router.get('/payments/config', payments.getPaymentConfig);
 router.post('/payments/config', requireAdminWrite, payments.updatePaymentConfig);
 router.get('/payments/transactions', payments.listPaymentTransactions);
 router.get('/payments/webhooks', payments.listWebhookLogs);
+router.get('/payments/cinetpay/overview', payments.getCinetpayOverview);
 router.get('/payments/cinetpay-logs', payments.listCinetpayLogs);
 router.get('/payments/stats', payments.getPaymentStats);
 router.post('/payments/test', requireAdminWrite, payments.testPaymentFlow);

@@ -4,6 +4,9 @@
 import { Request, Response } from 'express';
 import { PaymentLog } from '../models/PaymentLog.model';
 import { Order } from '../models/Order.model';
+import { Payout } from '../models/Payout.model';
+import { CinetPayProvider } from '../services/payment/cinetpay.service';
+import { commissionFor } from '../services/wallet.service';
 
 /** GET /api/admin/payments/config — payment gateway configuration */
 export async function getPaymentConfig(req: Request, res: Response): Promise<void> {
@@ -110,6 +113,169 @@ export async function listWebhookLogs(req: Request, res: Response): Promise<void
   } catch (err) {
     console.error('[payments] listWebhookLogs error:', err);
     res.status(500).json({ error: 'Failed to load webhook logs' });
+  }
+}
+
+/**
+ * GET /api/admin/payments/cinetpay/overview — business dashboard aggregates.
+ *
+ * Compiles balance, monthly KPIs, commission maths and payout figures in a
+ * single call so the frontend can render the dashboard without stitching
+ * three round-trips together. The balance call goes to CinetPay live and
+ * is best-effort — if it times out or the account isn't reachable, we ship
+ * `balance: null` and the UI shows a "—" without blocking the KPIs.
+ *
+ * Time window: current calendar month (start-of-month → now). Sellers care
+ * about "ce mois-ci" more than trailing-30d for revenue targets.
+ */
+export async function getCinetpayOverview(req: Request, res: Response): Promise<void> {
+  try {
+    const now = new Date();
+    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+
+    const [
+      balance,
+      revenueAgg,
+      countAgg,
+      methodAgg,
+      recentOrders,
+      totalPaidOut,
+    ] = await Promise.all([
+      // Balance is best-effort — never block the page if CinetPay is slow.
+      new CinetPayProvider().getBalance('CI'),
+      // Revenue + tx count for this month (paid only)
+      Order.aggregate<{
+        _id: null; revenue: number; txCount: number; avgAmount: number;
+      }>([
+        {
+          $match: {
+            paymentProvider: 'cinetpay',
+            paymentStatus: 'paid',
+            createdAt: { $gte: startOfMonth },
+          },
+        },
+        {
+          $group: {
+            _id: null,
+            revenue: { $sum: '$total' },
+            txCount: { $sum: 1 },
+            avgAmount: { $avg: '$total' },
+          },
+        },
+      ]),
+      // Success rate = paid / (paid + failed + abandoned) — captures the
+      // real conversion rate, not just the tx count.
+      Order.aggregate<{ _id: string; count: number }>([
+        {
+          $match: {
+            paymentProvider: 'cinetpay',
+            createdAt: { $gte: startOfMonth },
+          },
+        },
+        { $group: { _id: '$paymentStatus', count: { $sum: 1 } } },
+      ]),
+      // Breakdown by CinetPay payment method — reads paymentReference-linked
+      // logs so we know if buyers went via Wave, OM, MTN, etc.
+      PaymentLog.aggregate<{ _id: string; count: number; revenue: number }>([
+        {
+          $match: {
+            gateway: 'cinetpay',
+            event: 'webhook',
+            status: 'paid',
+            createdAt: { $gte: startOfMonth },
+          },
+        },
+        {
+          $group: {
+            _id: { $ifNull: ['$rawPayload.payment_method', 'UNKNOWN'] },
+            count: { $sum: 1 },
+            revenue: { $sum: { $toDouble: { $ifNull: ['$rawPayload.amount', 0] } } },
+          },
+        },
+        { $sort: { count: -1 } },
+      ]),
+      // Last 10 paid transactions with store + buyer info for the table.
+      Order.find({ paymentProvider: 'cinetpay', paymentStatus: 'paid' })
+        .sort({ createdAt: -1 })
+        .limit(10)
+        .populate('storeId', 'name slug')
+        .select({
+          orderNumber: 1, total: 1, currency: 1, email: 1, paymentReference: 1,
+          createdAt: 1, storeId: 1,
+        })
+        .lean(),
+      // Total already paid out to sellers via /admin/payouts (marked paid)
+      Payout.aggregate<{ _id: null; total: number }>([
+        { $match: { status: 'paid' } },
+        { $group: { _id: null, total: { $sum: '$amount' } } },
+      ]),
+    ]);
+
+    const revenue = revenueAgg[0]?.revenue || 0;
+    const txCount = revenueAgg[0]?.txCount || 0;
+    const avgAmount = revenueAgg[0]?.avgAmount || 0;
+
+    const byStatus = new Map(countAgg.map((s) => [s._id, s.count]));
+    const paidCount = byStatus.get('paid') || 0;
+    const totalAttempts = Array.from(byStatus.values()).reduce((s, n) => s + n, 0);
+    const successRate = totalAttempts > 0 ? paidCount / totalAttempts : 0;
+
+    // Commission uses the same helper as wallet.service so the numbers here
+    // match what the seller sees in their dashboard exactly.
+    const commissionTotal = revenue > 0 ? commissionFor(revenue) : 0;
+    const toSellers = revenue - commissionTotal;
+    const alreadyPaidOut = totalPaidOut[0]?.total || 0;
+
+    res.json({
+      balance,
+      thisMonth: {
+        revenue,
+        txCount,
+        avgAmount: Math.round(avgAmount),
+        successRate,
+        totalAttempts,
+        breakdown: {
+          paid: paidCount,
+          pending: byStatus.get('pending') || 0,
+          failed: byStatus.get('failed') || 0,
+          abandoned: byStatus.get('abandoned') || 0,
+        },
+      },
+      business: {
+        commissionRate: Number(process.env.COMMISSION_RATE || 0.03),
+        commissionCap: Number(process.env.COMMISSION_CAP || 1500),
+        commissionTotal,
+        toSellers,
+        alreadyPaidOut,
+        remainingToPayOut: Math.max(0, toSellers - alreadyPaidOut),
+      },
+      methodBreakdown: methodAgg.map((m) => ({
+        method: m._id,
+        count: m.count,
+        revenue: m.revenue,
+        share: txCount > 0 ? m.count / txCount : 0,
+      })),
+      recentTransactions: recentOrders.map((o) => ({
+        id: String(o._id),
+        orderNumber: o.orderNumber,
+        total: o.total,
+        currency: o.currency,
+        email: o.email,
+        reference: o.paymentReference,
+        createdAt: o.createdAt,
+        storeName:
+          o.storeId && typeof o.storeId === 'object' && 'name' in o.storeId
+            ? (o.storeId as { name?: string }).name
+            : undefined,
+        storeSlug:
+          o.storeId && typeof o.storeId === 'object' && 'slug' in o.storeId
+            ? (o.storeId as { slug?: string }).slug
+            : undefined,
+      })),
+    });
+  } catch (err) {
+    console.error('[payments] getCinetpayOverview error:', err);
+    res.status(500).json({ error: 'Failed to load CinetPay overview' });
   }
 }
 

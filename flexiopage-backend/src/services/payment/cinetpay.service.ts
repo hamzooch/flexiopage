@@ -287,6 +287,26 @@ export class CinetPayProvider implements PaymentProviderImpl {
       return { status: 'pending' };
     }
   }
+
+  /**
+   * Read the merchant account balance from CinetPay's /v1/balance endpoint.
+   * Best-effort — returns null if the SDK isn't configured, the country is
+   * missing from the credentials map, or CinetPay is unreachable. Callers
+   * treat null as "unknown" and render "—" rather than blocking the page.
+   */
+  async getBalance(country: CountryCode = 'CI'): Promise<{ available: number; currency: string } | null> {
+    if (!this.isConfigured()) return null;
+    try {
+      const client = this.getClient();
+      const balance = await client.balance.get(country);
+      return {
+        available: Number(balance.availableBalance) || 0,
+        currency: String(balance.currency),
+      };
+    } catch {
+      return null;
+    }
+  }
 }
 
 /** Map our internal channel hint to the SDK's CHANNELS enum. */
