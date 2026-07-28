@@ -891,6 +891,26 @@ export const adminApi = {
       error?: string;
       createdAt: string;
     }>>('/admin/payments/webhooks', { params }),
+  listCinetpayLogs: (params?: { limit?: number }) =>
+    api.get<{
+      count: number;
+      logs: Array<{
+        id: string;
+        createdAt: string;
+        event: 'initiate' | 'webhook' | 'verify';
+        status: 'pending' | 'paid' | 'failed';
+        signatureValid?: boolean;
+        reference?: string;
+        note?: string;
+        rawPayload?: Record<string, unknown>;
+        orderId?: string;
+        orderNumber?: string;
+        orderTotal?: number;
+        orderCurrency?: string;
+        orderEmail?: string;
+        orderPaymentStatus?: string;
+      }>;
+    }>('/admin/payments/cinetpay-logs', { params }),
   getPaymentStats: (params?: { gateway?: string; days?: number }) =>
     api.get<{
       totalTransactions: number;

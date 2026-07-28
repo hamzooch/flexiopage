@@ -8,6 +8,7 @@
  *   - Manually verify a transaction with the gateway
  */
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import Link from 'next/link';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { adminApi } from '@/lib/api';
@@ -24,6 +25,7 @@ import {
   ShieldAlert,
   Copy,
   Check,
+  FileText,
 } from 'lucide-react';
 
 type PaymentConfig = Awaited<ReturnType<typeof adminApi.getPaymentConfig>>['data'];
@@ -118,16 +120,25 @@ export default function AdminPaymentsPage() {
             Suivi des transactions et webhooks {config?.gateway ? `(${config.gateway})` : ''}
           </p>
         </div>
-        <Button
-          variant="outline"
-          size="sm"
-          className="ml-auto gap-2"
-          onClick={load}
-          disabled={loading}
-        >
-          <RefreshCw className={cn('h-3.5 w-3.5', loading && 'animate-spin')} />
-          Actualiser
-        </Button>
+        <div className="ml-auto flex items-center gap-2">
+          <Link
+            href="/admin/payments/cinetpay"
+            className="inline-flex h-8 items-center gap-2 rounded-md border border-input bg-background px-3 text-xs font-medium hover:bg-accent"
+          >
+            <FileText className="h-3.5 w-3.5" />
+            Journal CinetPay
+          </Link>
+          <Button
+            variant="outline"
+            size="sm"
+            className="gap-2"
+            onClick={load}
+            disabled={loading}
+          >
+            <RefreshCw className={cn('h-3.5 w-3.5', loading && 'animate-spin')} />
+            Actualiser
+          </Button>
+        </div>
       </div>
 
       {/* Configuration */}

@@ -42,6 +42,7 @@ import {
   type Channel as SdkChannel,
 } from 'cinetpay-js';
 import type { IOrder, PaymentProvider } from '../../models/Order.model';
+import { logPayment } from '../../models/PaymentLog.model';
 import type {
   InitPaymentArgs,
   InitPaymentResult,
@@ -163,8 +164,38 @@ export class CinetPayProvider implements PaymentProviderImpl {
         provider: 'cinetpay',
       };
     } catch (err) {
+      // Persist the failure so the admin CinetPay log page shows exactly
+      // what CinetPay rejected — auth 422, IP not whitelisted, invalid
+      // payload, etc. Success is already logged by the caller.
+      const apiCode = err instanceof ApiError ? err.apiCode : undefined;
+      const apiStatus = err instanceof ApiError ? err.apiStatus : undefined;
+      const description = err instanceof ApiError ? err.description : undefined;
+      const errorMessage =
+        err instanceof ApiError
+          ? `CinetPay init failed (${apiCode} ${apiStatus}): ${description || err.message}`
+          : (err as Error).message;
+      await logPayment({
+        orderId: String(args.order._id),
+        storeId: args.order.storeId ? String(args.order.storeId) : undefined,
+        gateway: 'cinetpay',
+        reference: orderId,
+        event: 'initiate',
+        status: 'failed',
+        note: errorMessage,
+        rawPayload: {
+          apiCode,
+          apiStatus,
+          description,
+          message: (err as Error).message,
+          country,
+          amount: request.amount,
+          currency: request.currency,
+          merchantTxId: orderId,
+          notifyUrl,
+        },
+      });
       if (err instanceof ApiError) {
-        throw new Error(`CinetPay init failed (${err.apiCode} ${err.apiStatus}): ${err.description || err.message}`);
+        throw new Error(errorMessage);
       }
       throw err;
     }

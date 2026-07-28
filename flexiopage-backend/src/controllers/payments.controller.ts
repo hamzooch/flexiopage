@@ -113,6 +113,58 @@ export async function listWebhookLogs(req: Request, res: Response): Promise<void
   }
 }
 
+/**
+ * GET /api/admin/payments/cinetpay-logs — CinetPay-specific event journal.
+ * Union of PaymentLog (initiate/verify + failure) and inbound webhooks so the
+ * admin can walk the full lifecycle of a checkout attempt in one timeline.
+ * Populates orderNumber + amount so no follow-up JOIN is needed client-side.
+ */
+export async function listCinetpayLogs(req: Request, res: Response): Promise<void> {
+  try {
+    const { limit = 100 } = req.query;
+    const cap = Math.min(Math.max(Number(limit) || 100, 10), 500);
+
+    const logs = await PaymentLog.find({ gateway: 'cinetpay' })
+      .sort({ createdAt: -1 })
+      .limit(cap)
+      .lean();
+
+    // Fetch order info for context (only for the orders in this batch).
+    const orderIds = [...new Set(logs.map((l) => l.orderId?.toString()).filter(Boolean))] as string[];
+    const orders = orderIds.length
+      ? await Order.find({ _id: { $in: orderIds } })
+          .select({ orderNumber: 1, total: 1, currency: 1, email: 1, paymentStatus: 1 })
+          .lean()
+      : [];
+    const orderMap = new Map(orders.map((o) => [o._id.toString(), o]));
+
+    const enriched = logs.map((log) => {
+      const order = log.orderId ? orderMap.get(log.orderId.toString()) : undefined;
+      return {
+        id: log._id?.toString(),
+        createdAt: log.createdAt,
+        event: log.event,
+        status: log.status,
+        signatureValid: log.signatureValid,
+        reference: log.reference,
+        note: log.note,
+        rawPayload: log.rawPayload,
+        orderId: log.orderId?.toString(),
+        orderNumber: order?.orderNumber,
+        orderTotal: order?.total,
+        orderCurrency: order?.currency,
+        orderEmail: order?.email,
+        orderPaymentStatus: order?.paymentStatus,
+      };
+    });
+
+    res.json({ logs: enriched, count: enriched.length });
+  } catch (err) {
+    console.error('[payments] listCinetpayLogs error:', err);
+    res.status(500).json({ error: 'Failed to load CinetPay logs' });
+  }
+}
+
 /** GET /api/admin/payments/stats — payment statistics */
 export async function getPaymentStats(req: Request, res: Response): Promise<void> {
   try {
