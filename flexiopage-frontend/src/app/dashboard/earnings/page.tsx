@@ -134,7 +134,7 @@ export default function EarningsPage() {
     }
     if (!wallet) return;
     if (value < wallet.payoutMinimum) {
-      setError(`Minimum ${fmt(wallet.payoutMinimum, wallet.currency)}.`);
+      setError(`Minimum ${fmt(wallet.payoutMinimum, wallet.payoutCurrency)}.`);
       return;
     }
     if (value > wallet.payoutBalance) {
@@ -214,10 +214,10 @@ export default function EarningsPage() {
                 Solde disponible
               </div>
               <div className="mt-2 text-3xl font-bold tabular-nums text-emerald-600">
-                {fmt(wallet.payoutBalance, wallet.currency)}
+                {fmt(wallet.payoutBalance, wallet.payoutCurrency)}
               </div>
               <div className="mt-1 text-[11px] text-muted-foreground">
-                Minimum retrait: {fmt(wallet.payoutMinimum, wallet.currency)}
+                Minimum retrait: {fmt(wallet.payoutMinimum, wallet.payoutCurrency)}
               </div>
             </div>
             <div>
@@ -225,7 +225,7 @@ export default function EarningsPage() {
                 En attente de versement
               </div>
               <div className="mt-2 text-2xl font-bold tabular-nums text-amber-600">
-                {fmt(pendingPayoutTotal, wallet.currency)}
+                {fmt(pendingPayoutTotal, wallet.payoutCurrency)}
               </div>
               <div className="mt-1 text-[11px] text-muted-foreground">
                 {payouts.filter((p) => p.status === 'pending').length} demande(s) en cours
@@ -247,7 +247,7 @@ export default function EarningsPage() {
               <Info className="mt-0.5 h-3.5 w-3.5 shrink-0" />
               <div>
                 Votre solde est inférieur au minimum de retrait de{' '}
-                <strong>{fmt(wallet.payoutMinimum, wallet.currency)}</strong>.
+                <strong>{fmt(wallet.payoutMinimum, wallet.payoutCurrency)}</strong>.
                 Continuez à vendre pour débloquer votre premier versement !
               </div>
             </div>
@@ -256,7 +256,7 @@ export default function EarningsPage() {
             <div className="flex items-start gap-2">
               <Info className="mt-0.5 h-3.5 w-3.5 shrink-0" />
               <div>
-                <strong>Commission plateforme: {(wallet.platformCommissionRate * 100).toFixed(0)}%</strong> sur chaque vente en ligne.
+                <strong>Commission plateforme: {(wallet.platformCommissionRate * 100).toFixed(1)}%</strong> sur chaque vente en ligne.
                 Sur une vente de 10 000 XOF, vous recevez {(10000 * (1 - wallet.platformCommissionRate)).toFixed(0)} XOF.
                 Les paiements à la livraison (COD) ne sont pas concernés.
               </div>
@@ -277,7 +277,7 @@ export default function EarningsPage() {
           <CardContent>
             <form onSubmit={handleSubmit} className="space-y-3">
               <div>
-                <Label htmlFor="amount">Montant ({wallet.currency})</Label>
+                <Label htmlFor="amount">Montant ({wallet.payoutCurrency})</Label>
                 <Input
                   id="amount"
                   type="number"
@@ -286,7 +286,7 @@ export default function EarningsPage() {
                   step="1"
                   value={amount}
                   onChange={(e) => setAmount(e.target.value)}
-                  placeholder={`Max: ${fmt(wallet.payoutBalance, wallet.currency)}`}
+                  placeholder={`Max: ${fmt(wallet.payoutBalance, wallet.payoutCurrency)}`}
                   required
                 />
               </div>
@@ -432,7 +432,7 @@ export default function EarningsPage() {
                       <span className="text-sm font-medium">{meta.label}</span>
                       <span className="ml-auto text-xs font-semibold">{pct.toFixed(0)}%</span>
                       <span className="text-[11px] text-muted-foreground">
-                        {m.count} vente{m.count > 1 ? 's' : ''} · {fmt(m.revenue, wallet.currency)}
+                        {m.count} vente{m.count > 1 ? 's' : ''} · {fmt(m.revenue, wallet.payoutCurrency)}
                       </span>
                     </div>
                     <div className="h-2 overflow-hidden rounded-full bg-muted">
@@ -542,7 +542,7 @@ export default function EarningsPage() {
                     'shrink-0 text-sm font-semibold tabular-nums',
                     t.amount > 0 ? 'text-emerald-600' : 'text-rose-600',
                   )}>
-                    {t.amount > 0 ? '+' : ''}{fmt(t.amount, wallet.currency)}
+                    {t.amount > 0 ? '+' : ''}{fmt(t.amount, wallet.payoutCurrency)}
                   </div>
                 </li>
               ))}

@@ -43,18 +43,30 @@ router.get('/', async (req: AuthRequest, res: Response): Promise<void> => {
   }
   const rate = await usdToTokensRate();
   const settings = await getSettings();
-  const minForCur = settings.platform?.payoutMinimums?.[wallet.currency] ?? 0;
+  // Payout currency isn't the wallet currency (which is pinned to USD for the
+  // AI/top-up bucket). It's the currency of the seller's primary store — that's
+  // the currency his customers pay in, so that's what makes sense to display
+  // for the payout balance. Fallback to wallet.currency if the seller has no
+  // store yet (edge case, staff accounts, etc.).
+  const primaryStore = await Store.findOne({ ownerId: userId })
+    .sort({ createdAt: 1 })
+    .select('settings.currency')
+    .lean();
+  const payoutCurrency = primaryStore?.settings?.currency || wallet.currency;
+  const minForCur = settings.platform?.payoutMinimums?.[payoutCurrency] ?? 0;
   res.json({
     wallet: {
       balance: wallet.balance,
       aiBalance: wallet.aiBalance,
       payoutBalance: wallet.payoutBalance || 0,
       currency: wallet.currency,
+      /** Devise dans laquelle le payoutBalance doit être affiché (currency du store principal). */
+      payoutCurrency,
       commissionRate: Number(process.env.COMMISSION_RATE || 0.03),
       commissionCap: Number(process.env.COMMISSION_CAP || 1500),
       /** Platform commission on online paid orders (0.15 = 15%). */
       platformCommissionRate: settings.platform?.commissionRate ?? 0.15,
-      /** Min amount required to request a payout in this wallet's currency. */
+      /** Min amount required to request a payout in the payout currency. */
       payoutMinimum: minForCur,
       aiCosts,
       aiTokenCosts: aiCosts,

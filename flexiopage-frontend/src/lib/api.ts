@@ -201,12 +201,21 @@ export interface WalletState {
    * un modèle chariow-style où la plateforme collecte et reverse.
    */
   payoutBalance: number;
+  /**
+   * Devise du wallet main/AI — pinnée à USD platform-wide.
+   * NE PAS utiliser pour afficher le payoutBalance (voir payoutCurrency).
+   */
   currency: string;
+  /**
+   * Devise dans laquelle afficher le payoutBalance. Correspond à la devise
+   * de la boutique principale du vendeur (celle où ses acheteurs paient).
+   */
+  payoutCurrency: string;
   commissionRate: number;
   commissionCap: number;
   /** Taux de commission plateforme sur les paiements en ligne (0.15 = 15%). */
   platformCommissionRate: number;
-  /** Montant minimum pour demander un versement (dans la devise du wallet). */
+  /** Montant minimum pour demander un versement (dans la payoutCurrency). */
   payoutMinimum: number;
   /** Coût par génération, en tokens. */
   aiCosts: { landing: number; product_page: number; text_only: number; poster?: number };

@@ -53,7 +53,7 @@ export function EarningsWidget() {
               Revenus en ligne (solde vendeur)
             </div>
             <div className="mt-0.5 text-xl font-bold tabular-nums text-emerald-600 sm:text-2xl">
-              {fmt(wallet.payoutBalance, wallet.currency)}
+              {fmt(wallet.payoutBalance, wallet.payoutCurrency)}
             </div>
             <div className="mt-0.5 flex flex-wrap items-center gap-1.5 text-[11px] text-muted-foreground">
               {canPayout ? (
@@ -62,11 +62,11 @@ export function EarningsWidget() {
                 </span>
               ) : (
                 <span>
-                  Minimum: {fmt(wallet.payoutMinimum, wallet.currency)}
+                  Minimum: {fmt(wallet.payoutMinimum, wallet.payoutCurrency)}
                 </span>
               )}
               <span>·</span>
-              <span>Commission plateforme: {(wallet.platformCommissionRate * 100).toFixed(0)}%</span>
+              <span>Commission plateforme: {(wallet.platformCommissionRate * 100).toFixed(1)}%</span>
             </div>
           </div>
           <ArrowRight className={cn(
