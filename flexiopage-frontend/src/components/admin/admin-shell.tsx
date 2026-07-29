@@ -10,7 +10,7 @@
  */
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   LayoutDashboard,
   Users,
@@ -39,6 +39,8 @@ import {
   Banknote,
   Sparkles,
   Plug,
+  ChevronDown,
+  Check,
 } from 'lucide-react';
 import { useAuthStore } from '@/stores/auth-store';
 import { cn } from '@/lib/utils';
@@ -253,7 +255,8 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
             </div>
           </div>
           <div className="flex items-center gap-2">
-            <span className="hidden items-center gap-1.5 rounded-full bg-rose-500/10 px-2.5 py-1 text-[11px] font-semibold text-rose-700 ring-1 ring-rose-500/20 sm:inline-flex">
+            <ViewSwitcher currentView="admin" />
+            <span className="hidden items-center gap-1.5 rounded-full bg-rose-500/10 px-2.5 py-1 text-[11px] font-semibold text-rose-700 ring-1 ring-rose-500/20 lg:inline-flex">
               <RoleIcon className="h-3 w-3" />
               {meta.mode}
             </span>
@@ -283,6 +286,128 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
     </div>
   );
 }
+
+/**
+ * View switcher — dropdown in the topbar to jump between the admin console
+ * and the seller/customer-facing views without hunting for the sidebar
+ * "Dashboard Owner" link. Owners often need to see what a seller sees
+ * (for support / triage) — this is the one-click path.
+ */
+function ViewSwitcher({ currentView }: { currentView: 'admin' | 'seller' | 'customer' }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  // Close on outside click / Escape — same UX as native <select> menus.
+  useEffect(() => {
+    if (!open) return;
+    const onDoc = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setOpen(false);
+    };
+    document.addEventListener('mousedown', onDoc);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('mousedown', onDoc);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [open]);
+
+  const current = VIEWS.find((v) => v.id === currentView) || VIEWS[0];
+  const CurrentIcon = current.icon;
+
+  return (
+    <div ref={ref} className="relative">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border bg-card px-2.5 text-xs font-medium text-foreground/80 transition-colors hover:border-primary/40 hover:bg-primary/5"
+        aria-haspopup="menu"
+        aria-expanded={open}
+      >
+        <CurrentIcon className={cn('h-3.5 w-3.5', current.iconColor)} />
+        <span className="hidden sm:inline">Vue&nbsp;:</span>
+        <span className="font-semibold">{current.label}</span>
+        <ChevronDown className={cn('h-3 w-3 transition-transform', open && 'rotate-180')} />
+      </button>
+      {open && (
+        <div
+          role="menu"
+          className="absolute right-0 top-full z-30 mt-1.5 w-64 overflow-hidden rounded-xl border border-border/60 bg-popover shadow-lg"
+        >
+          <div className="border-b border-border/40 bg-muted/30 px-3 py-2 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+            Basculer la vue
+          </div>
+          {VIEWS.map((v) => {
+            const Icon = v.icon;
+            const active = v.id === currentView;
+            return (
+              <Link
+                key={v.id}
+                href={v.href}
+                onClick={() => setOpen(false)}
+                className={cn(
+                  'flex items-start gap-3 px-3 py-2.5 transition-colors',
+                  active ? 'bg-muted/60' : 'hover:bg-muted/40',
+                )}
+              >
+                <div className={cn('mt-0.5 grid h-7 w-7 shrink-0 place-items-center rounded-lg', v.iconBg)}>
+                  <Icon className={cn('h-3.5 w-3.5', v.iconColor)} />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-1.5 text-xs font-semibold">
+                    {v.label}
+                    {active && <Check className="h-3 w-3 text-emerald-600" />}
+                  </div>
+                  <div className="text-[10px] text-muted-foreground">{v.hint}</div>
+                </div>
+              </Link>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+const VIEWS: Array<{
+  id: 'admin' | 'seller' | 'customer';
+  label: string;
+  href: string;
+  hint: string;
+  icon: React.ComponentType<{ className?: string }>;
+  iconColor: string;
+  iconBg: string;
+}> = [
+  {
+    id: 'admin',
+    label: 'Admin plateforme',
+    href: '/admin',
+    hint: 'Console de gestion FlexioPage (rôle actuel)',
+    icon: ShieldCheck,
+    iconColor: 'text-rose-600',
+    iconBg: 'bg-rose-500/10',
+  },
+  {
+    id: 'seller',
+    label: 'Vendeur',
+    href: '/dashboard',
+    hint: 'Ce que voit un vendeur : boutique, produits, ventes',
+    icon: Briefcase,
+    iconColor: 'text-amber-600',
+    iconBg: 'bg-amber-500/10',
+  },
+  {
+    id: 'customer',
+    label: 'Client',
+    href: '/select-store',
+    hint: 'Storefront public — expérience acheteur',
+    icon: Store,
+    iconColor: 'text-emerald-600',
+    iconBg: 'bg-emerald-500/10',
+  },
+];
 
 function labelFromPath(path: string): string {
   if (path === '/admin') return "Vue d'ensemble";
