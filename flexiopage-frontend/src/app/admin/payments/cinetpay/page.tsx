@@ -176,19 +176,38 @@ function OverviewTab() {
 
       {/* Balance card — real-time from SDK */}
       <Card className="overflow-hidden bg-gradient-to-br from-fuchsia-500/10 via-transparent to-indigo-500/10 border-fuchsia-500/20">
-        <CardContent className="flex items-center gap-4 p-5">
-          <div className="grid h-14 w-14 shrink-0 place-items-center rounded-xl bg-gradient-to-br from-fuchsia-500 to-indigo-600 text-white">
-            <Wallet className="h-7 w-7" />
-          </div>
-          <div className="flex-1">
-            <div className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Solde CinetPay disponible</div>
-            {data.balance ? (
-              <div className="text-3xl font-bold tracking-tight">{fmt(data.balance.available, data.balance.currency)}</div>
-            ) : (
-              <div className="mt-1 text-sm text-muted-foreground italic">
-                Solde indisponible — appel SDK échoué (compte non-configuré, réseau, ou host sandbox)
+        <CardContent className="grid gap-4 p-5 sm:grid-cols-2">
+          <div className="flex items-center gap-4">
+            <div className="grid h-14 w-14 shrink-0 place-items-center rounded-xl bg-gradient-to-br from-fuchsia-500 to-indigo-600 text-white">
+              <Wallet className="h-7 w-7" />
+            </div>
+            <div className="min-w-0 flex-1">
+              <div className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Solde CinetPay transférable</div>
+              {data.balance ? (
+                <div className="text-3xl font-bold tracking-tight">{fmt(data.balance.available, data.balance.currency)}</div>
+              ) : (
+                <div className="mt-1 text-sm text-muted-foreground italic">
+                  Solde indisponible — appel SDK échoué (compte non-configuré, réseau, ou host sandbox)
+                </div>
+              )}
+              <div className="mt-1 text-[11px] leading-tight text-muted-foreground">
+                Ce que tu peux virer <strong>maintenant</strong>. CinetPay libère les paiements récents avec un délai T+1 — les nouvelles ventes de la journée s&apos;ajoutent ici demain.
               </div>
-            )}
+            </div>
+          </div>
+          <div className="flex items-center gap-4 border-t border-fuchsia-500/10 pt-4 sm:border-l sm:border-t-0 sm:pl-6 sm:pt-0">
+            <div className="grid h-14 w-14 shrink-0 place-items-center rounded-xl bg-gradient-to-br from-emerald-500 to-teal-600 text-white">
+              <TrendingUp className="h-7 w-7" />
+            </div>
+            <div className="min-w-0 flex-1">
+              <div className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Encaissé ce mois (temps réel)</div>
+              <div className="text-3xl font-bold tracking-tight text-emerald-700 dark:text-emerald-400">
+                {fmt(data.thisMonth.revenue, currency)}
+              </div>
+              <div className="mt-1 text-[11px] leading-tight text-muted-foreground">
+                Somme de <strong>toutes les commandes CinetPay payées</strong> ce mois-ci. Instantané, calculé depuis notre base — c&apos;est le vrai chiffre d&apos;encaissement.
+              </div>
+            </div>
           </div>
         </CardContent>
       </Card>
