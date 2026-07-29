@@ -501,7 +501,35 @@ export interface AdminUserDetail {
   user: AdminUser;
   stats: { stores: number; products: number; orders: number; paidOrders: number; deliveredOrders: number };
   stores: Array<{ _id: string; name: string; slug: string; storeType?: string; isPublished?: boolean; settings?: { currency?: string; country?: string }; createdAt?: string }>;
-  wallet: { balance: number; aiBalance: number; currency: string; txCount: number } | null;
+  wallet: {
+    balance: number;
+    aiBalance: number;
+    /** Solde des ventes en ligne (dans payoutCurrency). */
+    payoutBalance: number;
+    /** Devise du bucket main/AI (pinnée USD platform-wide). */
+    currency: string;
+    /** Devise du bucket payout (celle du store principal du vendeur). */
+    payoutCurrency: string;
+    txCount: number;
+  } | null;
+  /**
+   * Résumé de la vie financière du vendeur — chiffres bruts venant directement
+   * des Order.paymentStatus='paid', pas du solde wallet (qui peut décaler).
+   */
+  earnings: {
+    currency?: string;
+    digital: { gross: number; commission: number; count: number; rate: number };
+    physical: { gross: number; commission: number; count: number; rate: number };
+    totals: {
+      gross: number;
+      commissionCollected: number;
+      netToSeller: number;
+      alreadyPaidOut: number;
+      pendingPayouts: number;
+      remainingToPay: number;
+    };
+    payoutCounts: { pending: number; paid: number; rejected: number };
+  };
 }
 export interface AdminStore {
   _id: string;

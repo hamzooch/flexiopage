@@ -45,6 +45,12 @@ import {
   ShoppingCart,
   Package as PackageIcon,
   Clock,
+  TrendingUp,
+  Banknote,
+  Download,
+  Truck,
+  Percent,
+  ArrowRight,
 } from 'lucide-react';
 import { useAuthStore } from '@/stores/auth-store';
 
@@ -319,19 +325,22 @@ export default function AdminUserDetailPage() {
         </div>
       </section>
 
-      {/* Stats */}
+      {/* Stats — première rangée (activité) */}
       <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <Stat label="Boutiques" icon={<StoreIcon className="h-4 w-4" />} value={data.stats.stores} tone="indigo" />
         <Stat label="Produits" icon={<PackageIcon className="h-4 w-4" />} value={data.stats.products} tone="amber" />
         <Stat label="Commandes" icon={<ShoppingCart className="h-4 w-4" />} value={data.stats.orders} tone="emerald" sub={`${data.stats.paidOrders} payées · ${data.stats.deliveredOrders} livrées`} />
         <Stat
-          label="Wallet"
+          label="Wallet (top-up)"
           icon={<Wallet className="h-4 w-4" />}
           value={data.wallet ? fmt(data.wallet.balance, data.wallet.currency) : '—'}
           tone="rose"
           sub={data.wallet ? `IA : ${fmtTokens(data.wallet.aiBalance)}` : 'Pas encore créé'}
         />
       </section>
+
+      {/* Financials — deuxième rangée (revenus en ligne) */}
+      <FinancialsSection data={data} />
 
       <div className="grid gap-6 lg:grid-cols-2">
         {/* Profil */}
@@ -642,6 +651,188 @@ function ToggleRow({
           }`}
         />
       </button>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// Financials — revenus en ligne, breakdown digital/physical, versements
+// ─────────────────────────────────────────────────────────────────────
+
+function FinancialsSection({ data }: { data: AdminUserDetail }) {
+  const w = data.wallet;
+  const e = data.earnings;
+  const c = e.currency || w?.payoutCurrency || 'XOF';
+  const hasAnyRevenue = e.totals.gross > 0;
+
+  return (
+    <section className="space-y-4">
+      {/* KPIs revenus */}
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <Stat
+          label="Solde ventes en ligne"
+          icon={<Banknote className="h-4 w-4" />}
+          value={w ? fmt(w.payoutBalance, c) : '—'}
+          tone="emerald"
+          sub="Retirable via demande de versement"
+        />
+        <Stat
+          label="Chiffre d'affaires en ligne"
+          icon={<TrendingUp className="h-4 w-4" />}
+          value={fmt(e.totals.gross, c)}
+          tone="indigo"
+          sub={`${e.digital.count + e.physical.count} commandes en ligne`}
+        />
+        <Stat
+          label="Commission plateforme"
+          icon={<Percent className="h-4 w-4" />}
+          value={fmt(e.totals.commissionCollected, c)}
+          tone="amber"
+          sub={hasAnyRevenue
+            ? `${((e.totals.commissionCollected / e.totals.gross) * 100).toFixed(1)}% moyen`
+            : '—'}
+        />
+        <Stat
+          label="Déjà versé"
+          icon={<Download className="h-4 w-4" />}
+          value={fmt(e.totals.alreadyPaidOut, c)}
+          tone="rose"
+          sub={`${data.earnings.payoutCounts.paid} versement${data.earnings.payoutCounts.paid > 1 ? 's' : ''}`}
+        />
+      </div>
+
+      {/* Breakdown digital / physical + versements */}
+      {hasAnyRevenue && (
+        <div className="grid gap-4 lg:grid-cols-2">
+          {/* Split par type */}
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="flex items-center gap-2 text-sm">
+                <TrendingUp className="h-4 w-4 text-emerald-600" />
+                Répartition par type de produit
+              </CardTitle>
+              <CardDescription className="text-xs">
+                Commission appliquée selon le type de vente (settings plateforme).
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3 pt-0">
+              <BreakdownRow
+                icon="📦"
+                label="Digital"
+                count={e.digital.count}
+                gross={e.digital.gross}
+                commission={e.digital.commission}
+                rate={e.digital.rate}
+                currency={c}
+                total={e.totals.gross}
+                color="from-fuchsia-500 to-indigo-600"
+              />
+              <BreakdownRow
+                icon="🚚"
+                label="Physique / COD"
+                count={e.physical.count}
+                gross={e.physical.gross}
+                commission={e.physical.commission}
+                rate={e.physical.rate}
+                currency={c}
+                total={e.totals.gross}
+                color="from-orange-500 to-amber-600"
+              />
+            </CardContent>
+          </Card>
+
+          {/* Versements */}
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="flex items-center gap-2 text-sm">
+                <Banknote className="h-4 w-4 text-blue-600" />
+                Versements aux vendeurs
+              </CardTitle>
+              <CardDescription className="text-xs">
+                Ce que la plateforme doit encore au vendeur.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-2 pt-0">
+              <PayoutRow label="Net vendeur (après commission)" value={fmt(e.totals.netToSeller, c)} color="text-slate-700 dark:text-slate-300" />
+              <PayoutRow label="Déjà versé (admin marqué payé)" value={fmt(e.totals.alreadyPaidOut, c)} color="text-emerald-600" />
+              <PayoutRow label="Demandes en attente" value={fmt(e.totals.pendingPayouts, c)} color="text-amber-600" hint={`${data.earnings.payoutCounts.pending} demande(s)`} />
+              <div className="border-t border-border/60 pt-2">
+                <PayoutRow
+                  label="Reste à verser"
+                  value={fmt(e.totals.remainingToPay, c)}
+                  color={e.totals.remainingToPay > 0 ? 'text-amber-700 dark:text-amber-400 font-bold' : 'text-muted-foreground'}
+                  highlight={e.totals.remainingToPay > 0}
+                />
+              </div>
+              <Link
+                href="/admin/payouts"
+                className="mt-3 inline-flex items-center gap-1.5 text-xs font-medium text-primary hover:underline"
+              >
+                Voir les demandes de versement
+                <ArrowRight className="h-3 w-3" />
+              </Link>
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
+      {!hasAnyRevenue && (
+        <div className="rounded-lg border border-dashed border-border bg-muted/20 p-6 text-center text-sm text-muted-foreground">
+          Aucune vente en ligne pour l&apos;instant.
+          Le vendeur n&apos;a pas encore encaissé de paiement via CinetPay, Moneroo ou Flutterwave.
+        </div>
+      )}
+    </section>
+  );
+}
+
+function BreakdownRow({
+  icon, label, count, gross, commission, rate, currency, total, color,
+}: {
+  icon: string; label: string; count: number; gross: number; commission: number; rate: number;
+  currency: string; total: number; color: string;
+}) {
+  const share = total > 0 ? (gross / total) * 100 : 0;
+  const net = Math.max(0, gross - commission);
+  return (
+    <div className="rounded-lg border border-border/60 bg-muted/20 p-3">
+      <div className="mb-1.5 flex items-center gap-2">
+        <span className="text-lg">{icon}</span>
+        <span className="text-sm font-semibold">{label}</span>
+        <span className="ml-auto text-xs font-semibold tabular-nums">{share.toFixed(0)}%</span>
+        <span className="text-[11px] text-muted-foreground">· {count} vente{count > 1 ? 's' : ''}</span>
+      </div>
+      <div className="mb-2 h-1.5 overflow-hidden rounded-full bg-black/5">
+        <div className={`h-full rounded-full bg-gradient-to-r ${color}`} style={{ width: `${Math.max(2, share)}%` }} />
+      </div>
+      <div className="grid grid-cols-3 gap-2 text-[11px]">
+        <div>
+          <div className="text-muted-foreground">CA brut</div>
+          <div className="font-semibold tabular-nums">{fmt(gross, currency)}</div>
+        </div>
+        <div>
+          <div className="text-muted-foreground">Commission {(rate * 100).toFixed(1)}%</div>
+          <div className="font-semibold tabular-nums text-amber-700 dark:text-amber-400">−{fmt(commission, currency)}</div>
+        </div>
+        <div>
+          <div className="text-muted-foreground">Net vendeur</div>
+          <div className="font-semibold tabular-nums text-emerald-700 dark:text-emerald-400">{fmt(net, currency)}</div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function PayoutRow({ label, value, color, hint, highlight }: {
+  label: string; value: string; color: string; hint?: string; highlight?: boolean;
+}) {
+  return (
+    <div className={`flex items-baseline justify-between gap-3 ${highlight ? 'rounded-md bg-amber-500/10 px-2 py-1.5' : ''}`}>
+      <div>
+        <span className="text-xs">{label}</span>
+        {hint && <span className="ml-1.5 text-[10px] text-muted-foreground">· {hint}</span>}
+      </div>
+      <span className={`text-sm tabular-nums ${color}`}>{value}</span>
     </div>
   );
 }

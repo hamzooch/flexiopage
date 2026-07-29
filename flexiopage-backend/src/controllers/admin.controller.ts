@@ -19,7 +19,9 @@ import { Store } from '../models/Store.model';
 import { Product } from '../models/Product.model';
 import { Order } from '../models/Order.model';
 import { Wallet } from '../models/Wallet.model';
+import { Payout } from '../models/Payout.model';
 import { BotUsage } from '../modules/messenger-bot/models/BotUsage.model';
+import { commissionRateForOrderType } from '../services/seller-earnings.service';
 import { Complaint } from '../models/Complaint.model';
 import { credit, debit, usdToTokens, usdToTokensRate } from '../services/wallet.service';
 import { listActivities } from '../services/activity-log.service';
@@ -867,14 +869,83 @@ export async function getUserDetail(req: AuthRequest, res: Response): Promise<vo
     res.status(404).json({ error: 'User not found' });
     return;
   }
-  const [stores, productCount, orderCount, paidOrders, deliveredOrders, wallet] = await Promise.all([
-    Store.find({ ownerId: user._id }).select('name slug storeType isPublished settings.currency settings.country createdAt').lean(),
-    Product.countDocuments({ storeId: { $in: await Store.find({ ownerId: user._id }).distinct('_id') } }),
-    Order.countDocuments({ storeId: { $in: await Store.find({ ownerId: user._id }).distinct('_id') } }),
-    Order.countDocuments({ storeId: { $in: await Store.find({ ownerId: user._id }).distinct('_id') }, paymentStatus: 'paid' }),
-    Order.countDocuments({ storeId: { $in: await Store.find({ ownerId: user._id }).distinct('_id') }, fulfillmentStatus: 'fulfilled' }),
+  // Un seul lookup des stores — on le passe partout après pour éviter les
+  // 4 requêtes distinct('_id') redondantes qu'il y avait avant.
+  const stores = await Store.find({ ownerId: user._id })
+    .select('name slug storeType isPublished settings.currency settings.country createdAt')
+    .lean();
+  const storeIds = stores.map((s) => s._id);
+  const primaryStore = stores.sort((a, b) =>
+    new Date(a.createdAt || 0).getTime() - new Date(b.createdAt || 0).getTime(),
+  )[0];
+  const payoutCurrency = primaryStore?.settings?.currency;
+
+  const [
+    productCount,
+    orderCount,
+    paidOrders,
+    deliveredOrders,
+    wallet,
+    onlinePaidOrders,
+    payoutsAgg,
+  ] = await Promise.all([
+    Product.countDocuments({ storeId: { $in: storeIds } }),
+    Order.countDocuments({ storeId: { $in: storeIds } }),
+    Order.countDocuments({ storeId: { $in: storeIds }, paymentStatus: 'paid' }),
+    Order.countDocuments({ storeId: { $in: storeIds }, fulfillmentStatus: 'fulfilled' }),
     Wallet.findOne({ userId: user._id }).lean(),
+    // Toutes les orders online payées, chargées en une fois avec les
+    // types produits pour split digital/physical.
+    Order.find({
+      storeId: { $in: storeIds },
+      paymentStatus: 'paid',
+      paymentProvider: { $in: ['cinetpay', 'moneróo', 'flutterwave', 'wave', 'orange_money', 'mtn_momo', 'moov_money'] },
+    })
+      .select('total currency items createdAt paymentProvider')
+      .lean(),
+    Payout.aggregate<{ _id: string; total: number; count: number }>([
+      { $match: { userId: user._id } },
+      { $group: { _id: '$status', total: { $sum: '$amount' }, count: { $sum: 1 } } },
+    ]),
   ]);
+
+  // Split revenus digital vs physical (via product.type du 1er item).
+  const productTypeById = new Map<string, string | undefined>();
+  const productIds = [...new Set(onlinePaidOrders.map((o) => o.items?.[0]?.productId?.toString()).filter(Boolean))] as string[];
+  if (productIds.length) {
+    const products = await Product.find({ _id: { $in: productIds } }).select('type').lean();
+    for (const p of products) productTypeById.set(String(p._id), p.type);
+  }
+
+  const settings = await getSettings();
+  const digitalRate = commissionRateForOrderType(settings.platform, 'digital');
+  const physicalRate = commissionRateForOrderType(settings.platform, 'physical');
+
+  let digitalGross = 0, digitalCommission = 0, digitalCount = 0;
+  let physicalGross = 0, physicalCommission = 0, physicalCount = 0;
+  for (const o of onlinePaidOrders) {
+    if (o.currency !== payoutCurrency) continue; // ne mélange pas les devises
+    const firstProductType = productTypeById.get(String(o.items?.[0]?.productId));
+    const isPhysical = firstProductType === 'physical';
+    const rate = isPhysical ? physicalRate : digitalRate;
+    const commission = Math.round((o.total || 0) * rate);
+    if (isPhysical) {
+      physicalGross += o.total || 0;
+      physicalCommission += commission;
+      physicalCount += 1;
+    } else {
+      digitalGross += o.total || 0;
+      digitalCommission += commission;
+      digitalCount += 1;
+    }
+  }
+  const totalGross = digitalGross + physicalGross;
+  const totalCommission = digitalCommission + physicalCommission;
+  const totalNetSeller = Math.max(0, totalGross - totalCommission);
+
+  const payoutsByStatus: Record<string, { total: number; count: number }> = {};
+  for (const p of payoutsAgg) payoutsByStatus[p._id] = { total: p.total, count: p.count };
+
   res.json({
     user,
     stats: {
@@ -886,8 +957,38 @@ export async function getUserDetail(req: AuthRequest, res: Response): Promise<vo
     },
     stores,
     wallet: wallet
-      ? { balance: wallet.balance, aiBalance: wallet.aiBalance, currency: wallet.currency, txCount: wallet.transactions?.length || 0 }
+      ? {
+          balance: wallet.balance,
+          aiBalance: wallet.aiBalance,
+          payoutBalance: wallet.payoutBalance || 0,
+          currency: wallet.currency,
+          payoutCurrency: payoutCurrency || wallet.currency,
+          txCount: wallet.transactions?.length || 0,
+        }
       : null,
+    /**
+     * Revenus en ligne consolidés — pour que l'admin voie d'un coup d'œil ce
+     * que le vendeur a généré, ce qu'on a retenu de commission, ce qui reste
+     * à lui verser et l'historique des versements déjà effectués.
+     */
+    earnings: {
+      currency: payoutCurrency,
+      digital: { gross: digitalGross, commission: digitalCommission, count: digitalCount, rate: digitalRate },
+      physical: { gross: physicalGross, commission: physicalCommission, count: physicalCount, rate: physicalRate },
+      totals: {
+        gross: totalGross,
+        commissionCollected: totalCommission,
+        netToSeller: totalNetSeller,
+        alreadyPaidOut: payoutsByStatus.paid?.total || 0,
+        pendingPayouts: payoutsByStatus.pending?.total || 0,
+        remainingToPay: Math.max(0, totalNetSeller - (payoutsByStatus.paid?.total || 0)),
+      },
+      payoutCounts: {
+        pending: payoutsByStatus.pending?.count || 0,
+        paid: payoutsByStatus.paid?.count || 0,
+        rejected: payoutsByStatus.rejected?.count || 0,
+      },
+    },
   });
 }
 
