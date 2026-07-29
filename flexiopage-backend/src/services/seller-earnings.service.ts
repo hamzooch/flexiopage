@@ -14,7 +14,8 @@ import { randomUUID } from 'crypto';
 import type { IOrder } from '../models/Order.model';
 import { Store } from '../models/Store.model';
 import { Wallet } from '../models/Wallet.model';
-import { getSettings } from '../models/Settings.model';
+import { Product } from '../models/Product.model';
+import { getSettings, type IPlatformSettings } from '../models/Settings.model';
 
 /** Online providers that route money through the platform's Moneroo account. */
 const PLATFORM_HELD_PROVIDERS = new Set(['cinetpay', 'flutterwave', 'stripe']);
@@ -61,7 +62,8 @@ export async function creditSellerForPaidOrder(order: IOrder): Promise<number> {
   if (existing) return 0;
 
   const settings = await getSettings();
-  const rate = Math.max(0, Math.min(1, settings.platform?.commissionRate ?? 0.15));
+  const orderType = await inferOrderType(order);
+  const rate = commissionRateForOrderType(settings.platform, orderType);
   const commission = Math.round(order.total * rate);
   const netAmount = Math.max(0, order.total - commission);
 
@@ -74,10 +76,39 @@ export async function creditSellerForPaidOrder(order: IOrder): Promise<number> {
     balanceAfter: targetWallet.payoutBalance,
     orderId: order._id,
     orderNumber: order.orderNumber,
-    note: `Vente en ligne · commission plateforme ${(rate * 100).toFixed(0)}% (${commission} ${order.currency})`,
+    note: `Vente ${orderType} · commission ${(rate * 100).toFixed(1)}% (${commission} ${order.currency})`,
     createdAt: new Date(),
   });
   await targetWallet.save();
 
   return netAmount;
+}
+
+/**
+ * Détermine le type "commercial" d'une commande à partir de son premier item :
+ * digital ou physical. Utilisé pour piocher le bon taux de commission.
+ * Fallback digital (majoritaire sur la plateforme).
+ */
+async function inferOrderType(order: IOrder): Promise<'digital' | 'physical'> {
+  const firstItem = order.items?.[0];
+  if (!firstItem?.productId) return 'digital';
+  const product = await Product.findById(firstItem.productId).select('type').lean();
+  return product?.type === 'physical' ? 'physical' : 'digital';
+}
+
+/**
+ * Résout le taux de commission selon le type de commande. On lit d'abord le
+ * taux type-spécifique, on retombe sur `commissionRate` legacy pour les
+ * Settings qui n'ont pas été migrés, et enfin sur 15% dur.
+ */
+export function commissionRateForOrderType(
+  platform: IPlatformSettings | undefined,
+  orderType: 'digital' | 'physical',
+): number {
+  const raw =
+    orderType === 'digital'
+      ? platform?.commissionRateDigital ?? platform?.commissionRate
+      : platform?.commissionRatePhysical ?? platform?.commissionRate;
+  const rate = typeof raw === 'number' && Number.isFinite(raw) ? raw : 0.15;
+  return Math.max(0, Math.min(1, rate));
 }

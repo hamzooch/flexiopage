@@ -48,8 +48,23 @@ export interface IAuthSettings {
  * once they hit `payoutMinimum` in their store currency.
  */
 export interface IPlatformSettings {
-  /** Commission taken on every online-paid order. 0.15 = 15%. */
+  /**
+   * Commission par défaut appliquée quand aucun taux type-spécifique n'est
+   * défini. Kept for backward compatibility avec les Settings pré-2026-07-30.
+   * 0.15 = 15%.
+   */
   commissionRate: number;
+  /**
+   * Commission spécifique aux commandes de produits digitaux (téléchargement,
+   * cours, licence, membership, service). Si non défini, on retombe sur
+   * `commissionRate`. 0.15 = 15%.
+   */
+  commissionRateDigital?: number;
+  /**
+   * Commission spécifique aux commandes physiques (COD dropshipping). Si non
+   * défini, on retombe sur `commissionRate`. 0.05 = 5%.
+   */
+  commissionRatePhysical?: number;
   /** Minimum payout amount per currency. Seller can't withdraw below this. */
   payoutMinimums: Record<string, number>;
 }
@@ -71,6 +86,8 @@ export const DEFAULT_AUTH_SETTINGS: IAuthSettings = {
 /** Défauts métier — chariow-style: 15% commission, seuil 5000 XOF. */
 export const DEFAULT_PLATFORM_SETTINGS: IPlatformSettings = {
   commissionRate: 0.15,
+  commissionRateDigital: 0.15,
+  commissionRatePhysical: 0.05,
   payoutMinimums: {
     XOF: 5000,
     USD: 8,
@@ -135,6 +152,8 @@ const SettingsSchema = new Schema<ISettings>(
     },
     platform: {
       commissionRate: { type: Number, default: DEFAULT_PLATFORM_SETTINGS.commissionRate, min: 0, max: 1 },
+      commissionRateDigital: { type: Number, min: 0, max: 1 },
+      commissionRatePhysical: { type: Number, min: 0, max: 1 },
       payoutMinimums: { type: Schema.Types.Mixed, default: () => ({ ...DEFAULT_PLATFORM_SETTINGS.payoutMinimums }) },
     },
     updatedBy: { type: Schema.Types.ObjectId, ref: 'User' },

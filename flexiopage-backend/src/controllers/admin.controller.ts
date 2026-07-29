@@ -1264,6 +1264,20 @@ export async function updatePlatformSettings(req: AuthRequest, res: Response): P
     }
     update['platform.commissionRate'] = body.commissionRate;
   }
+  if (typeof body.commissionRateDigital === 'number') {
+    if (body.commissionRateDigital < 0 || body.commissionRateDigital > 1) {
+      res.status(400).json({ error: 'commissionRateDigital must be between 0 and 1' });
+      return;
+    }
+    update['platform.commissionRateDigital'] = body.commissionRateDigital;
+  }
+  if (typeof body.commissionRatePhysical === 'number') {
+    if (body.commissionRatePhysical < 0 || body.commissionRatePhysical > 1) {
+      res.status(400).json({ error: 'commissionRatePhysical must be between 0 and 1' });
+      return;
+    }
+    update['platform.commissionRatePhysical'] = body.commissionRatePhysical;
+  }
 
   if (body.payoutMinimums && typeof body.payoutMinimums === 'object') {
     // Merge par devise — on ne remplace pas tout le mapping, on met à jour

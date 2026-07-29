@@ -182,15 +182,23 @@ export default function AdminSettingsPage() {
 
 interface PlatformState {
   commissionRate: number;
+  commissionRateDigital?: number;
+  commissionRatePhysical?: number;
   payoutMinimums: Record<string, number>;
 }
 
 const CURRENCY_ORDER = ['XOF', 'USD', 'EUR', 'NGN', 'GHS', 'KES', 'MAD'];
 
+function toPct(rate: number | undefined | null, fallback: number): string {
+  const r = typeof rate === 'number' && Number.isFinite(rate) ? rate : fallback;
+  return String(parseFloat((r * 100).toFixed(2)));
+}
+
 function PlatformSettingsCard({ isSuperAdmin }: { isSuperAdmin: boolean }) {
   const [platform, setPlatform] = useState<PlatformState | null>(null);
   const [loading, setLoading] = useState(true);
-  const [commissionPct, setCommissionPct] = useState('15');
+  const [digitalPct, setDigitalPct] = useState('15');
+  const [physicalPct, setPhysicalPct] = useState('5');
   const [minimums, setMinimums] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -201,9 +209,11 @@ function PlatformSettingsCard({ isSuperAdmin }: { isSuperAdmin: boolean }) {
       .getPlatformSettings()
       .then((res) => {
         setPlatform(res.data.platform);
-        // Pas de Math.round — sinon 0.015 affiche "2%" au lieu de "1.5%".
-        // parseFloat(...toFixed(2)) enlève les 0 traînants (14 au lieu de 14.00).
-        setCommissionPct(String(parseFloat((res.data.platform.commissionRate * 100).toFixed(2))));
+        // Chaque type retombe sur commissionRate legacy si le taux spécifique
+        // n'existe pas encore (upgrade path — les anciens Settings n'avaient
+        // qu'un seul taux global).
+        setDigitalPct(toPct(res.data.platform.commissionRateDigital, res.data.platform.commissionRate));
+        setPhysicalPct(toPct(res.data.platform.commissionRatePhysical, res.data.platform.commissionRate));
         const asStrings: Record<string, string> = {};
         for (const [cur, val] of Object.entries(res.data.platform.payoutMinimums)) {
           asStrings[cur] = String(val);
@@ -219,9 +229,14 @@ function PlatformSettingsCard({ isSuperAdmin }: { isSuperAdmin: boolean }) {
     setError('');
     setSaved(false);
 
-    const pct = Number(commissionPct);
-    if (!Number.isFinite(pct) || pct < 0 || pct > 100) {
-      setError('La commission doit être entre 0 et 100.');
+    const dPct = Number(digitalPct);
+    const pPct = Number(physicalPct);
+    if (!Number.isFinite(dPct) || dPct < 0 || dPct > 100) {
+      setError('La commission digitale doit être entre 0 et 100.');
+      return;
+    }
+    if (!Number.isFinite(pPct) || pPct < 0 || pPct > 100) {
+      setError('La commission physique doit être entre 0 et 100.');
       return;
     }
     const payoutMinimums: Record<string, number> = {};
@@ -237,7 +252,11 @@ function PlatformSettingsCard({ isSuperAdmin }: { isSuperAdmin: boolean }) {
     setSaving(true);
     try {
       const res = await adminApi.updatePlatformSettings({
-        commissionRate: pct / 100,
+        // On garde `commissionRate` = taux digital pour la compat descendante
+        // (anciens Settings sans champ dédié). Le backend accepte les deux.
+        commissionRate: dPct / 100,
+        commissionRateDigital: dPct / 100,
+        commissionRatePhysical: pPct / 100,
         payoutMinimums,
       });
       setPlatform(res.data.platform);
@@ -263,7 +282,8 @@ function PlatformSettingsCard({ isSuperAdmin }: { isSuperAdmin: boolean }) {
   if (!platform) return null;
 
   const currencies = Array.from(new Set([...CURRENCY_ORDER, ...Object.keys(platform.payoutMinimums)]));
-  const previewNet = Math.round(10000 * (1 - Number(commissionPct) / 100));
+  const digitalNet = Math.round(10000 * (1 - Number(digitalPct) / 100));
+  const physicalNet = Math.round(10000 * (1 - Number(physicalPct) / 100));
 
   return (
     <Card>
@@ -277,24 +297,56 @@ function PlatformSettingsCard({ isSuperAdmin }: { isSuperAdmin: boolean }) {
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-5">
-        {/* Commission */}
-        <div>
-          <Label htmlFor="commissionPct">Taux de commission (%)</Label>
-          <div className="mt-1 flex items-center gap-2">
-            <Input
-              id="commissionPct"
-              type="number"
-              min={0}
-              max={100}
-              step="0.1"
-              value={commissionPct}
-              onChange={(e) => setCommissionPct(e.target.value)}
-              disabled={!isSuperAdmin}
-              className="max-w-[150px]"
-            />
-            <span className="text-xs text-muted-foreground">
-              Sur 10 000 XOF le vendeur reçoit <strong>{previewNet} XOF</strong>
-            </span>
+        {/* Commissions par type de produit */}
+        <div className="grid gap-4 sm:grid-cols-2">
+          <div>
+            <Label htmlFor="digitalPct" className="text-xs font-semibold">
+              📦 Commission — produits digitaux (%)
+            </Label>
+            <div className="mt-1.5 flex items-center gap-2">
+              <Input
+                id="digitalPct"
+                type="number"
+                min={0}
+                max={100}
+                step="0.1"
+                value={digitalPct}
+                onChange={(e) => setDigitalPct(e.target.value)}
+                disabled={!isSuperAdmin}
+                className="max-w-[110px]"
+              />
+              <span className="text-xs text-muted-foreground">
+                → Vendeur reçoit <strong>{digitalNet} XOF</strong> / 10 000
+              </span>
+            </div>
+            <p className="mt-1 text-[11px] text-muted-foreground">
+              Formations, e-books, licences, memberships, services.
+            </p>
+          </div>
+
+          <div>
+            <Label htmlFor="physicalPct" className="text-xs font-semibold">
+              🚚 Commission — produits physiques (%)
+            </Label>
+            <div className="mt-1.5 flex items-center gap-2">
+              <Input
+                id="physicalPct"
+                type="number"
+                min={0}
+                max={100}
+                step="0.1"
+                value={physicalPct}
+                onChange={(e) => setPhysicalPct(e.target.value)}
+                disabled={!isSuperAdmin}
+                className="max-w-[110px]"
+              />
+              <span className="text-xs text-muted-foreground">
+                → Vendeur reçoit <strong>{physicalNet} XOF</strong> / 10 000
+              </span>
+            </div>
+            <p className="mt-1 text-[11px] text-muted-foreground">
+              Dropshipping / stock — livrés par MogaDelivery ou coursier.
+            </p>
           </div>
         </div>
 

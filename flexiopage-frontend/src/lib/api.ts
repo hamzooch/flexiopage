@@ -785,16 +785,33 @@ export const adminApi = {
   // ── Platform commercials (commission + payout minimums) ──
   getPlatformSettings: () =>
     api.get<{
-      platform: { commissionRate: number; payoutMinimums: Record<string, number> };
-      defaults: { commissionRate: number; payoutMinimums: Record<string, number> };
+      platform: {
+        commissionRate: number;
+        commissionRateDigital?: number;
+        commissionRatePhysical?: number;
+        payoutMinimums: Record<string, number>;
+      };
+      defaults: {
+        commissionRate: number;
+        commissionRateDigital?: number;
+        commissionRatePhysical?: number;
+        payoutMinimums: Record<string, number>;
+      };
       updatedAt: string;
     }>('/admin/settings/platform'),
   updatePlatformSettings: (data: {
     commissionRate?: number;
+    commissionRateDigital?: number;
+    commissionRatePhysical?: number;
     payoutMinimums?: Record<string, number>;
   }) =>
     api.patch<{
-      platform: { commissionRate: number; payoutMinimums: Record<string, number> };
+      platform: {
+        commissionRate: number;
+        commissionRateDigital?: number;
+        commissionRatePhysical?: number;
+        payoutMinimums: Record<string, number>;
+      };
       updatedAt: string;
     }>('/admin/settings/platform', data),
 

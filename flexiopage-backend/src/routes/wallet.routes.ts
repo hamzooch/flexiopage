@@ -50,10 +50,17 @@ router.get('/', async (req: AuthRequest, res: Response): Promise<void> => {
   // store yet (edge case, staff accounts, etc.).
   const primaryStore = await Store.findOne({ ownerId: userId })
     .sort({ createdAt: 1 })
-    .select('settings.currency')
+    .select('settings.currency storeType')
     .lean();
   const payoutCurrency = primaryStore?.settings?.currency || wallet.currency;
   const minForCur = settings.platform?.payoutMinimums?.[payoutCurrency] ?? 0;
+  // Commission affichée selon le type du store principal (digital / physical).
+  // Fallback : commissionRate legacy si le taux type-spécifique n'est pas défini.
+  const storeType: 'digital' | 'physical' = primaryStore?.storeType === 'physical' ? 'physical' : 'digital';
+  const displayedCommissionRate =
+    storeType === 'digital'
+      ? settings.platform?.commissionRateDigital ?? settings.platform?.commissionRate ?? 0.15
+      : settings.platform?.commissionRatePhysical ?? settings.platform?.commissionRate ?? 0.05;
   res.json({
     wallet: {
       balance: wallet.balance,
@@ -64,8 +71,14 @@ router.get('/', async (req: AuthRequest, res: Response): Promise<void> => {
       payoutCurrency,
       commissionRate: Number(process.env.COMMISSION_RATE || 0.03),
       commissionCap: Number(process.env.COMMISSION_CAP || 1500),
-      /** Platform commission on online paid orders (0.15 = 15%). */
-      platformCommissionRate: settings.platform?.commissionRate ?? 0.15,
+      /**
+       * Platform commission on online paid orders (0.15 = 15%). Résolue selon
+       * le type du store principal (digital vs physical) pour que le vendeur
+       * voie EXACTEMENT le taux qui lui sera appliqué.
+       */
+      platformCommissionRate: displayedCommissionRate,
+      /** Type du store principal — utile pour l'UI (ex: mention "digital"). */
+      storeType,
       /** Min amount required to request a payout in the payout currency. */
       payoutMinimum: minForCur,
       aiCosts,

@@ -23,9 +23,11 @@ import { connectDB } from '../src/config/database';
 import { User } from '../src/models/User.model';
 import { Store } from '../src/models/Store.model';
 import { Order } from '../src/models/Order.model';
+import { Product } from '../src/models/Product.model';
 import { Wallet } from '../src/models/Wallet.model';
 import { getSettings } from '../src/models/Settings.model';
 import { Payout } from '../src/models/Payout.model';
+import { commissionRateForOrderType } from '../src/services/seller-earnings.service';
 
 const APPLY = process.argv.includes('--apply');
 
@@ -34,8 +36,10 @@ async function main() {
   await connectDB();
 
   const settings = await getSettings();
-  const commissionRate = Math.max(0, Math.min(1, settings.platform?.commissionRate ?? 0.03));
-  console.log(`  Commission plateforme lue en DB : ${(commissionRate * 100).toFixed(1)}%`);
+  const digitalRate = commissionRateForOrderType(settings.platform, 'digital');
+  const physicalRate = commissionRateForOrderType(settings.platform, 'physical');
+  console.log(`  Commission digital  : ${(digitalRate * 100).toFixed(1)}%`);
+  console.log(`  Commission physical : ${(physicalRate * 100).toFixed(1)}%`);
   console.log('');
 
   const wallets = await Wallet.find({});
@@ -53,18 +57,30 @@ async function main() {
     const primaryCurrency = stores[0].settings?.currency || 'USD';
     const storeIds = stores.map((s) => s._id);
 
-    // Somme des ventes payées online dans la devise principale
+    // Somme des ventes payées online dans la devise principale, avec taux
+    // de commission choisi selon le type de produit du 1er item.
     const paidOrders = await Order.find({
       storeId: { $in: storeIds },
       paymentStatus: 'paid',
       paymentProvider: { $in: ['cinetpay', 'moneróo', 'flutterwave', 'wave', 'orange_money', 'mtn_momo', 'moov_money'] },
       currency: primaryCurrency,
-    }).select('_id total currency').lean();
+    }).select('_id total currency items').lean();
 
-    let grossSum = 0;
-    for (const o of paidOrders) grossSum += o.total || 0;
-    const commissionSum = Math.round(grossSum * commissionRate);
-    const realPayoutBalance = Math.max(0, grossSum - commissionSum);
+    // Charger les types produits en une fois pour éviter N+1
+    const productIds = [...new Set(paidOrders.map((o) => o.items?.[0]?.productId?.toString()).filter(Boolean))] as string[];
+    const products = productIds.length
+      ? await Product.find({ _id: { $in: productIds } }).select('type').lean()
+      : [];
+    const typeById = new Map(products.map((p) => [String(p._id), p.type]));
+
+    let realPayoutBalance = 0;
+    for (const o of paidOrders) {
+      const firstProductType = typeById.get(String(o.items?.[0]?.productId));
+      const orderType: 'digital' | 'physical' = firstProductType === 'physical' ? 'physical' : 'digital';
+      const rate = orderType === 'digital' ? digitalRate : physicalRate;
+      const commission = Math.round(o.total * rate);
+      realPayoutBalance += Math.max(0, o.total - commission);
+    }
 
     // Ce qui a déjà été versé au vendeur (soustrait)
     const paidPayouts = await Payout.aggregate<{ _id: null; total: number }>([
@@ -84,8 +100,8 @@ async function main() {
     const user = await User.findById(w.userId).select('email').lean();
     console.log(`  ✏️  ${user?.email || w.userId}`);
     console.log(`     Store principal : ${stores[0].settings?.currency || '?'}`);
-    console.log(`     Ventes cumulées : ${grossSum} ${primaryCurrency} (${paidOrders.length} orders)`);
-    console.log(`     Commission ${(commissionRate * 100).toFixed(1)}% : ${commissionSum} ${primaryCurrency}`);
+    console.log(`     Ventes cumulées : ${paidOrders.length} orders`);
+    console.log(`     Commission app. : digital ${(digitalRate * 100).toFixed(1)}% · physical ${(physicalRate * 100).toFixed(1)}%`);
     console.log(`     Déjà versé      : ${alreadyPaidOut} ${primaryCurrency}`);
     console.log(`     Nouveau solde   : ${before} → ${expected} ${primaryCurrency}`);
 
