@@ -75,6 +75,7 @@ const SECTIONS: { title: string; items: NavItem[] }[] = [
     title: 'Communication',
     items: [
       { href: '/admin/announcements', label: 'Annonces & actus', icon: Megaphone },
+      { href: '/marketing',           label: 'Marketing Toolkit', icon: Sparkles },
     ],
   },
   {
