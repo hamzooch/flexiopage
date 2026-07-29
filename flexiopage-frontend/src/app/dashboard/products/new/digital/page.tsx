@@ -167,11 +167,17 @@ export default function NewDigitalProductPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const storeId = searchParams.get('storeId');
+  // Edit mode : `?productId=xxx` fait basculer le formulaire en mise-à-jour
+  // (charge le produit existant, submit via PATCH au lieu de POST). Un seul
+  // écran gère création + édition — moins de code à maintenir, UX cohérente.
+  const editingProductId = searchParams.get('productId');
+  const isEditMode = !!editingProductId;
   const coverInputRef = useRef<HTMLInputElement>(null);
   const assetsInputRef = useRef<HTMLInputElement>(null);
 
   // Store defaults so the AI description picker pre-selects the right language.
   const [storeSettings, setStoreSettings] = useState<{ language?: string; country?: string; currency?: string }>({});
+  const [loadingProduct, setLoadingProduct] = useState(isEditMode);
   useEffect(() => {
     if (!storeId) return;
     storesApi.get(storeId).then((res) => {
@@ -224,6 +230,59 @@ export default function NewDigitalProductPage() {
   useEffect(() => {
     if (!storeId) setError('No store selected — open this page from /dashboard/products');
   }, [storeId]);
+
+  // Edit-mode : préremplir depuis le produit existant. Fait UNE fois au mount.
+  useEffect(() => {
+    if (!isEditMode || !storeId || !editingProductId) return;
+    let alive = true;
+    (async () => {
+      try {
+        const res = await storesApi.getProduct(storeId, editingProductId);
+        if (!alive) return;
+        const p = (res.data as { product: Record<string, unknown> }).product;
+        setKind(((p.digitalKind as DigitalKind) || 'download'));
+        setName((p.name as string) || '');
+        setDescription((p.description as string) || '');
+        setPrice(p.price !== undefined ? String(p.price) : '');
+        setCompareAtPrice(p.compareAtPrice !== undefined ? String(p.compareAtPrice) : '');
+        const imgs = Array.isArray(p.images) ? (p.images as string[]) : [];
+        if (imgs[0]) setCoverImage(imgs[0]);
+        const legacyAssets = Array.isArray(p.digitalAssets) ? (p.digitalAssets as DigitalAsset[]) : [];
+        setAssets(legacyAssets);
+        // Fallback : produit ancien avec digitalFileUrl legacy → convertir en asset
+        if (legacyAssets.length === 0 && typeof p.digitalFileUrl === 'string' && p.digitalFileUrl) {
+          setAssets([{
+            id: genId('a'),
+            name: (p.digitalFileName as string) || 'Téléchargement',
+            url: p.digitalFileUrl as string,
+            kind: 'file',
+            order: 0,
+          }]);
+        }
+        const mods = Array.isArray(p.courseModules) ? (p.courseModules as CourseModule[]) : [];
+        setModules(mods);
+        setLicenseTemplate((p.licenseKeyTemplate as string) || 'BOUT-{productSlug}-{random}');
+        setAccessType(((p.accessType as 'lifetime' | 'limited') || 'lifetime'));
+        setAccessDays(p.accessDays !== undefined ? String(p.accessDays) : '30');
+        setDownloadLimit(p.downloadLimit !== undefined ? String(p.downloadLimit) : '0');
+        setSeoTitle((p.seoTitle as string) || '');
+        setSeoDescription((p.seoDescription as string) || '');
+        setIsPublished(!!p.isPublished);
+        // Collections déjà attachées
+        try {
+          const cRes = await storesApi.getProductCollections(storeId, editingProductId);
+          const ids = (cRes.data as { collectionIds?: string[] }).collectionIds || [];
+          setSelectedCollections(ids);
+        } catch { /* non-blocking */ }
+      } catch {
+        setError('Impossible de charger le produit. Vérifie l\'URL.');
+      } finally {
+        if (alive) setLoadingProduct(false);
+      }
+    })();
+    return () => { alive = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isEditMode, storeId, editingProductId]);
 
   // ── Cover upload ────────────────────────────────────────────────────
   async function handleCoverFile(file: File) {
@@ -367,10 +426,10 @@ export default function NewDigitalProductPage() {
     setSaving(true);
     setError('');
     try {
-      const createRes = await storesApi.createProduct(storeId, {
+      const payload = {
         name: name.trim(),
         description: description.trim() || undefined,
-        type: 'digital',
+        type: 'digital' as const,
         price: priceNum,
         compareAtPrice: compareAtPrice ? parseFloat(compareAtPrice) : undefined,
         images: coverImage ? [coverImage] : undefined,
@@ -385,7 +444,7 @@ export default function NewDigitalProductPage() {
               size: a.size,
               order: a.order,
             }))
-          : undefined,
+          : [],
         courseModules: kind === 'course' && modules.length > 0
           ? modules.map((m, i) => ({
               id: m.id,
@@ -401,11 +460,18 @@ export default function NewDigitalProductPage() {
         seoTitle: seoTitle.trim() || undefined,
         seoDescription: seoDescription.trim() || undefined,
         isPublished,
-      });
-      const newProduct = (createRes.data as { product?: { _id?: string } }).product;
-      if (newProduct?._id && selectedCollections.length > 0) {
+      };
+      let productId: string | undefined;
+      if (isEditMode && editingProductId) {
+        await storesApi.updateProduct(storeId, editingProductId, payload);
+        productId = editingProductId;
+      } else {
+        const createRes = await storesApi.createProduct(storeId, payload);
+        productId = (createRes.data as { product?: { _id?: string } }).product?._id;
+      }
+      if (productId) {
         try {
-          await storesApi.setProductCollections(storeId, newProduct._id, selectedCollections);
+          await storesApi.setProductCollections(storeId, productId, selectedCollections);
         } catch (err) {
           console.warn('[product] échec attribution collections', err);
         }
@@ -433,6 +499,14 @@ export default function NewDigitalProductPage() {
   const activeKind = DIGITAL_KINDS.find((k) => k.id === kind)!;
   const KindIcon = activeKind.icon;
 
+  if (loadingProduct) {
+    return (
+      <div className="grid min-h-[400px] place-items-center">
+        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
+
   return (
     <div className="mx-auto max-w-4xl space-y-5 sm:space-y-8">
       {/* Header */}
@@ -442,8 +516,14 @@ export default function NewDigitalProductPage() {
             ← <span className="hidden sm:inline ml-1">Retour</span>
           </Button>
           <div className="min-w-0">
-            <h1 className="truncate text-xl font-bold tracking-tight sm:text-3xl">Produit digital</h1>
-            <p className="hidden text-sm text-muted-foreground sm:block">Téléchargement, cours, licence, abonnement ou prestation.</p>
+            <h1 className="truncate text-xl font-bold tracking-tight sm:text-3xl">
+              {isEditMode ? 'Modifier le produit digital' : 'Produit digital'}
+            </h1>
+            <p className="hidden text-sm text-muted-foreground sm:block">
+              {isEditMode
+                ? 'Ajoute ou remplace les fichiers, ajuste la structure du cours ou du template de licence.'
+                : 'Téléchargement, cours, licence, abonnement ou prestation.'}
+            </p>
           </div>
         </div>
         <div className={cn('hidden sm:flex h-12 w-12 shrink-0 place-items-center rounded-2xl text-white shadow-lg bg-gradient-to-br', activeKind.accent)}>
@@ -778,7 +858,7 @@ export default function NewDigitalProductPage() {
               </Link>
               <Button type="submit" disabled={saving} className="gap-2">
                 {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
-                Créer le produit
+                {isEditMode ? 'Enregistrer les modifications' : 'Créer le produit'}
               </Button>
             </div>
           </CardContent>

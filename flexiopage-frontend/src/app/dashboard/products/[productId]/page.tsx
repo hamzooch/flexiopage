@@ -160,6 +160,14 @@ export default function EditProductPage() {
       .then(([prodRes, storeRes, colRes]) => {
         if (!alive) return;
         const p = (prodRes.data as { product: Record<string, unknown> }).product;
+        // Produits digitaux → l'éditeur dédié /new/digital?productId=xxx gère
+        // digitalKind + assets + course modules + license template. Ce
+        // formulaire-ci est optimisé pour le physique (stock, SKU, variants,
+        // livraison) et ne saurait pas éditer les champs digitaux.
+        if (p.type === 'digital') {
+          router.replace(`/dashboard/products/new/digital?storeId=${storeId}&productId=${productId}`);
+          return;
+        }
         setName((p.name as string) || '');
         setSlug((p.slug as string) || '');
         setDescription((p.description as string) || '');
