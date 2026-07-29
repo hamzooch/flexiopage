@@ -25,6 +25,7 @@ import paymentRoutes from './routes/payment.routes';
 import { setupTelegramWebhook } from './services/telegram.service';
 import { startSecurityMonitor } from './services/security-monitor.service';
 import { startAbandonOrdersJob } from './services/abandon-orders.service';
+import { startAnnouncementScheduler } from './services/announcement-scheduler.service';
 import { registerMessengerBot } from './modules/messenger-bot';
 import walletRoutes from './routes/wallet.routes';
 import adminRoutes from './routes/admin.routes';
@@ -240,6 +241,8 @@ async function start() {
   startSecurityMonitor();
   // Cart-abandonment sweeper — flips stale `pending` orders → `abandoned`.
   startAbandonOrdersJob();
+  // Announcement scheduler — fires scheduled seller-broadcast emails.
+  startAnnouncementScheduler();
 }
 
 start().catch((err) => {

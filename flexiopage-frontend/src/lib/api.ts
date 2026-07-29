@@ -931,6 +931,53 @@ export const adminApi = {
       error?: string;
       createdAt: string;
     }>>('/admin/payments/webhooks', { params }),
+  // ── Announcements (broadcast seller emails) ──────────────────────
+  listAnnouncements: (params?: { status?: 'draft' | 'scheduled' | 'sending' | 'sent' | 'cancelled' }) =>
+    api.get<{
+      items: Array<{
+        _id: string;
+        title: string;
+        subject?: string;
+        bodyHtml: string;
+        bodyText?: string;
+        audience: 'all' | 'sellers' | 'active' | 'staff' | 'verified';
+        status: 'draft' | 'scheduled' | 'sending' | 'sent' | 'cancelled';
+        scheduledAt?: string;
+        sentAt?: string;
+        stats?: { targeted: number; sent: number; failed: number; errors?: string[] };
+        createdBy?: { _id: string; name?: string; email?: string };
+        createdAt: string;
+        updatedAt: string;
+      }>;
+      counts: Record<string, number>;
+    }>('/admin/announcements', { params }),
+  createAnnouncement: (data: {
+    title: string;
+    subject?: string;
+    bodyHtml: string;
+    bodyText?: string;
+    audience: 'all' | 'sellers' | 'active' | 'staff' | 'verified';
+    action: 'draft' | 'schedule' | 'send_now';
+    scheduledAt?: string;
+  }) =>
+    api.post<{ announcement: { _id: string; status: string } }>('/admin/announcements', data),
+  updateAnnouncement: (id: string, data: Partial<{
+    title: string;
+    subject: string;
+    bodyHtml: string;
+    bodyText: string;
+    audience: 'all' | 'sellers' | 'active' | 'staff' | 'verified';
+    scheduledAt: string;
+  }>) => api.patch<{ announcement: { _id: string } }>(`/admin/announcements/${id}`, data),
+  sendAnnouncementNow: (id: string) =>
+    api.post<{ ok: boolean; message: string }>(`/admin/announcements/${id}/send-now`, {}),
+  cancelAnnouncement: (id: string) =>
+    api.post<{ announcement: { _id: string } }>(`/admin/announcements/${id}/cancel`, {}),
+  deleteAnnouncement: (id: string) =>
+    api.delete<{ ok: boolean }>(`/admin/announcements/${id}`),
+  previewAnnouncementAudience: (audience: 'all' | 'sellers' | 'active' | 'staff' | 'verified') =>
+    api.get<{ audience: string; count: number }>('/admin/announcements/audience-preview', { params: { audience } }),
+
   getCinetpayOverview: () =>
     api.get<{
       balance: { available: number; currency: string } | null;

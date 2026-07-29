@@ -20,6 +20,7 @@ import * as adminExtras from '../controllers/admin-extras.controller';
 import * as complaint from '../controllers/complaint.controller';
 import * as payments from '../controllers/payments.controller';
 import * as payouts from '../controllers/payouts-admin.controller';
+import * as announcements from '../controllers/announcements.controller';
 
 const router = Router();
 
@@ -130,5 +131,15 @@ router.get('/payments/cinetpay-logs', payments.listCinetpayLogs);
 router.get('/payments/stats', payments.getPaymentStats);
 router.post('/payments/test', requireAdminWrite, payments.testPaymentFlow);
 router.post('/payments/webhooks/:logId/retry', requireAdminWrite, payments.retryWebhook);
+
+// ── Announcements (broadcast emails to sellers) ──
+router.get('/announcements', announcements.listAnnouncements);
+router.get('/announcements/audience-preview', announcements.previewAudience);
+router.get('/announcements/:id', announcements.getAnnouncement);
+router.post('/announcements', requireAdminWrite, announcements.createAnnouncement);
+router.patch('/announcements/:id', requireAdminWrite, announcements.updateAnnouncement);
+router.post('/announcements/:id/send-now', requireAdminWrite, announcements.sendAnnouncementNow);
+router.post('/announcements/:id/cancel', requireAdminWrite, announcements.cancelAnnouncement);
+router.delete('/announcements/:id', requireAdminWrite, announcements.deleteAnnouncement);
 
 export default router;

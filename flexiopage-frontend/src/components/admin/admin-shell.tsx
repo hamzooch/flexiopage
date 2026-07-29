@@ -41,6 +41,7 @@ import {
   Plug,
   ChevronDown,
   Check,
+  Megaphone,
 } from 'lucide-react';
 import { useAuthStore } from '@/stores/auth-store';
 import { cn } from '@/lib/utils';
@@ -68,6 +69,12 @@ const SECTIONS: { title: string; items: NavItem[] }[] = [
       { href: '/admin/store-limits', label: 'Limites', icon: Store },
       { href: '/admin/wallets',    label: 'Wallets',      icon: Wallet },
       { href: '/admin/complaints', label: 'Réclamations', icon: MessageSquare },
+    ],
+  },
+  {
+    title: 'Communication',
+    items: [
+      { href: '/admin/announcements', label: 'Annonces & actus', icon: Megaphone },
     ],
   },
   {
@@ -426,6 +433,7 @@ function labelFromPath(path: string): string {
     health: 'Santé plateforme',
     reports: 'Reports',
     settings: 'Réglages',
+    announcements: 'Annonces & actualités',
   };
   const seg = path.split('/')[2];
   return map[seg] || seg || 'Admin';
