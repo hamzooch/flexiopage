@@ -201,7 +201,9 @@ function PlatformSettingsCard({ isSuperAdmin }: { isSuperAdmin: boolean }) {
       .getPlatformSettings()
       .then((res) => {
         setPlatform(res.data.platform);
-        setCommissionPct(String(Math.round(res.data.platform.commissionRate * 100)));
+        // Pas de Math.round — sinon 0.015 affiche "2%" au lieu de "1.5%".
+        // parseFloat(...toFixed(2)) enlève les 0 traînants (14 au lieu de 14.00).
+        setCommissionPct(String(parseFloat((res.data.platform.commissionRate * 100).toFixed(2))));
         const asStrings: Record<string, string> = {};
         for (const [cur, val] of Object.entries(res.data.platform.payoutMinimums)) {
           asStrings[cur] = String(val);
