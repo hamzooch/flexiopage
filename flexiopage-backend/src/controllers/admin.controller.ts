@@ -478,12 +478,26 @@ export async function getStoreDrilldown(req: AuthRequest, res: Response): Promis
   });
 }
 
-/** GET /api/admin/users?search=&limit= */
+/**
+ * GET /api/admin/users
+ *
+ * Query params:
+ *   search       — email / name / whatsapp substring
+ *   filter       — 'all' | 'verified' | 'unverified' | 'suspended' | 'active' | 'staff' | 'sellers'
+ *   sort         — 'recent' (default) | 'oldest' | 'name' | 'lastLogin' | 'stores'
+ *   limit / skip — pagination
+ *
+ * `active` = a user whose lastLoginAt is within the last 7 days. `staff` =
+ * anyone not on the default 'user' role. `sellers` = users with ≥1 store.
+ */
 export async function listUsers(req: AuthRequest, res: Response): Promise<void> {
   const search = String(req.query.search || '').trim();
+  const filterKind = String(req.query.filter || 'all');
+  const sort = String(req.query.sort || 'recent');
   const limit = Math.min(parseInt(String(req.query.limit || DEFAULT_LIMIT), 10) || DEFAULT_LIMIT, 200);
   const skip = parseInt(String(req.query.skip || '0'), 10) || 0;
   const filter: Record<string, unknown> = {};
+
   if (search) {
     filter.$or = [
       { email: { $regex: search, $options: 'i' } },
@@ -491,17 +505,49 @@ export async function listUsers(req: AuthRequest, res: Response): Promise<void> 
       { whatsapp: { $regex: search, $options: 'i' } },
     ];
   }
+  switch (filterKind) {
+    case 'verified':
+      filter.emailVerified = true;
+      break;
+    case 'unverified':
+      filter.emailVerified = { $ne: true };
+      break;
+    case 'suspended':
+      filter.suspended = true;
+      break;
+    case 'active': {
+      const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+      filter.lastLoginAt = { $gte: sevenDaysAgo };
+      break;
+    }
+    case 'staff':
+      filter.role = { $in: ['owner', 'superadmin', 'admin', 'supervisor'] };
+      break;
+    case 'sellers': {
+      // Users who own at least one store. Resolve first, then constrain filter.
+      const ownerIds = await Store.distinct('ownerId');
+      filter._id = { $in: ownerIds };
+      break;
+    }
+  }
+
+  const sortSpec: Record<string, 1 | -1> =
+    sort === 'oldest' ? { createdAt: 1 }
+    : sort === 'name' ? { name: 1 }
+    : sort === 'lastLogin' ? { lastLoginAt: -1 }
+    : sort === 'stores' ? { createdAt: -1 } // fallback since storeCount is derived
+    : { createdAt: -1 };
+
   const [users, total] = await Promise.all([
     User.find(filter)
-      .select('email name role emailVerified createdAt whatsapp')
-      .sort({ createdAt: -1 })
+      .select('email name role emailVerified createdAt whatsapp suspended suspendedReason lastLoginAt')
+      .sort(sortSpec)
       .limit(limit)
       .skip(skip)
       .lean(),
     User.countDocuments(filter),
   ]);
 
-  // Augment with counts (stores per user) — single aggregation
   const ids = users.map((u) => u._id);
   const storeCounts = await Store.aggregate([
     { $match: { ownerId: { $in: ids } } },
@@ -509,14 +555,73 @@ export async function listUsers(req: AuthRequest, res: Response): Promise<void> 
   ]);
   const countByOwner = new Map(storeCounts.map((c) => [c._id.toString(), c.n]));
 
-  res.json({
-    users: users.map((u) => ({
-      ...u,
-      storeCount: countByOwner.get(u._id.toString()) || 0,
-    })),
+  let enriched = users.map((u) => ({
+    ...u,
+    storeCount: countByOwner.get(u._id.toString()) || 0,
+  }));
+  // Client-side sort by storeCount (Mongo can't sort on derived field without $lookup)
+  if (sort === 'stores') {
+    enriched = enriched.sort((a, b) => b.storeCount - a.storeCount);
+  }
+
+  res.json({ users: enriched, total, limit, skip });
+}
+
+/**
+ * GET /api/admin/users/stats — top-of-page KPI aggregation.
+ *
+ * All counts are computed in Mongo via a single aggregation each (parallel
+ * Promise.all). "Active" = last-login within 7 days, matching the filter
+ * used by the listing endpoint so numbers reconcile.
+ */
+export async function getUserStats(_req: AuthRequest, res: Response): Promise<void> {
+  const now = Date.now();
+  const sevenDaysAgo = new Date(now - 7 * 24 * 60 * 60 * 1000);
+  const thirtyDaysAgo = new Date(now - 30 * 24 * 60 * 60 * 1000);
+  const startOfToday = new Date(); startOfToday.setHours(0, 0, 0, 0);
+
+  const [
     total,
-    limit,
-    skip,
+    verified,
+    unverified,
+    suspended,
+    activeWeek,
+    newToday,
+    newWeek,
+    newMonth,
+    byRoleAgg,
+    sellersIds,
+  ] = await Promise.all([
+    User.countDocuments({}),
+    User.countDocuments({ emailVerified: true }),
+    User.countDocuments({ emailVerified: { $ne: true } }),
+    User.countDocuments({ suspended: true }),
+    User.countDocuments({ lastLoginAt: { $gte: sevenDaysAgo } }),
+    User.countDocuments({ createdAt: { $gte: startOfToday } }),
+    User.countDocuments({ createdAt: { $gte: sevenDaysAgo } }),
+    User.countDocuments({ createdAt: { $gte: thirtyDaysAgo } }),
+    User.aggregate<{ _id: string; count: number }>([
+      { $group: { _id: '$role', count: { $sum: 1 } } },
+    ]),
+    Store.distinct('ownerId'),
+  ]);
+
+  const byRole: Record<string, number> = {};
+  for (const r of byRoleAgg) byRole[r._id] = r.count;
+  const staff = (byRole.owner || 0) + (byRole.superadmin || 0) + (byRole.admin || 0) + (byRole.supervisor || 0);
+
+  res.json({
+    total,
+    verified,
+    unverified,
+    suspended,
+    activeWeek,
+    sellers: sellersIds.length,
+    staff,
+    newToday,
+    newWeek,
+    newMonth,
+    byRole,
   });
 }
 

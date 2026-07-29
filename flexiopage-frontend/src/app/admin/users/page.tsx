@@ -11,7 +11,13 @@ import { useAuthStore } from '@/stores/auth-store';
 import {
   Search, Loader2, Crown, Mail, Phone, Store as StoreIcon, BadgeCheck, Ban, Clock, ChevronRight,
   Plus, X, ShieldCheck, ShieldAlert, Eye, AlertCircle, CheckCircle2, Download, Power, BadgeCheck as BadgeCheckIcon,
+  Users as UsersIcon, UserCheck, UserX, TrendingUp, Zap, Sparkles, ArrowDownUp,
 } from 'lucide-react';
+
+type UserFilter = 'all' | 'verified' | 'unverified' | 'suspended' | 'active' | 'staff' | 'sellers';
+type UserSort = 'recent' | 'oldest' | 'name' | 'lastLogin' | 'stores';
+
+type UserStats = Awaited<ReturnType<typeof adminApi.userStats>>['data'];
 import { Pagination } from '@/components/ui/pagination';
 
 export default function AdminUsersPage() {
@@ -21,6 +27,9 @@ export default function AdminUsersPage() {
   const [pageSize, setPageSize] = useState(20);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
+  const [filter, setFilter] = useState<UserFilter>('all');
+  const [sort, setSort] = useState<UserSort>('recent');
+  const [stats, setStats] = useState<UserStats | null>(null);
   const [showCreate, setShowCreate] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [bulkBusy, setBulkBusy] = useState(false);
@@ -94,6 +103,8 @@ export default function AdminUsersPage() {
       const skip = (page - 1) * pageSize;
       const res = await adminApi.users({
         search: search.trim() || undefined,
+        filter,
+        sort,
         limit: pageSize,
         skip,
       });
@@ -103,10 +114,25 @@ export default function AdminUsersPage() {
       setLoading(false);
     }
   }
-  useEffect(() => { load(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [page, pageSize]);
+
+  async function loadStats() {
+    try {
+      const res = await adminApi.userStats();
+      setStats(res.data);
+    } catch {
+      /* non-fatal — page still works without KPIs */
+    }
+  }
+
+  useEffect(() => { load(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [page, pageSize, filter, sort]);
+  useEffect(() => { loadStats(); }, []);
 
   return (
-    <Card>
+    <div className="space-y-4">
+      {/* KPI cards */}
+      <StatsRow stats={stats} onSelectFilter={(f) => { setFilter(f); setPage(1); }} activeFilter={filter} />
+
+      <Card>
       <CardHeader>
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="min-w-0">
@@ -137,8 +163,11 @@ export default function AdminUsersPage() {
           />
         )}
 
-        <form onSubmit={(e) => { e.preventDefault(); if (page !== 1) setPage(1); else load(); }} className="mb-5 flex gap-2">
-          <div className="relative flex-1">
+        {/* Filter tabs */}
+        <FilterTabs value={filter} onChange={(f) => { setFilter(f); setPage(1); }} stats={stats} />
+
+        <form onSubmit={(e) => { e.preventDefault(); if (page !== 1) setPage(1); else load(); }} className="mb-5 mt-4 flex flex-wrap gap-2">
+          <div className="relative min-w-[220px] flex-1">
             <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <Input
               value={search}
@@ -148,6 +177,21 @@ export default function AdminUsersPage() {
             />
           </div>
           <Button type="submit" variant="outline">Filtrer</Button>
+          <div className="inline-flex items-center gap-1.5">
+            <ArrowDownUp className="h-3.5 w-3.5 text-muted-foreground" />
+            <select
+              value={sort}
+              onChange={(e) => { setSort(e.target.value as UserSort); setPage(1); }}
+              className="h-10 rounded-md border border-input bg-background px-3 text-sm"
+              aria-label="Trier"
+            >
+              <option value="recent">Plus récents</option>
+              <option value="oldest">Plus anciens</option>
+              <option value="name">Nom (A→Z)</option>
+              <option value="lastLogin">Dernière connexion</option>
+              <option value="stores">Nombre de boutiques</option>
+            </select>
+          </div>
         </form>
 
         {canWrite && selected.size > 0 && (
@@ -204,6 +248,7 @@ export default function AdminUsersPage() {
               const initials = (u.name || u.email).split(/[\s@]/).map((s) => s[0]).filter(Boolean).slice(0, 2).join('').toUpperCase();
               const isStaff = u.role !== 'user';
               const isSelected = selected.has(u._id);
+              const isActive = u.lastLoginAt && (Date.now() - new Date(u.lastLoginAt).getTime() < 7 * 24 * 60 * 60 * 1000);
               return (
                 <li key={u._id} className={isSelected ? 'bg-rose-500/5' : ''}>
                   <div className="flex items-center gap-1.5 sm:gap-2">
@@ -221,11 +266,19 @@ export default function AdminUsersPage() {
                     href={`/admin/users/${u._id}`}
                     className="group flex flex-1 items-center gap-2.5 rounded-lg p-2.5 hover:bg-muted/30 sm:gap-4 sm:p-3"
                   >
-                    <div className={`grid h-9 w-9 shrink-0 place-items-center rounded-full text-xs font-semibold text-white shadow-md sm:h-10 sm:w-10 ${
-                      u.suspended ? 'bg-rose-500/40 grayscale' :
-                      isStaff ? 'bg-gradient-to-br from-rose-600 to-orange-600' : 'gradient-brand'
-                    }`}>
-                      {initials}
+                    <div className="relative shrink-0">
+                      <div className={`grid h-9 w-9 place-items-center rounded-full text-xs font-semibold text-white shadow-md sm:h-10 sm:w-10 ${
+                        u.suspended ? 'bg-rose-500/40 grayscale' :
+                        isStaff ? 'bg-gradient-to-br from-rose-600 to-orange-600' : 'gradient-brand'
+                      }`}>
+                        {initials}
+                      </div>
+                      {isActive && !u.suspended && (
+                        <span
+                          className="absolute -bottom-0.5 -right-0.5 grid h-3 w-3 place-items-center rounded-full border-2 border-background bg-emerald-500"
+                          title="Actif dans les 7 derniers jours"
+                        />
+                      )}
                     </div>
                     <div className="min-w-0 flex-1">
                       <div className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5 sm:gap-1.5">
@@ -276,7 +329,168 @@ export default function AdminUsersPage() {
           </>
         )}
       </CardContent>
-    </Card>
+      </Card>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// STATS row + FILTER tabs
+// ─────────────────────────────────────────────────────────────────────
+
+function StatsRow({
+  stats,
+  onSelectFilter,
+  activeFilter,
+}: {
+  stats: UserStats | null;
+  onSelectFilter: (f: UserFilter) => void;
+  activeFilter: UserFilter;
+}) {
+  if (!stats) {
+    return (
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
+        {Array.from({ length: 6 }).map((_, i) => (
+          <div key={i} className="h-[76px] animate-pulse rounded-xl border border-border/60 bg-muted/40" />
+        ))}
+      </div>
+    );
+  }
+  const growth = stats.total > 0 ? (stats.newMonth / stats.total) * 100 : 0;
+  return (
+    <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
+      <KpiCard
+        label="Comptes"
+        value={stats.total}
+        icon={UsersIcon}
+        tone="slate"
+        hint={`+${stats.newMonth} sur 30j`}
+        onClick={() => onSelectFilter('all')}
+        active={activeFilter === 'all'}
+      />
+      <KpiCard
+        label="Actifs (7j)"
+        value={stats.activeWeek}
+        icon={Zap}
+        tone="emerald"
+        hint={`${stats.total > 0 ? ((stats.activeWeek / stats.total) * 100).toFixed(0) : 0}% de la base`}
+        onClick={() => onSelectFilter('active')}
+        active={activeFilter === 'active'}
+      />
+      <KpiCard
+        label="Emails vérifiés"
+        value={stats.verified}
+        icon={BadgeCheck}
+        tone="blue"
+        onClick={() => onSelectFilter('verified')}
+        active={activeFilter === 'verified'}
+      />
+      <KpiCard
+        label="Non vérifiés"
+        value={stats.unverified}
+        icon={AlertCircle}
+        tone="amber"
+        onClick={() => onSelectFilter('unverified')}
+        active={activeFilter === 'unverified'}
+      />
+      <KpiCard
+        label="Vendeurs"
+        value={stats.sellers}
+        icon={StoreIcon}
+        tone="violet"
+        hint={`${stats.staff} staff`}
+        onClick={() => onSelectFilter('sellers')}
+        active={activeFilter === 'sellers'}
+      />
+      <KpiCard
+        label="Suspendus"
+        value={stats.suspended}
+        icon={UserX}
+        tone={stats.suspended > 0 ? 'rose' : 'slate'}
+        onClick={() => onSelectFilter('suspended')}
+        active={activeFilter === 'suspended'}
+      />
+    </div>
+  );
+}
+
+function KpiCard({
+  label, value, icon: Icon, tone, hint, onClick, active,
+}: {
+  label: string;
+  value: number;
+  icon: React.ComponentType<{ className?: string }>;
+  tone: 'slate' | 'emerald' | 'blue' | 'amber' | 'violet' | 'rose';
+  hint?: string;
+  onClick?: () => void;
+  active?: boolean;
+}) {
+  const tones = {
+    slate:   { text: 'text-slate-700 dark:text-slate-300',   ring: 'ring-slate-500/30 bg-slate-500/5' },
+    emerald: { text: 'text-emerald-600', ring: 'ring-emerald-500/30 bg-emerald-500/5' },
+    blue:    { text: 'text-blue-600',    ring: 'ring-blue-500/30 bg-blue-500/5' },
+    amber:   { text: 'text-amber-600',   ring: 'ring-amber-500/30 bg-amber-500/5' },
+    violet:  { text: 'text-violet-600',  ring: 'ring-violet-500/30 bg-violet-500/5' },
+    rose:    { text: 'text-rose-600',    ring: 'ring-rose-500/30 bg-rose-500/5' },
+  }[tone];
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`flex flex-col rounded-xl border border-border/60 bg-card p-3 text-left transition-all hover:shadow-md ${
+        active ? `ring-2 ${tones.ring}` : ''
+      }`}
+    >
+      <div className="flex items-center gap-1.5">
+        <Icon className={`h-3.5 w-3.5 ${tones.text}`} />
+        <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">{label}</span>
+      </div>
+      <div className={`mt-1 text-2xl font-bold tabular-nums ${tones.text}`}>{value}</div>
+      {hint && <div className="mt-0.5 text-[10px] text-muted-foreground">{hint}</div>}
+    </button>
+  );
+}
+
+function FilterTabs({
+  value, onChange, stats,
+}: {
+  value: UserFilter;
+  onChange: (f: UserFilter) => void;
+  stats: UserStats | null;
+}) {
+  const tabs: Array<{ id: UserFilter; label: string; count?: number }> = [
+    { id: 'all',        label: 'Tous',            count: stats?.total },
+    { id: 'active',     label: 'Actifs',          count: stats?.activeWeek },
+    { id: 'sellers',    label: 'Vendeurs',        count: stats?.sellers },
+    { id: 'staff',      label: 'Staff',           count: stats?.staff },
+    { id: 'verified',   label: 'Vérifiés',        count: stats?.verified },
+    { id: 'unverified', label: 'Non vérifiés',    count: stats?.unverified },
+    { id: 'suspended',  label: 'Suspendus',       count: stats?.suspended },
+  ];
+  return (
+    <div className="mb-2 flex flex-wrap gap-1 rounded-lg border border-border/60 bg-muted/30 p-1">
+      {tabs.map((t) => (
+        <button
+          key={t.id}
+          type="button"
+          onClick={() => onChange(t.id)}
+          className={`inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-semibold transition-colors ${
+            value === t.id
+              ? 'bg-background text-foreground shadow-sm'
+              : 'text-muted-foreground hover:text-foreground'
+          }`}
+        >
+          {t.label}
+          {t.count !== undefined && (
+            <span className={`rounded-full px-1.5 py-0 text-[10px] ${
+              value === t.id ? 'bg-primary/10 text-primary' : 'bg-muted-foreground/10'
+            }`}>
+              {t.count}
+            </span>
+          )}
+        </button>
+      ))}
+    </div>
   );
 }
 

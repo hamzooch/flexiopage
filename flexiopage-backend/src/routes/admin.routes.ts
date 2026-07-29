@@ -31,6 +31,7 @@ router.use(requireAdmin);
 router.get('/overview', admin.getOverview);
 router.get('/overview/rich', admin.getOverviewRich);
 router.get('/users', admin.listUsers);
+router.get('/users/stats', admin.getUserStats);
 router.get('/users/:userId', admin.getUserDetail);
 router.get('/stores', admin.listStores);
 router.get('/stores/:storeId/analytics', admin.getStoreDrilldown);

@@ -598,8 +598,28 @@ export const adminApi = {
     api.get<import('@/types/admin-analytics').AdminOverviewRich>('/admin/overview/rich', { params: { range } }),
   storeDrilldown: (storeId: string, range: import('@/types/analytics').RangeKey = '30d') =>
     api.get<import('@/types/admin-analytics').AdminStoreDrilldown>(`/admin/stores/${storeId}/analytics`, { params: { range } }),
-  users: (params?: { search?: string; limit?: number; skip?: number }) =>
+  users: (params?: {
+    search?: string;
+    limit?: number;
+    skip?: number;
+    filter?: 'all' | 'verified' | 'unverified' | 'suspended' | 'active' | 'staff' | 'sellers';
+    sort?: 'recent' | 'oldest' | 'name' | 'lastLogin' | 'stores';
+  }) =>
     api.get<{ users: AdminUser[]; total: number; limit: number; skip: number }>('/admin/users', { params }),
+  userStats: () =>
+    api.get<{
+      total: number;
+      verified: number;
+      unverified: number;
+      suspended: number;
+      activeWeek: number;
+      sellers: number;
+      staff: number;
+      newToday: number;
+      newWeek: number;
+      newMonth: number;
+      byRole: Record<string, number>;
+    }>('/admin/users/stats'),
   userDetail: (userId: string) =>
     api.get<AdminUserDetail>(`/admin/users/${userId}`),
   createUser: (data: { email: string; name: string; password: string; role: StaffRole }) =>
