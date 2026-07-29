@@ -16,6 +16,7 @@
     "test:payment-flow": "tsx scripts/test-payment-flow.ts",
     "test:cinetpay-sandbox": "tsx scripts/test-cinetpay-sandbox.ts",
     "seed:cinetpay-test": "tsx scripts/seed-cinetpay-test.ts",
+    "seed:demo-marketing": "tsx scripts/seed-demo-marketing.ts",
     "seed:messenger-bot": "tsx scripts/seed-messenger-bot.ts",
     "test:messenger-bot": "tsx scripts/test-messenger-bot.ts",
     "test:order-lifecycle": "tsx scripts/test-order-lifecycle.ts",
