@@ -94,6 +94,18 @@ export interface StoreAnalyticsRich {
   cancelReasons: Array<{ code: string; count: number }>;
   /** Chiffre par pays (marketCountry snapshot). */
   byCountry: Array<{ country: string; orders: number; revenue: number; delivered: number }>;
+  /**
+   * Chiffre par ville (top 15 + éventuel bucket `__others__` + éventuel
+   * `__unknown__` pour les commandes sans city). `pct` = part des commandes
+   * sur la fenêtre, 1 décimale.
+   */
+  byCity: Array<{
+    city: string;
+    orders: number;
+    revenue: number;
+    delivered: number;
+    pct: number;
+  }>;
 }
 
 /** Codes de motifs de refus alignés sur le backend `CancelReasonCode`. */

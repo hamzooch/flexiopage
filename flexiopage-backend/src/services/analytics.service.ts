@@ -258,6 +258,23 @@ export interface StoreAnalyticsRich {
   /** Chiffre par pays (marketCountry snapshot au checkout). Aide à décider
    *  où pousser la pub / où le funnel COD est le plus rentable. */
   byCountry: Array<{ country: string; orders: number; revenue: number; delivered: number }>;
+  /**
+   * Chiffre par ville (top 15). `city` = valeur normalisée (trim + lower +
+   * majuscule initiale par mot). `orders` = nb de commandes toutes statuts,
+   * `revenue` = payé, `delivered` = livrées (MogaDelivery). `pct` = part des
+   * commandes vs total de la fenêtre (0..100).
+   *
+   * Une entrée spéciale `city='__unknown__'` regroupe les commandes sans
+   * ville renseignée — utile pour détecter un défaut de collecte côté form.
+   * Une entrée `city='__others__'` regroupe les villes en dehors du top 15.
+   */
+  byCity: Array<{
+    city: string;
+    orders: number;
+    revenue: number;
+    delivered: number;
+    pct: number;
+  }>;
 }
 
 function pctDelta(curr: number, prev: number): number | null {
@@ -427,6 +444,7 @@ export async function getStoreAnalyticsRich(
     hourlySalesRaw,
     cancelReasonsRaw,
     byCountryRaw,
+    byCityRaw,
   ] = await Promise.all([
     // All-time totals (any status).
     Order.aggregate([
@@ -612,6 +630,33 @@ export async function getStoreAnalyticsRich(
       { $sort: { orders: -1 } },
       { $limit: 10 },
     ]),
+    // Chiffre par ville — normalisation en amont (trim + lower) pour fusionner
+    // "Dakar", " Dakar", "DAKAR". Le rendu affichable (Title Case) se fait
+    // côté front pour rester simple ici. Pas de $limit ici : le regroupement
+    // top15 + "autres" est fait en JS après pour préserver la somme totale.
+    Order.aggregate<{ _id: string | null; orders: number; revenue: number; delivered: number }>([
+      { $match: inWindow },
+      {
+        $group: {
+          _id: {
+            $let: {
+              vars: { c: { $ifNull: ['$shippingAddress.city', ''] } },
+              in: {
+                $cond: [
+                  { $eq: [{ $trim: { input: '$$c' } }, ''] },
+                  null,
+                  { $toLower: { $trim: { input: '$$c' } } },
+                ],
+              },
+            },
+          },
+          orders: { $sum: 1 },
+          revenue: { $sum: { $cond: [{ $eq: ['$paymentStatus', 'paid'] }, '$total', 0] } },
+          delivered: { $sum: { $cond: [{ $eq: ['$delivery.externalStatus', 'delivered'] }, 1, 0] } },
+        },
+      },
+      { $sort: { orders: -1 } },
+    ]),
   ]);
 
   const t = totals[0] || { orders: 0, revenue: 0, sales: 0, customers: 0, currency: storeCurrency };
@@ -765,5 +810,59 @@ export async function getStoreAnalyticsRich(
       revenue: r.revenue,
       delivered: r.delivered,
     })),
+    byCity: buildByCity(byCityRaw as Array<{ _id: string | null; orders: number; revenue: number; delivered: number }>, a.orders),
   };
+}
+
+/**
+ * Prend l'agrégat brut `byCityRaw` (déjà trié desc par orders, city normalisée
+ * en lowercase) et produit :
+ *   - top 15 villes ré-affichées en Title Case
+ *   - une ligne '__others__' cumulant les villes au-delà (si > 0)
+ *   - une ligne '__unknown__' pour les commandes sans city (si > 0)
+ *   - `pct` = % des commandes vs total de la fenêtre (0..100), 1 décimale
+ *
+ * Séparer __unknown__ de __others__ : les vides signalent un DÉFAUT de collecte
+ * (form COD mal rempli), pas juste des villes rares — le vendeur doit pouvoir
+ * les repérer distinctement.
+ */
+function buildByCity(
+  raw: Array<{ _id: string | null; orders: number; revenue: number; delivered: number }>,
+  totalOrders: number,
+): StoreAnalyticsRich['byCity'] {
+  const TOP = 15;
+  const known = raw.filter((r) => r._id != null);
+  const unknown = raw.find((r) => r._id == null);
+  const top = known.slice(0, TOP);
+  const rest = known.slice(TOP);
+
+  const pctOf = (n: number) => (totalOrders === 0 ? 0 : Math.round((n / totalOrders) * 1000) / 10);
+
+  const rows: StoreAnalyticsRich['byCity'] = top.map((r) => ({
+    city: titleCaseCity(r._id as string),
+    orders: r.orders,
+    revenue: r.revenue,
+    delivered: r.delivered,
+    pct: pctOf(r.orders),
+  }));
+
+  if (rest.length > 0) {
+    const acc = rest.reduce(
+      (a, r) => ({ orders: a.orders + r.orders, revenue: a.revenue + r.revenue, delivered: a.delivered + r.delivered }),
+      { orders: 0, revenue: 0, delivered: 0 },
+    );
+    rows.push({ city: '__others__', orders: acc.orders, revenue: acc.revenue, delivered: acc.delivered, pct: pctOf(acc.orders) });
+  }
+  if (unknown && unknown.orders > 0) {
+    rows.push({ city: '__unknown__', orders: unknown.orders, revenue: unknown.revenue, delivered: unknown.delivered, pct: pctOf(unknown.orders) });
+  }
+  return rows;
+}
+
+/** "casablanca" / "casa- blanca" → "Casablanca" / "Casa- Blanca". */
+function titleCaseCity(raw: string): string {
+  return raw
+    .split(/(\s+|-)/)
+    .map((part) => (/^\s+$|^-$/.test(part) ? part : part.charAt(0).toUpperCase() + part.slice(1)))
+    .join('');
 }

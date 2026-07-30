@@ -354,6 +354,25 @@ export default function DashboardAnalyticsPage() {
             </div>
           )}
 
+          {/* Commandes par ville — top 15 + "Autres" + "Non renseignée" */}
+          {data.byCity?.length > 0 && (
+            <Card>
+              <CardHeader className="pb-2">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <CardTitle className="text-sm sm:text-base">Commandes par ville</CardTitle>
+                    <p className="text-[11px] text-muted-foreground sm:text-xs">
+                      Top 15 villes de tes clients sur la période — % des commandes, CA et taux de livraison.
+                    </p>
+                  </div>
+                </div>
+              </CardHeader>
+              <CardContent>
+                <ByCityWidget items={data.byCity} currency={currency} />
+              </CardContent>
+            </Card>
+          )}
+
           {/* Payment mix + Recent orders */}
           <div className="grid gap-3 sm:gap-4 lg:grid-cols-2">
             <Card>
@@ -466,6 +485,110 @@ function CancelReasonsWidget({ items }: { items: Array<{ code: string; count: nu
         Total {total} refus/annulations. Chaque motif suggère une action corrective
         (adresse incorrecte → améliorer le form, prix trop cher → tester A/B, doublons → détection auto).
       </p>
+    </div>
+  );
+}
+
+/**
+ * Répartition des commandes par ville — tableau avec barre visuelle pour le %.
+ * Deux buckets spéciaux :
+ *   - `__others__` : villes hors top 15 (agrégat)
+ *   - `__unknown__` : commandes sans ville renseignée — signale un défaut de
+ *     collecte côté formulaire, on l'affiche en bas avec un tooltip.
+ */
+function ByCityWidget({
+  items,
+  currency,
+}: {
+  items: Array<{ city: string; orders: number; revenue: number; delivered: number; pct: number }>;
+  currency: string;
+}) {
+  const fmt = (n: number) => {
+    try { return new Intl.NumberFormat(undefined, { style: 'currency', currency, maximumFractionDigits: 0 }).format(n); }
+    catch { return `${n} ${currency}`; }
+  };
+  const labelFor = (city: string) => {
+    if (city === '__others__') return 'Autres villes';
+    if (city === '__unknown__') return 'Non renseignée';
+    return city;
+  };
+  // On sépare les buckets spéciaux pour les afficher en fin de liste avec un
+  // style discret — le top réel reste au-dessus.
+  const known = items.filter((r) => r.city !== '__others__' && r.city !== '__unknown__');
+  const others = items.find((r) => r.city === '__others__');
+  const unknown = items.find((r) => r.city === '__unknown__');
+  const maxPct = Math.max(1, ...known.map((r) => r.pct));
+
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full min-w-[360px] text-sm">
+        <thead className="text-left text-[10px] uppercase tracking-wider text-muted-foreground">
+          <tr>
+            <th className="py-1.5 pr-2 font-semibold">Ville</th>
+            <th className="py-1.5 px-2 font-semibold">Part</th>
+            <th className="py-1.5 px-2 text-right font-semibold">Cmd</th>
+            <th className="py-1.5 px-2 text-right font-semibold">CA</th>
+            <th className="py-1.5 pl-2 text-right font-semibold">Livrées</th>
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-border/40">
+          {known.map((c) => {
+            const rate = c.orders > 0 ? (c.delivered / c.orders) * 100 : 0;
+            // Barre normalisée sur la plus grande ville → l'écart visuel
+            // reste lisible même quand la 1re ville domine (ex: 40% vs 4%).
+            const barPct = (c.pct / maxPct) * 100;
+            return (
+              <tr key={c.city}>
+                <td className="py-2 pr-2 font-medium">{labelFor(c.city)}</td>
+                <td className="py-2 px-2 min-w-[120px]">
+                  <div className="flex items-center gap-2">
+                    <div className="h-1.5 w-full max-w-[110px] overflow-hidden rounded-full bg-muted">
+                      <div className="h-full rounded-full bg-primary/70" style={{ width: `${barPct}%` }} />
+                    </div>
+                    <span className="tabular-nums text-[11px] font-semibold text-muted-foreground">{c.pct.toFixed(1)}%</span>
+                  </div>
+                </td>
+                <td className="py-2 px-2 text-right tabular-nums font-semibold">{c.orders}</td>
+                <td className="py-2 px-2 text-right tabular-nums text-muted-foreground">{fmt(c.revenue)}</td>
+                <td className="py-2 pl-2 text-right tabular-nums">
+                  <span className={cn(
+                    'inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[10px] font-bold',
+                    rate >= 60 ? 'bg-emerald-500/10 text-emerald-700'
+                      : rate >= 40 ? 'bg-amber-500/10 text-amber-700'
+                      : 'bg-rose-500/10 text-rose-700',
+                  )}>
+                    {rate.toFixed(0)}%
+                  </span>
+                </td>
+              </tr>
+            );
+          })}
+          {others && (
+            <tr className="text-muted-foreground">
+              <td className="py-2 pr-2 italic">{labelFor(others.city)}</td>
+              <td className="py-2 px-2 tabular-nums text-[11px]">{others.pct.toFixed(1)}%</td>
+              <td className="py-2 px-2 text-right tabular-nums">{others.orders}</td>
+              <td className="py-2 px-2 text-right tabular-nums">{fmt(others.revenue)}</td>
+              <td className="py-2 pl-2 text-right tabular-nums text-[11px]">—</td>
+            </tr>
+          )}
+          {unknown && (
+            <tr
+              className="text-muted-foreground"
+              title="Commandes créées sans ville dans l'adresse. Vérifier le formulaire de checkout ou les questions du bot COD."
+            >
+              <td className="py-2 pr-2 italic">
+                {labelFor(unknown.city)}
+                <span className="ml-1 text-[10px] uppercase tracking-wider text-amber-600">à collecter</span>
+              </td>
+              <td className="py-2 px-2 tabular-nums text-[11px]">{unknown.pct.toFixed(1)}%</td>
+              <td className="py-2 px-2 text-right tabular-nums">{unknown.orders}</td>
+              <td className="py-2 px-2 text-right tabular-nums">{fmt(unknown.revenue)}</td>
+              <td className="py-2 pl-2 text-right tabular-nums text-[11px]">—</td>
+            </tr>
+          )}
+        </tbody>
+      </table>
     </div>
   );
 }
