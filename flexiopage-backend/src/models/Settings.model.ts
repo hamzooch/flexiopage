@@ -67,6 +67,18 @@ export interface IPlatformSettings {
   commissionRatePhysical?: number;
   /** Minimum payout amount per currency. Seller can't withdraw below this. */
   payoutMinimums: Record<string, number>;
+  /**
+   * Défaut global pour `BotConfig.conversations_limit` — quota mensuel de
+   * conversations distinctes du chatbot par boutique. Appliqué à la création
+   * de la BotConfig. L'admin peut le surcharger par boutique via le panel
+   * /admin/store-limits.
+   */
+  defaultBotConversationsLimit: number;
+  /**
+   * Défaut global pour `BotConfig.messages_limit_max` — plafond de messages
+   * que le vendeur peut se donner. Appliqué à la création de la BotConfig.
+   */
+  defaultBotMessagesLimitMax: number;
 }
 
 export interface ISettings extends Document {
@@ -97,6 +109,8 @@ export const DEFAULT_PLATFORM_SETTINGS: IPlatformSettings = {
     KES: 1000,
     MAD: 80,
   },
+  defaultBotConversationsLimit: 50,
+  defaultBotMessagesLimitMax: 1000,
 };
 
 /**
@@ -155,6 +169,8 @@ const SettingsSchema = new Schema<ISettings>(
       commissionRateDigital: { type: Number, min: 0, max: 1 },
       commissionRatePhysical: { type: Number, min: 0, max: 1 },
       payoutMinimums: { type: Schema.Types.Mixed, default: () => ({ ...DEFAULT_PLATFORM_SETTINGS.payoutMinimums }) },
+      defaultBotConversationsLimit: { type: Number, default: DEFAULT_PLATFORM_SETTINGS.defaultBotConversationsLimit, min: 0, max: 1_000_000 },
+      defaultBotMessagesLimitMax: { type: Number, default: DEFAULT_PLATFORM_SETTINGS.defaultBotMessagesLimitMax, min: 0, max: 1_000_000 },
     },
     updatedBy: { type: Schema.Types.ObjectId, ref: 'User' },
   },
@@ -196,6 +212,16 @@ export async function getSettings(force = false): Promise<ISettings> {
       // Doc créé avant le passage au modèle token (juin 2026). On met le
       // ratio par défaut, l'admin pourra l'ajuster.
       doc.aiPricing.usdToTokens = DEFAULT_AI_PRICING.usdToTokens;
+      dirty = true;
+    }
+    // Défauts bot ajoutés le 2026-07-30 — remplir sans écraser les Settings
+    // pré-existantes pour éviter d'imposer 0 en migration silencieuse.
+    if (doc.platform && doc.platform.defaultBotConversationsLimit == null) {
+      doc.platform.defaultBotConversationsLimit = DEFAULT_PLATFORM_SETTINGS.defaultBotConversationsLimit;
+      dirty = true;
+    }
+    if (doc.platform && doc.platform.defaultBotMessagesLimitMax == null) {
+      doc.platform.defaultBotMessagesLimitMax = DEFAULT_PLATFORM_SETTINGS.defaultBotMessagesLimitMax;
       dirty = true;
     }
     if (dirty) await doc.save();

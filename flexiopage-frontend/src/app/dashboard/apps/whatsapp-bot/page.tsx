@@ -14,6 +14,7 @@ import { whatsappBotApi, extractApiError, type MessengerBotConfig, type Messenge
 import { COUNTRIES, COUNTRY_GROUPS } from '@/data/countries';
 import { useStoreStore } from '@/stores/store-store';
 import { PageHeader } from '@/components/dashboard/page-header';
+import { BotLimitsCard } from '@/components/dashboard/bot-limits-card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -141,6 +142,7 @@ export default function WhatsAppBotPage() {
       {config && !showUpdate && !showPicker && (
         <>
           {overview && <StatsRow overview={overview} />}
+          <BotLimitsCard storeId={storeId} channel="whatsapp" config={config} onSaved={load} />
           <div className="grid gap-6 lg:grid-cols-2">
             <ConfigForm storeId={storeId} config={config} onSaved={load} />
             <TestBox storeId={storeId} />

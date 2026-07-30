@@ -20,7 +20,9 @@ import {
   type AdminBotLimitStore,
 } from '@/lib/api';
 import { BotLimitDialog } from '@/components/admin/bot-limit-dialog';
-import { Loader2, RefreshCw, Search, Store, RotateCcw, Check, Pencil, MessageSquare } from 'lucide-react';
+import { BotLimitDefaultsCard } from '@/components/admin/bot-limit-defaults-card';
+import { BotLimitAuditDrawer } from '@/components/admin/bot-limit-audit-drawer';
+import { Loader2, RefreshCw, Search, Store, RotateCcw, Check, Pencil, MessageSquare, Zap, History, AlertTriangle } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 const ROLE_LABEL: Record<string, string> = {
@@ -51,6 +53,8 @@ export default function AdminStoreLimitsPage() {
 
   const [search, setSearch] = useState('');
   const [botSearch, setBotSearch] = useState('');
+  const [botFilter, setBotFilter] = useState<'all' | 'near' | 'capped'>('all');
+  const [auditOpen, setAuditOpen] = useState(false);
   const [tab, setTab] = useState<'stores' | 'chatbot'>('stores');
 
   const load = useCallback(async () => {
@@ -126,11 +130,67 @@ export default function AdminStoreLimitsPage() {
 
   const botRows = useMemo(() => {
     const q = botSearch.trim().toLowerCase();
-    if (!q) return botStores;
-    return botStores.filter(
-      (s) => s.name.toLowerCase().includes(q) || (s.owner?.email || '').toLowerCase().includes(q),
-    );
-  }, [botStores, botSearch]);
+    let rows = botStores;
+    if (q) {
+      rows = rows.filter(
+        (s) => s.name.toLowerCase().includes(q) || (s.owner?.email || '').toLowerCase().includes(q),
+      );
+    }
+    if (botFilter !== 'all') {
+      rows = rows.filter((s) => s.bots.some((b) => {
+        if (!b.conversations_limit || b.conversations_limit <= 0) return false;
+        const pct = b.conversations_used_this_month / b.conversations_limit;
+        return botFilter === 'capped' ? pct >= 1 : pct >= 0.8;
+      }));
+    }
+    return rows;
+  }, [botStores, botSearch, botFilter]);
+
+  // Compteurs pour les filtres — utile pour surfacer le nombre de boutiques
+  // à risque sans forcer l'admin à parcourir la liste.
+  const { nearCount, cappedCount } = useMemo(() => {
+    let near = 0, capped = 0;
+    for (const s of botStores) {
+      const worst = Math.max(
+        0,
+        ...s.bots.map((b) =>
+          b.conversations_limit && b.conversations_limit > 0
+            ? b.conversations_used_this_month / b.conversations_limit
+            : 0,
+        ),
+      );
+      if (worst >= 1) capped++;
+      else if (worst >= 0.8) near++;
+    }
+    return { nearCount: near, cappedCount: capped };
+  }, [botStores]);
+
+  async function quickRaise(storeId: string, delta = 50) {
+    setBusyId(storeId);
+    setError(null);
+    try {
+      await adminApi.quickRaiseBotLimit(storeId, { delta });
+      await load();
+    } catch (e) {
+      setError(extractApiError(e, 'Action impossible'));
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  async function resetCounters(storeId: string) {
+    if (!confirm('Remettre à 0 le compteur mensuel de cette boutique ?')) return;
+    setBusyId(storeId);
+    setError(null);
+    try {
+      await adminApi.resetStoreBotCounters(storeId);
+      await load();
+    } catch (e) {
+      setError(extractApiError(e, 'Action impossible'));
+    } finally {
+      setBusyId(null);
+    }
+  }
 
   const customCount = vendorRows.filter((r) => r.isCustom).length;
 
@@ -281,7 +341,10 @@ export default function AdminStoreLimitsPage() {
 
       {/* ── Onglet : Limites messages chatbot ── */}
       {tab === 'chatbot' && (
-      <Card>
+      <div className="space-y-4">
+        <BotLimitDefaultsCard />
+
+        <Card>
         <CardHeader>
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
@@ -290,59 +353,162 @@ export default function AdminStoreLimitsPage() {
                 Limites messages chatbot
               </CardTitle>
               <CardDescription className="text-xs">
-                {botStores.length} boutique(s) avec un bot. « ∞ » = illimité (le bot n’est jamais coupé).
+                {botStores.length} boutique(s) avec un bot · <span className="text-amber-700">{nearCount} proche(s)</span> · <span className="text-rose-700">{cappedCount} bloquée(s)</span>
               </CardDescription>
             </div>
-            <div className="relative w-full sm:w-64">
-              <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
-              <Input
-                value={botSearch}
-                onChange={(e) => setBotSearch(e.target.value)}
-                placeholder="Chercher une boutique…"
-                className="h-9 pl-8"
-              />
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-9 gap-1.5"
+                onClick={() => setAuditOpen(true)}
+                title="Voir l'historique des modifications de limites"
+              >
+                <History className="h-3.5 w-3.5" />
+                Historique
+              </Button>
+              <div className="relative w-full sm:w-64">
+                <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  value={botSearch}
+                  onChange={(e) => setBotSearch(e.target.value)}
+                  placeholder="Chercher une boutique…"
+                  className="h-9 pl-8"
+                />
+              </div>
             </div>
+          </div>
+
+          {/* Filtres rapides "état" — restreint la liste aux boutiques à
+              surveiller (≥80%) ou déjà bloquées (100%). Compte à côté de
+              chaque puce pour situer l'urgence. */}
+          <div className="mt-3 flex flex-wrap gap-1.5">
+            {([
+              { id: 'all',    label: `Toutes (${botStores.length})`, tone: 'muted' as const },
+              { id: 'near',   label: `≥ 80% (${nearCount})`,          tone: 'amber' as const },
+              { id: 'capped', label: `Bloquées (${cappedCount})`,     tone: 'rose'  as const },
+            ] as const).map((f) => {
+              const active = botFilter === f.id;
+              return (
+                <button
+                  key={f.id}
+                  type="button"
+                  onClick={() => setBotFilter(f.id)}
+                  className={cn(
+                    'rounded-full border px-3 py-1 text-xs font-semibold transition',
+                    active && f.tone === 'muted' && 'border-border bg-foreground text-background',
+                    active && f.tone === 'amber' && 'border-amber-500 bg-amber-500 text-white',
+                    active && f.tone === 'rose'  && 'border-rose-500 bg-rose-500 text-white',
+                    !active && 'border-border/60 text-muted-foreground hover:border-border hover:text-foreground',
+                  )}
+                >
+                  {f.label}
+                </button>
+              );
+            })}
           </div>
         </CardHeader>
         <CardContent>
           {botRows.length === 0 ? (
             <p className="py-8 text-center text-sm text-muted-foreground">
-              {botStores.length === 0 ? 'Aucune boutique avec un chatbot connecté.' : 'Aucune boutique trouvée.'}
+              {botStores.length === 0 ? 'Aucune boutique avec un chatbot connecté.' : 'Aucune boutique trouvée pour ce filtre.'}
             </p>
           ) : (
             <div className="space-y-2">
-              {botRows.map((s) => (
-                <div key={s._id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border p-3">
+              {botRows.map((s) => {
+                // Etat "pire des canaux" pour trier / afficher un badge de niveau.
+                const worstPct = Math.max(
+                  0,
+                  ...s.bots.map((b) =>
+                    b.conversations_limit && b.conversations_limit > 0
+                      ? Math.round((b.conversations_used_this_month / b.conversations_limit) * 100)
+                      : 0,
+                  ),
+                );
+                const rowState: 'ok' | 'warn' | 'capped' = worstPct >= 100 ? 'capped' : worstPct >= 80 ? 'warn' : 'ok';
+                return (
+                <div
+                  key={s._id}
+                  className={cn(
+                    'flex flex-wrap items-center justify-between gap-2 rounded-lg border p-3',
+                    rowState === 'capped' && 'border-rose-500/40 bg-rose-500/5',
+                    rowState === 'warn'   && 'border-amber-500/40 bg-amber-500/5',
+                  )}
+                >
                   <div className="min-w-0">
-                    <div className="truncate font-medium">{s.name}</div>
+                    <div className="flex items-center gap-2 truncate font-medium">
+                      {rowState !== 'ok' && (
+                        <AlertTriangle className={cn('h-3.5 w-3.5 shrink-0', rowState === 'capped' ? 'text-rose-600' : 'text-amber-600')} />
+                      )}
+                      <span className="truncate">{s.name}</span>
+                    </div>
                     <div className="truncate text-xs text-muted-foreground">
                       {s.owner?.name || '—'}{s.owner?.email ? ` · ${s.owner.email}` : ''}
                     </div>
                     <div className="mt-1 flex flex-wrap gap-1.5">
                       {s.bots.map((b) => {
+                        const pct = b.conversations_limit && b.conversations_limit > 0
+                          ? Math.round((b.conversations_used_this_month / b.conversations_limit) * 100)
+                          : 0;
                         const capped = b.conversations_limit != null && b.conversations_used_this_month >= b.conversations_limit;
+                        const near = !capped && pct >= 80;
+                        const reset = b.month_reset_date ? new Date(b.month_reset_date) : null;
                         return (
                           <span
                             key={b.channel}
                             className={cn(
                               'rounded-full border px-2 py-0.5 text-[11px] tabular-nums',
-                              capped ? 'border-amber-500/40 bg-amber-500/10 text-amber-700' : 'bg-muted/30 text-muted-foreground',
+                              capped ? 'border-rose-500/40 bg-rose-500/10 text-rose-700'
+                                     : near ? 'border-amber-500/40 bg-amber-500/10 text-amber-700'
+                                            : 'bg-muted/30 text-muted-foreground',
                             )}
+                            title={reset ? `Reset auto : ${reset.toLocaleDateString('fr-FR')}` : undefined}
                           >
-                            <span className="capitalize">{b.channel}</span> · {b.conversations_used_this_month}/{b.conversations_limit ?? '∞'} conv.{capped ? ' ⚠️' : ''} · msg {b.messages_limit ?? '∞'}/{b.messages_limit_max ?? '∞'}
+                            <span className="capitalize">{b.channel}</span> · {b.conversations_used_this_month}/{b.conversations_limit ?? '∞'} conv.
+                            {capped && ' ⚠️'}
+                            {' · msg '}{b.messages_limit ?? '∞'}/{b.messages_limit_max ?? '∞'}
+                            {reset && ` · reset ${reset.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })}`}
                           </span>
                         );
                       })}
                     </div>
                   </div>
-                  <BotLimitDialog storeId={s._id} storeName={s.name} onSaved={load} />
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="h-8 gap-1 text-amber-700 hover:text-amber-800"
+                      disabled={busyId === s._id}
+                      onClick={() => quickRaise(s._id, 50)}
+                      title="Ajoute 50 conversations au quota mensuel de tous les bots"
+                    >
+                      {busyId === s._id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Zap className="h-3.5 w-3.5" />}
+                      +50 conv.
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="h-8 gap-1 text-muted-foreground"
+                      disabled={busyId === s._id}
+                      onClick={() => resetCounters(s._id)}
+                      title="Remet le compteur mensuel à 0"
+                    >
+                      <RotateCcw className="h-3.5 w-3.5" />
+                      Reset
+                    </Button>
+                    <BotLimitDialog storeId={s._id} storeName={s.name} onSaved={load} />
+                  </div>
                 </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </CardContent>
-      </Card>
+        </Card>
+      </div>
       )}
+
+      <BotLimitAuditDrawer open={auditOpen} onOpenChange={setAuditOpen} />
     </div>
   );
 }

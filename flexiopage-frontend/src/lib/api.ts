@@ -880,6 +880,17 @@ export const adminApi = {
     data: { messages_limit_max: number; messages_limit?: number; conversations_limit?: number; channel?: 'messenger' | 'whatsapp' },
   ) =>
     api.patch<{ ok: boolean; bots: AdminBotLimit[] }>(`/admin/stores/${storeId}/bot-limits`, data),
+  /** +N conversations sur tous les bots d'une boutique (défaut 50). */
+  quickRaiseBotLimit: (storeId: string, data: { delta?: number; channel?: 'messenger' | 'whatsapp' }) =>
+    api.post<{ ok: boolean; modifiedCount: number; delta: number }>(`/admin/stores/${storeId}/bot-limits/quick-raise`, data),
+  /** Réinitialise à 0 les compteurs mensuels d'une boutique. */
+  resetStoreBotCounters: (storeId: string, data?: { channel?: 'messenger' | 'whatsapp' }) =>
+    api.post<{ ok: boolean; modifiedCount: number }>(`/admin/stores/${storeId}/bot-limits/reset-counters`, data || {}),
+  /** Défauts globaux appliqués aux nouvelles BotConfig. */
+  getBotLimitDefaults: () =>
+    api.get<{ defaultConversationsLimit: number; defaultMessagesLimitMax: number; fallbacks: { defaultConversationsLimit: number; defaultMessagesLimitMax: number } }>('/admin/bot-limits/defaults'),
+  setBotLimitDefaults: (data: { defaultConversationsLimit?: number; defaultMessagesLimitMax?: number }) =>
+    api.patch<{ defaultConversationsLimit: number; defaultMessagesLimitMax: number }>('/admin/bot-limits/defaults', data),
 
   // ── Reports ──
   reports: (params?: { months?: number }) =>
@@ -1274,6 +1285,8 @@ export interface AdminBotLimit {
   messages_limit_max: number | null;
   conversations_limit: number | null;
   conversations_used_this_month: number;
+  /** ISO date : date du prochain reset auto du compteur mensuel. */
+  month_reset_date?: string | null;
 }
 
 export interface AdminBotLimitStore {
@@ -1936,6 +1949,12 @@ export interface MessengerBotConfig {
   plan: 'free' | 'starter' | 'pro' | 'business';
   conversations_limit: number;
   conversations_used_this_month: number;
+  /** Date du prochain reset mensuel (ISO). null si jamais atteint. */
+  month_reset_date?: string | null;
+  /** Limite de messages/mois choisie par l'owner (opt-in metering). */
+  messages_limit?: number | null;
+  /** Plafond max de messages/mois que l'owner peut se fixer (imposé par l'admin). */
+  messages_limit_max?: number | null;
   total_orders_created: number;
   total_tokens_consumed: number;
 }

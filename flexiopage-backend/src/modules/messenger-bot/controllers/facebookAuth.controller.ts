@@ -17,6 +17,7 @@ import type { AuthRequest } from '../../../middleware/auth.middleware';
 import { logger } from '../../../lib/logger';
 import { GRAPH_API_BASE } from '../config/messengerBot.config';
 import { BotConfig } from '../models/BotConfig.model';
+import { botConfigInsertDefaults } from '../services/botDefaults.service';
 import { encryptionService } from '../services/encryption.service';
 import { getOwnedStoreId } from '../utils/vendorAuth';
 import { connectPageSchema } from '../schemas/config.schema';
@@ -127,6 +128,7 @@ export async function connectPage(req: AuthRequest, res: Response): Promise<void
     return;
   }
 
+  const insertDefaults = await botConfigInsertDefaults();
   const config = await BotConfig.findOneAndUpdate(
     { vendor_id: storeId, channel: 'messenger' },
     {
@@ -139,6 +141,7 @@ export async function connectPage(req: AuthRequest, res: Response): Promise<void
         page_picture_url: pagePictureUrl,
         status: 'active',
       },
+      $setOnInsert: insertDefaults,
     },
     { upsert: true, new: true, setDefaultsOnInsert: true },
   );

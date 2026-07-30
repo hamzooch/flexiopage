@@ -143,6 +143,10 @@ export interface IBotConfig extends Document {
   over_limit_notified_period?: string;
   /** Période "YYYY-MM" où on a déjà notifié le solde IA épuisé (dédup). */
   ai_empty_notified_period?: string;
+  /** Période "YYYY-MM" où on a déjà notifié l'approche du quota conversations (dédup 80%). */
+  conversations_warn_notified_period?: string;
+  /** Période "YYYY-MM" où on a déjà notifié l'atteinte du quota conversations (dédup 100%). */
+  conversations_cap_notified_period?: string;
 
   total_conversations: number;
   total_orders_created: number;
@@ -234,6 +238,8 @@ const BotConfigSchema = new Schema<IBotConfig>(
     messages_limit_max: { type: Number, default: 1000, min: 0 },
     over_limit_notified_period: { type: String },
     ai_empty_notified_period: { type: String },
+    conversations_warn_notified_period: { type: String },
+    conversations_cap_notified_period: { type: String },
 
     total_conversations: { type: Number, default: 0 },
     total_orders_created: { type: Number, default: 0 },

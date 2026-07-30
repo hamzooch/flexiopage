@@ -171,6 +171,50 @@ export async function notifyBotLimitReached(args: {
   });
 }
 
+/** Alerte "approche du quota conversations" (80% par défaut) — donne au
+ *  vendeur le temps d'agir avant que le bot ne se coupe. Notif une fois
+ *  par période (dédup géré côté caller via `conversations_warn_notified_period`). */
+export async function notifyBotConvWarning(args: {
+  userId: mongoose.Types.ObjectId | string;
+  storeId: mongoose.Types.ObjectId | string;
+  channel: string;
+  used: number;
+  limit: number;
+}) {
+  const canal = args.channel === 'whatsapp' ? 'WhatsApp' : 'Messenger';
+  const link = args.channel === 'whatsapp' ? '/dashboard/apps/whatsapp-bot' : '/dashboard/apps/messenger-bot';
+  return createNotification({
+    userId: args.userId,
+    storeId: args.storeId,
+    type: 'bot.conv_warning',
+    title: `Chatbot ${canal} — bientôt à la limite`,
+    body: `Tu as utilisé ${args.used}/${args.limit} conversations ce mois. Passé ${args.limit}, le bot ne répondra plus aux nouvelles conversations jusqu'au 1er du mois prochain.`,
+    link,
+    meta: { channel: args.channel, used: args.used, limit: args.limit },
+  });
+}
+
+/** Le quota mensuel de conversations est atteint → le bot est coupé jusqu'au
+ *  reset du mois prochain (ou une hausse admin). Notif une fois par période. */
+export async function notifyBotConvCapped(args: {
+  userId: mongoose.Types.ObjectId | string;
+  storeId: mongoose.Types.ObjectId | string;
+  channel: string;
+  limit: number;
+}) {
+  const canal = args.channel === 'whatsapp' ? 'WhatsApp' : 'Messenger';
+  const link = args.channel === 'whatsapp' ? '/dashboard/apps/whatsapp-bot' : '/dashboard/apps/messenger-bot';
+  return createNotification({
+    userId: args.userId,
+    storeId: args.storeId,
+    type: 'bot.conv_capped',
+    title: `Chatbot ${canal} en pause — quota atteint`,
+    body: `Ton chatbot ${canal} a atteint sa limite de ${args.limit} conversations pour ce mois. Il reprendra automatiquement le 1er du mois prochain, ou contacte le support pour relever la limite.`,
+    link,
+    meta: { channel: args.channel, limit: args.limit },
+  });
+}
+
 /** Le solde IA est épuisé → le bot ne peut plus répondre aux messages en
  *  dépassement. Notif une fois par période. */
 export async function notifyBotBalanceEmpty(args: {

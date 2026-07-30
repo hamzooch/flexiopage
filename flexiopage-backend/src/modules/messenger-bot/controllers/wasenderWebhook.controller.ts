@@ -17,6 +17,7 @@ import type { Request, Response } from 'express';
 import crypto from 'crypto';
 import { logger } from '../../../lib/logger';
 import { BotConfig, type IBotConfig } from '../models/BotConfig.model';
+import { ensureCurrentMonth, maybeNotifyConvThreshold } from '../services/botDefaults.service';
 import type { HydratedDocument } from 'mongoose';
 import { Conversation } from '../models/Conversation.model';
 import { Message } from '../models/Message.model';
@@ -329,9 +330,13 @@ export async function receiveWasenderWebhook(req: Request, res: Response): Promi
       logger.warn({ sessionId, status: config.status }, '[wasender] bot non actif — ignoré');
       return;
     }
+
+    await ensureCurrentMonth(config);
+
     if (config.conversations_used_this_month >= config.conversations_limit) {
       capture({ at: new Date().toISOString(), event, sessionId, signatureMatched: true, processed: 'ignored', reason: 'quota atteint', payload });
       logger.info({ sessionId }, '[wasender] quota atteint — message ignoré');
+      await maybeNotifyConvThreshold({ config, used: config.conversations_used_this_month });
       return;
     }
 
@@ -434,6 +439,9 @@ export async function receiveWasenderWebhook(req: Request, res: Response): Promi
 
     if (isNew) {
       await BotConfig.updateOne({ _id: config._id }, { $inc: { total_conversations: 1, conversations_used_this_month: 1 } });
+      const usedAfter = (config.conversations_used_this_month ?? 0) + 1;
+      config.conversations_used_this_month = usedAfter;
+      await maybeNotifyConvThreshold({ config, used: usedAfter });
     }
     if (conv.status === 'human_takeover') return;
 

@@ -22,6 +22,7 @@ import { logAudit } from '../services/audit-log.service';
 import type { AuditAction } from '../models/AuditLog.model';
 import { SecurityEvent, type SecurityEventType } from '../models/SecurityEvent.model';
 import { flushNow as flushSecurityMonitor } from '../services/security-monitor.service';
+import { Settings, getSettings, invalidateSettingsCache, DEFAULT_PLATFORM_SETTINGS } from '../models/Settings.model';
 
 // ─────────────────────────────────────────────────────────────────────
 // AUDIT LOGS
@@ -910,7 +911,7 @@ export async function getStoreBotLimits(req: AuthRequest, res: Response): Promis
   const { storeId } = req.params;
   if (!mongoose.isValidObjectId(storeId)) { res.status(400).json({ error: 'Invalid storeId' }); return; }
   const bots = await BotConfig.find({ vendor_id: storeId })
-    .select('channel messages_limit messages_limit_max conversations_limit conversations_used_this_month')
+    .select('channel messages_limit messages_limit_max conversations_limit conversations_used_this_month month_reset_date')
     .lean();
   res.json({
     bots: bots.map((b) => ({
@@ -919,6 +920,7 @@ export async function getStoreBotLimits(req: AuthRequest, res: Response): Promis
       messages_limit_max: b.messages_limit_max ?? null,
       conversations_limit: b.conversations_limit ?? null,
       conversations_used_this_month: b.conversations_used_this_month ?? 0,
+      month_reset_date: b.month_reset_date ? b.month_reset_date.toISOString() : null,
     })),
   });
 }
@@ -930,10 +932,10 @@ export async function getStoreBotLimits(req: AuthRequest, res: Response): Promis
  */
 export async function listBotLimits(_req: AuthRequest, res: Response): Promise<void> {
   const bots = await BotConfig.find({})
-    .select('vendor_id channel messages_limit messages_limit_max conversations_limit conversations_used_this_month')
+    .select('vendor_id channel messages_limit messages_limit_max conversations_limit conversations_used_this_month month_reset_date')
     .lean();
 
-  const byStore = new Map<string, Array<{ channel: string; messages_limit: number | null; messages_limit_max: number | null; conversations_limit: number | null; conversations_used_this_month: number }>>();
+  const byStore = new Map<string, Array<{ channel: string; messages_limit: number | null; messages_limit_max: number | null; conversations_limit: number | null; conversations_used_this_month: number; month_reset_date: string | null }>>();
   for (const b of bots) {
     const sid = String(b.vendor_id);
     if (!byStore.has(sid)) byStore.set(sid, []);
@@ -943,6 +945,7 @@ export async function listBotLimits(_req: AuthRequest, res: Response): Promise<v
       messages_limit_max: b.messages_limit_max ?? null,
       conversations_limit: b.conversations_limit ?? null,
       conversations_used_this_month: b.conversations_used_this_month ?? 0,
+      month_reset_date: b.month_reset_date ? new Date(b.month_reset_date).toISOString() : null,
     });
   }
 
@@ -1039,7 +1042,141 @@ export async function setStoreBotLimits(req: AuthRequest, res: Response): Promis
       messages_limit_max: b.messages_limit_max,
       conversations_limit: b.conversations_limit ?? null,
       conversations_used_this_month: b.conversations_used_this_month ?? 0,
+      month_reset_date: b.month_reset_date ? b.month_reset_date.toISOString() : null,
     })),
+  });
+}
+
+/**
+ * POST /api/admin/stores/:storeId/bot-limits/reset-counters — remet à 0 le
+ * compteur mensuel `conversations_used_this_month` pour tous les bots (ou un
+ * canal spécifique) d'une boutique. Débloque immédiatement un bot capé, sans
+ * attendre le reset naturel du mois suivant.
+ */
+export async function resetStoreBotCounters(req: AuthRequest, res: Response): Promise<void> {
+  const { storeId } = req.params;
+  if (!mongoose.isValidObjectId(storeId)) { res.status(400).json({ error: 'Invalid storeId' }); return; }
+  const body = (req.body || {}) as { channel?: unknown };
+  const filter: Record<string, unknown> = { vendor_id: storeId };
+  if (body.channel === 'messenger' || body.channel === 'whatsapp') filter.channel = body.channel;
+
+  const result = await BotConfig.updateMany(filter, {
+    $set: {
+      conversations_used_this_month: 0,
+      // On efface les marqueurs de dédup pour que les prochaines notifs partent
+      // à nouveau si le vendeur retape dans un quota.
+      conversations_warn_notified_period: null,
+      conversations_cap_notified_period: null,
+      over_limit_notified_period: null,
+    },
+  });
+
+  await logAudit({
+    action: 'store.bot_limit',
+    req,
+    targetId: storeId,
+    targetType: 'store',
+    summary: `Compteur mensuel réinitialisé (${result.modifiedCount} bot${result.modifiedCount > 1 ? 's' : ''}) — ${body.channel || 'tous canaux'}`,
+    metadata: { action: 'reset_counters', channel: body.channel || 'all', modifiedCount: result.modifiedCount },
+  });
+
+  res.json({ ok: true, modifiedCount: result.modifiedCount });
+}
+
+/**
+ * POST /api/admin/stores/:storeId/bot-limits/quick-raise — incrémente
+ * `conversations_limit` de N (défaut 50) pour tous les bots d'une boutique.
+ * Raccourci "1 clic" depuis la liste admin pour débloquer sans ouvrir le
+ * dialogue complet. Refuse les deltas non-entiers ou > 10 000.
+ */
+export async function quickRaiseBotLimit(req: AuthRequest, res: Response): Promise<void> {
+  const { storeId } = req.params;
+  if (!mongoose.isValidObjectId(storeId)) { res.status(400).json({ error: 'Invalid storeId' }); return; }
+  const body = (req.body || {}) as { delta?: unknown; channel?: unknown };
+  const delta = Number(body.delta ?? 50);
+  if (!Number.isInteger(delta) || delta <= 0 || delta > 10_000) {
+    res.status(400).json({ error: 'delta doit être un entier entre 1 et 10 000.' });
+    return;
+  }
+  const filter: Record<string, unknown> = { vendor_id: storeId };
+  if (body.channel === 'messenger' || body.channel === 'whatsapp') filter.channel = body.channel;
+
+  const result = await BotConfig.updateMany(filter, {
+    $inc: { conversations_limit: delta },
+    // Efface la dédup capped : la prochaine fois qu'ils tapent 100% du NOUVEAU
+    // quota, on doit re-notifier (sinon silence après la première hausse).
+    $set: { conversations_cap_notified_period: null },
+  });
+
+  await logAudit({
+    action: 'store.bot_limit',
+    req,
+    targetId: storeId,
+    targetType: 'store',
+    summary: `Quota conversations +${delta} (${result.modifiedCount} bot${result.modifiedCount > 1 ? 's' : ''}) — ${body.channel || 'tous canaux'}`,
+    metadata: { action: 'quick_raise', delta, channel: body.channel || 'all', modifiedCount: result.modifiedCount },
+  });
+
+  res.json({ ok: true, modifiedCount: result.modifiedCount, delta });
+}
+
+/**
+ * GET /api/admin/bot-limits/defaults — défauts globaux appliqués aux nouvelles
+ * BotConfig (conversations_limit + messages_limit_max). Lus depuis Settings.
+ */
+export async function getBotLimitDefaults(_req: AuthRequest, res: Response): Promise<void> {
+  const s = await getSettings();
+  res.json({
+    defaultConversationsLimit: s.platform?.defaultBotConversationsLimit ?? DEFAULT_PLATFORM_SETTINGS.defaultBotConversationsLimit,
+    defaultMessagesLimitMax: s.platform?.defaultBotMessagesLimitMax ?? DEFAULT_PLATFORM_SETTINGS.defaultBotMessagesLimitMax,
+    fallbacks: {
+      defaultConversationsLimit: DEFAULT_PLATFORM_SETTINGS.defaultBotConversationsLimit,
+      defaultMessagesLimitMax: DEFAULT_PLATFORM_SETTINGS.defaultBotMessagesLimitMax,
+    },
+  });
+}
+
+/**
+ * PATCH /api/admin/bot-limits/defaults — met à jour les défauts globaux
+ * appliqués à la création d'une BotConfig. N'affecte PAS les bots existants
+ * (utiliser le dialog par boutique pour ça).
+ */
+export async function setBotLimitDefaults(req: AuthRequest, res: Response): Promise<void> {
+  const body = (req.body || {}) as { defaultConversationsLimit?: unknown; defaultMessagesLimitMax?: unknown };
+  const update: Record<string, unknown> = { updatedBy: (req as { user?: { _id?: unknown } }).user?._id };
+
+  if (body.defaultConversationsLimit !== undefined) {
+    const n = Number(body.defaultConversationsLimit);
+    if (!Number.isInteger(n) || n < 0 || n > 1_000_000) {
+      res.status(400).json({ error: 'defaultConversationsLimit doit être un entier 0–1 000 000.' });
+      return;
+    }
+    update['platform.defaultBotConversationsLimit'] = n;
+  }
+  if (body.defaultMessagesLimitMax !== undefined) {
+    const n = Number(body.defaultMessagesLimitMax);
+    if (!Number.isInteger(n) || n < 0 || n > 1_000_000) {
+      res.status(400).json({ error: 'defaultMessagesLimitMax doit être un entier 0–1 000 000.' });
+      return;
+    }
+    update['platform.defaultBotMessagesLimitMax'] = n;
+  }
+
+  await Settings.updateOne({ key: 'global' }, { $set: update }, { upsert: true });
+  invalidateSettingsCache();
+  const fresh = await getSettings(true);
+
+  await logAudit({
+    action: 'settings.platform',
+    req,
+    targetType: 'settings',
+    summary: 'Défauts globaux bot mis à jour',
+    metadata: { update },
+  });
+
+  res.json({
+    defaultConversationsLimit: fresh.platform?.defaultBotConversationsLimit ?? DEFAULT_PLATFORM_SETTINGS.defaultBotConversationsLimit,
+    defaultMessagesLimitMax: fresh.platform?.defaultBotMessagesLimitMax ?? DEFAULT_PLATFORM_SETTINGS.defaultBotMessagesLimitMax,
   });
 }
 

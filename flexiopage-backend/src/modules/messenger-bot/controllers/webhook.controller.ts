@@ -16,6 +16,7 @@ import { BotConfig } from '../models/BotConfig.model';
 import { Conversation } from '../models/Conversation.model';
 import { Message } from '../models/Message.model';
 import { messageQueue } from '../services/queue.service';
+import { ensureCurrentMonth, maybeNotifyConvThreshold } from '../services/botDefaults.service';
 
 /** rawBody est injecté par le hook `verify` de express.json dans index.ts. */
 type RawRequest = Request & { rawBody?: Buffer };
@@ -73,9 +74,15 @@ export async function receiveWebhook(req: Request, res: Response): Promise<void>
       const config = await BotConfig.findOne({ facebook_page_id: pageId });
       if (!config || config.status !== 'active') continue;
 
+      // Reset paresseux du compteur si on est passé dans un nouveau mois.
+      await ensureCurrentMonth(config);
+
       // Quota du plan (utilise le cache dénormalisé).
       if (config.conversations_used_this_month >= config.conversations_limit) {
         logger.info({ pageId }, '[messenger-bot] quota conversations atteint — message ignoré');
+        // Notifie une fois par période que le bot est coupé — même si aucun message
+        // ne passe, le vendeur doit savoir pourquoi (best-effort, non-bloquant).
+        await maybeNotifyConvThreshold({ config, used: config.conversations_used_this_month });
         continue;
       }
 
@@ -127,6 +134,10 @@ export async function receiveWebhook(req: Request, res: Response): Promise<void>
 
         if (isNew) {
           await BotConfig.updateOne({ _id: config._id }, { $inc: { total_conversations: 1, conversations_used_this_month: 1 } });
+          // Recharge le compteur incrémenté pour la logique de seuil (80% / 100%).
+          const usedAfter = (config.conversations_used_this_month ?? 0) + 1;
+          config.conversations_used_this_month = usedAfter;
+          await maybeNotifyConvThreshold({ config, used: usedAfter });
         }
 
         // Si un humain a pris la main, on ne déclenche pas le bot.

@@ -16,6 +16,7 @@ import { BotConfig } from '../models/BotConfig.model';
 import { Conversation } from '../models/Conversation.model';
 import { Message } from '../models/Message.model';
 import { messageQueue } from '../services/queue.service';
+import { ensureCurrentMonth, maybeNotifyConvThreshold } from '../services/botDefaults.service';
 import { parseWaMessage, type WaMessage } from '../utils/waMessageParser';
 import type { IncomingMediaType } from '../utils/mediaFallback';
 
@@ -80,8 +81,12 @@ export async function receiveWhatsAppWebhook(req: Request, res: Response): Promi
         }
         const config = matches[0];
         if (!config || config.status !== 'active') continue;
+
+        await ensureCurrentMonth(config);
+
         if (config.conversations_used_this_month >= config.conversations_limit) {
           logger.info({ phoneNumberId }, '[whatsapp-bot] quota atteint — message ignoré');
+          await maybeNotifyConvThreshold({ config, used: config.conversations_used_this_month });
           continue;
         }
 
@@ -157,6 +162,9 @@ export async function receiveWhatsAppWebhook(req: Request, res: Response): Promi
 
           if (isNew) {
             await BotConfig.updateOne({ _id: config._id }, { $inc: { total_conversations: 1, conversations_used_this_month: 1 } });
+            const usedAfter = (config.conversations_used_this_month ?? 0) + 1;
+            config.conversations_used_this_month = usedAfter;
+            await maybeNotifyConvThreshold({ config, used: usedAfter });
           }
           if (conv.status === 'human_takeover') continue;
 

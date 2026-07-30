@@ -17,6 +17,7 @@ import type { AuthRequest } from '../../../middleware/auth.middleware';
 import { logger } from '../../../lib/logger';
 import { BotConfig } from '../models/BotConfig.model';
 import { encryptionService } from '../services/encryption.service';
+import { botConfigInsertDefaults } from '../services/botDefaults.service';
 import { wasenderService, WasenderApiError, hashWasenderToken } from '../services/wasender.service';
 import { getOwnedStoreId } from '../utils/vendorAuth';
 import { connectWasenderSchema } from '../schemas/config.schema';
@@ -117,6 +118,7 @@ export async function connectWasender(req: AuthRequest, res: Response): Promise<
       return;
     }
 
+    const insertDefaults = await botConfigInsertDefaults();
     const config = await BotConfig.findOneAndUpdate(
       { vendor_id: storeId, channel: 'whatsapp' },
       {
@@ -135,6 +137,7 @@ export async function connectWasender(req: AuthRequest, res: Response): Promise<
           page_name: session.phoneNumber ? `WhatsApp ${session.phoneNumber}` : 'WhatsApp (Wasender)',
           status: session.status === 'connected' ? 'active' : 'paused',
         },
+        $setOnInsert: insertDefaults,
         // Nettoie les champs des autres providers (cas du switch Meta → Wasender).
         $unset: {
           facebook_page_id: '',

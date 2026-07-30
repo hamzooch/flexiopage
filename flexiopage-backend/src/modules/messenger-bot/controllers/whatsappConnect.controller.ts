@@ -11,6 +11,7 @@ import { logger } from '../../../lib/logger';
 import { GRAPH_API_BASE } from '../config/messengerBot.config';
 import { BotConfig } from '../models/BotConfig.model';
 import { encryptionService } from '../services/encryption.service';
+import { botConfigInsertDefaults } from '../services/botDefaults.service';
 import { getOwnedStoreId } from '../utils/vendorAuth';
 import { connectWhatsAppSchema } from '../schemas/config.schema';
 
@@ -40,6 +41,7 @@ export async function connectWhatsApp(req: AuthRequest, res: Response): Promise<
   }
 
   try {
+    const insertDefaults = await botConfigInsertDefaults();
     const config = await BotConfig.findOneAndUpdate(
       { vendor_id: storeId, channel: 'whatsapp' },
       {
@@ -54,6 +56,7 @@ export async function connectWhatsApp(req: AuthRequest, res: Response): Promise<
           page_name: display ? `WhatsApp ${display}` : 'WhatsApp',
           status: 'active',
         },
+        $setOnInsert: insertDefaults,
         // Nettoie les champs des autres providers :
         //   - facebook_page_id : évite de ressusciter une collision d'index si
         //     les anciens index unique non-partiels n'ont pas été migrés.
