@@ -14,7 +14,7 @@ import { Label } from '@/components/ui/label';
 import { adminApi, type MarketplaceProduct, type MarketplaceDigitalKind, type MarketplaceDigitalAsset } from '@/lib/api';
 import { cn } from '@/lib/utils';
 import {
-  Loader2, Package, Plus, RefreshCw, Trash2, Save, ArrowLeft, Eye, EyeOff, X,
+  Loader2, Package, Plus, RefreshCw, Trash2, Save, ArrowLeft, Eye, EyeOff, X, Sparkles,
 } from 'lucide-react';
 
 const DIGITAL_KINDS: { value: MarketplaceDigitalKind; label: string }[] = [
@@ -79,6 +79,8 @@ export default function AdminMarketplacePage() {
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState<FormState>(EMPTY_FORM);
   const [saving, setSaving] = useState(false);
+  const [generating, setGenerating] = useState(false);
+  const [aiHint, setAiHint] = useState('');
   const [message, setMessage] = useState<{ tone: 'ok' | 'err'; text: string } | null>(null);
 
   const load = useCallback(async () => {
@@ -101,6 +103,7 @@ export default function AdminMarketplacePage() {
     setEditing(null);
     setForm(EMPTY_FORM);
     setShowForm(true);
+    setAiHint('');
     setMessage(null);
   }
 
@@ -108,6 +111,7 @@ export default function AdminMarketplacePage() {
     setEditing(p);
     setForm(toForm(p));
     setShowForm(true);
+    setAiHint('');
     setMessage(null);
   }
 
@@ -115,6 +119,43 @@ export default function AdminMarketplacePage() {
     setShowForm(false);
     setEditing(null);
     setForm(EMPTY_FORM);
+    setAiHint('');
+  }
+
+  async function generateWithAi() {
+    if (!form.title.trim()) {
+      setMessage({ tone: 'err', text: 'Renseigne au moins le titre pour utiliser l\'IA' });
+      return;
+    }
+    if (!form.wholesalePrice) {
+      setMessage({ tone: 'err', text: 'Renseigne le prix de gros pour utiliser l\'IA' });
+      return;
+    }
+    setGenerating(true);
+    try {
+      const { data } = await adminApi.generateMarketplaceProduct({
+        title: form.title.trim(),
+        digitalKind: form.digitalKind,
+        wholesalePrice: Number(form.wholesalePrice),
+        currency: form.currency,
+        hint: aiHint.trim() || undefined,
+      });
+      setForm((f) => ({
+        ...f,
+        description: data.description,
+        category: data.category,
+        tags: data.tags.join(', '),
+        suggestedRetailPrice: String(data.suggestedRetailPrice),
+      }));
+      setMessage({
+        tone: 'ok',
+        text: data.aiGenerated ? 'Champs remplis par l\'IA ✨' : 'IA indisponible — valeurs par défaut appliquées',
+      });
+    } catch (e) {
+      setMessage({ tone: 'err', text: (e as Error).message || 'Génération échouée' });
+    } finally {
+      setGenerating(false);
+    }
   }
 
   async function save() {
@@ -330,6 +371,38 @@ export default function AdminMarketplacePage() {
                   onChange={(e) => setForm({ ...form, title: e.target.value })}
                 />
               </div>
+
+              {/* Assistant IA — remplit description/tags/catégorie/prix retail */}
+              <div className="rounded-md border border-orange-500/30 bg-gradient-to-br from-orange-50 to-amber-50 p-3 dark:from-orange-950/20 dark:to-amber-950/20">
+                <div className="mb-2 flex items-center gap-2">
+                  <Sparkles className="h-4 w-4 text-orange-600" />
+                  <span className="text-sm font-medium">Assistant IA</span>
+                  <span className="text-xs text-muted-foreground">
+                    (requiert titre + prix de gros renseignés)
+                  </span>
+                </div>
+                <Input
+                  className="mb-2"
+                  placeholder="Contexte optionnel (ex: cible, URL de référence, angle marketing)…"
+                  value={aiHint}
+                  onChange={(e) => setAiHint(e.target.value)}
+                />
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={generateWithAi}
+                  disabled={generating || !form.title.trim() || !form.wholesalePrice}
+                  className="gap-2"
+                >
+                  {generating ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  ) : (
+                    <Sparkles className="h-3.5 w-3.5" />
+                  )}
+                  Générer description, tags, catégorie et prix retail
+                </Button>
+              </div>
+
               <div>
                 <Label htmlFor="description">Description</Label>
                 <textarea

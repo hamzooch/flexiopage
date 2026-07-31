@@ -64,3 +64,77 @@ export function getStripeWebhookSecret(): string | undefined {
 export function isStripeEnabled(): boolean {
   return !!STRIPE_SECRET;
 }
+
+export interface CreateCheckoutSessionInput {
+  /** Montant en devise DE FACTURATION (ex: USD, EUR, XOF). Sera converti en
+   *  la plus petite unité selon la devise (ex: cents pour USD/EUR).
+   *  Pour XOF/XAF (zero-decimal), on envoie tel quel. */
+  amount: number;
+  currency: string;
+  /** Notre reference locale (WalletTopUp.gatewayReference) — mise en metadata. */
+  clientReference: string;
+  /** Titre affiché sur la page Stripe (ex: "Recharge solde FlexioPage"). */
+  productName: string;
+  /** Email vendeur pour pré-remplir + envoyer le reçu Stripe. */
+  customerEmail?: string;
+  /** Où rediriger le vendeur après paiement (succès/annulation). */
+  successUrl: string;
+  cancelUrl: string;
+  /** Metadata additionnelle passée à Stripe (userId, bucket, etc.). */
+  metadata?: Record<string, string>;
+}
+
+/**
+ * Currencies where the amount IS the smallest unit (no cents). Stripe's list :
+ * https://docs.stripe.com/currencies#zero-decimal
+ */
+const ZERO_DECIMAL_CURRENCIES = new Set([
+  'BIF', 'CLP', 'DJF', 'GNF', 'JPY', 'KMF', 'KRW', 'MGA', 'PYG',
+  'RWF', 'UGX', 'VND', 'VUV', 'XAF', 'XOF', 'XPF',
+]);
+
+function toStripeAmount(amount: number, currency: string): number {
+  const upper = currency.toUpperCase();
+  if (ZERO_DECIMAL_CURRENCIES.has(upper)) return Math.round(amount);
+  return Math.round(amount * 100);
+}
+
+/**
+ * Crée une Stripe Checkout Session hosted (redirect vers page Stripe).
+ * Renvoie l'URL de checkout à donner au vendeur, ou null si Stripe non configuré.
+ * Utilisé par le flow top-up wallet.
+ */
+export async function createStripeCheckoutSession(
+  input: CreateCheckoutSessionInput,
+): Promise<{ sessionId: string; checkoutUrl: string } | null> {
+  const s = await getStripe();
+  if (!s) return null;
+
+  const session = await s.checkout.sessions.create({
+    mode: 'payment',
+    payment_method_types: ['card'],
+    line_items: [
+      {
+        price_data: {
+          currency: input.currency.toLowerCase(),
+          product_data: { name: input.productName },
+          unit_amount: toStripeAmount(input.amount, input.currency),
+        },
+        quantity: 1,
+      },
+    ],
+    client_reference_id: input.clientReference,
+    customer_email: input.customerEmail,
+    success_url: input.successUrl,
+    cancel_url: input.cancelUrl,
+    metadata: {
+      clientReference: input.clientReference,
+      ...input.metadata,
+    },
+  });
+
+  return {
+    sessionId: session.id,
+    checkoutUrl: session.url || '',
+  };
+}

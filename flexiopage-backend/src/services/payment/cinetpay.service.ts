@@ -129,6 +129,77 @@ export class CinetPayProvider implements PaymentProviderImpl {
     return CinetPayProvider.sdkClient;
   }
 
+  /**
+   * Initie un paiement CinetPay pour une recharge wallet vendeur (top-up).
+   * Différent de `initPayment` qui prend un IOrder : ici on n'a pas de
+   * commande, juste un montant + les infos du vendeur.
+   *
+   * `merchantReference` = notre WalletTopUp.gatewayReference (≤30 chars).
+   * Renvoie `{ checkoutUrl, transactionId }` — l'appelant persiste ces valeurs
+   * dans le doc WalletTopUp. Le webhook retrouve le top-up via transactionId.
+   */
+  async initTopUpPayment(args: {
+    merchantReference: string;
+    amount: number;
+    currency: string;
+    country: string;
+    vendorEmail: string;
+    vendorName?: string;
+    vendorPhone?: string;
+    successUrl: string;
+    cancelUrl: string;
+  }): Promise<{ checkoutUrl: string; transactionId: string }> {
+    const client = this.getClient();
+    const country = (args.country || 'CI').toUpperCase() as CountryCode;
+    const apiBase = (process.env.API_PUBLIC_URL || 'http://localhost:5051').replace(/\/$/, '');
+    const notifyUrl = process.env.CINETPAY_NOTIFY_URL || `${apiBase}/api/webhooks/cinetpay`;
+
+    // XOF/XAF doivent être multiples de 5.
+    const isCfa = ['XOF', 'XAF'].includes(args.currency.toUpperCase());
+    const amount = isCfa ? Math.round(args.amount / 5) * 5 : Math.round(args.amount);
+    const { first, last } = splitCustomerName(args.vendorName);
+
+    const request: PaymentRequest = {
+      currency: args.currency.toUpperCase() as PaymentRequest['currency'],
+      merchantTransactionId: truncateMerchantTxId(args.merchantReference),
+      amount,
+      lang: 'fr',
+      designation: `Recharge solde FlexioPage`.slice(0, 120),
+      clientEmail: args.vendorEmail,
+      clientFirstName: first,
+      clientLastName: last,
+      clientPhoneNumber: args.vendorPhone,
+      successUrl: args.successUrl.slice(0, 120),
+      failedUrl: args.cancelUrl.slice(0, 120),
+      notifyUrl: notifyUrl.slice(0, 120),
+      channel: 'PUSH' as SdkChannel,
+    };
+
+    const payment = await client.payment.initialize(request, country);
+    return {
+      checkoutUrl: payment.paymentUrl,
+      transactionId: payment.transactionId || payment.paymentToken || request.merchantTransactionId,
+    };
+  }
+
+  /**
+   * Vérifie l'état d'un top-up CinetPay en appelant `payment.getStatus()`.
+   * Utilisé par le webhook et par l'endpoint de polling côté frontend.
+   */
+  async verifyTopUpTransaction(args: {
+    merchantReference: string;
+    country: string;
+  }): Promise<'paid' | 'failed' | 'pending'> {
+    const client = this.getClient();
+    const country = (args.country || 'CI').toUpperCase() as CountryCode;
+    try {
+      const status = await client.payment.getStatus(args.merchantReference, country);
+      return mapStatus((status as { status?: string }).status);
+    } catch {
+      return 'pending';
+    }
+  }
+
   async initPayment(args: InitPaymentArgs): Promise<InitPaymentResult> {
     const client = this.getClient();
     const country = (args.order.shippingAddress?.country || 'CI').toUpperCase() as CountryCode;

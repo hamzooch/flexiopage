@@ -153,6 +153,7 @@ router.delete('/announcements/:id', requireAdminWrite, announcements.deleteAnnou
 router.get('/marketplace/products', marketplace.listProducts);
 router.get('/marketplace/products/:id', marketplace.getProduct);
 router.post('/marketplace/products', requireAdminWrite, marketplace.createProduct);
+router.post('/marketplace/products/generate', requireAdminWrite, marketplace.generateProduct);
 router.patch('/marketplace/products/:id', requireAdminWrite, marketplace.updateProduct);
 router.delete('/marketplace/products/:id', requireAdminWrite, marketplace.deleteProduct);
 

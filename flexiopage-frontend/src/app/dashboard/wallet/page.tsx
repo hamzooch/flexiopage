@@ -24,9 +24,10 @@ import {
   Loader2,
   AlertTriangle,
 } from 'lucide-react';
-import { walletApi, type WalletState, type WalletTransaction, type WalletBucket } from '@/lib/api';
+import { walletApi, type WalletState, type WalletTransaction, type WalletBucket, type TopUpGateway } from '@/lib/api';
 import { useWalletStore } from '@/stores/wallet-store';
 import { cn } from '@/lib/utils';
+import { CreditCard, Smartphone, ExternalLink, CheckCircle2, XCircle } from 'lucide-react';
 
 function fmt(amount: number, currency: string): string {
   try {
@@ -50,14 +51,16 @@ function fmtForBucket(amount: number, bucket: WalletBucket, currency: string): s
 
 function txMeta(t: WalletTransaction): { label: string; tone: 'positive' | 'negative' | 'neutral'; Icon: typeof ArrowDownToLine } {
   switch (t.kind) {
-    case 'top_up':         return { label: 'Recharge solde',       tone: 'positive', Icon: ArrowDownToLine };
-    case 'top_up_ai':      return { label: 'Recharge solde IA',    tone: 'positive', Icon: ArrowDownToLine };
-    case 'commission':     return { label: 'Commission',           tone: 'negative', Icon: ArrowUpRight };
-    case 'ai_generation':  return { label: 'Génération AI',        tone: 'negative', Icon: Sparkles };
-    case 'refund':         return { label: 'Remboursement',        tone: 'positive', Icon: ArrowDownToLine };
-    case 'adjustment':     return { label: 'Ajustement',           tone: 'neutral',  Icon: ReceiptText };
-    case 'sale_credit':    return { label: 'Vente en ligne',       tone: 'positive', Icon: ArrowDownToLine };
-    case 'payout_debit':   return { label: 'Versement au vendeur', tone: 'negative', Icon: ArrowUpRight };
+    case 'top_up':                    return { label: 'Recharge solde',       tone: 'positive', Icon: ArrowDownToLine };
+    case 'top_up_ai':                 return { label: 'Recharge solde IA',    tone: 'positive', Icon: ArrowDownToLine };
+    case 'commission':                return { label: 'Commission',           tone: 'negative', Icon: ArrowUpRight };
+    case 'ai_generation':             return { label: 'Génération AI',        tone: 'negative', Icon: Sparkles };
+    case 'refund':                    return { label: 'Remboursement',        tone: 'positive', Icon: ArrowDownToLine };
+    case 'adjustment':                return { label: 'Ajustement',           tone: 'neutral',  Icon: ReceiptText };
+    case 'sale_credit':               return { label: 'Vente en ligne',       tone: 'positive', Icon: ArrowDownToLine };
+    case 'payout_debit':              return { label: 'Versement au vendeur', tone: 'negative', Icon: ArrowUpRight };
+    case 'marketplace_debit':         return { label: 'Achat produit marketplace', tone: 'negative', Icon: ArrowUpRight };
+    case 'marketplace_debit_refund':  return { label: 'Remb. produit marketplace', tone: 'positive', Icon: ArrowDownToLine };
   }
 }
 
@@ -74,6 +77,13 @@ export default function WalletPage() {
   const [success, setSuccess] = useState('');
   const [filter, setFilter] = useState<'all' | WalletBucket>('all');
 
+  // Gateway top-up (Stripe / CinetPay) — flow séparé du manuel ci-dessus.
+  const [gateways, setGateways] = useState<TopUpGateway[]>([]);
+  const [gwAmount, setGwAmount] = useState('');
+  const [gwGateway, setGwGateway] = useState<'auto' | TopUpGateway>('auto');
+  const [gwInitiating, setGwInitiating] = useState(false);
+  const [gwMessage, setGwMessage] = useState<{ tone: 'ok' | 'err' | 'info'; text: string } | null>(null);
+
   const setStoreWallet = useWalletStore((s) => s.setWallet);
 
   async function load() {
@@ -89,6 +99,80 @@ export default function WalletPage() {
     }
   }
   useEffect(() => { load(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, []);
+
+  // Fetch les gateways disponibles pour ce vendeur (auto selon pays).
+  useEffect(() => {
+    walletApi.topUpGateways()
+      .then((r) => setGateways(r.data.gateways))
+      .catch(() => setGateways([]));
+  }, []);
+
+  // Retour de checkout ?topup=success&id=... — polling pour attendre le webhook.
+  useEffect(() => {
+    const topupParam = searchParams.get('topup');
+    const topupId = searchParams.get('id');
+    if (!topupParam || !topupId) return;
+
+    if (topupParam === 'cancel') {
+      setGwMessage({ tone: 'err', text: 'Paiement annulé.' });
+      return;
+    }
+
+    setGwMessage({ tone: 'info', text: 'Vérification du paiement en cours…' });
+    let cancelled = false;
+    let attempts = 0;
+    const poll = async () => {
+      if (cancelled) return;
+      attempts++;
+      try {
+        const { data } = await walletApi.topUpStatus(topupId);
+        if (data.topUp.status === 'paid') {
+          setGwMessage({
+            tone: 'ok',
+            text: `Recharge confirmée : +${data.topUp.amount} ${data.topUp.currency} sur le solde ${data.topUp.bucket === 'ai' ? 'IA' : 'principal'}.`,
+          });
+          await load();
+          return;
+        }
+        if (data.topUp.status === 'failed' || data.topUp.status === 'expired') {
+          setGwMessage({ tone: 'err', text: `Paiement ${data.topUp.status}.` });
+          return;
+        }
+        if (attempts < 15) setTimeout(poll, 2000);
+        else setGwMessage({ tone: 'info', text: 'Paiement toujours en attente. Le solde sera crédité automatiquement dès confirmation.' });
+      } catch {
+        if (attempts < 15) setTimeout(poll, 2000);
+      }
+    };
+    poll();
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams]);
+
+  async function handleGatewayInitiate() {
+    setGwMessage(null);
+    const value = Number(gwAmount);
+    if (!value || value <= 0) {
+      setGwMessage({ tone: 'err', text: 'Indique un montant valide.' });
+      return;
+    }
+    setGwInitiating(true);
+    try {
+      // target peut inclure 'payout' (WalletBucket) mais top-up ne gère que main/ai.
+      const bucket: 'main' | 'ai' = target === 'ai' ? 'ai' : 'main';
+      const { data } = await walletApi.topUpInitiate({
+        amount: value,
+        bucket,
+        gateway: gwGateway,
+      });
+      // Redirect vers la page hosted du gateway.
+      window.location.href = data.checkoutUrl;
+    } catch (e) {
+      const err = (e as { response?: { data?: { error?: string } } })?.response?.data?.error;
+      setGwMessage({ tone: 'err', text: err || (e as Error).message || 'Initiation échouée' });
+      setGwInitiating(false);
+    }
+  }
 
   async function handleTopup(e: React.FormEvent) {
     e.preventDefault();
@@ -209,6 +293,94 @@ export default function WalletPage() {
             >
               <Sparkles className="h-3.5 w-3.5" /> Solde IA
             </button>
+          </div>
+          {/* ── Payer en ligne (Stripe / CinetPay) ─────────────────── */}
+          {gateways.length > 0 && (
+            <div className="mb-6 rounded-xl border border-orange-500/30 bg-gradient-to-br from-orange-50/60 to-amber-50/40 p-4 dark:from-orange-950/20 dark:to-amber-950/20">
+              <div className="mb-3 flex items-center gap-2">
+                <CreditCard className="h-4 w-4 text-orange-600" />
+                <span className="text-sm font-semibold">Payer en ligne</span>
+                <span className="text-xs text-muted-foreground">
+                  Redirection sécurisée vers {gateways.includes('cinetpay') ? 'CinetPay ou Stripe' : 'Stripe'}
+                </span>
+              </div>
+              <div className="grid gap-3 sm:grid-cols-[1fr_auto_auto]">
+                <div>
+                  <Label htmlFor="gwAmount">
+                    Montant ({target === 'ai' ? 'USD' : wallet.currency})
+                  </Label>
+                  <Input
+                    id="gwAmount"
+                    type="number"
+                    inputMode="numeric"
+                    min={1}
+                    placeholder={target === 'ai' ? 'Ex: 10' : 'Ex: 10000'}
+                    value={gwAmount}
+                    onChange={(e) => setGwAmount(e.target.value)}
+                    className="mt-1"
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="gwGateway">Méthode</Label>
+                  <select
+                    id="gwGateway"
+                    className="mt-1 h-10 rounded-md border border-input bg-background px-3 text-sm"
+                    value={gwGateway}
+                    onChange={(e) => setGwGateway(e.target.value as 'auto' | TopUpGateway)}
+                  >
+                    <option value="auto">Auto (recommandé)</option>
+                    {gateways.includes('cinetpay') && (
+                      <option value="cinetpay">Mobile Money (CinetPay)</option>
+                    )}
+                    {gateways.includes('stripe') && (
+                      <option value="stripe">Carte bancaire (Stripe)</option>
+                    )}
+                  </select>
+                </div>
+                <div className="self-end">
+                  <Button
+                    type="button"
+                    onClick={handleGatewayInitiate}
+                    disabled={gwInitiating || !gwAmount}
+                    className="h-10 gap-2"
+                  >
+                    {gwInitiating ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : gwGateway === 'stripe' ? (
+                      <CreditCard className="h-4 w-4" />
+                    ) : gwGateway === 'cinetpay' ? (
+                      <Smartphone className="h-4 w-4" />
+                    ) : (
+                      <ExternalLink className="h-4 w-4" />
+                    )}
+                    Payer maintenant
+                  </Button>
+                </div>
+              </div>
+              {gwMessage && (
+                <div
+                  className={cn(
+                    'mt-3 flex items-start gap-2 rounded-md border p-2 text-sm',
+                    gwMessage.tone === 'ok' && 'border-emerald-500/40 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300',
+                    gwMessage.tone === 'err' && 'border-rose-500/40 bg-rose-500/10 text-rose-700 dark:text-rose-300',
+                    gwMessage.tone === 'info' && 'border-blue-500/40 bg-blue-500/10 text-blue-700 dark:text-blue-300',
+                  )}
+                >
+                  {gwMessage.tone === 'ok' && <CheckCircle2 className="h-4 w-4 shrink-0" />}
+                  {gwMessage.tone === 'err' && <XCircle className="h-4 w-4 shrink-0" />}
+                  {gwMessage.tone === 'info' && <Loader2 className="h-4 w-4 shrink-0 animate-spin" />}
+                  <span>{gwMessage.text}</span>
+                </div>
+              )}
+              <p className="mt-2 text-[11px] text-muted-foreground">
+                Le solde est crédité automatiquement après confirmation du paiement (quelques secondes).
+              </p>
+            </div>
+          )}
+
+          {/* ── Recharge manuelle (référence virement/mobile money) ─── */}
+          <div className="mb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+            Ou saisir une référence de paiement manuelle
           </div>
           <form onSubmit={handleTopup} className="grid gap-4 sm:grid-cols-[1fr_1fr_auto]">
             <div>

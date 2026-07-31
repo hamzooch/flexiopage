@@ -15,6 +15,14 @@ import { Payout, type PayoutMethod } from '../models/Payout.model';
 import { Store } from '../models/Store.model';
 import { Order } from '../models/Order.model';
 import { PaymentLog } from '../models/PaymentLog.model';
+import { WalletTopUp } from '../models/WalletTopUp.model';
+import {
+  initiateTopUp,
+  availableGatewaysForUser,
+  settleTopUp,
+  type TopUpGatewayChoice,
+} from '../services/topup.service';
+import { CinetPayProvider } from '../services/payment/cinetpay.service';
 
 const router = Router();
 router.use(authMiddleware);
@@ -386,6 +394,104 @@ router.post('/top-up', async (req: AuthRequest, res: Response): Promise<void> =>
 router.get('/preview-commission', async (req: AuthRequest, res: Response): Promise<void> => {
   const total = Number(req.query.total);
   res.json({ commission: commissionFor(total) });
+});
+
+// ── Recharge solde via gateway (Stripe / CinetPay) ──────────────────
+//
+// Différent du POST /top-up historique (manuel dev/admin, sans paiement) :
+// ces endpoints intègrent un vrai flow de paiement hosted. Le vendeur
+// est redirigé vers le gateway, paye, puis un webhook crédite le wallet
+// (voir topup.service.ts + webhooks.routes.ts).
+
+/** GET /api/wallet/top-up/gateways — liste les gateways dispo pour ce vendeur */
+router.get('/top-up/gateways', async (req: AuthRequest, res: Response): Promise<void> => {
+  const user = req.user;
+  if (!user) { res.status(401).json({ error: 'Unauthorized' }); return; }
+  const gateways = await availableGatewaysForUser(user);
+  res.json({ gateways });
+});
+
+/**
+ * POST /api/wallet/top-up/initiate
+ * Body: { amount, bucket?, gateway? }
+ * Renvoie: { topUpId, checkoutUrl, gateway, amount, currency }
+ */
+router.post('/top-up/initiate', async (req: AuthRequest, res: Response): Promise<void> => {
+  const user = req.user;
+  if (!user) { res.status(401).json({ error: 'Unauthorized' }); return; }
+  const body = req.body as {
+    amount?: number;
+    bucket?: 'main' | 'ai';
+    gateway?: TopUpGatewayChoice;
+  };
+  const amount = Number(body.amount);
+  if (!Number.isFinite(amount) || amount <= 0) {
+    res.status(400).json({ error: 'amount doit être > 0' });
+    return;
+  }
+  const bucket = body.bucket === 'ai' ? 'ai' : 'main';
+  const gateway: TopUpGatewayChoice = body.gateway || 'auto';
+
+  const frontendBaseUrl = (process.env.FRONTEND_URL || 'http://localhost:3000')
+    .split(',')[0]
+    .trim();
+
+  try {
+    const result = await initiateTopUp({ user, amount, bucket, gateway, frontendBaseUrl });
+    res.json(result);
+  } catch (err) {
+    res.status(400).json({ error: (err as Error).message || 'Initiation échouée' });
+  }
+});
+
+/**
+ * GET /api/wallet/top-up/:id — statut d'un top-up (polling frontend).
+ * Fait un re-check actif côté CinetPay quand encore pending (Stripe est
+ * webhook-only, pas de polling nécessaire).
+ */
+router.get('/top-up/:id', async (req: AuthRequest, res: Response): Promise<void> => {
+  const user = req.user;
+  if (!user) { res.status(401).json({ error: 'Unauthorized' }); return; }
+  if (!mongoose.isValidObjectId(req.params.id)) {
+    res.status(400).json({ error: 'Invalid id' });
+    return;
+  }
+  const topUp = await WalletTopUp.findOne({ _id: req.params.id, userId: user._id });
+  if (!topUp) { res.status(404).json({ error: 'Not found' }); return; }
+
+  // Poll actif côté CinetPay : évite de compter uniquement sur le webhook
+  // (utile si le webhook a été raté ou est en retard).
+  if (topUp.status === 'pending' && topUp.gateway === 'cinetpay') {
+    const store = await Store.findOne({ ownerId: user._id }).sort({ createdAt: 1 }).lean();
+    const country = (store?.settings?.country || 'CI').toUpperCase();
+    const status = await new CinetPayProvider().verifyTopUpTransaction({
+      merchantReference: topUp.gatewayReference,
+      country,
+    });
+    if (status === 'paid') {
+      await settleTopUp(String(topUp._id));
+      const refreshed = await WalletTopUp.findById(topUp._id).lean();
+      res.json({ topUp: refreshed });
+      return;
+    }
+    if (status === 'failed') {
+      topUp.status = 'failed';
+      await topUp.save();
+    }
+  }
+
+  res.json({ topUp: topUp.toObject() });
+});
+
+/** GET /api/wallet/top-up — historique des top-ups du vendeur (50 derniers) */
+router.get('/top-up', async (req: AuthRequest, res: Response): Promise<void> => {
+  const user = req.user;
+  if (!user) { res.status(401).json({ error: 'Unauthorized' }); return; }
+  const items = await WalletTopUp.find({ userId: user._id })
+    .sort({ createdAt: -1 })
+    .limit(50)
+    .lean();
+  res.json({ items });
 });
 
 export default router;

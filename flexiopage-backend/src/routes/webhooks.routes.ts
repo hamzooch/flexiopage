@@ -11,12 +11,24 @@ import { applyDeliveryWebhook } from '../services/delivery.service';
 import { Order, type PaymentProvider } from '../models/Order.model';
 import { logPayment } from '../models/PaymentLog.model';
 import { receiveTelegramWebhook } from '../controllers/telegram.controller';
+import { WalletTopUp } from '../models/WalletTopUp.model';
+import { settleTopUp, markTopUpFailed } from '../services/topup.service';
+import { getStripeWebhookSecret } from '../services/payment.service';
 
 const router = Router();
 
-// Providers post form-urlencoded or JSON — accept both
-router.use(express.urlencoded({ extended: true, limit: '1mb' }));
-router.use(express.json({ limit: '1mb' }));
+// Providers post form-urlencoded or JSON — accept both.
+// EXCEPTION: /stripe needs the raw body pour la vérif de signature Stripe.
+// On skip les body parsers uniquement pour ce path — sinon req.body serait
+// déjà parsé et Stripe.webhooks.constructEvent échouerait.
+router.use((req, res, next) => {
+  if (req.path === '/stripe') return next();
+  return express.urlencoded({ extended: true, limit: '1mb' })(req, res, next);
+});
+router.use((req, res, next) => {
+  if (req.path === '/stripe') return next();
+  return express.json({ limit: '1mb' })(req, res, next);
+});
 
 /**
  * Shared handler for gateway payment webhooks. Flow:
@@ -28,6 +40,42 @@ router.use(express.json({ limit: '1mb' }));
  *   4. finalizePaidOrder is idempotent → a replayed "paid" webhook never
  *      double-credits the order.
  */
+/**
+ * Détecte si le webhook CinetPay correspond à un top-up wallet vendeur (vs
+ * un ordre client). Notre convention : les top-ups ont un merchantTxId qui
+ * commence par `tu_`. On retrouve le WalletTopUp par gatewayReference et on
+ * appelle settleTopUp(). Renvoie true si le webhook a été traité comme un
+ * top-up (le handler générique n'a plus rien à faire).
+ */
+async function tryHandleTopUpWebhook(
+  providerId: PaymentProvider,
+  payload: Record<string, unknown>,
+): Promise<boolean> {
+  if (providerId !== 'cinetpay') return false;
+  const merchantTxId =
+    (typeof payload.cpm_trans_id === 'string' && payload.cpm_trans_id) ||
+    (typeof payload.merchantTransactionId === 'string' && payload.merchantTransactionId) ||
+    '';
+  if (!merchantTxId || !String(merchantTxId).startsWith('tu_')) return false;
+
+  const topUp = await WalletTopUp.findOne({ gatewayReference: merchantTxId });
+  if (!topUp) return false; // Pas notre top-up, laisser le handler générique se planter proprement.
+
+  // Re-check autoritatif : on ne fait confiance qu'au getStatus() du gateway.
+  // Ici on délègue à verifyTopUpTransaction qui a déjà cette logique.
+  const { CinetPayProvider } = await import('../services/payment/cinetpay.service');
+  const status = await new CinetPayProvider().verifyTopUpTransaction({
+    merchantReference: topUp.gatewayReference,
+    country: (payload.cpm_country as string) || 'CI',
+  });
+  if (status === 'paid') {
+    await settleTopUp(String(topUp._id));
+  } else if (status === 'failed') {
+    await markTopUpFailed(String(topUp._id), 'gateway returned failed');
+  }
+  return true;
+}
+
 async function handlePaymentWebhook(
   providerId: PaymentProvider,
   req: Request,
@@ -39,6 +87,11 @@ async function handlePaymentWebhook(
     return;
   }
   try {
+    // Court-circuit top-up : évite de faire chercher un ordre inexistant.
+    if (await tryHandleTopUpWebhook(providerId, req.body || {})) {
+      res.status(200).send('OK');
+      return;
+    }
     const result = await provider.parseWebhook(
       req.body || {},
       req.headers as Record<string, string | undefined>,
@@ -89,6 +142,72 @@ async function handlePaymentWebhook(
 
 /** POST /api/webhooks/cinetpay */
 router.post('/cinetpay', (req, res) => handlePaymentWebhook('cinetpay', req, res));
+
+/**
+ * POST /api/webhooks/stripe
+ *
+ * Uniquement utilisé pour les top-ups wallet (Stripe Checkout hosted).
+ * Nécessite le raw body pour vérifier la signature — d'où le middleware
+ * `express.raw()` ciblé, monté AVANT les express.json/urlencoded plus haut
+ * dans le fichier via une seconde route dédiée.
+ *
+ * Env : STRIPE_WEBHOOK_SECRET obligatoire (dashboard → Développeurs → Webhooks).
+ */
+router.post(
+  '/stripe',
+  express.raw({ type: 'application/json', limit: '1mb' }),
+  async (req: Request, res: Response): Promise<void> => {
+    const secret = getStripeWebhookSecret();
+    if (!secret) {
+      res.status(500).json({ error: 'STRIPE_WEBHOOK_SECRET missing' });
+      return;
+    }
+    const sig = req.headers['stripe-signature'];
+    if (!sig || typeof sig !== 'string') {
+      res.status(400).json({ error: 'Missing stripe-signature' });
+      return;
+    }
+
+    let event: { type: string; data: { object: Record<string, unknown> } };
+    try {
+      const Stripe = (await import('stripe')).default;
+      const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || '');
+      event = stripe.webhooks.constructEvent(req.body as Buffer, sig, secret) as unknown as typeof event;
+    } catch (err) {
+      console.warn('[webhook stripe] signature check failed:', (err as Error).message);
+      res.status(400).json({ error: 'Invalid signature' });
+      return;
+    }
+
+    // On ne traite QUE les events top-up. Les payments d'ordre client passent
+    // par les gateways régionaux (Moneróo/CinetPay/Flutterwave).
+    try {
+      if (event.type === 'checkout.session.completed') {
+        const session = event.data.object as {
+          id?: string;
+          client_reference_id?: string;
+          metadata?: { topUpId?: string };
+          payment_status?: string;
+        };
+        const topUpId = session.metadata?.topUpId;
+        if (topUpId && session.payment_status === 'paid') {
+          await settleTopUp(topUpId);
+        }
+      } else if (
+        event.type === 'checkout.session.expired' ||
+        event.type === 'checkout.session.async_payment_failed'
+      ) {
+        const session = event.data.object as { metadata?: { topUpId?: string } };
+        const topUpId = session.metadata?.topUpId;
+        if (topUpId) await markTopUpFailed(topUpId, event.type);
+      }
+      res.status(200).send('OK');
+    } catch (err) {
+      console.error('[webhook stripe] processing error:', (err as Error).message);
+      res.status(500).json({ error: 'Processing failed' });
+    }
+  },
+);
 
 /** POST /api/webhooks/flutterwave */
 router.post('/flutterwave', (req, res) => handlePaymentWebhook('flutterwave', req, res));

@@ -10,6 +10,8 @@ import { MarketplaceProduct } from '../models/MarketplaceProduct.model';
 import { VendorAcquisition } from '../models/VendorAcquisition.model';
 import { slugify } from '../lib/slugify';
 import { logAudit } from '../services/audit-log.service';
+import { generateMarketplaceProduct } from '../services/marketplace-ai.service';
+import type { DigitalKind } from '../models/Product.model';
 
 /** GET /api/admin/marketplace/products?q=&category=&isActive= */
 export async function listProducts(req: AuthRequest, res: Response): Promise<void> {
@@ -180,6 +182,46 @@ export async function deleteProduct(req: AuthRequest, res: Response): Promise<vo
     summary: `Marketplace: deleted ${product.title}`,
   });
   res.json({ ok: true });
+}
+
+/**
+ * POST /api/admin/marketplace/products/generate
+ * Body: { title, digitalKind, wholesalePrice, currency, hint? }
+ * Returns: { description, category, tags, suggestedRetailPrice, aiGenerated }
+ *
+ * Ne persiste RIEN — c'est un helper pour pré-remplir le formulaire de
+ * création. L'admin peut ensuite modifier avant d'envoyer le vrai POST /products.
+ */
+export async function generateProduct(req: AuthRequest, res: Response): Promise<void> {
+  const body = req.body as Record<string, unknown>;
+  const title = typeof body.title === 'string' ? body.title.trim() : '';
+  const digitalKind = typeof body.digitalKind === 'string' ? (body.digitalKind as DigitalKind) : '';
+  const wholesalePrice = Number(body.wholesalePrice);
+  const currency = typeof body.currency === 'string' ? body.currency.trim().toUpperCase() : '';
+  const hint = typeof body.hint === 'string' ? body.hint.trim() : undefined;
+
+  const validKinds: DigitalKind[] = ['download', 'course', 'license', 'membership', 'service'];
+  if (!title || !currency || !validKinds.includes(digitalKind as DigitalKind)) {
+    res.status(400).json({ error: 'title, digitalKind et currency sont requis' });
+    return;
+  }
+  if (!Number.isFinite(wholesalePrice) || wholesalePrice < 0) {
+    res.status(400).json({ error: 'wholesalePrice invalide' });
+    return;
+  }
+
+  try {
+    const generated = await generateMarketplaceProduct({
+      title,
+      digitalKind: digitalKind as DigitalKind,
+      wholesalePrice,
+      currency,
+      hint,
+    });
+    res.json(generated);
+  } catch (err) {
+    res.status(500).json({ error: (err as Error).message || 'Génération échouée' });
+  }
 }
 
 /** Génère un slug unique en suffixant -2, -3… si collision. */

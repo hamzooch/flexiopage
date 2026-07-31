@@ -179,7 +179,7 @@ export const teamApi = {
 export type WalletBucket = 'main' | 'ai' | 'payout';
 export interface WalletTransaction {
   id: string;
-  kind: 'top_up' | 'top_up_ai' | 'commission' | 'ai_generation' | 'refund' | 'adjustment' | 'sale_credit' | 'payout_debit';
+  kind: 'top_up' | 'top_up_ai' | 'commission' | 'ai_generation' | 'refund' | 'adjustment' | 'sale_credit' | 'payout_debit' | 'marketplace_debit' | 'marketplace_debit_refund';
   bucket: WalletBucket;
   amount: number;
   balanceAfter: number;
@@ -246,6 +246,26 @@ export interface Payout {
   createdAt: string;
 }
 
+export type TopUpGateway = 'stripe' | 'cinetpay';
+export type TopUpStatus = 'pending' | 'paid' | 'failed' | 'expired';
+
+export interface WalletTopUpDoc {
+  _id: string;
+  amount: number;
+  currency: string;
+  bucket: 'main' | 'ai';
+  gateway: TopUpGateway;
+  status: TopUpStatus;
+  gatewayTxId?: string;
+  gatewayReference: string;
+  checkoutUrl?: string;
+  failureReason?: string;
+  paidAt?: string;
+  expiresAt: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export const walletApi = {
   get: () => api.get<{ wallet: WalletState }>('/wallet'),
   topUp: (data: { amount: number; target?: WalletBucket; paymentReference?: string; note?: string }) =>
@@ -270,6 +290,19 @@ export const walletApi = {
   }) => api.post<{ ok: boolean; payout: Payout }>('/wallet/payouts', data),
   /** Historique des demandes de payout du vendeur. */
   listPayouts: () => api.get<{ payouts: Payout[] }>('/wallet/payouts'),
+  /** Recharge via gateway (Stripe / CinetPay). Renvoie l'URL de checkout à ouvrir. */
+  topUpGateways: () =>
+    api.get<{ gateways: TopUpGateway[] }>('/wallet/top-up/gateways'),
+  topUpInitiate: (data: { amount: number; bucket?: 'main' | 'ai'; gateway?: 'auto' | TopUpGateway }) =>
+    api.post<{
+      topUpId: string;
+      checkoutUrl: string;
+      gateway: TopUpGateway;
+      amount: number;
+      currency: string;
+    }>('/wallet/top-up/initiate', data),
+  topUpStatus: (id: string) => api.get<{ topUp: WalletTopUpDoc }>(`/wallet/top-up/${id}`),
+  topUpHistory: () => api.get<{ items: WalletTopUpDoc[] }>('/wallet/top-up'),
   /** Ventes récentes + répartition par méthode (Wave/OM/MTN/…) */
   salesBreakdown: () =>
     api.get<{
@@ -1146,6 +1179,21 @@ export const adminApi = {
     api.patch<{ product: MarketplaceProduct }>(`/admin/marketplace/products/${id}`, data),
   deleteMarketplaceProduct: (id: string) =>
     api.delete<{ ok: boolean }>(`/admin/marketplace/products/${id}`),
+  /** Génération IA (GPT) pour pré-remplir description/tags/catégorie/prix. */
+  generateMarketplaceProduct: (data: {
+    title: string;
+    digitalKind: MarketplaceDigitalKind;
+    wholesalePrice: number;
+    currency: string;
+    hint?: string;
+  }) =>
+    api.post<{
+      description: string;
+      category: string;
+      tags: string[];
+      suggestedRetailPrice: number;
+      aiGenerated: boolean;
+    }>('/admin/marketplace/products/generate', data),
 };
 
 // ── Marketplace types (shared admin + vendor) ──────────────────────────
