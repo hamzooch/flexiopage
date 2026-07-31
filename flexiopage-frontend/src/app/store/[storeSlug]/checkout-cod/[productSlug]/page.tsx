@@ -430,7 +430,7 @@ export default function CodCheckoutPage() {
 
               <div className="flex flex-wrap items-center justify-center gap-4 text-[11px] opacity-70">
                 <span className="inline-flex items-center gap-1"><Wallet className="h-3 w-3" /> Paiement à la livraison</span>
-                <span className="inline-flex items-center gap-1"><Truck className="h-3 w-3" /> Livraison 1 à 3 jours</span>
+                <span className="inline-flex items-center gap-1"><Truck className="h-3 w-3" /> Livraison dans 24h</span>
                 <span className="inline-flex items-center gap-1"><ShieldCheck className="h-3 w-3" /> Aucun prépaiement</span>
               </div>
             </form>

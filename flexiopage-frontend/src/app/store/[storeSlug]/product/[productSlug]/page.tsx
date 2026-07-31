@@ -509,7 +509,7 @@ export default async function PublicProductPage({ params }: Props) {
               {!isDigital && product.trackInventory && !product.allowBackorder && (
                 <p className="text-xs" style={{ color: (product.stock || 0) > 0 ? '#047857' : '#dc2626' }}>
                   {(product.stock || 0) > 0
-                    ? `✓ ${product.stock} en stock — livraison sous 1 à 3 jours`
+                    ? `✓ ${product.stock} en stock — livraison dans 24h`
                     : 'Rupture de stock'}
                 </p>
               )}

@@ -224,7 +224,7 @@ export default function CodThanksPage() {
             <li className="flex gap-3">
               <span className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-primary/10 text-xs font-bold text-primary">2</span>
               <div>
-                <strong>Livraison sous 1 à 3 jours</strong>
+                <strong>Livraison dans 24h</strong>
                 <p className="text-xs text-muted-foreground">À l’adresse indiquée. Tu peux refuser le colis si non conforme.</p>
               </div>
             </li>
