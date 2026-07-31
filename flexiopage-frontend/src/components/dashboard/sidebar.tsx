@@ -92,6 +92,7 @@ const SECTIONS: { titleKey: TKey; items: NavItem[] }[] = [
     items: [
       { href: '/dashboard/orders', labelKey: 'sidebar.orders', icon: ShoppingCart },
       { href: '/dashboard/products', labelKey: 'sidebar.products', icon: Package },
+      { href: '/dashboard/marketplace', labelKey: 'sidebar.marketplace', icon: Store },
       { href: '/dashboard/suppliers', labelKey: 'sidebar.suppliers', icon: Building2 },
       { href: '/dashboard/offers', labelKey: 'sidebar.offers', icon: Layers },
       { href: '/dashboard/pages', labelKey: 'sidebar.landingPages', icon: FileText },

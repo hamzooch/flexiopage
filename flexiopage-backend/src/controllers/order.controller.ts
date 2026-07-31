@@ -5,6 +5,7 @@ import { dispatchOrder } from '../services/delivery.service';
 import { Order, CONFIRMATION_STATUSES, CANCEL_REASON_CODES, type ConfirmationStatus, type CancelReasonCode } from '../models/Order.model';
 import { Product } from '../models/Product.model';
 import { logActivity } from '../services/activity-log.service';
+import { reverseMarketplaceDebitsForRefund } from '../services/seller-earnings.service';
 
 const PAYMENT_STATUSES = ['pending', 'paid', 'failed', 'refunded', 'manual'] as const;
 const FULFILLMENT_STATUSES = ['unfulfilled', 'partial', 'fulfilled', 'cancelled'] as const;
@@ -141,6 +142,9 @@ export async function updateOrderPaymentStatus(req: AuthRequest, res: Response):
     res.status(400).json({ error: 'Invalid payment status' });
     return;
   }
+  const previous = await Order.findOne({ _id: req.params.orderId, storeId: store._id })
+    .select('paymentStatus')
+    .lean();
   const updated = await orderService.updateOrderPayment(
     req.params.orderId,
     store._id.toString(),
@@ -149,6 +153,10 @@ export async function updateOrderPaymentStatus(req: AuthRequest, res: Response):
   if (!updated) {
     res.status(404).json({ error: 'Order not found' });
     return;
+  }
+  // Hook marketplace : reversal wholesale sur transition → refunded.
+  if (paymentStatus === 'refunded' && previous?.paymentStatus !== 'refunded') {
+    await reverseMarketplaceDebitsForRefund(updated).catch(() => 0);
   }
   res.json({ order: updated });
 }
@@ -293,15 +301,23 @@ export async function manualStatusOverride(req: AuthRequest, res: Response): Pro
 
   await order.save();
 
+  // Hook marketplace : si la commande passe à `refunded`, on rouvre les
+  // acquisitions settled par cette commande et on recrédite le wholesale.
+  // Idempotent — un 2e refund ne fait rien (l'acquisition est déjà active).
+  let refundedWholesale = 0;
+  if (paymentStatus === 'refunded' && before.paymentStatus !== 'refunded') {
+    refundedWholesale = await reverseMarketplaceDebitsForRefund(order).catch(() => 0);
+  }
+
   void logActivity({
     type: 'order.status_changed',
     message: `Statut commande ${order.orderNumber} : ${before.fulfillmentStatus}→${order.fulfillmentStatus}, paiement ${before.paymentStatus}→${order.paymentStatus}`,
     storeId: store._id,
     userId: store.ownerId,
-    metadata: { orderId: order._id.toString(), reason: reason || null, forced: !!force, restockedItems },
+    metadata: { orderId: order._id.toString(), reason: reason || null, forced: !!force, restockedItems, refundedWholesale },
   });
 
-  res.json({ order, restockedItems });
+  res.json({ order, restockedItems, refundedWholesale });
 }
 
 /**

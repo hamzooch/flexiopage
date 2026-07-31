@@ -34,6 +34,7 @@ import teamRoutes from './routes/team.routes';
 import notificationRoutes from './routes/notification.routes';
 import calculatorRoutes from './routes/calculator.routes';
 import internalRoutes from './routes/internal.routes';
+import marketplaceRoutes from './routes/marketplace.routes';
 import { rateLimiter } from './middleware/rateLimiter';
 
 const app = express();
@@ -209,6 +210,9 @@ app.use('/api/calculator', calculatorRoutes);
 app.use('/api/wallet', walletRoutes);
 app.use('/api/complaints', complaintRoutes);
 app.use('/api/admin', adminRoutes);
+// Marketplace browse (auth vendeur). L'acquisition est scoped-store, elle
+// est montée sous /api/stores/:storeId/marketplace/* (voir store.routes.ts).
+app.use('/api/marketplace', marketplaceRoutes);
 // Stores + nested: products, pages, orders, media at /api/stores/:storeId/*
 app.use('/api/stores', storeRoutes);
 // Async generation jobs (polling)

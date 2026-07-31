@@ -1134,6 +1134,111 @@ export const adminApi = {
     id: string,
     data: { status: 'paid' | 'rejected'; adminNote?: string; externalRef?: string },
   ) => api.patch<{ ok: boolean; payout: Payout }>(`/admin/payouts/${id}`, data),
+
+  // ── Marketplace catalog ────────────────────────────────────────────
+  listMarketplaceProducts: (params?: { q?: string; category?: string; isActive?: boolean; limit?: number }) =>
+    api.get<{ items: MarketplaceProduct[] }>('/admin/marketplace/products', { params }),
+  getMarketplaceProduct: (id: string) =>
+    api.get<{ product: MarketplaceProduct; acquisitions: number }>(`/admin/marketplace/products/${id}`),
+  createMarketplaceProduct: (data: MarketplaceProductInput) =>
+    api.post<{ product: MarketplaceProduct }>('/admin/marketplace/products', data),
+  updateMarketplaceProduct: (id: string, data: Partial<MarketplaceProductInput>) =>
+    api.patch<{ product: MarketplaceProduct }>(`/admin/marketplace/products/${id}`, data),
+  deleteMarketplaceProduct: (id: string) =>
+    api.delete<{ ok: boolean }>(`/admin/marketplace/products/${id}`),
+};
+
+// ── Marketplace types (shared admin + vendor) ──────────────────────────
+export type MarketplaceDigitalKind = 'download' | 'course' | 'license' | 'membership' | 'service';
+
+export interface MarketplaceDigitalAsset {
+  id: string;
+  name: string;
+  url: string;
+  kind?: 'file' | 'video' | 'image' | 'audio' | 'link';
+  mimeType?: string;
+  size?: number;
+  order?: number;
+}
+
+export interface MarketplaceProduct {
+  _id: string;
+  title: string;
+  slug: string;
+  description?: string;
+  category?: string;
+  digitalKind: MarketplaceDigitalKind;
+  coverImage?: string;
+  previewAssets?: MarketplaceDigitalAsset[];
+  /** Present only when fetched by an admin (côté vendeur, jamais retourné). */
+  deliverableAssets?: MarketplaceDigitalAsset[];
+  wholesalePrice: number;
+  suggestedRetailPrice?: number;
+  currency: string;
+  isActive: boolean;
+  tags?: string[];
+  stats: { acquisitions: number; totalSales: number };
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface MarketplaceProductInput {
+  title: string;
+  description?: string;
+  category?: string;
+  digitalKind: MarketplaceDigitalKind;
+  coverImage?: string;
+  previewAssets?: MarketplaceDigitalAsset[];
+  deliverableAssets?: MarketplaceDigitalAsset[];
+  wholesalePrice: number;
+  suggestedRetailPrice?: number;
+  currency: string;
+  isActive?: boolean;
+  tags?: string[];
+}
+
+export type VendorAcquisitionStatus = 'active' | 'settled' | 'refunded';
+
+export interface VendorAcquisition {
+  _id: string;
+  vendorId: string;
+  storeId: string;
+  marketplaceProductId:
+    | string
+    | {
+        _id: string;
+        title: string;
+        coverImage?: string;
+        currency: string;
+        wholesalePrice: number;
+        digitalKind: MarketplaceDigitalKind;
+      };
+  vendorProductId: string;
+  retailPrice: number;
+  currency: string;
+  status: VendorAcquisitionStatus;
+  wholesaleOwed: number;
+  firstSaleAt?: string;
+  settledAt?: string;
+  settledByOrderId?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export const marketplaceApi = {
+  // Browse global (auth vendeur).
+  list: (params?: { q?: string; category?: string; digitalKind?: MarketplaceDigitalKind; limit?: number }) =>
+    api.get<{ items: MarketplaceProduct[] }>('/marketplace/products', { params }),
+  get: (id: string) => api.get<{ product: MarketplaceProduct }>(`/marketplace/products/${id}`),
+
+  // Store-scoped.
+  listAcquisitions: (storeId: string) =>
+    api.get<{ items: VendorAcquisition[] }>(`/stores/${storeId}/marketplace/acquisitions`),
+  acquire: (storeId: string, data: { marketplaceProductId: string; retailPrice: number; publishNow?: boolean }) =>
+    api.post<{ acquisition: VendorAcquisition; product: { _id: string; slug: string; name: string } }>(
+      `/stores/${storeId}/marketplace/acquire`,
+      data,
+    ),
 };
 
 // ── Admin extras types ──

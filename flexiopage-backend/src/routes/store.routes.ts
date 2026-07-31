@@ -11,6 +11,7 @@ import * as subscriberController from '../controllers/subscriber.controller';
 import * as reviewController from '../controllers/review.controller';
 import * as abandonedCartController from '../controllers/abandoned-cart.controller';
 import * as supplierController from '../controllers/supplier.controller';
+import * as marketplaceVendorController from '../controllers/marketplace-vendor.controller';
 import { authMiddleware } from '../middleware/auth.middleware';
 import { requireStoreAccess } from '../middleware/storeAccess';
 import { sanitizeMiddleware } from '../middleware/validate';
@@ -53,6 +54,12 @@ router.post('/:storeId/products/import', productController.importCreateProduct);
 router.get('/:storeId/products/:productId', productController.getProduct);
 router.patch('/:storeId/products/:productId', productController.updateProduct);
 router.delete('/:storeId/products/:productId', productController.deleteProduct);
+
+// Marketplace — acquisition d'un produit du catalogue admin dans cette
+// boutique. Aucun débit wallet ici : la dette wholesale est prélevée à la
+// 1re vente (voir seller-earnings.service).
+router.get('/:storeId/marketplace/acquisitions', marketplaceVendorController.listAcquisitions);
+router.post('/:storeId/marketplace/acquire', marketplaceVendorController.acquire);
 
 // Suppliers (fournisseurs) — gestion sourcing pour le module stock.
 router.get('/:storeId/suppliers', supplierController.listSuppliers);

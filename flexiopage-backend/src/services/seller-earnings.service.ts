@@ -15,6 +15,8 @@ import type { IOrder } from '../models/Order.model';
 import { Store } from '../models/Store.model';
 import { Wallet } from '../models/Wallet.model';
 import { Product } from '../models/Product.model';
+import { MarketplaceProduct } from '../models/MarketplaceProduct.model';
+import { VendorAcquisition } from '../models/VendorAcquisition.model';
 import { getSettings, type IPlatformSettings } from '../models/Settings.model';
 
 /** Online providers that route money through the platform's Moneroo account. */
@@ -79,9 +81,153 @@ export async function creditSellerForPaidOrder(order: IOrder): Promise<number> {
     note: `Vente ${orderType} · commission ${(rate * 100).toFixed(1)}% (${commission} ${order.currency})`,
     createdAt: new Date(),
   });
+
+  // ── Débit marketplace (1re vente d'un produit acquis depuis le catalogue) ──
+  // On règle la dette wholesale des acquisitions encore `active` touchées
+  // par cette commande. Mêmes garanties d'idempotence : `sale_credit` bloque
+  // les double-crédits ; le passage `active → settled` bloque les double-débits
+  // wholesale même si `settleMarketplaceDebits` était re-appelé.
+  await settleMarketplaceDebits(order, targetWallet);
+
   await targetWallet.save();
 
   return netAmount;
+}
+
+/**
+ * Parcourt les items de la commande, débite `wholesaleOwed` pour chaque
+ * VendorAcquisition encore `active`, et passe l'acquisition en `settled`.
+ *
+ * Convention "dette par acquisition, pas par unité" : plusieurs quantités
+ * du même produit dans la même commande = UN seul débit. Même chose si le
+ * client rachète le produit 5 fois plus tard : la 1re vente déclenche le
+ * wholesale une bonne fois.
+ *
+ * Muté in-place sur `wallet` (le save() est fait par l'appelant après le
+ * sale_credit pour tout committer en une seule écriture). Le wallet peut
+ * passer en négatif — dette autorisée, remboursée sur ventes suivantes.
+ */
+async function settleMarketplaceDebits(
+  order: IOrder,
+  wallet: InstanceType<typeof Wallet>,
+): Promise<void> {
+  // Dédup par acquisitionId (une commande peut contenir plusieurs lignes
+  // pour le même produit ; on ne débite qu'une fois par acquisition).
+  const productIds = Array.from(
+    new Set(order.items?.map((it) => it.productId?.toString()).filter(Boolean) as string[]),
+  );
+  if (productIds.length === 0) return;
+
+  const marketplaceProducts = await Product.find({
+    _id: { $in: productIds },
+    sourceAcquisitionId: { $exists: true, $ne: null },
+  })
+    .select('sourceAcquisitionId sourceMarketplaceId name')
+    .lean();
+  if (marketplaceProducts.length === 0) return;
+
+  for (const product of marketplaceProducts) {
+    // findOneAndUpdate atomique : passe active→settled uniquement si encore
+    // active. Empêche le double-débit même en cas de rejoue concurrent du
+    // hook (webhook + retry manuel par exemple).
+    const acquisition = await VendorAcquisition.findOneAndUpdate(
+      { _id: product.sourceAcquisitionId, status: 'active' },
+      {
+        $set: {
+          status: 'settled',
+          firstSaleAt: new Date(),
+          settledAt: new Date(),
+          settledByOrderId: order._id,
+        },
+      },
+      { new: true },
+    );
+
+    // Déjà réglée (settled ou refunded) ou introuvable → on skip mais on
+    // incrémente quand même le compteur "totalSales" du catalogue.
+    if (acquisition) {
+      wallet.payoutBalance = (wallet.payoutBalance || 0) - acquisition.wholesaleOwed;
+      wallet.transactions.push({
+        id: randomUUID(),
+        kind: 'marketplace_debit',
+        bucket: 'payout',
+        amount: -acquisition.wholesaleOwed,
+        balanceAfter: wallet.payoutBalance,
+        orderId: order._id,
+        orderNumber: order.orderNumber,
+        note: `Marketplace: achat produit « ${product.name} » (${acquisition.wholesaleOwed} ${order.currency})`,
+        createdAt: new Date(),
+      });
+    }
+
+    if (product.sourceMarketplaceId) {
+      // Compteur ventes catalogue — best-effort, ne bloque pas le débit.
+      await MarketplaceProduct.updateOne(
+        { _id: product.sourceMarketplaceId },
+        { $inc: { 'stats.totalSales': 1 } },
+      ).catch(() => undefined);
+    }
+  }
+}
+
+/**
+ * Reverse les débits marketplace déclenchés par cette commande — appelé quand
+ * paymentStatus passe à `refunded`. Pour chaque VendorAcquisition marquée
+ * `settled` par cet order :
+ *   1. Recrédite `wholesaleOwed` sur le payoutBalance du vendeur
+ *   2. Enregistre une transaction `marketplace_debit_refund`
+ *   3. Repasse l'acquisition en `active` (prochaine vente re-déclenchera le débit)
+ *
+ * Idempotent : on filtre sur `settledByOrderId === order._id && status === 'settled'`
+ * de manière atomique — un 2e appel ne trouvera rien à faire.
+ */
+export async function reverseMarketplaceDebitsForRefund(order: IOrder): Promise<number> {
+  const store = await Store.findById(order.storeId).select('ownerId').lean();
+  if (!store?.ownerId) return 0;
+
+  // Toutes les acquisitions settled par CETTE commande. On les repasse en
+  // active atomiquement pour éviter le double-refund si le hook rejoue.
+  const acquisitions = await VendorAcquisition.find({
+    settledByOrderId: order._id,
+    status: 'settled',
+  });
+  if (acquisitions.length === 0) return 0;
+
+  const wallet = await Wallet.findOne({ userId: store.ownerId });
+  if (!wallet) return 0;
+
+  let totalRefunded = 0;
+  for (const acq of acquisitions) {
+    // Atomic guard : ne recrédite QUE si on est encore settled+même order.
+    const claimed = await VendorAcquisition.findOneAndUpdate(
+      { _id: acq._id, status: 'settled', settledByOrderId: order._id },
+      {
+        $set: { status: 'active' },
+        $unset: { firstSaleAt: '', settledAt: '', settledByOrderId: '' },
+      },
+      { new: true },
+    );
+    if (!claimed) continue;
+
+    wallet.payoutBalance = (wallet.payoutBalance || 0) + acq.wholesaleOwed;
+    wallet.transactions.push({
+      id: randomUUID(),
+      kind: 'marketplace_debit_refund',
+      bucket: 'payout',
+      amount: acq.wholesaleOwed,
+      balanceAfter: wallet.payoutBalance,
+      orderId: order._id,
+      orderNumber: order.orderNumber,
+      note: `Marketplace: remboursement wholesale (commande ${order.orderNumber} refundée)`,
+      createdAt: new Date(),
+    });
+    totalRefunded += acq.wholesaleOwed;
+  }
+
+  if (totalRefunded > 0) {
+    await wallet.save();
+  }
+  return totalRefunded;
 }
 
 /**

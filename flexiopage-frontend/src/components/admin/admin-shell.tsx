@@ -42,6 +42,7 @@ import {
   ChevronDown,
   Check,
   Megaphone,
+  Package,
 } from 'lucide-react';
 import { useAuthStore } from '@/stores/auth-store';
 import { cn } from '@/lib/utils';
@@ -76,6 +77,12 @@ const SECTIONS: { title: string; items: NavItem[] }[] = [
     items: [
       { href: '/admin/announcements', label: 'Annonces & actus', icon: Megaphone },
       { href: '/marketing',           label: 'Marketing Toolkit', icon: Sparkles },
+    ],
+  },
+  {
+    title: 'Marketplace',
+    items: [
+      { href: '/admin/marketplace', label: 'Catalogue produits', icon: Package },
     ],
   },
   {

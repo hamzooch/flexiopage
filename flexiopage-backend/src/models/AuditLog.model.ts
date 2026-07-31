@@ -28,7 +28,10 @@ export type AuditAction =
   | 'complaint.assign'
   | 'settings.ai_pricing'
   | 'settings.auth'
-  | 'settings.platform';
+  | 'settings.platform'
+  | 'marketplace.product_create'
+  | 'marketplace.product_update'
+  | 'marketplace.product_delete';
 
 export interface IAuditLog extends Document {
   action: AuditAction;
@@ -37,7 +40,7 @@ export interface IAuditLog extends Document {
   actorRole: string;
   /** Subject of the action — user/store/complaint id (string for flexibility). */
   targetId?: string;
-  targetType?: 'user' | 'store' | 'wallet' | 'complaint' | 'settings';
+  targetType?: 'user' | 'store' | 'wallet' | 'complaint' | 'settings' | 'marketplace_product';
   summary: string;
   /** Free-form context (before/after, amounts, reasons). */
   metadata?: Record<string, unknown>;
@@ -52,7 +55,7 @@ const AuditLogSchema = new Schema<IAuditLog>(
     actorEmail: { type: String, required: true },
     actorRole: { type: String, required: true },
     targetId: { type: String, index: true },
-    targetType: { type: String, enum: ['user', 'store', 'wallet', 'complaint', 'settings'] },
+    targetType: { type: String, enum: ['user', 'store', 'wallet', 'complaint', 'settings', 'marketplace_product'] },
     summary: { type: String, required: true },
     metadata: { type: Schema.Types.Mixed },
     ip: { type: String },

@@ -198,6 +198,14 @@ export interface IProduct extends Document {
   wowEffect?: number;
   /** Notes libres du vendeur sur le test (ex: résultats, hypothèses). */
   testNotes?: string;
+  /**
+   * Origine marketplace : quand ce Product est issu d'une acquisition du
+   * catalogue admin, on garde une référence vers le produit source ET vers
+   * l'acquisition (qui porte le statut de la dette wholesale + le prix figé
+   * à l'acquisition). Voir MarketplaceProduct + VendorAcquisition.
+   */
+  sourceMarketplaceId?: mongoose.Types.ObjectId;
+  sourceAcquisitionId?: mongoose.Types.ObjectId;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -593,6 +601,8 @@ const ProductSchema = new Schema<IProduct>(
     },
     wowEffect: { type: Number, min: 0, max: 100 },
     testNotes: { type: String, trim: true, maxlength: 2000 },
+    sourceMarketplaceId: { type: Schema.Types.ObjectId, ref: 'MarketplaceProduct' },
+    sourceAcquisitionId: { type: Schema.Types.ObjectId, ref: 'VendorAcquisition' },
   },
   { timestamps: true }
 );
@@ -603,4 +613,8 @@ ProductSchema.index({ storeId: 1, slug: 1 }, { unique: true });
 ProductSchema.index({ storeId: 1, tags: 1 });
 // Sub-index dédié à l'onglet "Produit test" — sort DESC par updatedAt.
 ProductSchema.index({ storeId: 1, isTestCandidate: 1, updatedAt: -1 });
+// Résolution rapide "quel(s) produit(s) vendeur pour ce produit marketplace ?".
+ProductSchema.index({ sourceMarketplaceId: 1 });
+// Hook de vente : retrouve l'acquisition depuis le Product en 1 lookup.
+ProductSchema.index({ sourceAcquisitionId: 1 });
 export const Product = mongoose.model<IProduct>('Product', ProductSchema);

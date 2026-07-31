@@ -23,7 +23,9 @@ export type TxKind =
   | 'refund'
   | 'adjustment'
   | 'sale_credit'    // credit to payout balance after online paid order (minus platform commission)
-  | 'payout_debit';  // debit from payout balance when a payout is marked as paid
+  | 'payout_debit'   // debit from payout balance when a payout is marked as paid
+  | 'marketplace_debit'         // debit from payout balance — 1re vente d'un produit acquis depuis le marketplace
+  | 'marketplace_debit_refund'; // credit to payout balance — remboursement de la vente qui avait déclenché le marketplace_debit
 
 /** Which sub-balance this transaction touched. */
 export type WalletBucket = 'main' | 'ai' | 'payout';
@@ -71,6 +73,11 @@ export interface IWallet extends Document {
    * Payout balance — accumulates seller earnings from online paid orders
    * (order total minus platform commission). Debited when a payout request
    * is marked as paid by an admin. In the store currency.
+   *
+   * Peut passer NÉGATIF : les débits marketplace (wholesale prélevé à la
+   * 1re vente d'un produit acquis depuis le catalogue) peuvent dépasser
+   * le solde courant. La dette se rembourse automatiquement sur les
+   * ventes suivantes.
    */
   payoutBalance: number;
   /** Embedded ledger (chronological, append-only). */
@@ -84,7 +91,18 @@ const WalletTransactionSchema = new Schema<IWalletTransaction>(
     id: { type: String, required: true },
     kind: {
       type: String,
-      enum: ['top_up', 'top_up_ai', 'commission', 'ai_generation', 'refund', 'adjustment', 'sale_credit', 'payout_debit'],
+      enum: [
+        'top_up',
+        'top_up_ai',
+        'commission',
+        'ai_generation',
+        'refund',
+        'adjustment',
+        'sale_credit',
+        'payout_debit',
+        'marketplace_debit',
+        'marketplace_debit_refund',
+      ],
       required: true,
     },
     bucket: { type: String, enum: ['main', 'ai', 'payout'], required: true, default: 'main' },
@@ -106,7 +124,8 @@ const WalletSchema = new Schema<IWallet>(
     balance: { type: Number, default: 0, min: 0 },
     aiBalance: { type: Number, default: 0, min: 0 },
     aiBalanceUnit: { type: String, enum: ['usd', 'tokens'], default: 'tokens' },
-    payoutBalance: { type: Number, default: 0, min: 0 },
+    // Pas de min:0 — la dette marketplace peut faire passer le solde en négatif.
+    payoutBalance: { type: Number, default: 0 },
     transactions: { type: [WalletTransactionSchema], default: [] },
   },
   { timestamps: true }

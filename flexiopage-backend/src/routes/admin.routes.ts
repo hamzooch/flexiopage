@@ -21,6 +21,7 @@ import * as complaint from '../controllers/complaint.controller';
 import * as payments from '../controllers/payments.controller';
 import * as payouts from '../controllers/payouts-admin.controller';
 import * as announcements from '../controllers/announcements.controller';
+import * as marketplace from '../controllers/marketplace-admin.controller';
 
 const router = Router();
 
@@ -145,5 +146,14 @@ router.patch('/announcements/:id', requireAdminWrite, announcements.updateAnnoun
 router.post('/announcements/:id/send-now', requireAdminWrite, announcements.sendAnnouncementNow);
 router.post('/announcements/:id/cancel', requireAdminWrite, announcements.cancelAnnouncement);
 router.delete('/announcements/:id', requireAdminWrite, announcements.deleteAnnouncement);
+
+// ── Marketplace catalog ─────────────────────────────────────────────
+// Lecture ouverte à tout staff. Mutations réservées admin+ (write) puisque
+// le wholesalePrice impacte directement la marge plateforme sur chaque vente.
+router.get('/marketplace/products', marketplace.listProducts);
+router.get('/marketplace/products/:id', marketplace.getProduct);
+router.post('/marketplace/products', requireAdminWrite, marketplace.createProduct);
+router.patch('/marketplace/products/:id', requireAdminWrite, marketplace.updateProduct);
+router.delete('/marketplace/products/:id', requireAdminWrite, marketplace.deleteProduct);
 
 export default router;

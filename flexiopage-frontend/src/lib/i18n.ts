@@ -82,6 +82,12 @@ const DICTIONARY = {
     en: 'Profit calculator',
     ar: 'حاسبة الأرباح',
   },
+  'sidebar.marketplace': { fr: 'Marketplace', en: 'Marketplace', ar: 'السوق' },
+  'sidebar.marketplaceAcquired': {
+    fr: 'Produits acquis',
+    en: 'Acquired products',
+    ar: 'المنتجات المكتسبة',
+  },
 
   // Sidebar — account items
   'sidebar.earnings': { fr: 'Revenus', en: 'Earnings', ar: 'الأرباح' },
