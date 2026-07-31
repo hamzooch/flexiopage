@@ -86,6 +86,24 @@ interface Props {
   radius: string;
 }
 
+/**
+ * Concatène le préfixe international du pays (`+225`) avec le numéro local
+ * saisi par le client. Le client ne tape que ses chiffres locaux (espaces/
+ * tirets tolérés) ; on renvoie une chaîne prête pour le backend et
+ * WhatsApp/notifs (ex: `+225 70 000 00 00`).
+ *
+ * Si le client copie-colle par erreur un numéro déjà avec préfixe, on ne
+ * double PAS le prefix (idempotent).
+ */
+function joinPhone(prefix: string, localPhone: string): string {
+  const cleaned = localPhone.trim();
+  if (!cleaned) return '';
+  const startsWithPlus = cleaned.startsWith('+');
+  const startsWithPrefixDigits = prefix && cleaned.replace(/\s/g, '').startsWith(prefix.replace(/\s/g, ''));
+  if (startsWithPlus || startsWithPrefixDigits) return cleaned;
+  return `${prefix} ${cleaned}`.trim();
+}
+
 /** Total price for a quantity, honoring the bundle tiers when one matches. */
 function bundleTotal(basePrice: number, bundle: ProductBundle | undefined, qty: number): number {
   if (bundle?.enabled && Array.isArray(bundle.tiers)) {
@@ -263,7 +281,7 @@ export function CodOrderForm({
       productName,
       productPrice: effectivePrice,
       name: name.trim() || undefined,
-      phone: phone.trim() || undefined,
+      phone: phone.trim() ? joinPhone(phonePrefix, phone) : undefined,
       email: email.trim() || undefined,
       city: city.trim() || undefined,
       country,
@@ -486,8 +504,8 @@ export function CodOrderForm({
             upsellIds: selectedUpsellIds.length > 0 ? selectedUpsellIds : undefined,
             email: email.trim() || `pay-${phone.replace(/\D/g, '')}@flexiopage.local`,
             customerName: name.trim(),
-            phone: phone.trim(),
-            whatsapp: showWhatsapp ? whatsapp.trim() : undefined,
+            phone: joinPhone(phonePrefix, phone),
+            whatsapp: showWhatsapp && whatsapp.trim() ? joinPhone(phonePrefix, whatsapp) : undefined,
             country,
             gateway: selectedMethod.gateway,
             method: selectedMethod.id,
@@ -538,8 +556,8 @@ export function CodOrderForm({
           ],
           email: email.trim() || `cod-${phone.replace(/\D/g, '')}@flexiopage.local`,
           customerName: name.trim(),
-          customerPhone: phone.trim(),
-          customerWhatsapp: showWhatsapp ? whatsapp.trim() : undefined,
+          customerPhone: joinPhone(phonePrefix, phone),
+          customerWhatsapp: showWhatsapp && whatsapp.trim() ? joinPhone(phonePrefix, whatsapp) : undefined,
           shippingAddress: {
             line1: line1.trim(),
             line2: showAddressLine2 ? (line2.trim() || undefined) : undefined,
@@ -602,12 +620,12 @@ export function CodOrderForm({
       {/* Identity */}
       <div className="grid gap-3 sm:grid-cols-2">
         <Field label="Nom complet *" value={name} onChange={setName} placeholder="Votre nom" theme={theme} radius={radius} />
-        <Field
+        <PhoneField
           label="Téléphone *"
           value={phone}
           onChange={setPhone}
-          type="tel"
-          placeholder={`${phonePrefix} 70 000 00 00`}
+          prefix={phonePrefix}
+          placeholder="70 000 00 00"
           theme={theme}
           radius={radius}
         />
@@ -616,12 +634,12 @@ export function CodOrderForm({
           canal de livraison (fichier, lien, accès). Pour le physique, le
           téléphone suffit — le vendeur peut y écrire sur WhatsApp au besoin. */}
       {showWhatsapp && (
-        <Field
+        <PhoneField
           label="Numéro WhatsApp * 💬"
           value={whatsapp}
           onChange={setWhatsapp}
-          type="tel"
-          placeholder={`${phonePrefix} 70 000 00 00`}
+          prefix={phonePrefix}
+          placeholder="70 000 00 00"
           theme={theme}
           radius={radius}
         />
@@ -638,20 +656,10 @@ export function CodOrderForm({
         />
       )}
 
-      {/* Address */}
-      <div>
-        <label className="mb-1 block text-xs font-medium" style={{ color: theme.muted }}>Pays *</label>
-        <select
-          value={country}
-          onChange={(e) => setCountry(e.target.value)}
-          className="h-11 w-full border bg-transparent px-3 text-sm focus:outline-none"
-          style={{ borderColor: theme.border, borderRadius: radius, backgroundColor: theme.background, color: theme.foreground }}
-        >
-          {COUNTRIES.map((c) => (
-            <option key={c.code} value={c.code}>{c.name} ({c.phonePrefix})</option>
-          ))}
-        </select>
-      </div>
+      {/* Address — le pays est auto-détecté (settings de la boutique) et
+          appliqué en interne pour l'ETA, la méthode de paiement et le
+          shippingAddress. Pas de sélecteur visible pour ne pas surcharger
+          l'UX du client final. */}
       <Field label="Adresse *" value={line1} onChange={setLine1} placeholder="N° + rue, quartier" theme={theme} radius={radius} />
       {showAddressLine2 && (
         <Field label="Complément (optionnel)" value={line2} onChange={setLine2} placeholder="Étage, repère, app…" theme={theme} radius={radius} />
@@ -1090,6 +1098,58 @@ function Field({
         className="h-11 w-full border bg-transparent px-3 text-sm focus:outline-none"
         style={{ borderColor: theme.border, borderRadius: radius, backgroundColor: theme.background, color: theme.foreground }}
       />
+    </div>
+  );
+}
+
+/**
+ * Champ téléphone avec préfixe international fixe (auto-détecté depuis le
+ * pays de la boutique). Le client ne tape que son numéro local. On strip les
+ * caractères non-numériques et on autorise juste espaces/tirets pour lisibilité.
+ * Le préfixe est concaténé à la soumission côté formulaire — pas ici — pour
+ * que l'appelant garde le contrôle du format envoyé au backend.
+ */
+function PhoneField({
+  label,
+  value,
+  onChange,
+  prefix,
+  placeholder,
+  theme,
+  radius,
+}: {
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+  prefix: string;
+  placeholder?: string;
+  theme: ThemeTokens;
+  radius: string;
+}) {
+  return (
+    <div>
+      <label className="mb-1 block text-xs font-medium" style={{ color: theme.muted }}>{label}</label>
+      <div
+        className="flex h-11 w-full items-stretch overflow-hidden border bg-transparent focus-within:outline-none"
+        style={{ borderColor: theme.border, borderRadius: radius, backgroundColor: theme.background }}
+      >
+        <span
+          className="grid shrink-0 place-items-center border-r px-3 text-sm font-medium"
+          style={{ borderColor: theme.border, color: theme.muted }}
+          aria-hidden
+        >
+          {prefix}
+        </span>
+        <input
+          type="tel"
+          inputMode="numeric"
+          value={value}
+          onChange={(e) => onChange(e.target.value.replace(/[^\d\s-]/g, ''))}
+          placeholder={placeholder}
+          className="h-full flex-1 bg-transparent px-3 text-sm focus:outline-none"
+          style={{ color: theme.foreground }}
+        />
+      </div>
     </div>
   );
 }
