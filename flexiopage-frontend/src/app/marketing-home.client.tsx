@@ -1,12 +1,15 @@
 'use client';
 
-import { useRef } from 'react';
+import { useEffect, useRef } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { motion, useInView, useReducedMotion, type Variants } from 'framer-motion';
 import { Button } from '@/components/ui/button';
 import { useCountUp } from '@/lib/use-count-up';
 import { BrandLogo } from '@/components/brand-logo';
 import { StructuredData } from '@/components/seo/StructuredData';
+import { useAuthStore } from '@/stores/auth-store';
+import { isStaff } from '@/lib/is-staff';
 
 // Mirrors the FAQ rendered inside <Faq /> so Google can index the
 // questions as rich results without scraping the React tree.
@@ -52,6 +55,28 @@ import {
  * with the OS-level "reduce motion" preference get a static page.
  */
 export default function HomePage() {
+  const router = useRouter();
+
+  // Un vendeur déjà connecté qui tape "back" depuis le dashboard atterrit ici
+  // (le login utilise `router.replace`, donc `/login` n'est plus dans
+  // l'historique — l'étape précédente est `/`). On le renvoie vers son écran
+  // d'entrée pour qu'il ne sorte pas de l'app par accident.
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const apply = () => {
+      const { token, user } = useAuthStore.getState();
+      if (token) router.replace(isStaff(user) ? '/select-space' : '/select-store');
+    };
+    if (useAuthStore.persist?.hasHydrated?.()) {
+      apply();
+      return;
+    }
+    const unsub = useAuthStore.persist?.onFinishHydration?.(apply);
+    return () => {
+      if (typeof unsub === 'function') unsub();
+    };
+  }, [router]);
+
   return (
     <div className="relative min-h-screen overflow-x-hidden bg-background text-foreground">
       {/* Soft mesh background — subtle drift for life */}
