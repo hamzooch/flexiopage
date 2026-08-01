@@ -1194,6 +1194,13 @@ export const adminApi = {
       suggestedRetailPrice: number;
       aiGenerated: boolean;
     }>('/admin/marketplace/products/generate', data),
+  uploadMarketplaceMedia: (file: File) => {
+    const form = new FormData();
+    form.append('file', file);
+    // Ne PAS forcer Content-Type ici — axios doit détecter FormData et
+    // injecter la boundary multipart lui-même (sinon multer rejette).
+    return api.post<{ url: string; key: string; size: number }>('/admin/marketplace/media', form);
+  },
 };
 
 // ── Marketplace types (shared admin + vendor) ──────────────────────────

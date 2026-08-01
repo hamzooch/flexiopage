@@ -22,6 +22,7 @@ import * as payments from '../controllers/payments.controller';
 import * as payouts from '../controllers/payouts-admin.controller';
 import * as announcements from '../controllers/announcements.controller';
 import * as marketplace from '../controllers/marketplace-admin.controller';
+import * as mediaController from '../controllers/media.controller';
 
 const router = Router();
 
@@ -156,5 +157,11 @@ router.post('/marketplace/products', requireAdminWrite, marketplace.createProduc
 router.post('/marketplace/products/generate', requireAdminWrite, marketplace.generateProduct);
 router.patch('/marketplace/products/:id', requireAdminWrite, marketplace.updateProduct);
 router.delete('/marketplace/products/:id', requireAdminWrite, marketplace.deleteProduct);
+router.post(
+  '/marketplace/media',
+  requireAdminWrite,
+  mediaController.uploadSingle,
+  marketplace.uploadMarketplaceMedia,
+);
 
 export default router;

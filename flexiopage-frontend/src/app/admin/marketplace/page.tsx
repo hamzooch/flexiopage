@@ -6,16 +6,39 @@
  *
  * Layout : liste à gauche + formulaire d'édition à droite.
  */
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { adminApi, type MarketplaceProduct, type MarketplaceDigitalKind, type MarketplaceDigitalAsset } from '@/lib/api';
-import { cn } from '@/lib/utils';
+import { adminApi, extractApiError, type MarketplaceProduct, type MarketplaceDigitalKind, type MarketplaceDigitalAsset } from '@/lib/api';
+import { cn, mediaUrl } from '@/lib/utils';
 import {
-  Loader2, Package, Plus, RefreshCw, Trash2, Save, ArrowLeft, Eye, EyeOff, X, Sparkles,
+  Loader2, Package, Plus, RefreshCw, Trash2, Save, ArrowLeft, Eye, EyeOff, X, Sparkles, Upload, Link2,
 } from 'lucide-react';
+
+/**
+ * Convertit un lien de partage Google Drive vers un lien de téléchargement
+ * direct utilisable par le storefront. Les liens de dossier et non-Drive
+ * sont retournés tels quels.
+ *   https://drive.google.com/file/d/{id}/view?usp=sharing
+ *   https://drive.google.com/open?id={id}
+ * → https://drive.google.com/uc?export=download&id={id}
+ */
+function normalizeDriveUrl(raw: string): string {
+  const url = raw.trim();
+  if (!url) return url;
+  if (!/drive\.google\.com/i.test(url)) return url;
+  // Dossier : impossible de forcer un téléchargement direct — on laisse tel quel.
+  if (/\/drive\/folders\//i.test(url)) return url;
+  const fileMatch = url.match(/\/file\/d\/([^/?#]+)/i);
+  if (fileMatch) return `https://drive.google.com/uc?export=download&id=${fileMatch[1]}`;
+  const openMatch = url.match(/[?&]id=([^&]+)/i);
+  if (/\/open\b/i.test(url) && openMatch) {
+    return `https://drive.google.com/uc?export=download&id=${openMatch[1]}`;
+  }
+  return url;
+}
 
 const DIGITAL_KINDS: { value: MarketplaceDigitalKind; label: string }[] = [
   { value: 'download', label: 'Téléchargement (fichier)' },
@@ -82,6 +105,32 @@ export default function AdminMarketplacePage() {
   const [generating, setGenerating] = useState(false);
   const [aiHint, setAiHint] = useState('');
   const [message, setMessage] = useState<{ tone: 'ok' | 'err'; text: string } | null>(null);
+  const [uploadingCover, setUploadingCover] = useState(false);
+  const [coverUploadError, setCoverUploadError] = useState('');
+  const coverInputRef = useRef<HTMLInputElement>(null);
+
+  async function handleCoverFile(file: File) {
+    if (!file.type.startsWith('image/')) {
+      setCoverUploadError(`Format non supporté (${file.type || 'inconnu'}). Choisis une image PNG, JPG, WebP ou GIF.`);
+      return;
+    }
+    setUploadingCover(true);
+    setCoverUploadError('');
+    try {
+      const { data } = await adminApi.uploadMarketplaceMedia(file);
+      setForm((f) => ({ ...f, coverImage: data.url }));
+    } catch (err) {
+      setCoverUploadError(extractApiError(err, 'Échec du téléversement.'));
+    } finally {
+      setUploadingCover(false);
+    }
+  }
+
+  function onCoverInputChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const f = e.target.files?.[0];
+    if (f) handleCoverFile(f);
+    e.target.value = '';
+  }
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -210,7 +259,7 @@ export default function AdminMarketplacePage() {
     }
   }
 
-  function addDeliverable() {
+  function addDeliverable(kind: 'file' | 'link' = 'file') {
     setForm((f) => ({
       ...f,
       deliverableAssets: [
@@ -219,7 +268,7 @@ export default function AdminMarketplacePage() {
           id: `asset_${Date.now()}`,
           name: '',
           url: '',
-          kind: 'file',
+          kind,
           order: f.deliverableAssets.length,
         },
       ],
@@ -229,7 +278,16 @@ export default function AdminMarketplacePage() {
   function updateDeliverable(idx: number, patch: Partial<MarketplaceDigitalAsset>) {
     setForm((f) => ({
       ...f,
-      deliverableAssets: f.deliverableAssets.map((a, i) => (i === idx ? { ...a, ...patch } : a)),
+      deliverableAssets: f.deliverableAssets.map((a, i) => {
+        if (i !== idx) return a;
+        const next = { ...a, ...patch };
+        // Auto-normalise les liens Drive (page de partage → téléchargement direct)
+        // uniquement pour les deliverables ajoutés via « Lien Drive ».
+        if (patch.url !== undefined && next.kind === 'link') {
+          next.url = normalizeDriveUrl(patch.url);
+        }
+        return next;
+      }),
     }));
   }
 
@@ -439,13 +497,63 @@ export default function AdminMarketplacePage() {
                 </div>
               </div>
               <div>
-                <Label htmlFor="coverImage">Image de couverture (URL)</Label>
-                <Input
-                  id="coverImage"
-                  value={form.coverImage}
-                  onChange={(e) => setForm({ ...form, coverImage: e.target.value })}
-                  placeholder="https://…"
-                />
+                <Label>Image de couverture</Label>
+                <div className="mt-1.5 flex items-start gap-3">
+                  <div className="relative h-24 w-24 shrink-0 overflow-hidden rounded-md border bg-muted">
+                    {form.coverImage ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        src={mediaUrl(form.coverImage)}
+                        alt=""
+                        className="h-full w-full object-cover"
+                      />
+                    ) : (
+                      <div className="flex h-full w-full items-center justify-center">
+                        <Package className="h-6 w-6 text-muted-foreground" />
+                      </div>
+                    )}
+                  </div>
+                  <div className="flex flex-1 flex-col gap-2">
+                    <div className="flex flex-wrap gap-2">
+                      <input
+                        ref={coverInputRef}
+                        type="file"
+                        accept="image/*"
+                        className="hidden"
+                        onChange={onCoverInputChange}
+                      />
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => coverInputRef.current?.click()}
+                        disabled={uploadingCover}
+                      >
+                        {uploadingCover ? (
+                          <><Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> Envoi…</>
+                        ) : (
+                          <><Upload className="mr-1.5 h-3.5 w-3.5" /> {form.coverImage ? 'Remplacer' : 'Choisir une image'}</>
+                        )}
+                      </Button>
+                      {form.coverImage && !uploadingCover && (
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => setForm({ ...form, coverImage: '' })}
+                        >
+                          <X className="mr-1.5 h-3.5 w-3.5" /> Retirer
+                        </Button>
+                      )}
+                    </div>
+                    {coverUploadError && (
+                      <p className="text-xs text-red-600">{coverUploadError}</p>
+                    )}
+                    <p className="text-xs text-muted-foreground">
+                      PNG, JPG ou WebP. L&apos;image est upload&eacute;e sur le stockage marketplace.
+                    </p>
+                  </div>
+                </div>
               </div>
               <div className="grid grid-cols-3 gap-3">
                 <div>
@@ -505,37 +613,57 @@ export default function AdminMarketplacePage() {
                       Ces fichiers sont partagés avec toutes les boutiques qui acquièrent ce produit.
                     </div>
                   </div>
-                  <Button variant="outline" size="sm" onClick={addDeliverable} className="gap-1">
-                    <Plus className="h-3 w-3" /> Ajouter
-                  </Button>
+                  <div className="flex items-center gap-2">
+                    <Button variant="outline" size="sm" onClick={() => addDeliverable('file')} className="gap-1">
+                      <Plus className="h-3 w-3" /> Ajouter
+                    </Button>
+                    <Button variant="outline" size="sm" onClick={() => addDeliverable('link')} className="gap-1">
+                      <Link2 className="h-3 w-3" /> Lien Drive
+                    </Button>
+                  </div>
                 </div>
                 <div className="space-y-2">
                   {form.deliverableAssets.length === 0 ? (
                     <p className="text-xs italic text-muted-foreground">Aucun fichier.</p>
                   ) : (
-                    form.deliverableAssets.map((asset, idx) => (
-                      <div key={asset.id} className="grid grid-cols-[1fr_1.5fr_auto] items-end gap-2">
-                        <Input
-                          placeholder="Nom (ex: Chapitre 1.pdf)"
-                          value={asset.name}
-                          onChange={(e) => updateDeliverable(idx, { name: e.target.value })}
-                        />
-                        <Input
-                          placeholder="URL du fichier"
-                          value={asset.url}
-                          onChange={(e) => updateDeliverable(idx, { url: e.target.value })}
-                        />
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => removeDeliverable(idx)}
-                          className="text-rose-600"
-                        >
-                          <X className="h-4 w-4" />
-                        </Button>
-                      </div>
-                    ))
+                    form.deliverableAssets.map((asset, idx) => {
+                      const isLink = asset.kind === 'link';
+                      return (
+                        <div key={asset.id} className="grid grid-cols-[auto_1fr_1.5fr_auto] items-end gap-2">
+                          <div
+                            className={cn(
+                              'flex h-10 w-10 items-center justify-center rounded-md border text-muted-foreground',
+                              isLink && 'border-blue-500/40 bg-blue-50 text-blue-600 dark:bg-blue-950/30',
+                            )}
+                            title={isLink ? 'Lien Drive / externe' : 'Fichier'}
+                          >
+                            {isLink ? <Link2 className="h-4 w-4" /> : <Package className="h-4 w-4" />}
+                          </div>
+                          <Input
+                            placeholder={isLink ? 'Nom (ex: Dossier de ressources)' : 'Nom (ex: Chapitre 1.pdf)'}
+                            value={asset.name}
+                            onChange={(e) => updateDeliverable(idx, { name: e.target.value })}
+                          />
+                          <Input
+                            placeholder={isLink ? 'https://drive.google.com/…' : 'URL du fichier'}
+                            value={asset.url}
+                            onChange={(e) => updateDeliverable(idx, { url: e.target.value })}
+                          />
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => removeDeliverable(idx)}
+                            className="text-rose-600"
+                          >
+                            <X className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      );
+                    })
                   )}
+                  <p className="text-[11px] text-muted-foreground">
+                    Les liens de partage Drive (<code>/file/d/…/view</code>) sont convertis en t&eacute;l&eacute;chargement direct automatiquement. Les liens de dossier sont laiss&eacute;s tels quels.
+                  </p>
                 </div>
               </div>
 

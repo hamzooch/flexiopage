@@ -11,7 +11,35 @@ import { VendorAcquisition } from '../models/VendorAcquisition.model';
 import { slugify } from '../lib/slugify';
 import { logAudit } from '../services/audit-log.service';
 import { generateMarketplaceProduct } from '../services/marketplace-ai.service';
+import * as storageService from '../services/storage.service';
+import { logger } from '../lib/logger';
 import type { DigitalKind } from '../models/Product.model';
+
+/**
+ * POST /api/admin/marketplace/media — upload d'une image pour le catalogue
+ * marketplace (image de couverture, deliverables). Les fichiers vont dans
+ * `marketplace/` (indépendant de tout store) et ne sont pas indexés dans
+ * la collection Media (celle-ci exige un storeId).
+ */
+export async function uploadMarketplaceMedia(req: AuthRequest, res: Response): Promise<void> {
+  const file = req.file as Express.Multer.File | undefined;
+  if (!file) {
+    res.status(400).json({ error: 'No file uploaded' });
+    return;
+  }
+  try {
+    const result = await storageService.uploadFile(
+      file.buffer,
+      file.originalname,
+      'marketplace',
+      file.mimetype
+    );
+    res.status(201).json({ url: result.url, key: result.key, size: result.size });
+  } catch (err) {
+    logger.error({ err, filename: file.originalname }, 'marketplace media upload failed');
+    res.status(500).json({ error: 'Storage failed to persist the file' });
+  }
+}
 
 /** GET /api/admin/marketplace/products?q=&category=&isActive= */
 export async function listProducts(req: AuthRequest, res: Response): Promise<void> {
