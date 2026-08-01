@@ -8,7 +8,30 @@ import {
   ProductTestStatus,
 } from '../models/Product.model';
 import mongoose from 'mongoose';
+import validator from 'validator';
 import { slugify } from '../lib/slugify';
+
+// Le `sanitizeMiddleware` global applique `validator.escape` sur toutes les
+// strings du body à l'entrée (& → &amp;, / → &#x2F;, etc.). Les produits
+// créés avant qu'on dé-escape à l'écriture ont donc leur nom / description
+// stockés avec des entities HTML, ce qui s'affiche littéralement dans React
+// (React ne décode pas les entities dans les text nodes). On dé-escape ici,
+// à la sortie du service, pour que les produits legacy s'affichent
+// correctement sans migration de données.
+function decodeDisplayText<T extends IProduct | null>(product: T): T {
+  if (!product) return product;
+  const p = product as IProduct;
+  if (typeof p.name === 'string') p.name = validator.unescape(p.name);
+  if (typeof p.description === 'string') p.description = validator.unescape(p.description);
+  if (typeof p.seoTitle === 'string') p.seoTitle = validator.unescape(p.seoTitle);
+  if (typeof p.seoDescription === 'string') p.seoDescription = validator.unescape(p.seoDescription);
+  if (Array.isArray(p.variants)) {
+    for (const v of p.variants) {
+      if (v && typeof v.name === 'string') v.name = validator.unescape(v.name);
+    }
+  }
+  return product;
+}
 
 export interface CreateProductInput {
   storeId: string;
@@ -107,15 +130,16 @@ export async function getProductsByStore(
       .lean<IProduct[]>(),
     Product.countDocuments(q),
   ]);
+  for (const p of products) decodeDisplayText(p);
   return { products, total };
 }
 
 export async function getProductById(productId: string, storeId: string): Promise<IProduct | null> {
-  return Product.findOne({ _id: productId, storeId }).lean<IProduct | null>();
+  return decodeDisplayText(await Product.findOne({ _id: productId, storeId }).lean<IProduct | null>());
 }
 
 export async function getProductBySlug(storeId: string, slug: string): Promise<IProduct | null> {
-  return Product.findOne({ storeId, slug, isPublished: true }).lean<IProduct | null>();
+  return decodeDisplayText(await Product.findOne({ storeId, slug, isPublished: true }).lean<IProduct | null>());
 }
 
 /**

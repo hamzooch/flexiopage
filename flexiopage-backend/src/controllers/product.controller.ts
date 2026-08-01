@@ -13,14 +13,16 @@ import { validateLogisticsSku } from '../lib/logistics';
 const MAX_IMPORT_IMAGES = 8;
 
 /**
- * Dé-escape les champs markdown du body. Le sanitizeMiddleware global
- * applique `validator.escape` qui transforme `/`, `&`, `<`, `>`, `"`, `'`
- * en entities HTML — fatal pour des URLs Markdown stockées dans la
- * description, qui deviennent `![](https:&#x2F;&#x2F;…)` et cassent le
- * renderer côté storefront. On défait ici, à la frontière controller →
- * service, pour les champs explicitement riches.
+ * Dé-escape les champs texte du body. Le sanitizeMiddleware global applique
+ * `validator.escape` qui transforme `/`, `&`, `<`, `>`, `"`, `'` en entities
+ * HTML — fatal pour :
+ *  - les URLs Markdown dans la description (`![](https:&#x2F;&#x2F;…)`),
+ *  - le nom affiché à l'écran (`Sac &amp; sacoche` visible tel quel dans
+ *    React, qui ne décode pas les entities dans les text nodes).
+ * On défait ici, à la frontière controller → service, pour tous les champs
+ * de texte destinés à l'affichage humain.
  */
-function unescapeMarkdown(value: unknown): string | undefined {
+function unescapeText(value: unknown): string | undefined {
   if (typeof value !== 'string') return undefined;
   return validator.unescape(value);
 }
@@ -51,8 +53,8 @@ export async function createProduct(req: AuthRequest, res: Response): Promise<vo
   }
   const product = await productService.createProduct({
     storeId,
-    name: body.name.trim(),
-    description: unescapeMarkdown(body.description),
+    name: unescapeText(body.name)!.trim(),
+    description: unescapeText(body.description),
     type: body.type || 'physical',
     price: body.price,
     compareAtPrice: body.compareAtPrice,
@@ -77,8 +79,8 @@ export async function createProduct(req: AuthRequest, res: Response): Promise<vo
     tags: Array.isArray(body.tags)
       ? body.tags.map((t: unknown) => String(t).trim().toLowerCase()).filter(Boolean)
       : undefined,
-    seoTitle: body.seoTitle,
-    seoDescription: body.seoDescription,
+    seoTitle: unescapeText(body.seoTitle),
+    seoDescription: unescapeText(body.seoDescription),
   });
   notifyRevalidate([`store:${store.slug}`, `store:${store.slug}:products`]);
   res.status(201).json({ product });
@@ -152,8 +154,8 @@ export async function importCreateProduct(req: AuthRequest, res: Response): Prom
 
   const product = await productService.createProduct({
     storeId,
-    name: body.name.trim(),
-    description: unescapeMarkdown(body.description),
+    name: unescapeText(body.name)!.trim(),
+    description: unescapeText(body.description),
     type: body.type === 'digital' ? 'digital' : 'physical',
     price: body.price,
     compareAtPrice: body.compareAtPrice,
@@ -164,8 +166,8 @@ export async function importCreateProduct(req: AuthRequest, res: Response): Prom
     tags: Array.isArray(body.tags)
       ? body.tags.map((t: unknown) => String(t).trim().toLowerCase()).filter(Boolean)
       : undefined,
-    seoTitle: body.seoTitle,
-    seoDescription: body.seoDescription,
+    seoTitle: unescapeText(body.seoTitle),
+    seoDescription: unescapeText(body.seoDescription),
   });
   notifyRevalidate([`store:${store.slug}`, `store:${store.slug}:products`]);
   res.status(201).json({ product });
@@ -223,8 +225,8 @@ export async function updateProduct(req: AuthRequest, res: Response): Promise<vo
     return;
   }
   const updated = await productService.updateProduct(productId, store._id.toString(), {
-    name: body.name,
-    description: unescapeMarkdown(body.description),
+    name: unescapeText(body.name),
+    description: unescapeText(body.description),
     type: body.type,
     price: body.price,
     compareAtPrice: body.compareAtPrice,
@@ -249,8 +251,8 @@ export async function updateProduct(req: AuthRequest, res: Response): Promise<vo
     tags: Array.isArray(body.tags)
       ? body.tags.map((t: unknown) => String(t).trim().toLowerCase()).filter(Boolean)
       : undefined,
-    seoTitle: body.seoTitle,
-    seoDescription: body.seoDescription,
+    seoTitle: unescapeText(body.seoTitle),
+    seoDescription: unescapeText(body.seoDescription),
     pageSettings: body.pageSettings,
     bundle: body.bundle,
     suppliers: body.suppliers,
