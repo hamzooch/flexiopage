@@ -664,7 +664,7 @@ export default function DashboardOrdersPage() {
                   <tr>
                     <th className="px-3 py-2.5 font-semibold sm:px-4">Commande</th>
                     <th className="px-3 py-2.5 font-semibold sm:px-4">Client</th>
-                    <th className="px-3 py-2.5 font-semibold sm:px-4">Produits</th>
+                    <th className="w-[260px] px-3 py-2.5 font-semibold sm:px-4">Produits</th>
                     <th className="px-3 py-2.5 text-right font-semibold sm:px-4">Total</th>
                     <th className="px-3 py-2.5 font-semibold sm:px-4">Paiement</th>
                     <th className="px-3 py-2.5 font-semibold sm:px-4">Statut</th>
@@ -1272,7 +1272,7 @@ function OrderCard({
         </td>
 
         {/* Produits — thumbnail + nom du 1er + « +N » */}
-        <td className="px-3 py-3 sm:px-4">
+        <td className="w-[260px] max-w-[260px] px-3 py-3 sm:px-4">
           <div className="flex items-center gap-2.5">
             <div
               className="grid h-10 w-10 shrink-0 place-items-center overflow-hidden rounded-md border border-border/60 bg-muted"
@@ -1285,8 +1285,8 @@ function OrderCard({
                 <Package className="h-4 w-4 text-muted-foreground" />
               )}
             </div>
-            <div className="min-w-0">
-              <div className="truncate text-sm font-medium">
+            <div className="min-w-0 flex-1">
+              <div className="truncate text-sm font-medium" title={o.items[0]?.name}>
                 {o.items[0]?.name || 'Produit'}
                 {o.items[0]?.quantity > 1 && <span className="ml-1 text-muted-foreground">×{o.items[0].quantity}</span>}
               </div>
