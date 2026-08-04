@@ -2,6 +2,7 @@ import { Response } from 'express';
 import validator from 'validator';
 import { AuthRequest } from '../middleware/auth.middleware';
 import * as productService from '../services/product.service';
+import type { IDigitalAsset, ICourseModule, DigitalKind } from '../models/Product.model';
 import { generateProductDescription as runProductDescription } from '../services/product-ai.service';
 import { chargeAiGeneration, getOrCreateWallet, aiCostInCurrency } from '../services/wallet.service';
 import { extractProductFromUrl, ImportError } from '../services/product-import.service';
@@ -25,6 +26,91 @@ const MAX_IMPORT_IMAGES = 8;
 function unescapeText(value: unknown): string | undefined {
   if (typeof value !== 'string') return undefined;
   return validator.unescape(value);
+}
+
+const DIGITAL_KINDS: readonly DigitalKind[] = ['download', 'course', 'license', 'membership', 'service'];
+const ASSET_KINDS: readonly IDigitalAsset['kind'][] = ['file', 'video', 'image', 'audio', 'link'];
+
+/**
+ * Convertit un lien de partage Google Drive vers un lien de téléchargement
+ * direct utilisable par le portail acheteur. Dossiers et non-Drive → inchangés.
+ *   https://drive.google.com/file/d/{id}/view?usp=sharing
+ *   https://drive.google.com/open?id={id}
+ * → https://drive.google.com/uc?export=download&id={id}
+ */
+function normalizeDriveUrl(raw: string): string {
+  const url = raw.trim();
+  if (!url || !/drive\.google\.com/i.test(url)) return url;
+  if (/\/drive\/folders\//i.test(url)) return url;
+  const fileMatch = url.match(/\/file\/d\/([^/?#]+)/i);
+  if (fileMatch) return `https://drive.google.com/uc?export=download&id=${fileMatch[1]}`;
+  const openMatch = url.match(/[?&]id=([^&]+)/i);
+  if (/\/open\b/i.test(url) && openMatch) {
+    return `https://drive.google.com/uc?export=download&id=${openMatch[1]}`;
+  }
+  return url;
+}
+
+/**
+ * Assainit le tableau `digitalAssets` envoyé par le frontend. Le
+ * sanitizeMiddleware ne récurse pas dans les arrays, donc les chaînes internes
+ * arrivent brutes (URL Drive intacte). On garde uniquement les champs connus,
+ * on force `kind` dans l'enum, et on normalise les URLs Drive pour les
+ * assets `kind: 'link'` afin que le portail puisse servir le fichier.
+ */
+function sanitizeDigitalAssets(value: unknown): IDigitalAsset[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+  const out: IDigitalAsset[] = [];
+  for (let i = 0; i < value.length; i++) {
+    const a = value[i] as Partial<IDigitalAsset> | null;
+    if (!a || typeof a !== 'object') continue;
+    const id = typeof a.id === 'string' ? a.id.trim() : '';
+    const name = typeof a.name === 'string' ? a.name.trim() : '';
+    const rawUrl = typeof a.url === 'string' ? a.url.trim() : '';
+    if (!id || !name || !rawUrl) continue;
+    const kind: IDigitalAsset['kind'] = ASSET_KINDS.includes(a.kind as IDigitalAsset['kind'])
+      ? (a.kind as IDigitalAsset['kind'])
+      : 'file';
+    const url = kind === 'link' ? normalizeDriveUrl(rawUrl) : rawUrl;
+    out.push({
+      id,
+      name,
+      url,
+      kind,
+      mimeType: typeof a.mimeType === 'string' ? a.mimeType : undefined,
+      size: typeof a.size === 'number' ? a.size : undefined,
+      durationSeconds: typeof a.durationSeconds === 'number' ? a.durationSeconds : undefined,
+      order: typeof a.order === 'number' ? a.order : i,
+    });
+  }
+  return out;
+}
+
+function sanitizeCourseModules(value: unknown): ICourseModule[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+  const out: ICourseModule[] = [];
+  for (let i = 0; i < value.length; i++) {
+    const m = value[i] as Partial<ICourseModule> | null;
+    if (!m || typeof m !== 'object') continue;
+    const id = typeof m.id === 'string' ? m.id.trim() : '';
+    const title = typeof m.title === 'string' ? m.title.trim() : '';
+    if (!id || !title) continue;
+    const lessonIds = Array.isArray(m.lessonIds)
+      ? m.lessonIds.filter((x): x is string => typeof x === 'string' && x.length > 0)
+      : [];
+    out.push({ id, title, lessonIds, order: typeof m.order === 'number' ? m.order : i });
+  }
+  return out;
+}
+
+function coerceDigitalKind(value: unknown): DigitalKind | undefined {
+  return typeof value === 'string' && (DIGITAL_KINDS as readonly string[]).includes(value)
+    ? (value as DigitalKind)
+    : undefined;
+}
+
+function coerceAccessType(value: unknown): 'lifetime' | 'limited' | undefined {
+  return value === 'lifetime' || value === 'limited' ? value : undefined;
 }
 
 export async function createProduct(req: AuthRequest, res: Response): Promise<void> {
@@ -73,6 +159,13 @@ export async function createProduct(req: AuthRequest, res: Response): Promise<vo
     images: body.images,
     digitalFileUrl: body.digitalFileUrl,
     digitalFileName: body.digitalFileName,
+    digitalKind: coerceDigitalKind(body.digitalKind),
+    digitalAssets: sanitizeDigitalAssets(body.digitalAssets),
+    courseModules: sanitizeCourseModules(body.courseModules),
+    licenseKeyTemplate: typeof body.licenseKeyTemplate === 'string' ? body.licenseKeyTemplate.trim() : undefined,
+    accessType: coerceAccessType(body.accessType),
+    accessDays: typeof body.accessDays === 'number' ? body.accessDays : undefined,
+    downloadLimit: typeof body.downloadLimit === 'number' ? body.downloadLimit : undefined,
     weight: body.weight,
     weightUnit: body.weightUnit,
     isPublished: body.isPublished ?? false,
@@ -245,6 +338,13 @@ export async function updateProduct(req: AuthRequest, res: Response): Promise<vo
     images: body.images,
     digitalFileUrl: body.digitalFileUrl,
     digitalFileName: body.digitalFileName,
+    digitalKind: coerceDigitalKind(body.digitalKind),
+    digitalAssets: sanitizeDigitalAssets(body.digitalAssets),
+    courseModules: sanitizeCourseModules(body.courseModules),
+    licenseKeyTemplate: typeof body.licenseKeyTemplate === 'string' ? body.licenseKeyTemplate.trim() : undefined,
+    accessType: coerceAccessType(body.accessType),
+    accessDays: typeof body.accessDays === 'number' ? body.accessDays : undefined,
+    downloadLimit: typeof body.downloadLimit === 'number' ? body.downloadLimit : undefined,
     weight: body.weight,
     weightUnit: body.weightUnit,
     isPublished: body.isPublished,

@@ -5,6 +5,9 @@ import {
   IProductPageSettings,
   IProductBundle,
   IProductSupplier,
+  IDigitalAsset,
+  ICourseModule,
+  DigitalKind,
   ProductTestStatus,
 } from '../models/Product.model';
 import mongoose from 'mongoose';
@@ -55,6 +58,13 @@ export interface CreateProductInput {
   images?: string[];
   digitalFileUrl?: string;
   digitalFileName?: string;
+  digitalKind?: DigitalKind;
+  digitalAssets?: IDigitalAsset[];
+  courseModules?: ICourseModule[];
+  licenseKeyTemplate?: string;
+  accessType?: 'lifetime' | 'limited';
+  accessDays?: number;
+  downloadLimit?: number;
   weight?: number;
   weightUnit?: string;
   isPublished?: boolean;
