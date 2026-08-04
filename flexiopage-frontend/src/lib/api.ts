@@ -1888,9 +1888,16 @@ export const storesApi = {
     api.post<{ supplier: import('@/types/supplier').Supplier }>(`/stores/${storeId}/suppliers/${supplierId}/restore`, {}),
   // Media
   listMedia: (storeId: string) => api.get<{ media: unknown[] }>(`/stores/${storeId}/media`),
-  uploadMedia: (storeId: string, file: File) => {
+  /**
+   * `purpose` routes the upload server-side. Default "media" keeps images
+   * on Cloudinary (transformations, WebP). "deliverable" is for digital
+   * product files (ZIP, PDF, MP4…) — routed to R2 for zero-egress
+   * delivery with proper Content-Disposition headers.
+   */
+  uploadMedia: (storeId: string, file: File, purpose: 'media' | 'deliverable' = 'media') => {
     const form = new FormData();
     form.append('file', file);
+    if (purpose !== 'media') form.append('purpose', purpose);
     // Do NOT set Content-Type manually here — axios needs to detect FormData
     // and inject the multipart boundary (`multipart/form-data; boundary=...`).
     // Setting it ourselves strips the boundary and multer rejects the body.

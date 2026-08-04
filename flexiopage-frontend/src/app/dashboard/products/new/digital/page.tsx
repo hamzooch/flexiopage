@@ -313,7 +313,7 @@ export default function NewDigitalProductPage() {
     const results = await Promise.all(
       list.map(async (file) => {
         try {
-          const res = await storesApi.uploadMedia(storeId, file);
+          const res = await storesApi.uploadMedia(storeId, file, 'deliverable');
           const data = res.data as { media?: { url?: string; mimeType?: string; size?: number } };
           if (data.media?.url) {
             const url = data.media.url.startsWith('http') ? data.media.url : base + data.media.url;

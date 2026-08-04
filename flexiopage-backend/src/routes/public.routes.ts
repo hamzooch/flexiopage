@@ -5,10 +5,12 @@
 import path from 'path';
 import fs from 'fs';
 import { Router, Request, Response } from 'express';
+import { logger } from '../lib/logger';
 import * as storeService from '../services/store.service';
 import * as productService from '../services/product.service';
 import * as pageService from '../services/page.service';
 import * as orderService from '../services/order.service';
+import * as storageService from '../services/storage.service';
 import * as collectionService from '../services/collection.service';
 import * as couponService from '../services/coupon.service';
 import * as subscriberService from '../services/subscriber.service';
@@ -1019,11 +1021,59 @@ router.get('/downloads/:token/file/:assetId', async (req: Request, res: Response
     return;
   }
 
-  // External URL (dropbox, gdrive, S3 public...) → 302 redirect. The browser
-  // will follow it with a Referer, but the seller controls the storage.
+  // RFC 5987 encoding for non-ASCII filenames — reused across branches.
+  const safeName = match.name.replace(/["\\]/g, '_');
+  const encoded = encodeURIComponent(match.name);
+
   if (/^https?:\/\//i.test(match.url)) {
-    res.redirect(302, match.url);
-    return;
+    // Cloudflare R2 URL — sign a short-lived GET URL with Content-Disposition
+    // forced to attachment. Bypasses the PDF/ZIP delivery restriction that
+    // affects Cloudinary and gives us zero egress cost on the file itself.
+    if (storageService.isR2Url(match.url)) {
+      try {
+        const target = await storageService.signR2DownloadUrl(match.url, match.name);
+        res.redirect(302, target);
+        return;
+      } catch (err) {
+        logger.error({ err, url: match.url }, '[downloads] R2 signing failed');
+        res.status(500).json({ error: 'Download unavailable — please retry' });
+        return;
+      }
+    }
+
+    // Cloudinary raw/image/video URL — inject `fl_attachment:<name>` transform
+    // so the response ships with Content-Disposition: attachment. Without it,
+    // browsers try to render the raw file inline (or, for large ZIPs on the
+    // free tier, stall the download completely). Note: still subject to the
+    // Cloudinary account's PDF/ZIP delivery restriction — new deliverables
+    // are uploaded to R2 instead. This branch handles legacy Cloudinary
+    // uploads.
+    const cloudinaryMatch = match.url.match(
+      /^(https?:\/\/res\.cloudinary\.com\/[^/]+\/(?:image|video|raw)\/upload)\/(.+)$/i,
+    );
+    if (cloudinaryMatch) {
+      // Filename passed to fl_attachment: keep it URL-safe (Cloudinary strips
+      // the extension anyway — it re-adds the real one from the resource).
+      const attachName = safeName.replace(/\.[^./]+$/, '').replace(/[^a-zA-Z0-9._-]/g, '_') || 'download';
+      const target = `${cloudinaryMatch[1]}/fl_attachment:${attachName}/${cloudinaryMatch[2]}`;
+      logger.info({ assetId, name: match.name, origin: match.url, target }, '[downloads] cloudinary redirect');
+      res.redirect(302, target);
+      return;
+    }
+    logger.info({ assetId, name: match.name, url: match.url }, '[downloads] external redirect (no cloudinary/r2 match)');
+
+    // URL points to our own /uploads/ (STORAGE_DRIVER=local hosted via API_PUBLIC_URL).
+    // Strip the base + `/uploads` prefix and fall through to the local-stream
+    // branch so we set proper attachment headers ourselves.
+    const uploadsPath = match.url.replace(/^https?:\/\/[^/]+/i, '');
+    if (/^\/uploads\//i.test(uploadsPath)) {
+      match.url = uploadsPath;
+    } else {
+      // External host we don't control (Dropbox, S3 public, Drive direct-download…).
+      // Best-effort 302 — the origin decides whether the browser saves or renders.
+      res.redirect(302, match.url);
+      return;
+    }
   }
 
   // Local file under /uploads — stream with attachment disposition.
@@ -1046,9 +1096,6 @@ router.get('/downloads/:token/file/:assetId', async (req: Request, res: Response
       res.status(404).json({ error: 'File not found on disk' });
       return;
     }
-    // RFC 5987 encoding for non-ASCII filenames.
-    const safeName = match!.name.replace(/["\\]/g, '_');
-    const encoded = encodeURIComponent(match!.name);
     res.setHeader(
       'Content-Disposition',
       `attachment; filename="${safeName}"; filename*=UTF-8''${encoded}`,

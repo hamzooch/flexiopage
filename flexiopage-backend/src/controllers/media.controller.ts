@@ -42,14 +42,22 @@ export async function uploadMedia(req: AuthRequest, res: Response): Promise<void
     res.status(400).json({ error: 'No file uploaded' });
     return;
   }
+  // "deliverable" routes digital product files (ZIP, PDF, MP4…) to R2 when
+  // configured — no PDF/ZIP restriction, zero egress cost. Anything else
+  // (images, covers) stays on the default driver (Cloudinary in prod).
+  const purpose: 'media' | 'deliverable' =
+    req.body?.purpose === 'deliverable' ? 'deliverable' : 'media';
   const storeId = store._id.toString();
-  const folder = `stores/${storeId}`;
+  const folder = purpose === 'deliverable'
+    ? `stores/${storeId}/deliverables`
+    : `stores/${storeId}`;
   try {
     const result = await storageService.uploadFile(
       file.buffer,
       file.originalname,
       folder,
-      file.mimetype
+      file.mimetype,
+      purpose
     );
     const media = await Media.create({
       storeId,

@@ -28,12 +28,14 @@
     "migrate:products-to-pricing": "tsx scripts/migrate-products-to-pricing.ts",
     "backfill:phone-key": "tsx scripts/backfill-order-phone-key.ts",
     "test:md-webhook": "tsx scripts/test-md-webhook-parse.ts",
+    "test:r2": "tsx scripts/test-r2.ts",
     "test": "vitest run",
     "test:watch": "vitest"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.97.1",
-    "@aws-sdk/client-s3": "^3.490.0",
+    "@aws-sdk/client-s3": "^3.1103.0",
+    "@aws-sdk/s3-request-presigner": "^3.1103.0",
     "axios": "^1.16.1",
     "bcryptjs": "^2.4.3",
     "bullmq": "^5.76.10",

@@ -3,6 +3,17 @@
  */
 export type StorageDriver = 'local' | 's3' | 'cloudinary';
 
+/**
+ * "media"       → images / covers / thumbnails. Served inline (browser
+ *                 renders), benefits from Cloudinary transformations.
+ * "deliverable" → digital product files (ZIP, PDF, MP4, MP3…). Must be
+ *                 served with Content-Disposition: attachment, no
+ *                 transformations needed. Routes to R2 when configured
+ *                 (zero egress fees, no PDF/ZIP delivery restriction like
+ *                 Cloudinary).
+ */
+export type UploadPurpose = 'media' | 'deliverable';
+
 export interface StorageConfig {
   driver: StorageDriver;
   localPath?: string;
@@ -15,6 +26,14 @@ export interface StorageConfig {
   cloudinaryCloudName?: string;
   cloudinaryApiKey?: string;
   cloudinaryApiSecret?: string;
+  /** Cloudflare R2 — dedicated bucket for digital deliverables. */
+  r2AccountId?: string;
+  r2Bucket?: string;
+  r2AccessKeyId?: string;
+  r2SecretAccessKey?: string;
+  /** Optional custom public domain (e.g. files.mydomain.com). Empty ⇒
+   *  fall back to the account-scoped R2 endpoint for the stored URL. */
+  r2PublicBaseUrl?: string;
 }
 
 export interface UploadResult {
