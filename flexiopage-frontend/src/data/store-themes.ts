@@ -742,9 +742,164 @@ const forge: StoreThemeTemplate = {
   }),
 };
 
+// ─────────────────────────────────────────────────────────────────────
+// 7. PRIMA — Atelier premium d'impression 3D / additive manufacturing.
+// Refonte via UI/UX Pro Max (Luxury Minimalist pairing) : Bodoni Moda
+// haute-contraste sur Jost géométrique, espresso profond + terracotta
+// (signature filament fondu) sur crème boutique. Hero éditorial asymétrique,
+// cartes éditoriales, grille 2-colonnes pour un effet "spotlight-per-piece",
+// nav centrée (marque au-dessus des liens), mur de mini-témoignages artisan,
+// footer split avec bloc newsletter. Zéro pattern — le contraste sérif suffit.
+// Cible : ateliers d'impression 3D, prototypage boutique, objets sur-mesure,
+// marques maker premium branded.
+// ─────────────────────────────────────────────────────────────────────
+const prima: StoreThemeTemplate = {
+  id: 'prima',
+  name: 'Prima',
+  tagline: 'Impression 3D · atelier premium · branding',
+  description:
+    "Espresso profond + terracotta filament sur crème boutique. Bodoni Moda haute-contraste sur Jost géométrique. Hero éditorial asymétrique, grille 2 colonnes spotlight, cartes éditoriales sans bordure, nav marque centrée, mur de mini-témoignages artisan, footer split newsletter. Pour ateliers d'impression 3D, prototypage boutique et marques maker premium qui veulent une vitrine brand.",
+  niche: 'electronics',
+  nicheLabel: 'Impression 3D & atelier',
+  forStoreTypes: ['physical'],
+  theme: makeTheme({
+    templateId: 'prima',
+    primary: '#2b1e15',            // espresso profond (plus chaud que noir)
+    primaryFg: '#f7f2ea',
+    accent: '#c8611d',             // terracotta filament — signature 3D
+    background: '#f7f2ea',         // crème boutique, papier chaud
+    surface: '#ffffff',
+    surfaceMuted: '#efe8dc',       // sable
+    foreground: '#1a120c',
+    muted: '#6b5f52',
+    border: '#e2d9c9',
+    gradientFrom: '#c8611d',
+    gradientTo: '#e79b53',         // amber sunset — halo de chauffe filament
+    fontHeading: '"Bodoni Moda", "Playfair Display", Georgia, serif',
+    fontBody: '"Jost", "Inter", system-ui, -apple-system, sans-serif',
+    fontDisplaySize: 'xlarge',
+    borderRadius: 'none',          // éditorial, précision usinée
+    spacing: 'relaxed',
+    style: 'editorial',
+    layout: {
+      hero: 'editorial',           // titre sérif asymétrique, magazine
+      productCard: 'editorial',    // sans bordure, focus produit
+      gridColumns: 2,              // spotlight-per-piece, pas de catalogue
+      nav: 'centered',             // marque au-dessus, liens sous — heritage
+      testimonials: 'wall',        // mur de mini-quotes artisan, dense
+      footer: 'split',             // colonnes + newsletter
+    },
+    pattern: 'none',               // le contraste Bodoni porte le visuel
+    shadow: 'sharp',
+    dark: false,
+  }),
+};
+
+// ─────────────────────────────────────────────────────────────────────
+// 8. AURUM — Bijoux fins, horlogerie, joaillerie. UI/UX Pro Max pairing
+// "Luxury Serif" (Cormorant + Montserrat) sur palette jet + ivoire + or
+// champagne. Hero centré lookbook (une pièce héroïsée), grille 4 colonnes
+// dense (catalogue de pièces précieuses), cartes minimales tight (le bijou
+// prend la lumière), nav centrée héritage-maison, carrousel de citations
+// presse/célébrités, footer minimal (retenue). Style 'minimal' + shadow
+// 'soft' pour l'effet éclat gemme. Coins nets, ivoire chaud.
+// ─────────────────────────────────────────────────────────────────────
+const aurum: StoreThemeTemplate = {
+  id: 'aurum',
+  name: 'Aurum',
+  tagline: 'Bijoux & horlogerie · joaillerie de luxe',
+  description:
+    "Jet + ivoire + or champagne. Cormorant élégant sur Montserrat géométrique. Hero centré lookbook, catalogue 4 colonnes dense, cartes minimales tight qui laissent respirer la pièce, nav centrée héritage-maison, carrousel presse, footer minimal. Style minimal, coins nets, éclat gemme (shadow soft). Pour joaillerie, horlogerie, orfèvrerie et marques haute-luxe.",
+  niche: 'fashion',
+  nicheLabel: 'Bijoux & horlogerie',
+  forStoreTypes: ['physical'],
+  theme: makeTheme({
+    templateId: 'aurum',
+    primary: '#0a0908',            // jet — noir de gemme
+    primaryFg: '#f7f3e9',
+    accent: '#c9a15b',             // or champagne — signature luxe
+    background: '#f7f3e9',         // ivoire chaud
+    surface: '#ffffff',
+    surfaceMuted: '#efeae0',
+    foreground: '#0a0908',
+    muted: '#7c7365',
+    border: '#e5dfd3',
+    gradientFrom: '#c9a15b',
+    gradientTo: '#e6c988',         // dégradé or vers pale gold
+    fontHeading: '"Cormorant", "Cormorant Garamond", Georgia, serif',
+    fontBody: '"Montserrat", "Inter", system-ui, sans-serif',
+    fontDisplaySize: 'large',
+    borderRadius: 'none',          // pierre taillée, chiseled
+    spacing: 'relaxed',
+    style: 'minimal',
+    layout: {
+      hero: 'centered',            // une pièce héroïsée au centre
+      productCard: 'minimal',      // tight, la pièce prend la lumière
+      gridColumns: 4,              // catalogue dense
+      nav: 'centered',             // héritage-maison, logo au-dessus
+      testimonials: 'carousel',    // presse & célébrités
+      footer: 'minimal',           // retenue, une seule ligne
+    },
+    pattern: 'none',
+    shadow: 'soft',                // éclat gemme diffus
+    dark: false,
+  }),
+};
+
+// ─────────────────────────────────────────────────────────────────────
+// 9. VINUM — Vins, spiritueux, domaines viticoles. Palette bordeaux
+// profond + crème parchemin + laiton cognac. Cinzel (capitales gravées
+// façon étiquette bouteille) sur Josefin Sans (pairing "Real Estate
+// Luxury" — élégance restraint). Hero fullbleed cellier immersif, cartes
+// overlay (bouteille + titre en surimpression), grille 3 colonnes, nav
+// bold (typo uppercase, signage cave), pattern noise pour la texture
+// papier vieilli, footer full avec newsletter allocations/millésimes.
+// ─────────────────────────────────────────────────────────────────────
+const vinum: StoreThemeTemplate = {
+  id: 'vinum',
+  name: 'Vinum',
+  tagline: 'Vins · spiritueux · domaines viticoles',
+  description:
+    "Bordeaux profond + crème parchemin + laiton cognac. Cinzel capitales gravées (façon étiquette bouteille) sur Josefin Sans. Hero fullbleed cellier immersif, cartes overlay bouteille, grille 3, nav bold uppercase (signage cave), pattern noise texture papier vieilli, footer full avec newsletter allocations. Pour domaines viticoles, cavistes, spiritueux artisanaux et boutiques premium de vins.",
+  niche: 'general',
+  nicheLabel: 'Vins & spiritueux',
+  forStoreTypes: ['physical'],
+  theme: makeTheme({
+    templateId: 'vinum',
+    primary: '#5a1a2b',            // bordeaux profond
+    primaryFg: '#faf4e6',
+    accent: '#b8894b',             // laiton cognac — étiquette dorée
+    background: '#faf4e6',         // crème parchemin
+    surface: '#ffffff',
+    surfaceMuted: '#f2e9d4',       // parchemin plus soutenu
+    foreground: '#2a1116',         // très sombre burgundy (lisible)
+    muted: '#7a6a5a',
+    border: '#e8dec6',
+    gradientFrom: '#5a1a2b',
+    gradientTo: '#b8894b',         // bordeaux vers cognac
+    fontHeading: '"Cinzel", "Trajan Pro", "Cormorant Garamond", serif',
+    fontBody: '"Josefin Sans", "Jost", system-ui, sans-serif',
+    fontDisplaySize: 'large',
+    borderRadius: 'small',
+    spacing: 'normal',
+    style: 'editorial',
+    layout: {
+      hero: 'fullbleed',           // cellier immersif edge-to-edge
+      productCard: 'overlay',      // bouteille + titre en surimpression
+      gridColumns: 3,
+      nav: 'bold',                 // uppercase épais, signage cave
+      testimonials: 'grid',        // conversion-safe pour caviste
+      footer: 'full',              // newsletter allocations + contact tastings
+    },
+    pattern: 'noise',              // texture papier vieilli
+    shadow: 'soft',
+    dark: false,
+  }),
+};
+
 export const STORE_THEME_TEMPLATES: StoreThemeTemplate[] = [
   // Physical stores
-  maison, nova, carthago, volt, atelier, bloom, forge,
+  maison, nova, carthago, volt, atelier, bloom, forge, prima, aurum, vinum,
   // Digital stores
   pulse, sage, studio, lumen,
   // Universal / multi-type
@@ -832,6 +987,16 @@ export function googleFontsHref(t: ThemeTokens): string | null {
   if (/Lora/i.test(all)) families.push('Lora:wght@400;500;600;700');
   if (/Manrope/i.test(all)) families.push('Manrope:wght@400;500;600;700;800');
   if (/Fraunces/i.test(all)) families.push('Fraunces:wght@400;500;600;700;800');
+  // Familles ajoutées pour les thèmes premium Prima/Aurum/Vinum (UI/UX Pro Max).
+  if (/Bodoni Moda/i.test(all)) families.push('Bodoni+Moda:wght@400;500;600;700;800;900');
+  if (/Jost/i.test(all)) families.push('Jost:wght@400;500;600;700');
+  if (/Cinzel/i.test(all)) families.push('Cinzel:wght@400;500;600;700;800;900');
+  if (/Josefin Sans/i.test(all)) families.push('Josefin+Sans:wght@400;500;600;700');
+  // `Cormorant` (parent) sans le suffixe — utilisée par Aurum. Distincte de la
+  // sous-famille `Cormorant Garamond` déjà whitelistée plus haut.
+  if (/\bCormorant(?!\s+(Garamond|Infant|SC|Upright))/i.test(all)) {
+    families.push('Cormorant:wght@400;500;600;700');
+  }
   if (families.length === 0) return null;
   return `https://fonts.googleapis.com/css2?${families.map((f) => `family=${f}`).join('&')}&display=swap`;
 }
