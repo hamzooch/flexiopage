@@ -16,6 +16,12 @@ export interface User {
   teamRole?: TeamRole;
   /** True quand le seller a cliqué sur le lien Resend de confirmation. */
   emailVerified?: boolean;
+  /**
+   * Override admin du nombre max de boutiques pour ce compte. Absent = limite
+   * globale (4 par défaut côté backend). Mis à jour par l'admin depuis
+   * /admin/store-limits et rafraîchi à chaque nav via AuthGuard → /auth/me.
+   */
+  storeLimit?: number;
 }
 
 /**

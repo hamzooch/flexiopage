@@ -29,6 +29,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useStoreStore } from '@/stores/store-store';
+import { useAuthStore } from '@/stores/auth-store';
 import { storesApi } from '@/lib/api';
 import { CreateStoreWizard } from '@/components/dashboard/create-store-wizard';
 import { cn, mediaUrl, publicStoreUrl } from '@/lib/utils';
@@ -49,13 +50,15 @@ interface StoreDoc {
 type StatusFilter = 'all' | 'live' | 'draft';
 type TypeFilter = 'all' | 'physical' | 'digital';
 
-const MAX_STORES = 4;
-
 export default function MyStoresPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const currentStoreId = useStoreStore((s) => s.currentStoreId);
   const setCurrentStore = useStoreStore((s) => s.setCurrentStore);
+  // Limite par-compte : override admin (`user.storeLimit`) sinon défaut aligné
+  // avec le backend (`STORE_LIMIT_PER_USER`, 4 par défaut).
+  const authUser = useAuthStore((s) => s.user);
+  const MAX_STORES = typeof authUser?.storeLimit === 'number' ? authUser.storeLimit : 4;
 
   const [stores, setStores] = useState<StoreDoc[]>([]);
   const [loading, setLoading] = useState(true);
