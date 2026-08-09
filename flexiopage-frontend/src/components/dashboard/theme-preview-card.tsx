@@ -33,6 +33,7 @@ import {
   Play,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { lockBodyScroll } from '@/lib/scroll-lock';
 
 interface CardProps {
   template: StoreThemeTemplate;
@@ -1122,17 +1123,16 @@ function ModalFooter({ template, storeName }: { template: StoreThemeTemplate; st
 }
 
 export function ThemePreviewModal({ template, onClose, onUse }: ModalProps) {
-  // Lock scroll + Escape to close
+  // Lock scroll via gestionnaire partagé + Escape pour fermer.
   useEffect(() => {
     if (!template) return;
-    const prevOverflow = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
+    const releaseLock = lockBodyScroll();
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') onClose();
     };
     window.addEventListener('keydown', onKey);
     return () => {
-      document.body.style.overflow = prevOverflow;
+      releaseLock();
       window.removeEventListener('keydown', onKey);
     };
   }, [template, onClose]);

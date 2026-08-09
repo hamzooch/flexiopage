@@ -38,6 +38,7 @@ import {
   Banknote,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { lockBodyScroll } from '@/lib/scroll-lock';
 import { useAuthStore, readPersistedUser, type TeamRole } from '@/stores/auth-store';
 import { useStoreStore } from '@/stores/store-store';
 import { BrandLogo } from '@/components/brand-logo';
@@ -194,11 +195,14 @@ export function Sidebar({ mobileOpen = false, onMobileClose }: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pathname]);
 
-  // Lock body scroll when drawer is open
+  // Lock body scroll when drawer is open. Coordinated via `lockBodyScroll()`
+  // pour ne pas stomp les autres locks (modals Radix, preview theme, galerie
+  // photo) qui pouvaient coexister — cause historique du bug scroll bloqué
+  // qui « revenait » à chaque nouvelle modif ajoutant un modal.
   useEffect(() => {
-    if (typeof document === 'undefined') return;
-    document.body.style.overflow = mobileOpen ? 'hidden' : '';
-    return () => { document.body.style.overflow = ''; };
+    if (!mobileOpen) return;
+    const release = lockBodyScroll();
+    return release;
   }, [mobileOpen]);
 
   return (

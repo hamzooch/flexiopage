@@ -19,6 +19,7 @@ import Image from 'next/image';
 import { X, ChevronLeft, ChevronRight } from 'lucide-react';
 import { mediaUrl, discountBadgeAnimClass, type DiscountBadgeAnimation } from '@/lib/utils';
 import { IMAGE_BLUR_DATA_URL } from '@/lib/image-placeholder';
+import { lockBodyScroll } from '@/lib/scroll-lock';
 import type { ThemeTokens } from '@/data/store-themes';
 import { WishlistButton } from '@/components/storefront/wishlist-button';
 
@@ -122,12 +123,11 @@ export function ProductGallery({
       else if (e.key === 'ArrowLeft') setActiveIndex((i) => Math.max(i - 1, 0));
     };
     window.addEventListener('keydown', onKey);
-    // Lock body scroll while the lightbox is open.
-    const prevOverflow = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
+    // Lock body scroll via le gestionnaire partagé (refcount + classe CSS).
+    const releaseLock = lockBodyScroll();
     return () => {
       window.removeEventListener('keydown', onKey);
-      document.body.style.overflow = prevOverflow;
+      releaseLock();
     };
   }, [lightboxOpen, totalImages]);
 

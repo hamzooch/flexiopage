@@ -20,6 +20,18 @@ html {
 body {
   overflow-x: clip;
 }
+/*
+ * Verrou de scroll partagé — piloté par `src/lib/scroll-lock.ts`. La classe
+ * est appliquée sur le body quand au moins un composant (sidebar drawer,
+ * modal preview, galerie photo, etc.) demande le lock. `!important` pour
+ * survivre à un inline `body.style.overflow = ''` posé par Radix lors de
+ * la fermeture d'un de ses propres dialogues — sans ça, le scroll se
+ * débloquait dès qu'un dialogue confirm fermait, même si un drawer ou un
+ * autre modal était encore ouvert.
+ */
+body.scroll-locked {
+  overflow: hidden !important;
+}
 
 @layer base {
   :root {
