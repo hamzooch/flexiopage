@@ -21,6 +21,12 @@ import { BotstoreWidget, type BotstoreConfig } from '@/components/storefront/bot
 import { NewsletterPopup, type NewsletterConfig } from '@/components/storefront/newsletter-popup';
 import { SalesPopup, type SalesPopupConfig } from '@/components/storefront/sales-popup';
 import { LocaleBootstrap } from '@/components/storefront/locale-bootstrap';
+import {
+  googleFontsHref,
+  resolveStoreTheme,
+  tokensToCssVars,
+  type ThemeTokens,
+} from '@/data/store-themes';
 
 interface Props {
   children: React.ReactNode;
@@ -42,6 +48,12 @@ interface StoreLite {
   favicon?: string;
   logo?: string;
   slug?: string;
+  /**
+   * Palette + typo choisies par le vendeur. Optionnel (les vieilles boutiques
+   * n'ont rien), et volontairement `Partial` : `resolveStoreTheme` sait
+   * gérer les palettes fully-custom comme les simples `templateId` sauvegardés.
+   */
+  theme?: Partial<ThemeTokens>;
   settings?: {
     whatsapp?: WhatsappConfig;
     botstore?: BotstoreConfig;
@@ -173,10 +185,24 @@ export default async function StoreLayout({ children, params }: Props) {
   // éviter deux bulles flottantes qui se chevauchent. Quand le Botstore est
   // actif, il porte lui-même le CTA WhatsApp (fallback dans la conversation).
   const botstoreActive = !!store?.settings?.botstore?.enabled;
+
+  // Résout le thème une fois pour tout le groupe de routes `/store/<slug>/*`
+  // et pose les CSS custom properties (`--th-*`) sur un wrapper qui englobe
+  // TOUTES les pages enfants (home, produit, checkout, cart, wishlist,
+  // pages custom). Ainsi le panier et la wishlist — qui n'appelaient jamais
+  // `tokensToCssVars` eux-mêmes — héritent aussi de la palette du vendeur.
+  // Les pages qui ré-injectent leurs propres tokens sur un `<div>` interne
+  // continuent de fonctionner (override local sur ce sous-arbre, harmless).
+  const theme = resolveStoreTheme(store);
+  const fontsUrl = googleFontsHref(theme);
+
   return (
     <>
+      {fontsUrl && <link rel="stylesheet" href={fontsUrl} />}
       <LocaleBootstrap storeSlug={storeSlug} defaultLocale={store?.settings?.language} />
-      {children}
+      <div style={tokensToCssVars(theme)}>
+        {children}
+      </div>
       {botstoreActive ? (
         <BotstoreWidget
           storeSlug={storeSlug}

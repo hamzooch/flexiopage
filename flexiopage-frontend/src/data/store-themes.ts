@@ -929,6 +929,28 @@ export function withLayoutFallback(theme: ThemeTokens): ThemeTokens {
   return { ...theme, layout: base.layout };
 }
 
+/**
+ * Resolve the theme for a store, in this order:
+ *   1. Fully customized palette (has primary/background/foreground) → used verbatim
+ *      with layout backfilled from the matching template.
+ *   2. Named template referenced by `templateId` → template's canonical theme.
+ *   3. Safe fallback → first template in the registry.
+ *
+ * Shared by the storefront layout (so cart / wishlist / checkout inherit the
+ * theme automatically) and every page-level renderer. Accepts a loose store
+ * shape so the layout can call it without importing the page's full StoreDoc.
+ */
+export function resolveStoreTheme(
+  store: { theme?: Partial<ThemeTokens> } | null | undefined
+): ThemeTokens {
+  const saved = store?.theme;
+  if (saved && saved.primary && saved.background && saved.foreground) {
+    return withLayoutFallback(saved as ThemeTokens);
+  }
+  const found = STORE_THEME_TEMPLATES.find((t) => t.id === saved?.templateId);
+  return found?.theme || STORE_THEME_TEMPLATES[0].theme;
+}
+
 // Tailwind-friendly radius mapping (used by storefront)
 export const RADIUS_PX: Record<ThemeRadius, string> = {
   none: '0px',
@@ -939,8 +961,44 @@ export const RADIUS_PX: Record<ThemeRadius, string> = {
 };
 
 /**
+ * Convert a hex color to the "H S% L%" triplet format shadcn/tailwind expects
+ * (e.g. `22 92% 52%`, no `hsl()` wrapper — the utility config adds it). Used
+ * to rewrite the shadcn palette from the seller's theme so tailwind classes
+ * like `text-primary`, `bg-card`, `border-border` pick up the theme colors
+ * on pages (cart, wishlist, checkout) that don't inject theme tokens inline.
+ */
+function hexToHslTriplet(hex: string): string {
+  const [r255, g255, b255] = hexToRgb(hex);
+  const r = r255 / 255, g = g255 / 255, b = b255 / 255;
+  const max = Math.max(r, g, b), min = Math.min(r, g, b);
+  const l = (max + min) / 2;
+  let h = 0, s = 0;
+  if (max !== min) {
+    const d = max - min;
+    s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+    switch (max) {
+      case r: h = ((g - b) / d + (g < b ? 6 : 0)); break;
+      case g: h = ((b - r) / d + 2); break;
+      case b: h = ((r - g) / d + 4); break;
+    }
+    h *= 60;
+  }
+  return `${Math.round(h)} ${Math.round(s * 100)}% ${Math.round(l * 100)}%`;
+}
+
+/**
  * Convert a theme to a flat record of CSS custom properties for inline style.
  * Apply on the storefront root: <div style={tokensToCssVars(theme)}>…</div>
+ *
+ * Emits two families of variables:
+ *   1. `--th-*` — bespoke tokens read directly by themed storefront components
+ *      via inline `style` or `var(--th-primary)` references.
+ *   2. shadcn/tailwind palette (`--background`, `--foreground`, `--primary`,
+ *      `--card`, `--border`, `--muted`, `--accent`, `--ring`, `--radius`) —
+ *      overridden with HSL triplets derived from the theme so utility classes
+ *      (`text-primary`, `bg-card`, `border-border`) get re-tinted automatically
+ *      for any page that lives under the storefront layout, INCLUDING pages
+ *      that never call `tokensToCssVars` themselves (cart, wishlist, checkout).
  */
 export function tokensToCssVars(t: ThemeTokens): CSSProperties {
   return {
@@ -958,6 +1016,25 @@ export function tokensToCssVars(t: ThemeTokens): CSSProperties {
     ['--th-font-heading' as string]: t.fontHeading,
     ['--th-font-body' as string]: t.fontBody,
     ['--th-radius' as string]: RADIUS_PX[t.borderRadius],
+    // ── shadcn / tailwind palette (HSL triplets, sans wrapper hsl()) ──
+    ['--background' as string]: hexToHslTriplet(t.background),
+    ['--foreground' as string]: hexToHslTriplet(t.foreground),
+    ['--primary' as string]: hexToHslTriplet(t.primary),
+    ['--primary-foreground' as string]: hexToHslTriplet(t.primaryFg),
+    ['--card' as string]: hexToHslTriplet(t.surface),
+    ['--card-foreground' as string]: hexToHslTriplet(t.foreground),
+    ['--popover' as string]: hexToHslTriplet(t.surface),
+    ['--popover-foreground' as string]: hexToHslTriplet(t.foreground),
+    ['--secondary' as string]: hexToHslTriplet(t.surfaceMuted),
+    ['--secondary-foreground' as string]: hexToHslTriplet(t.foreground),
+    ['--muted' as string]: hexToHslTriplet(t.surfaceMuted),
+    ['--muted-foreground' as string]: hexToHslTriplet(t.muted),
+    ['--accent' as string]: hexToHslTriplet(t.accent),
+    ['--accent-foreground' as string]: hexToHslTriplet(t.primaryFg),
+    ['--border' as string]: hexToHslTriplet(t.border),
+    ['--input' as string]: hexToHslTriplet(t.border),
+    ['--ring' as string]: hexToHslTriplet(t.primary),
+    ['--radius' as string]: RADIUS_PX[t.borderRadius],
     fontFamily: t.fontBody,
     backgroundColor: t.background,
     color: t.foreground,
