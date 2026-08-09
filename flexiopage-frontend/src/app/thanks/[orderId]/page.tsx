@@ -19,6 +19,12 @@ import Link from 'next/link';
 import { Loader2, CheckCircle2, AlertCircle, Sparkles } from 'lucide-react';
 import { MarketingPixels, type MarketingConfig } from '@/components/storefront/MarketingPixels';
 import { TrackEvent } from '@/components/storefront/TrackEvent';
+import {
+  googleFontsHref,
+  resolveStoreTheme,
+  tokensToCssVars,
+  type ThemeTokens,
+} from '@/data/store-themes';
 
 const API_BASE = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000').replace(/\/$/, '');
 
@@ -30,6 +36,12 @@ interface StatusPayload {
   total: number;
   currency: string;
   mockMode?: boolean;
+  store?: {
+    name?: string;
+    slug?: string;
+    logo?: string;
+    theme?: Partial<ThemeTokens>;
+  } | null;
 }
 
 function fmtPrice(n: number, currency: string): string {
@@ -99,8 +111,21 @@ export default function ThanksPage() {
   const isFailed = status?.paymentStatus === 'failed';
   const isMock = status?.mockMode || simulate;
 
+  // Thème du vendeur — même identité visuelle qu'ailleurs sur la boutique.
+  // Fallback sur le gradient fuchsia par défaut si le store n'est pas connu.
+  const theme = status?.store ? resolveStoreTheme(status.store) : null;
+  const fontsUrl = theme ? googleFontsHref(theme) : null;
+
   return (
-    <div className="grid min-h-screen place-items-center bg-gradient-to-br from-fuchsia-50 via-background to-indigo-50/30 px-3 py-8 dark:from-fuchsia-950/10 dark:via-background dark:to-indigo-950/10 sm:px-4 sm:py-10">
+    <div
+      className={
+        theme
+          ? 'grid min-h-screen place-items-center px-3 py-8 sm:px-4 sm:py-10'
+          : 'grid min-h-screen place-items-center bg-gradient-to-br from-fuchsia-50 via-background to-indigo-50/30 px-3 py-8 dark:from-fuchsia-950/10 dark:via-background dark:to-indigo-950/10 sm:px-4 sm:py-10'
+      }
+      style={theme ? tokensToCssVars(theme) : undefined}
+    >
+      {fontsUrl && <link rel="stylesheet" href={fontsUrl} />}
       <div className="w-full max-w-md text-center">
         {isFailed ? (
           <FailedView orderId={orderId} />

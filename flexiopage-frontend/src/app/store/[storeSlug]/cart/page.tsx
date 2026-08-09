@@ -28,22 +28,44 @@ import {
   type CartItem,
 } from '@/lib/cart';
 
+const API_BASE = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5001').replace(/\/$/, '');
+
+/** Sous-ensemble éditable des textes de la page panier (mirror `CartPageSettings`). */
+interface CartPageOverrides {
+  title?: string;
+  emptyTitle?: string;
+  emptyMessage?: string;
+  emptyCtaLabel?: string;
+  checkoutCtaLabel?: string;
+  reassurance?: string;
+}
+
 export default function CartPage() {
   const params = useParams();
   const storeSlug = params.storeSlug as string;
   const confirm = useConfirm();
   const [items, setItems] = useState<CartItem[]>([]);
   const [mounted, setMounted] = useState(false);
+  const [cp, setCp] = useState<CartPageOverrides>({});
 
   const refresh = useCallback(() => setItems(getCart(storeSlug)), [storeSlug]);
 
   useEffect(() => {
     setMounted(true);
     refresh();
+    // Fetch les overrides textes une seule fois. Non bloquant — si la fetch
+    // rate, on tombe simplement sur les libellés par défaut du composant.
+    fetch(`${API_BASE}/api/public/store-by-slug/${storeSlug}`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        const settings = data?.store?.settings as { cartPage?: CartPageOverrides } | undefined;
+        if (settings?.cartPage) setCp(settings.cartPage);
+      })
+      .catch(() => {});
     // Re-render when another tab or component mutates the cart.
     window.addEventListener('flexio:cart', refresh);
     return () => window.removeEventListener('flexio:cart', refresh);
-  }, [refresh]);
+  }, [refresh, storeSlug]);
 
   function setQty(productId: string, variantName: string | undefined, q: number) {
     updateCartQty(storeSlug, productId, variantName, q);
@@ -89,8 +111,8 @@ export default function CartPage() {
           </div>
           <h1 className="mt-2 text-2xl font-extrabold tracking-tight sm:text-4xl">
             {items.length === 0
-              ? 'Panier vide'
-              : `${itemCount} article${itemCount > 1 ? 's' : ''}`}
+              ? (cp.emptyTitle || 'Panier vide')
+              : (cp.title || `${itemCount} article${itemCount > 1 ? 's' : ''}`)}
           </h1>
           <p className="mt-1 text-sm text-muted-foreground">
             Le panier reste sur ton navigateur jusqu&apos;à ce que tu passes commande.
@@ -109,7 +131,7 @@ export default function CartPage() {
       </header>
 
       {items.length === 0 ? (
-        <EmptyState storeSlug={storeSlug} />
+        <EmptyState storeSlug={storeSlug} overrides={cp} />
       ) : (
         <div className="mt-8 grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(280px,360px)]">
           {/* LEFT — items list */}
@@ -227,7 +249,7 @@ export default function CartPage() {
                 href={`/${storeSlug}/cart/checkout`}
                 className="inline-flex h-12 w-full items-center justify-center gap-2 rounded-md bg-gradient-to-r from-primary to-fuchsia-600 px-4 text-sm font-bold text-white shadow-md transition-transform hover:scale-[1.01]"
               >
-                Passer commande
+                {cp.checkoutCtaLabel || 'Passer commande'}
                 <ArrowRight className="h-4 w-4" />
               </Link>
               <Link
@@ -238,7 +260,7 @@ export default function CartPage() {
                 Continuer mes achats
               </Link>
               <p className="text-center text-[11px] text-muted-foreground">
-                Paiement à la livraison · pas de prépaiement
+                {cp.reassurance || 'Paiement à la livraison · pas de prépaiement'}
               </p>
             </div>
           </aside>
@@ -248,20 +270,20 @@ export default function CartPage() {
   );
 }
 
-function EmptyState({ storeSlug }: { storeSlug: string }) {
+function EmptyState({ storeSlug, overrides }: { storeSlug: string; overrides: CartPageOverrides }) {
   return (
     <div className="mt-10 rounded-2xl border border-dashed border-border/60 bg-card/40 p-12 text-center">
       <ShoppingBag className="mx-auto h-12 w-12 text-muted-foreground" />
-      <p className="mt-4 text-lg font-semibold">Aucun article dans le panier</p>
+      <p className="mt-4 text-lg font-semibold">{overrides.emptyTitle || 'Aucun article dans le panier'}</p>
       <p className="mx-auto mt-1 max-w-md text-sm text-muted-foreground">
-        Parcours la boutique et ajoute des produits — ils s&apos;empilent ici pour une commande unique.
+        {overrides.emptyMessage || "Parcours la boutique et ajoute des produits — ils s'empilent ici pour une commande unique."}
       </p>
       <Link
         href={`/${storeSlug}`}
         className="mt-6 inline-flex items-center gap-1.5 rounded-md bg-gradient-to-r from-primary to-fuchsia-600 px-5 py-2.5 text-sm font-bold text-white shadow-md"
       >
         <ShoppingBag className="h-3.5 w-3.5" />
-        Voir les produits
+        {overrides.emptyCtaLabel || 'Voir les produits'}
       </Link>
     </div>
   );

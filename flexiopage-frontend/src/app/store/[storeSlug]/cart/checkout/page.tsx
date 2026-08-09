@@ -29,6 +29,13 @@ import type { CouponValidationResponse } from '@/types/coupon';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
 
+/** Textes personnalisables de la page (mirror `CheckoutPageSettings`). */
+interface CheckoutPageOverrides {
+  title?: string;
+  reassurance?: string;
+  submitLabel?: string;
+}
+
 const COUNTRIES: { code: string; name: string; phonePrefix: string }[] = [
   { code: 'SN', name: 'Sénégal',   phonePrefix: '+221' },
   { code: 'CI', name: 'Côte d’Ivoire', phonePrefix: '+225' },
@@ -55,6 +62,7 @@ export default function CartCheckoutPage() {
 
   const [items, setItems] = useState<CartItem[]>([]);
   const [mounted, setMounted] = useState(false);
+  const [co, setCo] = useState<CheckoutPageOverrides>({});
 
   // Identity + address
   const [name, setName] = useState('');
@@ -81,7 +89,15 @@ export default function CartCheckoutPage() {
   useEffect(() => {
     setMounted(true);
     refresh();
-  }, [refresh]);
+    // Fetch textes checkoutPage — non bloquant.
+    fetch(`${API_BASE}/api/public/store-by-slug/${storeSlug}`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        const settings = data?.store?.settings as { checkoutPage?: CheckoutPageOverrides } | undefined;
+        if (settings?.checkoutPage) setCo(settings.checkoutPage);
+      })
+      .catch(() => {});
+  }, [refresh, storeSlug]);
 
   const currency = items[0]?.currency || 'TND';
   const subtotal = items.reduce((s, i) => s + i.price * i.quantity, 0);
@@ -208,10 +224,10 @@ export default function CartCheckoutPage() {
         Retour au panier
       </Link>
       <h1 className="mt-2 text-2xl font-extrabold tracking-tight sm:text-3xl">
-        Finaliser ma commande
+        {co.title || 'Finaliser ma commande'}
       </h1>
       <p className="mt-0.5 text-sm text-muted-foreground">
-        Paiement à la livraison · pas de prépaiement
+        {co.reassurance || 'Paiement à la livraison · pas de prépaiement'}
       </p>
 
       <div className="mt-6 grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(300px,380px)]">
@@ -274,7 +290,7 @@ export default function CartCheckoutPage() {
             ) : (
               <>
                 <Wallet className="h-5 w-5" />
-                Confirmer la commande · {formatCurrency(total, currency)}
+                {co.submitLabel || 'Confirmer la commande'} · {formatCurrency(total, currency)}
               </>
             )}
           </button>

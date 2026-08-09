@@ -123,6 +123,32 @@ export interface IStore extends Document {
       message?: string;
       /** Label du bouton retour boutique. Défaut "Continuer sur <nom boutique>". */
       ctaLabel?: string;
+      /** Afficher la carte récapitulative (livraison + articles + total). Défaut true. */
+      showOrderRecap?: boolean;
+      /** Afficher la carte "Prochaines étapes" (confirmation, livraison, paiement). Défaut true. */
+      showNextSteps?: boolean;
+    };
+    /**
+     * Textes personnalisables de la page Panier (`/store/<slug>/cart`).
+     * Tous optionnels — vides = fallback sur les textes par défaut. Le style
+     * (couleurs, typo, radius) vient du thème appliqué au layout storefront.
+     */
+    cartPage?: {
+      title?: string;             // défaut "Ton panier"
+      emptyTitle?: string;        // défaut "Ton panier est vide"
+      emptyMessage?: string;      // texte sous le titre vide
+      emptyCtaLabel?: string;     // défaut "Découvrir la boutique"
+      checkoutCtaLabel?: string;  // défaut "Passer commande"
+      reassurance?: string;       // ligne optionnelle sous le récap
+    };
+    /**
+     * Textes personnalisables de la page Checkout (paiement/finalisation).
+     * S'applique aussi bien au checkout direct produit qu'au checkout panier.
+     */
+    checkoutPage?: {
+      title?: string;             // défaut "Finaliser ta commande"
+      reassurance?: string;       // ligne au-dessus du bouton
+      submitLabel?: string;       // défaut "Confirmer la commande"
     };
     /**
      * Welcome popup that collects an email lead on first visit. When a
@@ -694,6 +720,21 @@ const StoreSchema = new Schema<IStore>(
         subtitle: { type: String, trim: true },
         message: { type: String, trim: true },
         ctaLabel: { type: String, trim: true },
+        showOrderRecap: { type: Boolean, default: true },
+        showNextSteps: { type: Boolean, default: true },
+      },
+      cartPage: {
+        title: { type: String, trim: true },
+        emptyTitle: { type: String, trim: true },
+        emptyMessage: { type: String, trim: true },
+        emptyCtaLabel: { type: String, trim: true },
+        checkoutCtaLabel: { type: String, trim: true },
+        reassurance: { type: String, trim: true },
+      },
+      checkoutPage: {
+        title: { type: String, trim: true },
+        reassurance: { type: String, trim: true },
+        submitLabel: { type: String, trim: true },
       },
       newsletter: {
         enabled: { type: Boolean, default: false },

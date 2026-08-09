@@ -17,6 +17,12 @@ import { CheckCircle2, Home, Loader2, Phone, Truck, Wallet } from 'lucide-react'
 import { formatCurrency, mediaUrl } from '@/lib/utils';
 import { MarketingPixels, type MarketingConfig } from '@/components/storefront/MarketingPixels';
 import { TrackEvent } from '@/components/storefront/TrackEvent';
+import {
+  googleFontsHref,
+  resolveStoreTheme,
+  tokensToCssVars,
+  type ThemeTokens,
+} from '@/data/store-themes';
 
 const API_BASE = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5001').replace(/\/$/, '');
 
@@ -52,11 +58,15 @@ interface StoreBrand {
   favicon?: string;
   customDomain?: string;
   customDomainVerified?: boolean;
+  /** Thème actif de la boutique — appliqué à cette page pour cohérence post-achat. */
+  theme?: Partial<ThemeTokens>;
   thanksPage?: {
     title?: string;
     subtitle?: string;
     message?: string;
     ctaLabel?: string;
+    showOrderRecap?: boolean;
+    showNextSteps?: boolean;
   };
 }
 
@@ -137,8 +147,27 @@ export default function CodThanksPage() {
   const ship = order.shippingAddress || {};
   const dispatched = !!order.delivery?.provider;
 
+  // Toggles sections — par défaut on affiche tout. Le vendeur peut cacher
+  // via /dashboard/stores/[storeId] → bloc « Page Merci ».
+  const showOrderRecap = store?.thanksPage?.showOrderRecap !== false;
+  const showNextSteps = store?.thanksPage?.showNextSteps !== false;
+
+  // Thème actif — cette page vit HORS du groupe /store/[slug]/*, donc le
+  // layout storefront ne l'atteint pas. On résout le thème localement pour
+  // que la page merci porte la même identité visuelle que le storefront.
+  const theme = store ? resolveStoreTheme(store) : null;
+  const fontsUrl = theme ? googleFontsHref(theme) : null;
+
   return (
-    <div className="min-h-screen bg-gradient-to-br from-emerald-50 via-background to-amber-50/30 dark:from-emerald-950/10 dark:via-background dark:to-amber-950/10">
+    <div
+      className={
+        theme
+          ? 'min-h-screen'
+          : 'min-h-screen bg-gradient-to-br from-emerald-50 via-background to-amber-50/30 dark:from-emerald-950/10 dark:via-background dark:to-amber-950/10'
+      }
+      style={theme ? tokensToCssVars(theme) : undefined}
+    >
+      {fontsUrl && <link rel="stylesheet" href={fontsUrl} />}
       <MarketingPixels config={marketing} />
       <TrackEvent
         payload={{
@@ -210,7 +239,8 @@ export default function CodThanksPage() {
           </div>
         </div>
 
-        {/* Next steps */}
+        {/* Next steps — cachable via `store.thanksPage.showNextSteps = false` */}
+        {showNextSteps && (
         <div className="mt-6 rounded-2xl border border-border bg-card p-5">
           <h2 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">Prochaines étapes</h2>
           <ol className="mt-3 space-y-3 text-sm">
@@ -237,8 +267,10 @@ export default function CodThanksPage() {
             </li>
           </ol>
         </div>
+        )}
 
-        {/* Order recap */}
+        {/* Order recap — cachable via `store.thanksPage.showOrderRecap = false` */}
+        {showOrderRecap && (
         <div className="mt-6 grid gap-6 sm:grid-cols-2">
           <div className="rounded-2xl border border-border bg-card p-5">
             <h3 className="flex items-center gap-2 text-sm font-semibold">
@@ -291,6 +323,7 @@ export default function CodThanksPage() {
             </div>
           </div>
         </div>
+        )}
 
         <div className="mt-8 flex flex-col items-center gap-3 sm:flex-row sm:justify-center">
           {store?.slug && (

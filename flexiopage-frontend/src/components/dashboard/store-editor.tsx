@@ -76,6 +76,33 @@ export interface ThanksPageSettings {
   subtitle?: string;
   message?: string;
   ctaLabel?: string;
+  /** Afficher la carte récapitulative (livraison + articles + total). Défaut true. */
+  showOrderRecap?: boolean;
+  /** Afficher la carte "Prochaines étapes". Défaut true. */
+  showNextSteps?: boolean;
+}
+
+/**
+ * Textes personnalisables de la page Panier. Tous optionnels — vides = fallback
+ * sur les textes par défaut. Le style vient du thème actif.
+ */
+export interface CartPageSettings {
+  title?: string;
+  emptyTitle?: string;
+  emptyMessage?: string;
+  emptyCtaLabel?: string;
+  checkoutCtaLabel?: string;
+  reassurance?: string;
+}
+
+/**
+ * Textes personnalisables de la page Checkout — s'applique au checkout direct
+ * produit ET au checkout panier.
+ */
+export interface CheckoutPageSettings {
+  title?: string;
+  reassurance?: string;
+  submitLabel?: string;
 }
 
 export interface CodFormSettings {
@@ -298,6 +325,8 @@ export interface StoreType {
     storefront?: StorefrontSettings;
     whatsapp?: WhatsappSettings;
     thanksPage?: ThanksPageSettings;
+    cartPage?: CartPageSettings;
+    checkoutPage?: CheckoutPageSettings;
   };
   integrations?: {
     delivery?: DeliveryIntegration;

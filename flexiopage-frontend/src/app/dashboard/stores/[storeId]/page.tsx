@@ -77,6 +77,9 @@ import {
   ChevronDown,
   PanelLeftClose,
   PanelLeftOpen,
+  ShoppingBag,
+  Receipt,
+  PartyPopper,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -104,6 +107,9 @@ import type {
   FAQSettings,
   FAQItemSettings,
   RichTextSettings,
+  ThanksPageSettings,
+  CartPageSettings,
+  CheckoutPageSettings,
 } from '@/components/dashboard/store-editor';
 import { FieldToggle, FooterEditor } from '@/components/dashboard/store-editor';
 import { useConfirm, usePrompt } from '@/components/ui/confirm-dialog';
@@ -183,6 +189,9 @@ const BLOCKS: BlockDef[] = [
   { id: 'cod',       label: 'Formulaire COD', icon: Wallet,     group: 'conversion', mode: 'inline', hint: 'Champs du paiement à la livraison.', physicalOnly: true },
   { id: 'whatsapp',  label: 'Bouton WhatsApp', icon: MessageCircle, group: 'conversion', mode: 'inline', hint: 'Bulle flottante à droite.' },
   { id: 'product-page', label: 'Page produit', icon: Tag,       group: 'conversion', mode: 'inline', hint: 'Toggles + ordre des sections produit.' },
+  { id: 'cart-page', label: 'Page Panier',   icon: ShoppingBag,   group: 'conversion', mode: 'inline', hint: 'Textes de la page panier — titre, vide, CTA.' },
+  { id: 'checkout-page', label: 'Page Checkout', icon: Receipt,   group: 'conversion', mode: 'inline', hint: 'Titre, réassurance et libellé du bouton final.' },
+  { id: 'thanks-page', label: 'Page Merci',  icon: PartyPopper,   group: 'conversion', mode: 'inline', hint: 'Message post-achat + toggles récap/étapes.' },
   // Footer
   { id: 'footer',    label: 'Footer',       icon: PanelBottom,  group: 'footer', mode: 'inline', hint: 'Contact, colonnes, signature.' },
   { id: 'info-pages', label: 'Pages d\'information', icon: FileText, group: 'footer', mode: 'inline', hint: 'CGV, FAQ, Contact, Confidentialité.' },
@@ -779,6 +788,9 @@ function BlockList({
       else if (p === 'whatsapp')     set.add('whatsapp');
       else if (p === 'codForm')      set.add('cod');
       else if (p === 'productPage')  set.add('product-page');
+      else if (p === 'cartPage')     set.add('cart-page');
+      else if (p === 'checkoutPage') set.add('checkout-page');
+      else if (p === 'thanksPage')   set.add('thanks-page');
     }
     return set;
   }, [dirtyTopKeys, dirtySettingsPaths]);
@@ -963,6 +975,9 @@ function BlockEditor(ctx: EditorCtx) {
     case 'whatsapp':  return <WhatsappEditor {...ctx} />;
     case 'cod':       return <CodFormEditor {...ctx} />;
     case 'product-page': return <ProductPageEditor {...ctx} />;
+    case 'cart-page': return <CartPageEditor {...ctx} />;
+    case 'checkout-page': return <CheckoutPageEditor {...ctx} />;
+    case 'thanks-page': return <ThanksPageEditor {...ctx} />;
     default:
       return (
         <div className="grid flex-1 place-items-center p-6 text-sm text-muted-foreground">
@@ -2549,11 +2564,31 @@ function WhatsappEditor({ block, store, setStore, markDirty }: EditorCtx) {
 
 function CodFormEditor({ block, store, setStore, markDirty }: EditorCtx) {
   const cf: CodFormSettings = store.settings?.codForm || {};
+  const confirm = useConfirm();
 
   function patchCf(next: CodFormSettings) {
     const nextSettings = { ...(store.settings || {}), codForm: next };
     setStore((s) => (s ? { ...s, settings: nextSettings } : s));
     markDirty('settings', 'codForm');
+  }
+
+  // Réinitialisation : on remet un objet vide. Le composant COD retombe alors
+  // sur ses valeurs par défaut (headline générique, couleur du bouton = thème,
+  // tous les champs optionnels dans leur état initial, aucune animation).
+  // Publié uniquement quand le vendeur clique Enregistrer, comme le reste.
+  const hasCustomizations = Object.values(cf).some(
+    (v) => v !== undefined && v !== null && v !== '',
+  );
+  async function resetToDefaults() {
+    const ok = await confirm({
+      title: 'Réinitialiser le formulaire COD ?',
+      description:
+        'Tous les réglages (textes, champs, frais, couleurs, forme et animation du bouton) reviendront aux valeurs par défaut. Aucune donnée client n\'est perdue — rien n\'est publié tant que tu ne cliques pas Enregistrer.',
+      confirmLabel: 'Réinitialiser',
+      tone: 'destructive',
+    });
+    if (!ok) return;
+    patchCf({});
   }
 
   const BUTTON_SHAPES: Array<{ id: 'pill' | 'rounded' | 'square'; label: string; radius: string }> = [
@@ -2738,6 +2773,318 @@ function CodFormEditor({ block, store, setStore, markDirty }: EditorCtx) {
             Chaque changement se reflète dans l&apos;aperçu à droite en temps réel — rien n&apos;est
             publié tant que tu ne cliques pas <strong>Enregistrer</strong>.
           </span>
+        </div>
+
+        {/* ── Réinitialisation ────────────────────────────────────── */}
+        <div className="border-t border-border/60 pt-4">
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={resetToDefaults}
+            disabled={!hasCustomizations}
+            className="gap-2 text-muted-foreground hover:text-foreground"
+          >
+            <RotateCw className="h-3.5 w-3.5" />
+            Réinitialiser aux valeurs par défaut
+          </Button>
+          <p className="mt-1.5 text-[11px] text-muted-foreground">
+            {hasCustomizations
+              ? 'Efface tous les réglages custom et revient aux valeurs par défaut.'
+              : 'Aucun réglage custom à réinitialiser.'}
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// Page Panier — textes personnalisables de `/store/<slug>/cart`
+// ─────────────────────────────────────────────────────────────────────
+function CartPageEditor({ block, store, setStore, markDirty }: EditorCtx) {
+  const cp: CartPageSettings = store.settings?.cartPage || {};
+  const confirm = useConfirm();
+
+  function patchCp(next: CartPageSettings) {
+    const nextSettings = { ...(store.settings || {}), cartPage: next };
+    setStore((s) => (s ? { ...s, settings: nextSettings } : s));
+    markDirty('settings', 'cartPage');
+  }
+
+  const hasCustom = Object.values(cp).some(
+    (v) => v !== undefined && v !== null && v !== '',
+  );
+  async function resetCp() {
+    const ok = await confirm({
+      title: 'Réinitialiser la page Panier ?',
+      description:
+        'Tous les libellés (titre, panier vide, CTA, réassurance) reviendront aux valeurs par défaut.',
+      confirmLabel: 'Réinitialiser',
+      tone: 'destructive',
+    });
+    if (!ok) return;
+    patchCp({});
+  }
+
+  return (
+    <div className="flex flex-1 flex-col">
+      <EditorHeader title={block.label} hint={block.hint} />
+      <div className="space-y-5 p-5">
+        <div className="space-y-4">
+          <Field label="Titre de la page">
+            <Input
+              value={cp.title || ''}
+              onChange={(e) => patchCp({ ...cp, title: e.target.value })}
+              placeholder="Ex: Ton panier"
+            />
+          </Field>
+          <Field label="Titre — panier vide">
+            <Input
+              value={cp.emptyTitle || ''}
+              onChange={(e) => patchCp({ ...cp, emptyTitle: e.target.value })}
+              placeholder="Ex: Ton panier est vide"
+            />
+          </Field>
+          <Field label="Message — panier vide" hint="Petit texte sous le titre quand aucun article n'est ajouté.">
+            <textarea
+              value={cp.emptyMessage || ''}
+              onChange={(e) => patchCp({ ...cp, emptyMessage: e.target.value })}
+              placeholder="Ex: Ajoute des produits pour commencer ta commande."
+              rows={2}
+              className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+            />
+          </Field>
+          <Field label="Libellé — bouton retour boutique">
+            <Input
+              value={cp.emptyCtaLabel || ''}
+              onChange={(e) => patchCp({ ...cp, emptyCtaLabel: e.target.value })}
+              placeholder="Ex: Découvrir la boutique"
+            />
+          </Field>
+          <Field label="Libellé — bouton commander">
+            <Input
+              value={cp.checkoutCtaLabel || ''}
+              onChange={(e) => patchCp({ ...cp, checkoutCtaLabel: e.target.value })}
+              placeholder="Ex: Passer commande"
+            />
+          </Field>
+          <Field label="Phrase de réassurance" hint="Optionnel — affichée sous le récapitulatif.">
+            <Input
+              value={cp.reassurance || ''}
+              onChange={(e) => patchCp({ ...cp, reassurance: e.target.value })}
+              placeholder="Ex: Paiement à la livraison. Retour gratuit sous 7 jours."
+            />
+          </Field>
+        </div>
+
+        <div className="flex items-start gap-2 rounded-lg border border-emerald-500/30 bg-emerald-500/5 p-3 text-[11px] text-emerald-800">
+          <CheckCircle2 className="mt-0.5 h-3.5 w-3.5 shrink-0 text-emerald-600" />
+          <span>
+            Le style (couleurs, typo, radius) suit automatiquement le thème actif — édite-le dans le bloc <strong>Thème</strong>.
+          </span>
+        </div>
+
+        <div className="border-t border-border/60 pt-4">
+          <Button
+            type="button" variant="outline" size="sm"
+            onClick={resetCp} disabled={!hasCustom}
+            className="gap-2 text-muted-foreground hover:text-foreground"
+          >
+            <RotateCw className="h-3.5 w-3.5" />
+            Réinitialiser aux valeurs par défaut
+          </Button>
+          <p className="mt-1.5 text-[11px] text-muted-foreground">
+            {hasCustom ? 'Efface tous les libellés custom.' : 'Aucun réglage custom à réinitialiser.'}
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// Page Checkout — textes du checkout (produit direct + panier)
+// ─────────────────────────────────────────────────────────────────────
+function CheckoutPageEditor({ block, store, setStore, markDirty }: EditorCtx) {
+  const co: CheckoutPageSettings = store.settings?.checkoutPage || {};
+  const confirm = useConfirm();
+
+  function patchCo(next: CheckoutPageSettings) {
+    const nextSettings = { ...(store.settings || {}), checkoutPage: next };
+    setStore((s) => (s ? { ...s, settings: nextSettings } : s));
+    markDirty('settings', 'checkoutPage');
+  }
+
+  const hasCustom = Object.values(co).some(
+    (v) => v !== undefined && v !== null && v !== '',
+  );
+  async function resetCo() {
+    const ok = await confirm({
+      title: 'Réinitialiser la page Checkout ?',
+      description: 'Titre, réassurance et libellé du bouton reviendront aux valeurs par défaut.',
+      confirmLabel: 'Réinitialiser',
+      tone: 'destructive',
+    });
+    if (!ok) return;
+    patchCo({});
+  }
+
+  return (
+    <div className="flex flex-1 flex-col">
+      <EditorHeader title={block.label} hint={block.hint} />
+      <div className="space-y-5 p-5">
+        <div className="space-y-4">
+          <Field label="Titre de la page">
+            <Input
+              value={co.title || ''}
+              onChange={(e) => patchCo({ ...co, title: e.target.value })}
+              placeholder="Ex: Finaliser ta commande"
+            />
+          </Field>
+          <Field label="Phrase de réassurance" hint="Affichée au-dessus du bouton pour rassurer avant validation.">
+            <Input
+              value={co.reassurance || ''}
+              onChange={(e) => patchCo({ ...co, reassurance: e.target.value })}
+              placeholder="Ex: Paiement 100% sécurisé. Aucune carte requise."
+            />
+          </Field>
+          <Field label="Libellé — bouton final">
+            <Input
+              value={co.submitLabel || ''}
+              onChange={(e) => patchCo({ ...co, submitLabel: e.target.value })}
+              placeholder="Ex: Confirmer la commande"
+            />
+          </Field>
+        </div>
+
+        <div className="flex items-start gap-2 rounded-lg border border-amber-500/30 bg-amber-500/5 p-3 text-[11px] text-amber-800">
+          <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-amber-600" />
+          <span>
+            Ces textes s'appliquent aux deux checkouts : achat direct produit ET checkout panier.
+          </span>
+        </div>
+
+        <div className="border-t border-border/60 pt-4">
+          <Button
+            type="button" variant="outline" size="sm"
+            onClick={resetCo} disabled={!hasCustom}
+            className="gap-2 text-muted-foreground hover:text-foreground"
+          >
+            <RotateCw className="h-3.5 w-3.5" />
+            Réinitialiser aux valeurs par défaut
+          </Button>
+          <p className="mt-1.5 text-[11px] text-muted-foreground">
+            {hasCustom ? 'Efface tous les libellés custom.' : 'Aucun réglage custom à réinitialiser.'}
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// Page Merci — post-achat COD. Textes + toggles sections récap / étapes.
+// L'infrastructure lit déjà `store.settings.thanksPage` côté storefront.
+// ─────────────────────────────────────────────────────────────────────
+function ThanksPageEditor({ block, store, setStore, markDirty }: EditorCtx) {
+  const tp: ThanksPageSettings = store.settings?.thanksPage || {};
+  const confirm = useConfirm();
+
+  function patchTp(next: ThanksPageSettings) {
+    const nextSettings = { ...(store.settings || {}), thanksPage: next };
+    setStore((s) => (s ? { ...s, settings: nextSettings } : s));
+    markDirty('settings', 'thanksPage');
+  }
+
+  const hasCustom = Object.values(tp).some(
+    (v) => v !== undefined && v !== null && v !== '',
+  );
+  async function resetTp() {
+    const ok = await confirm({
+      title: 'Réinitialiser la page Merci ?',
+      description: 'Titre, sous-titre, message, libellé CTA et toggles reviendront aux valeurs par défaut.',
+      confirmLabel: 'Réinitialiser',
+      tone: 'destructive',
+    });
+    if (!ok) return;
+    patchTp({});
+  }
+
+  return (
+    <div className="flex flex-1 flex-col">
+      <EditorHeader title={block.label} hint={block.hint} />
+      <div className="space-y-5 p-5">
+        <div className="space-y-4">
+          <Field label="Titre principal">
+            <Input
+              value={tp.title || ''}
+              onChange={(e) => patchTp({ ...tp, title: e.target.value })}
+              placeholder="Ex: Commande confirmée 🎉"
+            />
+          </Field>
+          <Field label="Sous-titre">
+            <Input
+              value={tp.subtitle || ''}
+              onChange={(e) => patchTp({ ...tp, subtitle: e.target.value })}
+              placeholder="Ex: Merci pour ta confiance !"
+            />
+          </Field>
+          <Field label="Message personnel" hint="Multi-lignes — parfait pour un mot du fondateur ou une instruction spéciale.">
+            <textarea
+              value={tp.message || ''}
+              onChange={(e) => patchTp({ ...tp, message: e.target.value })}
+              placeholder="Ex: On prépare ta commande avec soin. Un livreur t'appellera bientôt pour convenir d'un créneau."
+              rows={4}
+              className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+            />
+          </Field>
+          <Field label="Libellé — bouton retour boutique">
+            <Input
+              value={tp.ctaLabel || ''}
+              onChange={(e) => patchTp({ ...tp, ctaLabel: e.target.value })}
+              placeholder="Ex: Continuer mes achats"
+            />
+          </Field>
+        </div>
+
+        <div className="space-y-2 rounded-2xl border border-border/60 bg-muted/20 p-4">
+          <div className="mb-1 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+            Sections affichées
+          </div>
+          <Toggle
+            compact
+            label="Afficher le récapitulatif (livraison + articles + total)"
+            checked={tp.showOrderRecap !== false}
+            onChange={(v) => patchTp({ ...tp, showOrderRecap: v })}
+          />
+          <Toggle
+            compact
+            label="Afficher « Prochaines étapes »"
+            checked={tp.showNextSteps !== false}
+            onChange={(v) => patchTp({ ...tp, showNextSteps: v })}
+          />
+        </div>
+
+        <div className="flex items-start gap-2 rounded-lg border border-emerald-500/30 bg-emerald-500/5 p-3 text-[11px] text-emerald-800">
+          <CheckCircle2 className="mt-0.5 h-3.5 w-3.5 shrink-0 text-emerald-600" />
+          <span>
+            Le thème de ta boutique (couleurs + typo) s'applique aussi à cette page pour une cohérence visuelle post-achat.
+          </span>
+        </div>
+
+        <div className="border-t border-border/60 pt-4">
+          <Button
+            type="button" variant="outline" size="sm"
+            onClick={resetTp} disabled={!hasCustom}
+            className="gap-2 text-muted-foreground hover:text-foreground"
+          >
+            <RotateCw className="h-3.5 w-3.5" />
+            Réinitialiser aux valeurs par défaut
+          </Button>
+          <p className="mt-1.5 text-[11px] text-muted-foreground">
+            {hasCustom ? 'Efface tous les libellés + toggles custom.' : 'Aucun réglage custom à réinitialiser.'}
+          </p>
         </div>
       </div>
     </div>

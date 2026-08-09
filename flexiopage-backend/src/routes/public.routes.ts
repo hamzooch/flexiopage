@@ -1624,8 +1624,12 @@ router.get('/orders/:orderId/cod-summary', async (req: Request, res: Response): 
           favicon: store.favicon,
           customDomain: store.customDomain,
           customDomainVerified: store.customDomainVerified,
+          // Thème actif : appliqué sur cette page pour cohérence visuelle
+          // post-achat (mêmes couleurs, typo, radius que le storefront).
+          theme: store.theme,
           // On expose la config thanksPage pour que le frontend applique
-          // les overrides de texte (titre, sous-titre, message, CTA).
+          // les overrides de texte (titre, sous-titre, message, CTA)
+          // et les toggles sections (récap / prochaines étapes).
           thanksPage: store.settings?.thanksPage,
         }
       : null,
@@ -1638,11 +1642,15 @@ router.get('/orders/:orderId/cod-summary', async (req: Request, res: Response): 
  * (only when paid) so the frontend can redirect to /d/<token>.
  */
 router.get('/orders/:orderId/status', async (req: Request, res: Response): Promise<void> => {
-  const order = await Order.findById(req.params.orderId).select('paymentStatus downloadToken total currency orderNumber email').lean();
+  const order = await Order.findById(req.params.orderId).select('paymentStatus downloadToken total currency orderNumber email storeId').lean();
   if (!order) {
     res.status(404).json({ error: 'Order not found' });
     return;
   }
+  // Charge le branding + thème du store — expose la marque du vendeur
+  // sur la page merci de paiement en ligne (icône, couleurs, typo).
+  // Petit surcout sur chaque poll (200 ms), acceptable pour la parité UX.
+  const store = await storeService.getStoreById(order.storeId.toString()).catch(() => null);
   res.json({
     orderId: req.params.orderId,
     orderNumber: order.orderNumber,
@@ -1651,6 +1659,14 @@ router.get('/orders/:orderId/status', async (req: Request, res: Response): Promi
     total: order.total,
     currency: order.currency,
     mockMode: isMockMode(),
+    store: store
+      ? {
+          name: store.name,
+          slug: store.slug,
+          logo: store.logo,
+          theme: store.theme,
+        }
+      : null,
   });
 });
 

@@ -62,6 +62,11 @@ interface StoreDoc {
     currency?: string;
     country?: string;
     storefront?: { navbar?: NavbarConfig };
+    checkoutPage?: {
+      title?: string;
+      reassurance?: string;
+      submitLabel?: string;
+    };
   };
 }
 
@@ -206,9 +211,11 @@ export default function CheckoutPage() {
           {/* ─── Formulaire ─────────────────────────────────────── */}
           <form onSubmit={handleSubmit} className="space-y-6">
             <div>
-              <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">Finaliser ton achat</h1>
+              <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">
+                {store.settings?.checkoutPage?.title || 'Finaliser ton achat'}
+              </h1>
               <p className="mt-1.5 text-sm text-muted-foreground">
-                Paiement sécurisé · Accès instantané après confirmation
+                {store.settings?.checkoutPage?.reassurance || 'Paiement sécurisé · Accès instantané après confirmation'}
               </p>
             </div>
 
@@ -352,7 +359,7 @@ export default function CheckoutPage() {
               ) : (
                 <>
                   <ShieldCheck className="h-5 w-5" />
-                  Payer {fmtPrice(product.price, currency)}
+                  {store.settings?.checkoutPage?.submitLabel || 'Payer'} {fmtPrice(product.price, currency)}
                 </>
               )}
             </button>
