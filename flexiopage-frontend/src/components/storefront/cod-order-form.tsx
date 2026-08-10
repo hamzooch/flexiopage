@@ -84,6 +84,10 @@ interface Props {
   upsells?: BumpOffer[];
   theme: ThemeTokens;
   radius: string;
+  /** Couleur du prix — dérivée de `productPage.style.priceColor` côté page
+   *  produit pour rester cohérente avec le grand prix affiché au-dessus.
+   *  Fallback silencieux sur `theme.primary` si non fourni. */
+  priceColor?: string;
 }
 
 /**
@@ -163,7 +167,11 @@ export function CodOrderForm({
   upsells,
   theme,
   radius,
+  priceColor,
 }: Props) {
+  // Un seul token de couleur "prix" — piloté par le vendeur via
+  // `productPage.style.priceColor`. Fallback: la couleur primaire du thème.
+  const priceTint = priceColor || theme.primary;
   const router = useRouter();
 
   // Defaults are intentionally minimal: only full name, phone (+ country code)
@@ -967,7 +975,7 @@ export function CodOrderForm({
           )}
           <div className="flex items-center justify-between pt-2">
             <span className="text-sm font-medium" style={{ color: theme.foreground }}>À payer à la livraison</span>
-            <span className="text-2xl font-extrabold" style={{ color: theme.primary }}>
+            <span className="text-2xl font-extrabold" style={{ color: priceTint }}>
               {formatCurrency(total, currency)}
             </span>
           </div>
@@ -975,7 +983,7 @@ export function CodOrderForm({
       ) : (
         <div className="flex items-center justify-between border-t pt-4" style={{ borderColor: theme.border }}>
           <span className="text-sm" style={{ color: theme.muted }}>À payer à la livraison</span>
-          <span className="text-2xl font-extrabold" style={{ color: theme.primary }}>
+          <span className="text-2xl font-extrabold" style={{ color: priceTint }}>
             {formatCurrency(total, currency)}
           </span>
         </div>

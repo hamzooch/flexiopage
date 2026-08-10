@@ -414,7 +414,13 @@ export default async function PublicProductPage({ params }: Props) {
                 </span>
                 {hasDiscount && (
                   <>
-                    <span className="text-base line-through sm:text-xl" style={{ color: theme.muted }}>
+                    <span
+                      className="text-base line-through sm:text-xl"
+                      style={{
+                        color: store?.settings?.storefront?.productPage?.style?.priceColor || theme.muted,
+                        opacity: 0.5,
+                      }}
+                    >
                       {formatCurrency(product.compareAtPrice!, currency)}
                     </span>
                     <span
@@ -500,6 +506,7 @@ export default async function PublicProductPage({ params }: Props) {
                       upsells={upsells}
                       theme={theme}
                       radius={radius}
+                      priceColor={store?.settings?.storefront?.productPage?.style?.priceColor}
                     />
                   </div>
                 </>
