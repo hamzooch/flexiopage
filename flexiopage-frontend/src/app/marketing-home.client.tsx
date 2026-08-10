@@ -1,9 +1,18 @@
 'use client';
 
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { motion, useInView, useReducedMotion, type Variants } from 'framer-motion';
+import {
+  motion,
+  useInView,
+  useReducedMotion,
+  useScroll,
+  useSpring,
+  useMotionValue,
+  useTransform,
+  type Variants,
+} from 'framer-motion';
 import { Button } from '@/components/ui/button';
 import { useCountUp } from '@/lib/use-count-up';
 import { BrandLogo } from '@/components/brand-logo';
@@ -98,6 +107,7 @@ export default function HomePage() {
         />
       </div>
 
+      <ScrollProgress />
       <Header />
 
       <main>
@@ -134,14 +144,152 @@ const staggerContainer: Variants = {
 };
 
 // ─────────────────────────────────────────────────────────────────────
+// SCROLL PROGRESS — thin gradient bar bound to page scroll
+// ─────────────────────────────────────────────────────────────────────
+function ScrollProgress() {
+  const { scrollYProgress } = useScroll();
+  const scaleX = useSpring(scrollYProgress, { stiffness: 120, damping: 24, mass: 0.2 });
+  return (
+    <motion.div
+      style={{ scaleX }}
+      className="fixed inset-x-0 top-0 z-50 h-[3px] origin-left bg-gradient-to-r from-amber-400 via-orange-500 to-orange-700"
+      aria-hidden
+    />
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// MAGNETIC — CTA pulls slightly toward the cursor for a premium feel
+// Respects reduced-motion (renders children with no interaction).
+// ─────────────────────────────────────────────────────────────────────
+function Magnetic({ children, strength = 0.25 }: { children: ReactNode; strength?: number }) {
+  const reduceMotion = useReducedMotion();
+  const ref = useRef<HTMLDivElement>(null);
+  const x = useMotionValue(0);
+  const y = useMotionValue(0);
+  const sx = useSpring(x, { stiffness: 200, damping: 15, mass: 0.4 });
+  const sy = useSpring(y, { stiffness: 200, damping: 15, mass: 0.4 });
+
+  if (reduceMotion) return <>{children}</>;
+
+  return (
+    <motion.div
+      ref={ref}
+      style={{ x: sx, y: sy }}
+      onPointerMove={(e) => {
+        const el = ref.current;
+        if (!el) return;
+        const rect = el.getBoundingClientRect();
+        x.set((e.clientX - (rect.left + rect.width / 2)) * strength);
+        y.set((e.clientY - (rect.top + rect.height / 2)) * strength);
+      }}
+      onPointerLeave={() => {
+        x.set(0);
+        y.set(0);
+      }}
+      className="inline-block will-change-transform"
+    >
+      {children}
+    </motion.div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// TILT CARD — subtle 3D tilt on hover using motion values
+// ─────────────────────────────────────────────────────────────────────
+function TiltCard({ children, className = '' }: { children: ReactNode; className?: string }) {
+  const reduceMotion = useReducedMotion();
+  const ref = useRef<HTMLDivElement>(null);
+  const mx = useMotionValue(0);
+  const my = useMotionValue(0);
+  const rotateX = useTransform(my, [-0.5, 0.5], [6, -6]);
+  const rotateY = useTransform(mx, [-0.5, 0.5], [-6, 6]);
+  const sRotateX = useSpring(rotateX, { stiffness: 150, damping: 15 });
+  const sRotateY = useSpring(rotateY, { stiffness: 150, damping: 15 });
+
+  return (
+    <motion.div
+      ref={ref}
+      style={reduceMotion ? undefined : { rotateX: sRotateX, rotateY: sRotateY, transformStyle: 'preserve-3d' }}
+      onPointerMove={(e) => {
+        if (reduceMotion) return;
+        const el = ref.current;
+        if (!el) return;
+        const rect = el.getBoundingClientRect();
+        mx.set((e.clientX - rect.left) / rect.width - 0.5);
+        my.set((e.clientY - rect.top) / rect.height - 0.5);
+      }}
+      onPointerLeave={() => {
+        mx.set(0);
+        my.set(0);
+      }}
+      className={className}
+    >
+      {children}
+    </motion.div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// REVEAL WORDS — splits a string and reveals each word with a spring
+// ─────────────────────────────────────────────────────────────────────
+function RevealWords({ text, className = '', delay = 0 }: { text: string; className?: string; delay?: number }) {
+  const words = text.split(' ');
+  return (
+    <span className={`inline-flex flex-wrap justify-center gap-x-[0.28em] ${className}`}>
+      {words.map((w, i) => (
+        <span key={`${w}-${i}`} className="relative inline-block overflow-hidden pb-[0.12em] leading-[1.05]">
+          <motion.span
+            initial={{ y: '110%', opacity: 0 }}
+            animate={{ y: '0%', opacity: 1 }}
+            transition={{
+              duration: 0.75,
+              delay: delay + i * 0.06,
+              ease: [0.21, 0.61, 0.35, 1],
+            }}
+            className="inline-block"
+          >
+            {w}
+          </motion.span>
+        </span>
+      ))}
+    </span>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────
 // HEADER
 // ─────────────────────────────────────────────────────────────────────
 function Header() {
+  const [scrolled, setScrolled] = useState(false);
+  useEffect(() => {
+    const onScroll = () => setScrolled(window.scrollY > 24);
+    onScroll();
+    window.addEventListener('scroll', onScroll, { passive: true });
+    return () => window.removeEventListener('scroll', onScroll);
+  }, []);
   return (
-    <header className="sticky top-0 z-30 border-b border-border/40 bg-background/70 backdrop-blur-xl">
-      <div className="mx-auto flex h-14 max-w-6xl items-center justify-between gap-3 px-3 sm:h-16 sm:px-6">
+    <motion.header
+      initial={false}
+      animate={{
+        paddingTop: scrolled ? 0 : 0,
+        boxShadow: scrolled ? '0 8px 24px -12px rgb(0 0 0 / 0.10)' : '0 0 0 rgb(0 0 0 / 0)',
+      }}
+      transition={{ duration: 0.35, ease: [0.21, 0.61, 0.35, 1] }}
+      className={`sticky top-0 z-30 border-b transition-colors duration-300 ${
+        scrolled
+          ? 'border-border/70 bg-background/85 backdrop-blur-2xl'
+          : 'border-border/40 bg-background/60 backdrop-blur-xl'
+      }`}
+    >
+      <motion.div
+        initial={false}
+        animate={{ height: scrolled ? 52 : 64 }}
+        transition={{ duration: 0.35, ease: [0.21, 0.61, 0.35, 1] }}
+        className="mx-auto flex max-w-6xl items-center justify-between gap-3 px-3 sm:px-6"
+      >
         <Link href="/" className="flex items-center" aria-label="FlexioPage — accueil">
-          <BrandLogo variant="color" width={150} priority />
+          <BrandLogo variant="color" width={scrolled ? 130 : 150} priority />
         </Link>
         <nav className="hidden items-center gap-7 md:flex">
           <a href="#features" className="text-sm font-medium text-muted-foreground transition-colors hover:text-foreground">Fonctionnalités</a>
@@ -151,14 +299,14 @@ function Header() {
         </nav>
         <div className="flex items-center gap-2">
           <Link href="/login">
-            <Button size="sm" className="gap-1.5 bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-600 hover:to-orange-700">
+            <Button size="sm" className="gap-1.5 bg-gradient-to-r from-amber-500 to-orange-600 shadow-md shadow-orange-500/20 transition-all hover:from-amber-600 hover:to-orange-700 hover:shadow-orange-500/40">
               Se connecter
               <ArrowRight className="h-3.5 w-3.5" />
             </Button>
           </Link>
         </div>
-      </div>
-    </header>
+      </motion.div>
+    </motion.header>
   );
 }
 
@@ -190,9 +338,12 @@ function Hero() {
           variants={fadeUp}
           className="text-balance text-3xl font-bold leading-[1.05] tracking-tight sm:text-5xl md:text-6xl lg:text-7xl"
         >
-          Crée ta boutique en ligne.{' '}
-          <span className="bg-gradient-to-r from-amber-400 via-orange-500 to-orange-700 bg-clip-text text-transparent">
-            Vends dès aujourd&apos;hui.
+          <RevealWords text="Crée ta boutique en ligne." delay={0.15} />{' '}
+          <span
+            className="bg-gradient-to-r from-amber-400 via-orange-500 to-orange-700 bg-clip-text text-transparent animate-gradient-shift"
+            style={{ backgroundSize: '200% 200%' }}
+          >
+            <RevealWords text="Vends dès aujourd’hui." delay={0.45} />
           </span>
         </motion.h1>
 
@@ -208,14 +359,20 @@ function Hero() {
           variants={fadeUp}
           className="mt-8 flex flex-wrap items-center justify-center gap-3 sm:mt-10"
         >
-          <Link href="/login">
-            <Button size="lg" className="h-12 gap-2 bg-gradient-to-r from-amber-500 to-orange-600 px-7 text-base font-semibold shadow-xl shadow-orange-500/30 transition-all hover:scale-[1.02] hover:from-amber-600 hover:to-orange-700">
-              Se connecter
-              <ArrowRight className="h-4 w-4" />
-            </Button>
-          </Link>
+          <Magnetic strength={0.3}>
+            <Link href="/login">
+              <Button
+                size="lg"
+                className="group relative h-12 gap-2 overflow-hidden bg-gradient-to-r from-amber-500 to-orange-600 px-7 text-base font-semibold shadow-xl shadow-orange-500/30 transition-all hover:scale-[1.03] hover:from-amber-600 hover:to-orange-700"
+              >
+                <span className="pointer-events-none absolute inset-0 -translate-x-full bg-gradient-to-r from-transparent via-white/25 to-transparent transition-transform duration-700 group-hover:translate-x-full" />
+                <span className="relative">Se connecter</span>
+                <ArrowRight className="relative h-4 w-4 transition-transform group-hover:translate-x-0.5" />
+              </Button>
+            </Link>
+          </Magnetic>
           <a href="#how">
-            <Button size="lg" variant="outline" className="h-12 px-7 text-base">
+            <Button size="lg" variant="outline" className="h-12 px-7 text-base transition-all hover:border-orange-500/50 hover:bg-orange-50/50">
               Voir comment ça marche
             </Button>
           </a>
@@ -351,12 +508,55 @@ function SocialProofBar() {
   ];
   return (
     <section className="border-y border-border/40 bg-card/30 backdrop-blur">
+      <CountryMarquee />
       <div className="mx-auto grid max-w-6xl grid-cols-2 gap-y-6 px-4 py-8 sm:grid-cols-4 sm:gap-6 sm:px-6 sm:py-10">
         {stats.map((s, i) => (
           <StatBlock key={s.label} {...s} delay={i * 0.08} />
         ))}
       </div>
     </section>
+  );
+}
+
+function CountryMarquee() {
+  const reduceMotion = useReducedMotion();
+  const countries = [
+    { flag: '🇸🇳', name: 'Sénégal' },
+    { flag: '🇨🇮', name: 'Côte d’Ivoire' },
+    { flag: '🇲🇱', name: 'Mali' },
+    { flag: '🇧🇫', name: 'Burkina Faso' },
+    { flag: '🇧🇯', name: 'Bénin' },
+    { flag: '🇹🇬', name: 'Togo' },
+    { flag: '🇬🇳', name: 'Guinée' },
+    { flag: '🇳🇪', name: 'Niger' },
+    { flag: '🇬🇲', name: 'Gambie' },
+    { flag: '🇬🇭', name: 'Ghana' },
+    { flag: '🇳🇬', name: 'Nigeria' },
+    { flag: '🇨🇲', name: 'Cameroun' },
+    { flag: '🇲🇦', name: 'Maroc' },
+    { flag: '🇹🇳', name: 'Tunisie' },
+    { flag: '🇩🇿', name: 'Algérie' },
+    { flag: '🇱🇾', name: 'Libye' },
+  ];
+  // Duplicate the list so the -50% translate loop is seamless.
+  const track = [...countries, ...countries];
+  return (
+    <div
+      className="relative overflow-hidden border-b border-border/40 py-3 [mask-image:linear-gradient(to_right,transparent,black_10%,black_90%,transparent)]"
+      aria-label="Pays couverts par FlexioPage"
+    >
+      <div className={reduceMotion ? 'flex justify-center gap-8' : 'flex w-max gap-8 animate-marquee will-change-transform'}>
+        {(reduceMotion ? countries : track).map((c, i) => (
+          <div
+            key={`${c.name}-${i}`}
+            className="flex shrink-0 items-center gap-2 text-xs font-medium text-muted-foreground/80 sm:text-sm"
+          >
+            <span className="text-base sm:text-lg" aria-hidden>{c.flag}</span>
+            <span>{c.name}</span>
+          </div>
+        ))}
+      </div>
+    </div>
   );
 }
 
@@ -471,19 +671,24 @@ function Features() {
           <motion.div
             key={item.title}
             variants={fadeUp}
-            whileHover={{ y: -6, transition: { duration: 0.2 } }}
-            className="group relative overflow-hidden rounded-2xl border border-border/60 bg-card p-5 transition-shadow duration-300 hover:shadow-2xl sm:p-6"
+            style={{ perspective: 1000 }}
           >
-            <div className={`pointer-events-none absolute -right-16 -top-16 h-40 w-40 rounded-full bg-gradient-to-br ${item.gradient} opacity-10 blur-3xl transition-opacity duration-300 group-hover:opacity-20`} aria-hidden />
-            <motion.div
-              whileHover={{ rotate: 6, scale: 1.1 }}
-              transition={{ type: 'spring', stiffness: 300 }}
-              className={`relative mb-4 grid h-11 w-11 place-items-center rounded-xl bg-gradient-to-br ${item.gradient} text-white shadow-lg sm:mb-5 sm:h-12 sm:w-12`}
-            >
-              <item.icon className="h-5 w-5" />
-            </motion.div>
-            <h3 className="relative text-base font-bold tracking-tight sm:text-lg">{item.title}</h3>
-            <p className="relative mt-2 text-xs leading-relaxed text-muted-foreground sm:text-sm">{item.desc}</p>
+            <TiltCard className="group relative h-full overflow-hidden rounded-2xl border border-border/60 bg-card p-5 shadow-sm transition-shadow duration-300 hover:shadow-2xl hover:shadow-orange-500/10 sm:p-6">
+              <div className={`pointer-events-none absolute -right-16 -top-16 h-40 w-40 rounded-full bg-gradient-to-br ${item.gradient} opacity-10 blur-3xl transition-opacity duration-500 group-hover:opacity-25`} aria-hidden />
+              <div className="pointer-events-none absolute inset-0 -z-0 opacity-0 transition-opacity duration-500 group-hover:opacity-100" aria-hidden>
+                <div className="absolute inset-0 rounded-2xl bg-gradient-to-br from-white/40 to-transparent" />
+              </div>
+              <motion.div
+                whileHover={{ rotate: 6, scale: 1.1 }}
+                transition={{ type: 'spring', stiffness: 300 }}
+                className={`relative mb-4 grid h-11 w-11 place-items-center rounded-xl bg-gradient-to-br ${item.gradient} text-white shadow-lg sm:mb-5 sm:h-12 sm:w-12`}
+                style={{ transform: 'translateZ(30px)' }}
+              >
+                <item.icon className="h-5 w-5" />
+              </motion.div>
+              <h3 className="relative text-base font-bold tracking-tight sm:text-lg" style={{ transform: 'translateZ(20px)' }}>{item.title}</h3>
+              <p className="relative mt-2 text-xs leading-relaxed text-muted-foreground sm:text-sm" style={{ transform: 'translateZ(10px)' }}>{item.desc}</p>
+            </TiltCard>
           </motion.div>
         ))}
       </motion.div>

@@ -69,6 +69,14 @@ const config: Config = {
           '0%, 100%': { transform: 'translateY(0)' },
           '50%': { transform: 'translateY(-4px)' },
         },
+        marquee: {
+          '0%': { transform: 'translateX(0)' },
+          '100%': { transform: 'translateX(-50%)' },
+        },
+        'gradient-shift': {
+          '0%, 100%': { backgroundPosition: '0% 50%' },
+          '50%': { backgroundPosition: '100% 50%' },
+        },
       },
       animation: {
         'fade-in': 'fade-in 0.4s ease-out both',
@@ -79,6 +87,8 @@ const config: Config = {
         shimmer: 'shimmer 2.4s linear infinite',
         'pulse-soft': 'pulse-soft 2.5s ease-in-out infinite',
         float: 'float 3s ease-in-out infinite',
+        marquee: 'marquee 40s linear infinite',
+        'gradient-shift': 'gradient-shift 6s ease-in-out infinite',
       },
     },
   },
