@@ -257,8 +257,14 @@ export function Sidebar({ mobileOpen = false, onMobileClose }: Props) {
           </button>
         </div>
 
-        {/* Sections */}
-        <nav className="flex-1 space-y-5 overflow-y-auto px-3 py-4">
+        {/* Sections
+            `overscroll-contain` + `touch-pan-y` : sur mobile iOS, sans ça, quand
+            on swipe pour remonter en haut de la liste, le geste « chaîne » vers
+            le body (qui a `overflow: hidden` via scroll-lock quand le drawer est
+            ouvert) et Safari bloque le scroll UP pendant que le scroll DOWN a
+            encore de l'inertie — d'où la sensation de « scroll qui bugue quand
+            on remonte ». On isole le scroll au nav pour couper ce chaînage. */}
+        <nav className="flex-1 space-y-5 overflow-y-auto overscroll-contain touch-pan-y px-3 py-4">
           {sections.map((section, sIdx) => (
             <div key={section.titleKey}>
               <div className="px-3 pb-1.5 text-[11px] font-bold uppercase tracking-wider text-sidebar-foreground/50">

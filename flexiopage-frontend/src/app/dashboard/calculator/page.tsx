@@ -390,7 +390,7 @@ export default function CodCalculatorPage() {
       {/* History drawer */}
       {historyOpen && (
         <div className="fixed inset-0 z-50 flex justify-end bg-foreground/40 backdrop-blur-sm" onClick={() => setHistoryOpen(false)}>
-          <div className="h-full w-full max-w-md overflow-y-auto bg-background p-5 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+          <div className="h-full w-full max-w-md overflow-y-auto overscroll-contain touch-pan-y bg-background p-5 shadow-2xl" onClick={(e) => e.stopPropagation()}>
             <div className="mb-4 flex items-center justify-between">
               <div>
                 <h2 className="text-lg font-semibold">Scénarios sauvegardés</h2>

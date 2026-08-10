@@ -194,7 +194,7 @@ export function ConversationsView({ storeId, api, channel, backHref, title }: {
                 className="h-9 w-full bg-transparent text-sm outline-none" />
             </div>
           </div>
-          <ul className="min-h-0 flex-1 divide-y divide-border/40 overflow-y-auto">
+          <ul className="min-h-0 flex-1 divide-y divide-border/40 overflow-y-auto overscroll-contain touch-pan-y">
             {loadingList && convs.length === 0 && (
               <li className="grid place-items-center p-8 text-muted-foreground"><Loader2 className="h-5 w-5 animate-spin" /></li>
             )}
@@ -261,7 +261,7 @@ export function ConversationsView({ storeId, api, channel, backHref, title }: {
                 )}
               </header>
 
-              <div className="min-h-0 flex-1 space-y-2 overflow-y-auto bg-muted/20 p-4">
+              <div className="min-h-0 flex-1 space-y-2 overflow-y-auto overscroll-contain touch-pan-y bg-muted/20 p-4">
                 {loadingThread && messages.length === 0 && (
                   <div className="grid place-items-center py-8 text-muted-foreground"><Loader2 className="h-5 w-5 animate-spin" /></div>
                 )}

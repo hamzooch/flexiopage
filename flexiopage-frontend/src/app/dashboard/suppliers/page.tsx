@@ -245,7 +245,7 @@ function SupplierFormModal({
 
   return (
     <div className="fixed inset-0 z-50 grid place-items-center bg-black/60 p-4" onClick={onClose}>
-      <div className="w-full max-w-2xl rounded-2xl bg-card p-5 shadow-2xl max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+      <div className="w-full max-w-2xl rounded-2xl bg-card p-5 shadow-2xl max-h-[90vh] overflow-y-auto overscroll-contain touch-pan-y" onClick={(e) => e.stopPropagation()}>
         <div className="mb-4 flex items-center justify-between">
           <h3 className="text-base font-semibold">{isEdit ? 'Modifier le fournisseur' : 'Nouveau fournisseur'}</h3>
           <button type="button" onClick={onClose} aria-label="Fermer" className="grid h-8 w-8 place-items-center rounded-md text-muted-foreground hover:bg-muted">

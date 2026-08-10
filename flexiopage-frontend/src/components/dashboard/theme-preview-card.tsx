@@ -1188,9 +1188,12 @@ export function ThemePreviewModal({ template, onClose, onUse }: ModalProps) {
             </div>
           </div>
 
-          {/* Mock storefront body */}
+          {/* Mock storefront body
+              `overscroll-contain` isole le scroll pour éviter que sur mobile
+              iOS le geste UP ne « chaîne » vers le body (verrouillé via
+              `lockBodyScroll()`) — ce qui bloquait le scroll de la preview. */}
           <div
-            className="flex-1 overflow-y-auto"
+            className="flex-1 overflow-y-auto overscroll-contain touch-pan-y"
             style={tokensToCssVars(t)}
             dir="ltr"
           >

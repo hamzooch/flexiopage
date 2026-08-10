@@ -1476,7 +1476,7 @@ export default function NewLandingPagePage() {
             editPanelOpen ? 'w-full sm:w-[440px] lg:w-[480px]' : 'w-full sm:w-[340px]'
           )}
         >
-          <div className="flex-1 overflow-y-auto p-5">
+          <div className="flex-1 overflow-y-auto overscroll-contain touch-pan-y p-5">
             {error && <div className="mb-4"><ErrorBox message={error} /></div>}
 
             {/* Page details — always visible */}
@@ -1626,7 +1626,7 @@ export default function NewLandingPagePage() {
             </span>
             <span className="ml-2">— les modifications s'affichent en direct</span>
           </div>
-          <div className="flex-1 overflow-y-auto">
+          <div className="flex-1 overflow-y-auto overscroll-contain touch-pan-y">
             {sections.length > 0 ? (
               <div
                 className={cn(

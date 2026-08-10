@@ -201,7 +201,7 @@ export function ChatBot({
           {/* Messages */}
           <div
             ref={scrollRef}
-            className="flex-1 space-y-3 overflow-y-auto bg-muted/30 px-4 py-4"
+            className="flex-1 space-y-3 overflow-y-auto overscroll-contain touch-pan-y bg-muted/30 px-4 py-4"
           >
             {messages.map((m) => (
               <Bubble key={m.id} role={m.role} text={m.text} />

@@ -201,7 +201,7 @@ export default function EditLandingPagePage() {
       <div className="flex min-h-0 flex-1">
         {/* LEFT panel — page details + sections editor */}
         <aside className="flex w-full shrink-0 flex-col border-r border-border/60 bg-card/40 sm:w-[440px] lg:w-[480px]">
-          <div className="flex-1 overflow-y-auto p-5">
+          <div className="flex-1 overflow-y-auto overscroll-contain touch-pan-y p-5">
             {error && (
               <div className="mb-4 rounded-md bg-destructive/10 p-3 text-sm text-destructive">
                 {error}
@@ -311,7 +311,7 @@ export default function EditLandingPagePage() {
             </span>
             <span className="ml-2">— les modifications s'affichent en direct</span>
           </div>
-          <div className="flex-1 overflow-y-auto">
+          <div className="flex-1 overflow-y-auto overscroll-contain touch-pan-y">
             {sections.length > 0 ? (
               <div
                 className={cn(

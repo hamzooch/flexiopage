@@ -172,8 +172,11 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
           </button>
         </div>
 
-        {/* Nav — only this section scrolls */}
-        <nav className="flex-1 space-y-5 overflow-y-auto px-3 py-4">
+        {/* Nav — only this section scrolls.
+            `overscroll-contain` + `touch-pan-y` : isole le scroll pour
+            que le geste UP sur mobile iOS ne chaîne pas vers le body
+            (verrouillé quand le drawer est ouvert). */}
+        <nav className="flex-1 space-y-5 overflow-y-auto overscroll-contain touch-pan-y px-3 py-4">
           {SECTIONS.map((section) => (
             <div key={section.title}>
               <div className="px-3 pb-1.5 text-[11px] font-bold uppercase tracking-wider text-muted-foreground/60">

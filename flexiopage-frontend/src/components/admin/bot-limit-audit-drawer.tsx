@@ -54,7 +54,7 @@ export function BotLimitAuditDrawer({ open, onOpenChange }: Props) {
             </span>
           }
         />
-        <DialogBody className="max-h-[60vh] overflow-y-auto">
+        <DialogBody className="max-h-[60vh] overflow-y-auto overscroll-contain touch-pan-y">
           {loading && items.length === 0 ? (
             <div className="flex items-center gap-2 text-sm text-muted-foreground">
               <Loader2 className="h-4 w-4 animate-spin" /> Chargement…

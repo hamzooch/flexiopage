@@ -670,7 +670,12 @@ export default function StoreEditPage() {
             visible. Mobile : plein écran quand onglet 'editor' actif. */}
         <main
           className={cn(
-            'flex-col overflow-y-auto border-r border-border/60 bg-card/40 lg:flex lg:w-96 lg:shrink-0',
+            // `overscroll-contain` + `touch-pan-y` : sur mobile, le layout
+            // parent est en `100dvh` fixe (pas de scroll body). Sans isolation,
+            // un swipe vers le haut en fin de scroll chaîne vers le body qui
+            // ne peut pas scroller → Safari « accroche » et le scroll UP
+            // paraît bugué (le DOWN garde son inertie, l'inverse coince).
+            'flex-col overflow-y-auto overscroll-contain touch-pan-y border-r border-border/60 bg-card/40 lg:flex lg:w-96 lg:shrink-0',
             mobileTab === 'editor' ? 'flex w-full' : 'hidden',
           )}
         >
@@ -729,7 +734,7 @@ export default function StoreEditPage() {
                 Fermer
               </Button>
             </div>
-            <div className="flex-1 overflow-y-auto p-5">
+            <div className="flex-1 overflow-y-auto overscroll-contain touch-pan-y p-5">
               <ThemePreviewGrid
                 templates={themesForStoreType(isDigital ? 'digital' : 'physical')}
                 selectedId={currentThemeId}
@@ -802,8 +807,9 @@ function BlockList({
       className={cn(
         // Mobile : plein écran quand actif (onglet 'blocks'). Desktop :
         // largeur = 240px si expanded, 56px si compact. On garde overflow
-        // vertical pour scroller la liste longue.
-        'shrink-0 flex-col overflow-y-auto border-r border-border/60 bg-card/60 lg:flex',
+        // vertical pour scroller la liste longue. `overscroll-contain` isole
+        // le scroll pour éviter le chaînage vers le body fixe (layout 100dvh).
+        'shrink-0 flex-col overflow-y-auto overscroll-contain touch-pan-y border-r border-border/60 bg-card/60 lg:flex',
         hiddenOnMobile ? 'hidden' : 'flex w-full',
         expanded ? 'lg:w-60' : 'lg:w-14',
       )}
@@ -4770,8 +4776,10 @@ function PreviewPane({
       {/* Iframe area — block layout (pas flex) : un flex child a un
           min-width: auto par défaut, et l'iframe interne de 768px (tablet)
           pousse alors le wrap au-delà de son max-width visuel. Le bloc
-          plain respecte max-width strictement et mx-auto centre. */}
-      <div className="flex-1 overflow-auto p-4">
+          plain respecte max-width strictement et mx-auto centre.
+          `overscroll-contain` : isole le scroll de l'aperçu pour ne pas
+          chaîner vers le body en mobile (layout parent en 100dvh fixe). */}
+      <div className="flex-1 overflow-auto overscroll-contain touch-pan-y p-4">
         {path ? (
           <ViewportPreview
             device={previewDevice}

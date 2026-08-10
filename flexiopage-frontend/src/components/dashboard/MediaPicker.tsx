@@ -259,7 +259,7 @@ function GalleryModal({
             <X className="h-4 w-4" />
           </button>
         </div>
-        <div className="max-h-[70vh] overflow-y-auto p-5">
+        <div className="max-h-[70vh] overflow-y-auto overscroll-contain touch-pan-y p-5">
           {error ? (
             <p className="text-sm text-destructive">{error}</p>
           ) : items === null ? (
