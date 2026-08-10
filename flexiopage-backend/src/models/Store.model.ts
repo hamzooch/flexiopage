@@ -129,6 +129,30 @@ export interface IStore extends Document {
       showNextSteps?: boolean;
     };
     /**
+     * Barre de réassurance inline (au-dessus du CTA sur la page produit) —
+     * 3 pastilles COD / Retour X jours / Livraison MogaDelivery + support
+     * WhatsApp optionnel. Le vendeur peut masquer chaque item si son offre ne
+     * l'inclut pas (ex : pas de retour, pas de WhatsApp). Les booléens sont
+     * en mode « hide » plutôt que « show » pour garder le comportement par
+     * défaut = tout affiché quand le champ est absent (compat rétro : les
+     * boutiques existantes n'ont jamais eu cette config et doivent continuer
+     * d'afficher les 3 badges comme avant).
+     */
+    trustBar?: {
+      /** Numéro WhatsApp (format international, ex "+21612345678"). Si vide,
+       *  le badge "Support WhatsApp" ne s'affiche pas — pas d'input, pas de
+       *  contact possible. */
+      whatsappNumber?: string;
+      /** Nombre de jours pour le retour produit. Défaut 14 côté UI. */
+      returnDays?: number;
+      /** Masquer le badge "Paiement à la livraison". */
+      hideCod?: boolean;
+      /** Masquer le badge "Retour X jours". */
+      hideReturns?: boolean;
+      /** Masquer le badge "Livraison MogaDelivery". */
+      hideDelivery?: boolean;
+    };
+    /**
      * Textes personnalisables de la page Panier (`/store/<slug>/cart`).
      * Tous optionnels — vides = fallback sur les textes par défaut. Le style
      * (couleurs, typo, radius) vient du thème appliqué au layout storefront.
@@ -722,6 +746,13 @@ const StoreSchema = new Schema<IStore>(
         ctaLabel: { type: String, trim: true },
         showOrderRecap: { type: Boolean, default: true },
         showNextSteps: { type: Boolean, default: true },
+      },
+      trustBar: {
+        whatsappNumber: { type: String, trim: true },
+        returnDays: { type: Number, min: 0 },
+        hideCod: { type: Boolean, default: false },
+        hideReturns: { type: Boolean, default: false },
+        hideDelivery: { type: Boolean, default: false },
       },
       cartPage: {
         title: { type: String, trim: true },

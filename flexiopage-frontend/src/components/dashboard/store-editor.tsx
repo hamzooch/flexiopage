@@ -105,6 +105,22 @@ export interface CheckoutPageSettings {
   submitLabel?: string;
 }
 
+/**
+ * Trust bar de la page produit — la rangée compacte de garanties (COD / Retour
+ * X jours / Livraison / WhatsApp) juste au-dessus du CTA "Commander". Chaque
+ * badge est individuellement masquable via `hide*`. On garde la sémantique
+ * « hide » (plutôt que « show ») pour que l'absence de config = tout affiché,
+ * ce qui préserve le comportement des boutiques existantes qui n'ont jamais
+ * eu ce sous-doc en base.
+ */
+export interface TrustBarSettings {
+  whatsappNumber?: string;
+  returnDays?: number;
+  hideCod?: boolean;
+  hideReturns?: boolean;
+  hideDelivery?: boolean;
+}
+
 export interface CodFormSettings {
   headline?: string;
   submitLabel?: string;
@@ -327,6 +343,11 @@ export interface StoreType {
     thanksPage?: ThanksPageSettings;
     cartPage?: CartPageSettings;
     checkoutPage?: CheckoutPageSettings;
+    /** Barre de réassurance inline sur la page produit (COD / Retour /
+     *  Livraison MogaDelivery / Support WhatsApp). Chaque item est
+     *  individuellement masquable via un flag `hide*` — comportement par
+     *  défaut = tout visible. */
+    trustBar?: TrustBarSettings;
   };
   integrations?: {
     delivery?: DeliveryIntegration;

@@ -110,6 +110,7 @@ import type {
   ThanksPageSettings,
   CartPageSettings,
   CheckoutPageSettings,
+  TrustBarSettings,
 } from '@/components/dashboard/store-editor';
 import { FieldToggle, FooterEditor } from '@/components/dashboard/store-editor';
 import { useConfirm, usePrompt } from '@/components/ui/confirm-dialog';
@@ -2241,12 +2242,22 @@ function ProductPageEditor({ block, storeId, store, setStore, markDirty }: Edito
   const storefront = (store.settings?.storefront || {}) as StorefrontSettings;
   const pp: ProductPageSettings = storefront.productPage || {};
   const order = resolveProductPageOrder(pp.sectionOrder);
+  // Trust bar vit à `settings.trustBar` (pas dans `storefront.productPage`) car
+  // la config est partagée entre toutes les pages produit de la boutique — pas
+  // une préf de layout, mais un catalogue d'offres commerciales (COD accepté,
+  // retour proposé, transporteur, contact WhatsApp).
+  const trust: TrustBarSettings = store.settings?.trustBar || {};
 
   function patchPp(next: ProductPageSettings) {
     const nextStorefront: StorefrontSettings = { ...storefront, productPage: next };
     const nextSettings = { ...(store.settings || {}), storefront: nextStorefront };
     setStore((s) => (s ? { ...s, settings: nextSettings } : s));
     markDirty('settings', 'productPage');
+  }
+  function patchTrust(next: TrustBarSettings) {
+    const nextSettings = { ...(store.settings || {}), trustBar: next };
+    setStore((s) => (s ? { ...s, settings: nextSettings } : s));
+    markDirty('settings', 'trustBar');
   }
   function setOrder(next: ProductPageSectionId[]) {
     patchPp({ ...pp, sectionOrder: next });
@@ -2290,6 +2301,75 @@ function ProductPageEditor({ block, storeId, store, setStore, markDirty }: Edito
             checked={pp.showAddToCart !== false}
             onChange={(v) => patchPp({ ...pp, showAddToCart: v })}
           />
+        </div>
+
+        {/* Barre de réassurance — les pastilles COD / Retour / Livraison /
+            WhatsApp qui apparaissent juste au-dessus du bouton commander.
+            Chaque item est masquable individuellement (le toggle groupé
+            "Badges de confiance" plus haut contrôle une AUTRE section :
+            la strip pleine largeur plus bas dans la page produit). */}
+        <div className="space-y-3 rounded-2xl border border-border/60 bg-muted/20 p-4">
+          <div>
+            <div className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+              Barre de réassurance (au-dessus du bouton commander)
+            </div>
+            <p className="mt-1 text-xs text-muted-foreground">
+              Décoche les garanties que ta boutique ne propose pas. Ex : si tu n&apos;acceptes pas les retours, masque « Retour X jours ».
+            </p>
+          </div>
+          <Toggle
+            compact
+            label="Paiement à la livraison"
+            checked={!trust.hideCod}
+            onChange={(v) => patchTrust({ ...trust, hideCod: !v })}
+          />
+          <Toggle
+            compact
+            label={`Retour ${trust.returnDays ?? 14} jours`}
+            checked={!trust.hideReturns}
+            onChange={(v) => patchTrust({ ...trust, hideReturns: !v })}
+          />
+          <Toggle
+            compact
+            label="Livraison MogaDelivery"
+            checked={!trust.hideDelivery}
+            onChange={(v) => patchTrust({ ...trust, hideDelivery: !v })}
+          />
+          <div className="grid gap-3 pt-2 sm:grid-cols-2">
+            <div>
+              <Label htmlFor="trust-return-days" className="text-xs">Jours de retour</Label>
+              <Input
+                id="trust-return-days"
+                type="number"
+                min={0}
+                max={365}
+                placeholder="14"
+                value={trust.returnDays ?? ''}
+                onChange={(e) => {
+                  const raw = e.target.value;
+                  // Champ vide → on stocke undefined pour retomber sur le
+                  // défaut UI (14) plutôt que de figer 0.
+                  const next = raw === '' ? undefined : Math.max(0, Number(raw));
+                  patchTrust({ ...trust, returnDays: next });
+                }}
+                className="mt-1"
+              />
+            </div>
+            <div>
+              <Label htmlFor="trust-whatsapp" className="text-xs">Numéro WhatsApp</Label>
+              <Input
+                id="trust-whatsapp"
+                type="tel"
+                placeholder="+21612345678"
+                value={trust.whatsappNumber ?? ''}
+                onChange={(e) => patchTrust({ ...trust, whatsappNumber: e.target.value.trim() || undefined })}
+                className="mt-1"
+              />
+              <p className="mt-1 text-[11px] text-muted-foreground">
+                Vide = pas de badge « Support WhatsApp ».
+              </p>
+            </div>
+          </div>
         </div>
 
         <div className="space-y-2">
