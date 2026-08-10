@@ -47,6 +47,7 @@ export default function CartPage() {
   const [items, setItems] = useState<CartItem[]>([]);
   const [mounted, setMounted] = useState(false);
   const [cp, setCp] = useState<CartPageOverrides>({});
+  const [storeCurrency, setStoreCurrency] = useState<string | undefined>();
 
   const refresh = useCallback(() => setItems(getCart(storeSlug)), [storeSlug]);
 
@@ -58,8 +59,11 @@ export default function CartPage() {
     fetch(`${API_BASE}/api/public/store-by-slug/${storeSlug}`)
       .then((r) => (r.ok ? r.json() : null))
       .then((data) => {
-        const settings = data?.store?.settings as { cartPage?: CartPageOverrides } | undefined;
+        const settings = data?.store?.settings as
+          | { cartPage?: CartPageOverrides; currency?: string }
+          | undefined;
         if (settings?.cartPage) setCp(settings.cartPage);
+        if (settings?.currency) setStoreCurrency(settings.currency);
       })
       .catch(() => {});
     // Re-render when another tab or component mutates the cart.
@@ -95,9 +99,10 @@ export default function CartPage() {
     );
   }
 
-  // Currency — assume the cart is single-currency (you can only browse one
-  // store at a time). Fall back to first item or TND.
-  const currency = items[0]?.currency || 'TND';
+  // Currency — cart is single-currency (one store per session). Prefer the
+  // first item's currency (real transaction currency), fall back to the
+  // store's settings.currency (avoids "TND 0.00" on an empty CFA cart).
+  const currency = items[0]?.currency || storeCurrency || 'USD';
   const subtotal = items.reduce((s, i) => s + i.price * i.quantity, 0);
   const itemCount = items.reduce((s, i) => s + i.quantity, 0);
 

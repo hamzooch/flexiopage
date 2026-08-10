@@ -269,7 +269,7 @@ export default function CollectionEditorPage() {
                   selectedIds={collection.productIds}
                   onChange={(ids) => update('productIds', ids)}
                   search={search}
-                  currency={store.settings?.currency || 'TND'}
+                  currency={store.settings?.currency || 'USD'}
                 />
               </CardContent>
             </Card>
@@ -288,7 +288,7 @@ export default function CollectionEditorPage() {
                 <AutoRulesEditor
                   rules={collection.rules || {}}
                   onChange={(rules) => update('rules', rules)}
-                  currency={store.settings?.currency || 'TND'}
+                  currency={store.settings?.currency || 'USD'}
                 />
               </CardContent>
             </Card>
@@ -301,7 +301,7 @@ export default function CollectionEditorPage() {
             collection={collection}
             products={matchingProducts}
             storeName={store.name}
-            currency={store.settings?.currency || 'TND'}
+            currency={store.settings?.currency || 'USD'}
           />
         </aside>
       </div>

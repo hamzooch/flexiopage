@@ -82,7 +82,7 @@ export default function OffersPage() {
 
   useEffect(() => { void loadProducts(); }, [loadProducts]);
 
-  const currency = stores.find((s) => s._id === storeId)?.settings?.currency || 'TND';
+  const currency = stores.find((s) => s._id === storeId)?.settings?.currency || 'USD';
 
   return (
     <div className="space-y-6">

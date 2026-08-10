@@ -57,6 +57,7 @@ import { CANCEL_REASON_LABELS } from '@/types/analytics';
 interface StoreType {
   _id: string;
   name: string;
+  settings?: { currency?: string };
 }
 
 interface OrderItem {
@@ -394,6 +395,11 @@ export default function DashboardOrdersPage() {
     setPage(1);
   }, [debouncedSearch, statusFilter, confirmFilter, dayFilter, customFrom, customTo, selectedStoreId]);
 
+  // Fallback à la devise du store courant quand `orders` est vide — sinon
+  // le KPI « Revenu » affichait toujours « TND 0.00 » sur les boutiques en
+  // CFA / MAD / etc. avant la première commande.
+  const storeCurrency = stores.find((s) => s._id === selectedStoreId)?.settings?.currency;
+
   // ── Stats over the loaded orders ─────────────────────────────────────
   const stats = useMemo(() => {
     const total = orders.length;
@@ -403,9 +409,9 @@ export default function DashboardOrdersPage() {
     const revenue = orders
       .filter((o) => o.paymentStatus === 'paid' || o.delivery?.externalStatus === 'delivered')
       .reduce((sum, o) => sum + o.total, 0);
-    const currency = orders[0]?.currency || 'TND';
+    const currency = orders[0]?.currency || storeCurrency || 'USD';
     return { total, paid, pending, delivered, revenue, currency };
-  }, [orders]);
+  }, [orders, storeCurrency]);
 
   // Le filtrage (recherche, statut, confirmation, dates) est désormais fait
   // CÔTÉ SERVEUR (cf. refreshOrders) → `orders` est déjà la page filtrée.

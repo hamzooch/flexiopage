@@ -63,6 +63,7 @@ export default function CartCheckoutPage() {
   const [items, setItems] = useState<CartItem[]>([]);
   const [mounted, setMounted] = useState(false);
   const [co, setCo] = useState<CheckoutPageOverrides>({});
+  const [storeCurrency, setStoreCurrency] = useState<string | undefined>();
 
   // Identity + address
   const [name, setName] = useState('');
@@ -93,13 +94,18 @@ export default function CartCheckoutPage() {
     fetch(`${API_BASE}/api/public/store-by-slug/${storeSlug}`)
       .then((r) => (r.ok ? r.json() : null))
       .then((data) => {
-        const settings = data?.store?.settings as { checkoutPage?: CheckoutPageOverrides } | undefined;
+        const settings = data?.store?.settings as
+          | { checkoutPage?: CheckoutPageOverrides; currency?: string }
+          | undefined;
         if (settings?.checkoutPage) setCo(settings.checkoutPage);
+        if (settings?.currency) setStoreCurrency(settings.currency);
       })
       .catch(() => {});
   }, [refresh, storeSlug]);
 
-  const currency = items[0]?.currency || 'TND';
+  // Cart devise : première commande → devise de l'article. Sinon on retombe
+  // sur `settings.currency` du store (sinon on affichait TND partout).
+  const currency = items[0]?.currency || storeCurrency || 'USD';
   const subtotal = items.reduce((s, i) => s + i.price * i.quantity, 0);
   const discount = couponApplied
     ? (couponApplied.type === 'percent'
