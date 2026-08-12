@@ -1762,7 +1762,7 @@ export const storesApi = {
   ),
   generateVideo: (
     storeId: string,
-    data: { productId: string; language?: string; country?: string; customPrompt?: string }
+    data: { productId: string; language?: string; country?: string; customPrompt?: string; duration?: number }
   ) => api.post<{ result: VideoResult; charge: { amount: number; balanceAfter: number; currency: string } }>(
     `/stores/${storeId}/pages/generate-video`,
     data

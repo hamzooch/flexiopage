@@ -23,9 +23,13 @@ import { logger } from '../lib/logger';
 const VIDEO_MODEL =
   process.env.FAL_VIDEO_MODEL || 'fal-ai/bytedance/seedance/v1/lite/image-to-video';
 
-// Sensible defaults — 5s + 720p suffisent pour un usage ads storefront.
-const DEFAULT_DURATION = 5;
+// Sensible defaults — 8s + 720p suffisent pour un usage ads storefront.
+const DEFAULT_DURATION = 8;
 const DEFAULT_RESOLUTION = '720p';
+// Durées autorisées côté API — Seedance Lite/Pro plafonne à 12s
+// (valeurs supportées : 2..12). On expose 5/8/12 aux vendeurs pour couvrir
+// court/moyen/long sans surprises côté fal.
+const ALLOWED_DURATIONS = [5, 8, 12] as const;
 
 export interface VideoInput {
   storeName: string;
@@ -40,6 +44,8 @@ export interface VideoInput {
   country?: string;
   /** Prompt vidéo custom si le vendeur veut piloter — sinon on demande au LLM. */
   customPrompt?: string;
+  /** Durée souhaitée en secondes — 5, 8 ou 12 (limite Seedance). Défaut 8s. */
+  duration?: number;
 }
 
 export interface VideoResult {
@@ -56,7 +62,7 @@ export interface VideoResult {
  * Pas de JSON, pas de wrapping — on récupère le texte brut à passer tel
  * quel à Seedance.
  */
-async function writeVideoPrompt(input: VideoInput): Promise<string> {
+async function writeVideoPrompt(input: VideoInput, durationSec: number): Promise<string> {
   if (input.customPrompt && input.customPrompt.trim().length > 0) {
     return input.customPrompt.trim();
   }
@@ -67,14 +73,14 @@ Store: "${input.storeName}"
 ${input.product.category ? `Category: ${input.product.category}` : ''}
 ${desc ? `Details: ${desc}` : ''}
 
-Write ONE English prompt (max 40 words) describing a premium 5-second product video: camera angle,
+Write ONE English prompt (max 40 words) describing a premium ${durationSec}-second product video: camera angle,
 subtle motion (rotation, dolly, product highlight), lighting, mood. NO text overlay. NO people
 holding the product. Focus on the product hero shot. Output the prompt text only, no quotes,
 no preamble.`;
   const raw = (await runLLM(prompt)).trim();
   // Sécurité : coupe à 300 chars et retire les guillemets englobants s'il y en a.
   return raw.replace(/^["'\s]+|["'\s]+$/g, '').slice(0, 300) ||
-    `Cinematic product hero shot of ${input.product.name}, slow rotation, soft studio lighting, premium mood, 5 seconds`;
+    `Cinematic product hero shot of ${input.product.name}, slow rotation, soft studio lighting, premium mood, ${durationSec} seconds`;
 }
 
 /**
@@ -93,10 +99,18 @@ export async function generateVideo(input: VideoInput): Promise<VideoResult> {
     throw err;
   }
 
+  // Whitelist stricte : durée doit être 10, 15 ou 20 — sinon fallback default.
+  const duration = ALLOWED_DURATIONS.includes(input.duration as (typeof ALLOWED_DURATIONS)[number])
+    ? (input.duration as number)
+    : DEFAULT_DURATION;
+
   // Fal a besoin d'une URL absolue publique — resolveImageForFal upload sur
   // fal.storage si le chemin est local ou déjà signé.
   const imageUrl = await resolveImageForFal(cover);
-  const prompt = await writeVideoPrompt(input);
+  const prompt = await writeVideoPrompt(input, duration);
+
+  // Rendu plus long → attente plus longue côté fal (facteur ~2× la durée demandée).
+  const maxWaitMs = Math.max(6 * 60_000, duration * 30_000);
 
   const out = await falQueueRequest<{
     video?: { url?: string; content_type?: string; file_size?: number };
@@ -106,10 +120,10 @@ export async function generateVideo(input: VideoInput): Promise<VideoResult> {
     {
       prompt,
       image_url: imageUrl,
-      duration: DEFAULT_DURATION,
+      duration,
       resolution: DEFAULT_RESOLUTION,
     },
-    { maxWaitMs: 6 * 60_000 },
+    { maxWaitMs },
   );
 
   const falVideoUrl = out?.video?.url;
@@ -146,7 +160,7 @@ export async function generateVideo(input: VideoInput): Promise<VideoResult> {
     videoUrl,
     width,
     height,
-    durationSeconds: DEFAULT_DURATION,
+    durationSeconds: duration,
     prompt,
     modelId: VIDEO_MODEL,
   };

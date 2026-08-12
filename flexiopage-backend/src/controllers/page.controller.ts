@@ -745,6 +745,7 @@ export async function generateVideoPage(req: AuthRequest, res: Response): Promis
     language?: string;
     country?: string;
     customPrompt?: string;
+    duration?: number;
   };
   if (!body.productId) {
     res.status(400).json({ error: 'productId is required' });
@@ -776,6 +777,7 @@ export async function generateVideoPage(req: AuthRequest, res: Response): Promis
       language: body.language || store.settings?.language,
       country: body.country || store.settings?.country,
       customPrompt: body.customPrompt,
+      duration: body.duration,
     });
     res.json({ result, charge });
   } catch (err) {

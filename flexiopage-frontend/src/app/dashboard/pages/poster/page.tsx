@@ -158,6 +158,7 @@ export default function StudioPage() {
   const [videoError, setVideoError] = useState('');
   const [video, setVideo] = useState<VideoResult | null>(null);
   const [videoCustomPrompt, setVideoCustomPrompt] = useState('');
+  const [videoDuration, setVideoDuration] = useState<5 | 8 | 12>(8);
 
   // ── Wallet / auth ────────────────────────────────────────────────
   const refreshWallet = useWalletStore((s) => s.refresh);
@@ -286,6 +287,7 @@ export default function StudioPage() {
       const res = await storesApi.generateVideo(storeId, {
         productId,
         language,
+        duration: videoDuration,
         ...(country ? { country } : {}),
         ...(videoCustomPrompt.trim() ? { customPrompt: videoCustomPrompt.trim() } : {}),
       });
@@ -524,6 +526,8 @@ export default function StudioPage() {
           video={video}
           customPrompt={videoCustomPrompt}
           onCustomPromptChange={setVideoCustomPrompt}
+          duration={videoDuration}
+          onDurationChange={setVideoDuration}
           onGenerate={handleGenerateVideo}
         />
       )}
@@ -859,11 +863,15 @@ interface VideoTabProps {
   video: VideoResult | null;
   customPrompt: string;
   onCustomPromptChange: (v: string) => void;
+  duration: 5 | 8 | 12;
+  onDurationChange: (v: 5 | 8 | 12) => void;
   onGenerate: () => void;
 }
 
+const VIDEO_DURATIONS = [5, 8, 12] as const;
+
 function VideoTab(props: VideoTabProps) {
-  const { ready, generating, error, video, customPrompt, onCustomPromptChange, onGenerate } = props;
+  const { ready, generating, error, video, customPrompt, onCustomPromptChange, duration, onDurationChange, onGenerate } = props;
 
   return (
     <div className="grid gap-4 lg:grid-cols-[1fr_420px]">
@@ -881,11 +889,38 @@ function VideoTab(props: VideoTabProps) {
                 <VideoIcon className="h-4 w-4" />
               </div>
               <div className="text-xs text-foreground/80">
-                <strong>Vidéo IA 5 secondes</strong> (720p) générée depuis la 1ʳᵉ
+                <strong>Vidéo IA {duration} secondes</strong> (720p) générée depuis la 1ʳᵉ
                 photo du produit via Seedance (ByteDance). Idéale pour ads Meta,
                 TikTok, ou hero produit animé. Le fichier MP4 reste disponible
                 sur fal.media pendant ~24h — télécharge-le pour le conserver.
               </div>
+            </div>
+          </div>
+
+          {/* Sélecteur de durée — 3 boutons segmentés. Le coût fal augmente
+              proportionnellement à la durée ; on garde 10s en défaut car c'est
+              le sweet spot pour un ad social. */}
+          <div className="space-y-2">
+            <Label className="text-sm font-semibold">Durée de la vidéo</Label>
+            <div className="grid grid-cols-3 gap-2">
+              {VIDEO_DURATIONS.map((d) => {
+                const active = duration === d;
+                return (
+                  <button
+                    key={d}
+                    type="button"
+                    onClick={() => onDurationChange(d)}
+                    disabled={generating}
+                    className={`rounded-lg border px-3 py-2 text-xs font-semibold transition-all disabled:pointer-events-none disabled:opacity-50 ${
+                      active
+                        ? 'border-primary bg-primary/10 text-primary shadow-sm'
+                        : 'border-border/60 bg-background text-muted-foreground hover:border-primary/40 hover:text-foreground'
+                    }`}
+                  >
+                    {d}s
+                  </button>
+                );
+              })}
             </div>
           </div>
 
