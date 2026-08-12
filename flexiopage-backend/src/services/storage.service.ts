@@ -315,3 +315,55 @@ export async function persistRemoteImage(
   const result = await uploadLocal(key, buffer, mimeType);
   return result.url;
 }
+
+/**
+ * Télécharge une vidéo distante (typiquement fal.media après un rendu
+ * Seedance) et la ré-héberge dans notre stockage pour que l'URL ne
+ * dépende plus du TTL du fournisseur.
+ *
+ * Contrairement aux images, on préfère R2 quand il est configuré :
+ * zero egress (R2 n'a pas de bande passante sortante facturée) est
+ * crucial pour la vidéo (plusieurs MB par fichier, lecture répétée).
+ * Fallback S3 puis local si R2 absent. Cloudinary est skippé pour
+ * la vidéo car sa politique de conversion MP4 est restrictive et son
+ * pricing agressif.
+ *
+ * Retourne l'URL permanente. Si l'URL entrante est déjà stable
+ * (data:, chemin local, ou base API interne), retournée telle quelle.
+ */
+export async function persistRemoteVideo(
+  remoteUrl: string,
+  folder = 'ai-videos',
+): Promise<string> {
+  if (!remoteUrl) return remoteUrl;
+  if (remoteUrl.startsWith('data:') || remoteUrl.startsWith('blob:')) return remoteUrl;
+  if (remoteUrl.startsWith('/')) return remoteUrl;
+  const apiBase = (process.env.API_PUBLIC_URL || '').replace(/\/$/, '');
+  if (apiBase && remoteUrl.startsWith(apiBase)) return remoteUrl;
+
+  const res = await fetch(remoteUrl);
+  if (!res.ok) {
+    throw new Error(`persistRemoteVideo: failed to fetch ${remoteUrl} (${res.status})`);
+  }
+  const mimeType = res.headers.get('content-type')?.split(';')[0]?.trim() || 'video/mp4';
+  const ext = mimeType === 'video/webm'
+    ? '.webm'
+    : path.extname(new URL(remoteUrl).pathname) || '.mp4';
+  const buffer = Buffer.from(await res.arrayBuffer());
+  const filename = `${Date.now()}-${Math.random().toString(36).slice(2, 10)}${ext}`;
+  const key = `${folder}/${filename}`;
+
+  // R2 uniquement si un domaine public est configuré — sans lui, uploadR2
+  // renvoie l'URL account-scoped privée qui doit être signée à chaque
+  // lecture, incompatible avec un <video> tag standard.
+  if (isR2Configured() && config.r2PublicBaseUrl) {
+    const result = await uploadR2(key, buffer, mimeType);
+    return result.url;
+  }
+  if (config.driver === 's3' && config.s3Bucket) {
+    const result = await uploadS3(key, buffer, mimeType);
+    return result.url;
+  }
+  const result = await uploadLocal(key, buffer, mimeType);
+  return result.url;
+}

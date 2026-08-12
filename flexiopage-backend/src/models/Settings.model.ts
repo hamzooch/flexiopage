@@ -14,7 +14,7 @@
  */
 import mongoose, { Schema, Document } from 'mongoose';
 
-export type AiKind = 'landing' | 'poster' | 'product_page' | 'text_only';
+export type AiKind = 'landing' | 'poster' | 'product_page' | 'text_only' | 'video';
 
 export interface IAiPricing {
   /** Tokens consommés par génération (par kind). */
@@ -126,6 +126,9 @@ export const DEFAULT_AI_PRICING: IAiPricing = {
     poster:       3,   // tokens per poster generation
     product_page: 3,   // tokens per product-detail page
     text_only:    1,   // tokens per copy-only landing (no images)
+    // Video Seedance Lite ($0.18 côté fal) → ~2 tokens (≈$1.33) laisse
+    // une marge saine couvrant aussi le prompt LLM + le stockage éventuel.
+    video:        2,
   },
   // 10 USD top-up = 15 tokens (ratio confirmé 2026-06-18). L'admin peut
   // ajuster depuis /admin/settings sans redéploiement.
@@ -157,6 +160,7 @@ const SettingsSchema = new Schema<ISettings>(
         poster:       { type: Number, default: DEFAULT_AI_PRICING.prices.poster },
         product_page: { type: Number, default: DEFAULT_AI_PRICING.prices.product_page },
         text_only:    { type: Number, default: DEFAULT_AI_PRICING.prices.text_only },
+        video:        { type: Number, default: DEFAULT_AI_PRICING.prices.video },
       },
       usdToTokens: { type: Number, default: DEFAULT_AI_PRICING.usdToTokens, min: 0.01 },
       rates: { type: Schema.Types.Mixed, default: () => ({ ...DEFAULT_AI_PRICING.rates }) },

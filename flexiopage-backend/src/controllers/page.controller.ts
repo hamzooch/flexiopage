@@ -7,6 +7,7 @@ import { getSectionsFromTemplate, generateLandingWithAI } from '../services/ai-l
 import { generateLandingFromProduct, generateLandingFromImage } from '../services/fal-landing.service';
 import { generatePoster, type PosterTheme, type PosterFormat } from '../services/poster.service';
 import { generateLandingImage } from '../services/landing-image.service';
+import { generateVideo } from '../services/video-generation.service';
 import { extractProductFromUrl, ImportError } from '../services/product-import.service';
 import { persistRemoteImage } from '../services/storage.service';
 import { cleanScrapedImages } from '../services/image-generation.service';
@@ -725,5 +726,62 @@ export async function generateLandingImagePage(req: AuthRequest, res: Response):
   } catch (err) {
     const e = err as Error & { statusCode?: number };
     res.status(e.statusCode || 500).json({ error: e.message || 'Landing image generation failed' });
+  }
+}
+
+/**
+ * POST /api/stores/:storeId/pages/generate-video
+ * Génère une vidéo IA image-to-video (Seedance Lite) à partir de la 1ʳᵉ
+ * photo du produit + un prompt LLM court. Retourne l'URL MP4 hébergée
+ * chez fal.media (TTL ~24h — à re-uploader chez soi si conservation).
+ * Body: { productId, language?, country?, customPrompt? }
+ * Synchrone (~60-120s). Débit du wallet AI (kind = 'video') UNIQUEMENT
+ * si la génération réussit — pattern identique à poster/landing.
+ */
+export async function generateVideoPage(req: AuthRequest, res: Response): Promise<void> {
+  const store = req.store!;
+  const body = req.body as {
+    productId?: string;
+    language?: string;
+    country?: string;
+    customPrompt?: string;
+  };
+  if (!body.productId) {
+    res.status(400).json({ error: 'productId is required' });
+    return;
+  }
+  const product = await Product.findOne({ _id: body.productId, storeId: store._id }).lean();
+  if (!product) {
+    res.status(404).json({ error: 'Product not found in this store' });
+    return;
+  }
+  if (!product.images || product.images.length === 0) {
+    res.status(400).json({
+      error: 'product_has_no_image',
+      message: 'Ce produit n\'a pas de photo. Ajoute au moins une image avant de générer une vidéo.',
+    });
+    return;
+  }
+  const charge = await chargeOrFail(req, res, 'video');
+  if (!charge) return;
+  try {
+    const result = await generateVideo({
+      storeName: store.name,
+      product: {
+        name: product.name,
+        description: product.description,
+        images: product.images,
+        price: product.price,
+      },
+      language: body.language || store.settings?.language,
+      country: body.country || store.settings?.country,
+      customPrompt: body.customPrompt,
+    });
+    res.json({ result, charge });
+  } catch (err) {
+    const e = err as Error & { statusCode?: number; publicMessage?: string };
+    res.status(e.statusCode || 500).json({
+      error: e.publicMessage || e.message || 'Video generation failed',
+    });
   }
 }

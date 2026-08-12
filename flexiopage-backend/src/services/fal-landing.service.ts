@@ -516,7 +516,7 @@ export async function runLLM(prompt: string): Promise<string> {
  * generation forever; one retry on FAILED states (often transient
  * rate-limit / capacity blips, not real failures).
  */
-async function falQueueRequest<T>(
+export async function falQueueRequest<T>(
   model: string,
   input: Record<string, unknown>,
   options: { maxWaitMs?: number; pollIntervalMs?: number } = {},
