@@ -291,3 +291,29 @@ body.scroll-locked {
   margin: 1.2em auto;
   border-radius: 0.75rem;
 }
+/* Callout / blockquote — encadré coloré qui met en avant un bénéfice clé
+   (livraison gratuite, garantie, promo…). Utilise les tokens du thème via
+   currentColor + les couleurs sémantiques Tailwind pour rester lisible en
+   dark ET light mode sans hardcoder. */
+.prose-storefront .callout {
+  margin: 1.2em 0;
+  padding: 0.9em 1.1em;
+  border-inline-start: 3px solid currentColor;
+  background: color-mix(in srgb, currentColor 6%, transparent);
+  border-radius: 0.5rem;
+  opacity: 0.95;
+}
+.prose-storefront .callout p { margin: 0.35em 0; }
+.prose-storefront .callout p:first-child { margin-top: 0; }
+.prose-storefront .callout p:last-child  { margin-bottom: 0; }
+/* Alignement — fences `:::center` / `:::right`. Le style inline sur le div
+   suffit pour le layout ; les classes .align-* permettent au vendeur de
+   surcharger par CSS de thème s'il veut (rare). */
+.prose-storefront .align-center { text-align: center; }
+.prose-storefront .align-right  { text-align: right; }
+.prose-storefront .align-left   { text-align: left; }
+/* Les images DANS un bloc aligné doivent suivre l'alignement du parent
+   plutôt que de rester centrées par leur `margin: auto`. */
+.prose-storefront .align-center img { margin-inline: auto; }
+.prose-storefront .align-right  img { margin-inline-start: auto; margin-inline-end: 0; }
+.prose-storefront .align-left   img { margin-inline-start: 0; margin-inline-end: auto; }

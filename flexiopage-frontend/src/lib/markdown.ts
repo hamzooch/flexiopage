@@ -11,6 +11,9 @@
  *   **bold**, *italic* (single-line, no nesting)
  *   [label](url) links — relative + http(s) only, rel=noopener for http(s)
  *   --- → <hr>
+ *   > line → callout box (blockquote-style, .callout class for CSS)
+ *   :::center / :::right / ::: → aligned block fences (multi-line, closable
+ *      with a bare ::: line). Content inside is fully parsed as markdown.
  *
  * Everything else is HTML-escaped, so the seller can't accidentally
  * inject <script> tags from a paste. Trade-off: no tables, no images,
@@ -86,12 +89,24 @@ function renderInline(line: string): string {
   return out;
 }
 
+/**
+ * Rendu principal — accepte les fences `:::center|:::right` qui wrappent un
+ * bloc multi-lignes rendu récursivement. Une ligne bare `:::` ferme le bloc
+ * ouvert le plus proche. La détection se fait AVANT la boucle par-ligne pour
+ * ne pas mélanger les états (paragraphs / lists) entre l'intérieur et
+ * l'extérieur du bloc.
+ */
 export function renderMarkdown(input: string): string {
   if (!input) return '';
   const lines = input.replace(/\r\n/g, '\n').split('\n');
+  return renderLines(lines);
+}
+
+function renderLines(lines: string[]): string {
   const html: string[] = [];
   let inUl = false;
   let inOl = false;
+  let inCallout = false;
   let paragraph: string[] = [];
 
   function flushParagraph() {
@@ -103,51 +118,95 @@ export function renderMarkdown(input: string): string {
     if (inUl) { html.push('</ul>'); inUl = false; }
     if (inOl) { html.push('</ol>'); inOl = false; }
   }
+  function closeCallout() {
+    if (inCallout) { html.push('</blockquote>'); inCallout = false; }
+  }
 
-  for (const raw of lines) {
+  let i = 0;
+  while (i < lines.length) {
+    const raw = lines[i];
     const line = raw.trimEnd();
+
+    // Fence d'alignement `:::center` … `:::` — collecte le contenu jusqu'à
+    // la fence de fermeture (ou fin d'input) et le rend récursivement.
+    const fenceOpen = /^:::\s*(center|right|left)\s*$/i.exec(line);
+    if (fenceOpen) {
+      flushParagraph(); closeLists(); closeCallout();
+      const align = fenceOpen[1].toLowerCase();
+      const inner: string[] = [];
+      i++;
+      while (i < lines.length && !/^:::\s*$/.test(lines[i].trim())) {
+        inner.push(lines[i]);
+        i++;
+      }
+      // saute la ligne de fermeture si présente
+      if (i < lines.length) i++;
+      html.push(`<div class="align-${align}" style="text-align:${align}">${renderLines(inner)}</div>`);
+      continue;
+    }
+
     if (!line.trim()) {
       flushParagraph();
       closeLists();
+      closeCallout();
+      i++;
       continue;
     }
     // Headings
     const heading = /^(#{1,3})\s+(.+)$/.exec(line);
     if (heading) {
-      flushParagraph(); closeLists();
+      flushParagraph(); closeLists(); closeCallout();
       const level = heading[1].length;
       html.push(`<h${level}>${renderInline(heading[2])}</h${level}>`);
+      i++;
       continue;
     }
     // Horizontal rule
     if (/^-{3,}$/.test(line.trim())) {
-      flushParagraph(); closeLists();
+      flushParagraph(); closeLists(); closeCallout();
       html.push('<hr>');
+      i++;
+      continue;
+    }
+    // Callout / blockquote — `> texte`. Les lignes consécutives sont groupées
+    // dans un seul <blockquote> pour un rendu propre en encadré.
+    const bq = /^>\s?(.*)$/.exec(line);
+    if (bq) {
+      flushParagraph(); closeLists();
+      if (!inCallout) { html.push('<blockquote class="callout">'); inCallout = true; }
+      const content = bq[1].trim();
+      if (content) html.push(`<p>${renderInline(content)}</p>`);
+      i++;
       continue;
     }
     // Unordered list
     const ul = /^[-*]\s+(.+)$/.exec(line);
     if (ul) {
-      flushParagraph();
+      flushParagraph(); closeCallout();
       if (inOl) { html.push('</ol>'); inOl = false; }
       if (!inUl) { html.push('<ul>'); inUl = true; }
       html.push(`<li>${renderInline(ul[1])}</li>`);
+      i++;
       continue;
     }
     // Ordered list
     const ol = /^\d+\.\s+(.+)$/.exec(line);
     if (ol) {
-      flushParagraph();
+      flushParagraph(); closeCallout();
       if (inUl) { html.push('</ul>'); inUl = false; }
       if (!inOl) { html.push('<ol>'); inOl = true; }
       html.push(`<li>${renderInline(ol[1])}</li>`);
+      i++;
       continue;
     }
     // Default: accumulate paragraph
     closeLists();
+    closeCallout();
     paragraph.push(line);
+    i++;
   }
   flushParagraph();
   closeLists();
+  closeCallout();
   return html.join('\n');
 }

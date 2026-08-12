@@ -13,7 +13,11 @@
  */
 
 import { useEffect, useRef, useState } from 'react';
-import { Bold, Italic, Eye, List, Image as ImageIcon, Link as LinkIcon, Link2, Loader2, Pencil, Smile, X } from 'lucide-react';
+import {
+  Bold, Italic, Eye, List, Image as ImageIcon, Link as LinkIcon, Link2, Loader2,
+  Pencil, Smile, X, Heading2, Heading3, AlignLeft, AlignCenter, AlignRight,
+  Minus, Quote, LayoutTemplate, ChevronDown,
+} from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { storesApi, extractApiError } from '@/lib/api';
@@ -30,6 +34,105 @@ const EMOJIS = [
   '🙏', '✨', '🎁', '🚚', '📦', '💰', '🛍️', '⏰', '⚡', '🆕',
   '💪', '👌', '🤩', '😎', '🌟', '💥', '🎯', '📢', '➡️', '✔️',
   '❌', '🔝', '🏆', '💎', '🌈', '☀️', '📞', '💬', '📲', '👇',
+];
+
+/**
+ * Templates de blocs prêts à l'emploi — insèrent une section markdown
+ * complète que le vendeur personnalise ensuite. Objectif : plus jamais
+ * la page blanche ; le vendeur remplace les crochets [...] par ses
+ * infos réelles. Chaque template est autonome (titres, listes, callouts
+ * intégrés) pour un rendu propre dès la 1ʳᵉ édition.
+ */
+interface DescriptionTemplate {
+  id: string;
+  label: string;
+  emoji: string;
+  hint: string;
+  content: string;
+}
+
+const TEMPLATES: DescriptionTemplate[] = [
+  {
+    id: 'box-contents',
+    label: 'Ce que vous recevez',
+    emoji: '📦',
+    hint: 'Liste du contenu du colis',
+    content: `## 📦 Ce que vous recevez
+
+- 1 × [Nom du produit]
+- 1 × [Accessoire inclus]
+- 1 × Manuel d'utilisation
+- 1 × Emballage cadeau offert
+`,
+  },
+  {
+    id: 'features',
+    label: 'Caractéristiques',
+    emoji: '⭐',
+    hint: 'Points clés du produit',
+    content: `## ⭐ Caractéristiques principales
+
+- **[Point fort 1]** — [description courte du bénéfice pour le client]
+- **[Point fort 2]** — [description courte du bénéfice pour le client]
+- **[Point fort 3]** — [description courte du bénéfice pour le client]
+- **[Point fort 4]** — [description courte du bénéfice pour le client]
+`,
+  },
+  {
+    id: 'shipping',
+    label: 'Livraison & retour',
+    emoji: '🚚',
+    hint: 'Encadré infos logistique',
+    content: `## 🚚 Livraison & retour
+
+> ✨ **Livraison sous 48h** partout au Sénégal · **Paiement à la livraison** accepté · **Retour gratuit sous 14 jours** si le produit ne te convient pas.
+`,
+  },
+  {
+    id: 'faq',
+    label: 'Questions fréquentes',
+    emoji: '❓',
+    hint: 'Bloc FAQ scaffold',
+    content: `## ❓ Questions fréquentes
+
+**[Ta 1ʳᵉ question fréquente ?]**
+[Ta réponse claire et rassurante.]
+
+**[Ta 2ᵉ question ?]**
+[Ta réponse.]
+
+**[Ta 3ᵉ question ?]**
+[Ta réponse.]
+`,
+  },
+  {
+    id: 'guarantee',
+    label: 'Garantie qualité',
+    emoji: '🛡️',
+    hint: 'Callout de confiance',
+    content: `## 🛡️ Notre engagement qualité
+
+> 🎯 **Satisfait ou remboursé sous 14 jours.**
+> Chaque pièce est contrôlée à la main avant expédition. Si le produit ne te convient pas, on le reprend sans discuter — remboursement intégral, zéro question.
+`,
+  },
+  {
+    id: 'reviews',
+    label: 'Avis clients',
+    emoji: '💬',
+    hint: '3 témoignages scaffold',
+    content: `## 💬 Ce que nos clients disent
+
+> ⭐⭐⭐⭐⭐ « [Extrait du témoignage — bénéfice concret ressenti par le client]. »
+> — [Prénom N.], [Ville]
+
+> ⭐⭐⭐⭐⭐ « [Autre témoignage — mise en avant d'un point différent : livraison, qualité, service]. »
+> — [Prénom N.], [Ville]
+
+> ⭐⭐⭐⭐⭐ « [3ᵉ témoignage — insiste sur la recommandation ou le rachat]. »
+> — [Prénom N.], [Ville]
+`,
+  },
 ];
 
 interface Props {
@@ -70,6 +173,7 @@ export function ProductDescriptionEditor({ storeId, value, onChange, placeholder
   const [imageModalOpen, setImageModalOpen] = useState(false);
   const [mediaMode, setMediaMode] = useState<'image' | 'gif'>('image');
   const [emojiOpen, setEmojiOpen] = useState(false);
+  const [templatesOpen, setTemplatesOpen] = useState(false);
   const [linkUrl, setLinkUrl] = useState('');
   const [urlError, setUrlError] = useState('');
   const [uploading, setUploading] = useState(false);
@@ -112,6 +216,75 @@ export function ProductDescriptionEditor({ storeId, value, onChange, placeholder
         ref.current.setSelectionRange(nextCaret, nextCaret);
       }
     }, 0);
+  }
+
+  /**
+   * Ajoute un préfixe (`## `, `> `, etc.) au début de la ligne courante
+   * (ou de chaque ligne sélectionnée si sélection multi-ligne). Idempotent :
+   * ré-cliquer supprime le préfixe. Utile pour les titres et les callouts.
+   */
+  function togglePrefix(prefix: string) {
+    const ta = ref.current;
+    if (!ta) return;
+    const start = ta.selectionStart ?? value.length;
+    const end = ta.selectionEnd ?? start;
+    // Étend au début et fin de ligne(s).
+    const lineStart = value.lastIndexOf('\n', start - 1) + 1;
+    const nlAfter = value.indexOf('\n', end);
+    const lineEnd = nlAfter === -1 ? value.length : nlAfter;
+    const selected = value.slice(lineStart, lineEnd);
+    const lines = selected.split('\n');
+    // Si TOUTES les lignes commencent déjà par le préfixe, on le retire ;
+    // sinon on l'ajoute à toutes (comportement toggle familier des IDEs).
+    const allPrefixed = lines.every((l) => l.startsWith(prefix));
+    const transformed = lines
+      .map((l) => (allPrefixed ? l.slice(prefix.length) : `${prefix}${l}`))
+      .join('\n');
+    const next = value.slice(0, lineStart) + transformed + value.slice(lineEnd);
+    onChange(next);
+    window.setTimeout(() => {
+      if (ref.current) {
+        ref.current.focus();
+        const delta = transformed.length - selected.length;
+        ref.current.setSelectionRange(lineStart, end + delta);
+      }
+    }, 0);
+  }
+
+  /**
+   * Wrappe la sélection (ou insère un placeholder) dans un fence
+   * `:::align\n…\n:::`. Sur sélection vide, ajoute juste les fences avec
+   * le curseur au milieu prêt à taper.
+   */
+  function wrapAlign(align: 'center' | 'right' | 'left') {
+    const ta = ref.current;
+    if (!ta) return;
+    const start = ta.selectionStart ?? value.length;
+    const end = ta.selectionEnd ?? start;
+    const selected = value.slice(start, end) || 'Ton texte ici';
+    const block = `\n:::${align}\n${selected}\n:::\n`;
+    const next = value.slice(0, start) + block + value.slice(end);
+    onChange(next);
+    window.setTimeout(() => {
+      if (ref.current) {
+        ref.current.focus();
+        // Curseur positionné sur le texte inséré pour édition immédiate.
+        const innerStart = start + `\n:::${align}\n`.length;
+        ref.current.setSelectionRange(innerStart, innerStart + selected.length);
+      }
+    }, 0);
+  }
+
+  /** Insère un template markdown complet au curseur, précédé/suivi de sauts
+   *  pour ne pas coller au texte existant. Ferme le dropdown après. */
+  function insertTemplate(template: DescriptionTemplate) {
+    // 2 sauts de ligne devant si on n'est pas déjà en début de doc.
+    const prefix = value.trim() ? '\n\n' : '';
+    insert(prefix + template.content.trim() + '\n\n');
+    setTemplatesOpen(false);
+    // Bascule sur l'aperçu pour que le vendeur voie tout de suite le rendu
+    // du bloc qu'il vient d'insérer (comme pour les images).
+    setView('preview');
   }
 
   function insertImage(url: string) {
@@ -341,8 +514,24 @@ export function ProductDescriptionEditor({ storeId, value, onChange, placeholder
         </div>
       ) : (
       <>
-      {/* Toolbar */}
+      {/* Toolbar — groupée : Structure · Format · Alignement · Média · Templates.
+          Séparateurs visuels entre groupes pour aider le vendeur à trouver
+          rapidement le bouton qu'il cherche. Sur mobile ça wrap naturellement. */}
       <div className="relative flex flex-wrap items-center gap-1.5">
+        {/* Groupe Structure — titres + diviseur */}
+        <ToolbarBtn onClick={() => togglePrefix('## ')} title="Titre principal (H2)">
+          <Heading2 className="h-3.5 w-3.5" />
+        </ToolbarBtn>
+        <ToolbarBtn onClick={() => togglePrefix('### ')} title="Sous-titre (H3)">
+          <Heading3 className="h-3.5 w-3.5" />
+        </ToolbarBtn>
+        <ToolbarBtn onClick={() => insert('\n\n---\n\n')} title="Trait de séparation">
+          <Minus className="h-3.5 w-3.5" />
+        </ToolbarBtn>
+
+        <ToolbarSeparator />
+
+        {/* Groupe Format — gras, italique, liste, lien, callout */}
         <ToolbarBtn onClick={() => insert('**TEXT**', { wrap: true })} title="Gras (Ctrl+B)">
           <Bold className="h-3.5 w-3.5" />
         </ToolbarBtn>
@@ -355,6 +544,26 @@ export function ProductDescriptionEditor({ storeId, value, onChange, placeholder
         <ToolbarBtn onClick={insertLink} title="Insérer un lien">
           <LinkIcon className="h-3.5 w-3.5" />
         </ToolbarBtn>
+        <ToolbarBtn onClick={() => togglePrefix('> ')} title="Encadré / callout (attire l'œil)">
+          <Quote className="h-3.5 w-3.5" />
+        </ToolbarBtn>
+
+        <ToolbarSeparator />
+
+        {/* Groupe Alignement — gauche / centre / droite via fences ::: */}
+        <ToolbarBtn onClick={() => wrapAlign('left')} title="Aligner à gauche">
+          <AlignLeft className="h-3.5 w-3.5" />
+        </ToolbarBtn>
+        <ToolbarBtn onClick={() => wrapAlign('center')} title="Centrer">
+          <AlignCenter className="h-3.5 w-3.5" />
+        </ToolbarBtn>
+        <ToolbarBtn onClick={() => wrapAlign('right')} title="Aligner à droite">
+          <AlignRight className="h-3.5 w-3.5" />
+        </ToolbarBtn>
+
+        <ToolbarSeparator />
+
+        {/* Groupe Média — image, GIF, lien média, emoji */}
         <ToolbarBtn onClick={() => pickFile('image')} title="Téléverser une image">
           {uploading && mediaMode === 'image' ? (
             <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -372,9 +581,27 @@ export function ProductDescriptionEditor({ storeId, value, onChange, placeholder
         <ToolbarBtn onClick={() => openLinkModal(mediaMode)} title="Insérer depuis un lien (Giphy, CDN)">
           <Link2 className="h-3.5 w-3.5" />
         </ToolbarBtn>
-        <ToolbarBtn onClick={() => setEmojiOpen((v) => !v)} title="Emoji / icône" active={emojiOpen}>
+        <ToolbarBtn onClick={() => { setEmojiOpen((v) => !v); setTemplatesOpen(false); }} title="Emoji / icône" active={emojiOpen}>
           <Smile className="h-3.5 w-3.5" />
         </ToolbarBtn>
+
+        <ToolbarSeparator />
+
+        {/* Groupe Templates — blocs prêts à personnaliser */}
+        <button
+          type="button"
+          onMouseDown={(e) => e.preventDefault()}
+          onClick={() => { setTemplatesOpen((v) => !v); setEmojiOpen(false); }}
+          className={cn(
+            'inline-flex h-8 items-center gap-1 rounded-md border border-border/60 bg-gradient-to-br from-primary/10 to-fuchsia-500/10 px-2 text-[11px] font-semibold text-foreground transition-colors hover:border-primary/40',
+            templatesOpen && 'border-primary/40 bg-primary/10',
+          )}
+          title="Insérer un bloc prêt à l'emploi"
+        >
+          <LayoutTemplate className="h-3.5 w-3.5" />
+          <span className="hidden sm:inline">Insérer un bloc</span>
+          <ChevronDown className="h-3 w-3 opacity-70" />
+        </button>
 
         {emojiOpen && (
           <>
@@ -392,6 +619,36 @@ export function ProductDescriptionEditor({ storeId, value, onChange, placeholder
                   {e}
                 </button>
               ))}
+            </div>
+          </>
+        )}
+
+        {templatesOpen && (
+          <>
+            <div className="fixed inset-0 z-40" onClick={() => setTemplatesOpen(false)} />
+            <div className="absolute right-0 top-9 z-50 w-[300px] rounded-xl border border-border/60 bg-card p-1.5 shadow-xl sm:right-auto sm:left-0">
+              <div className="px-2 pb-1.5 pt-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                Blocs prêts à personnaliser
+              </div>
+              {TEMPLATES.map((tpl) => (
+                <button
+                  key={tpl.id}
+                  type="button"
+                  onClick={() => insertTemplate(tpl)}
+                  className="flex w-full items-start gap-2.5 rounded-md p-2 text-left transition-colors hover:bg-muted"
+                >
+                  <span className="grid h-8 w-8 shrink-0 place-items-center rounded-md bg-muted text-base">
+                    {tpl.emoji}
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <div className="text-xs font-semibold text-foreground">{tpl.label}</div>
+                    <div className="truncate text-[10px] text-muted-foreground">{tpl.hint}</div>
+                  </div>
+                </button>
+              ))}
+              <div className="mt-1 border-t border-border/50 px-2 pb-1 pt-2 text-[10px] text-muted-foreground">
+                💡 Le bloc s&apos;insère au curseur — remplace les <code>[...]</code> par tes vraies infos.
+              </div>
             </div>
           </>
         )}
@@ -451,7 +708,7 @@ export function ProductDescriptionEditor({ storeId, value, onChange, placeholder
       )}
 
       <p className="text-[11px] text-muted-foreground">
-        Mise en forme acceptée : <code className="rounded bg-muted px-1">**gras**</code> · <code className="rounded bg-muted px-1">- listes</code> · <code className="rounded bg-muted px-1">[lien](url)</code> · <code className="rounded bg-muted px-1">![](url-image.gif)</code> pour images / GIFs · emojis 😊 via le bouton 🙂. Tu peux aussi <strong>coller</strong> (Ctrl/Cmd+V) ou glisser-déposer une image / un GIF directement. Bascule sur <strong>Aperçu</strong> pour voir le rendu final.
+        Mise en forme : <code className="rounded bg-muted px-1">## Titre</code> · <code className="rounded bg-muted px-1">**gras**</code> · <code className="rounded bg-muted px-1">- listes</code> · <code className="rounded bg-muted px-1">&gt; encadré</code> · <code className="rounded bg-muted px-1">:::center</code> pour centrer · <code className="rounded bg-muted px-1">---</code> diviseur · <code className="rounded bg-muted px-1">![](url)</code> images / GIFs. Coller (Ctrl/Cmd+V) ou glisser-déposer une image marche aussi. Bascule sur <strong>Aperçu</strong> pour voir le rendu.
       </p>
       </>
       )}
@@ -506,6 +763,12 @@ export function ProductDescriptionEditor({ storeId, value, onChange, placeholder
       )}
     </div>
   );
+}
+
+/** Trait de séparation vertical entre groupes de boutons de la toolbar.
+ *  Purement visuel — n'a aucune sémantique. */
+function ToolbarSeparator() {
+  return <span aria-hidden className="mx-0.5 h-6 w-px shrink-0 bg-border/60" />;
 }
 
 function ToolbarBtn({
