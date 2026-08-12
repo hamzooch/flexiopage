@@ -46,6 +46,20 @@ interface ProviderStatus {
   imagesEnabled?: boolean;
 }
 
+interface PricingRow {
+  /** Ex. `fal-ai/flux/schnell` — cliquable vers la page modèle sur fal. */
+  model: string;
+  /** Ce à quoi sert ce modèle chez FlexioPage. */
+  purpose: string;
+  /** Unité de facturation (ex. "1 image 1MP", "1M tokens output", "5s vidéo 1080p"). */
+  unit: string;
+  /** Prix indicatif — préfixer `~` pour signaler que c'est un ordre de grandeur.
+   *  On garde en USD car c'est la devise de facturation de fal.ai. */
+  priceUsd: string;
+  /** Note libre (ex. "prix pass-through selon LLM choisi", "varie avec la taille"). */
+  note?: string;
+}
+
 interface ProviderCatalog {
   id: ProviderId;
   name: string;
@@ -64,6 +78,9 @@ interface ProviderCatalog {
   accent: string;
   /** Où le vendeur récupère sa clé (obtenu au signup provider). */
   keyOrigin: string;
+  /** Coûts par modèle (uniquement les providers "à la génération" comme fal).
+   *  Prix indicatifs — la vérité vit sur la page pricingUrl officielle. */
+  pricing?: PricingRow[];
 }
 
 const PROVIDERS: ProviderCatalog[] = [
@@ -129,6 +146,110 @@ const PROVIDERS: ProviderCatalog[] = [
     pricingUrl: 'https://fal.ai/pricing',
     accent: 'from-fuchsia-500 to-pink-600',
     keyOrigin: 'https://fal.ai/dashboard/keys',
+    // Coûts par modèle — ordre de grandeur (source: fal.ai/pricing).
+    // Le prix exact peut varier selon résolution, durée, tokens. Le lien
+    // « Tarifs » en bas de la carte renvoie vers la source de vérité.
+    pricing: [
+      // ── Images (utilisés dans landing IA + génération produit) ──
+      {
+        model: 'fal-ai/flux/schnell',
+        purpose: 'Landing IA — génération image rapide (défaut)',
+        unit: '1 image 1MP',
+        priceUsd: '$0.003',
+      },
+      {
+        model: 'fal-ai/flux-pro/v1',
+        purpose: 'Landing IA — image premium (hero, produits)',
+        unit: '1 image 1MP',
+        priceUsd: '$0.05',
+      },
+      {
+        model: 'fal-ai/flux-pro/kontext',
+        purpose: 'Édition image basée sur contexte (retouches)',
+        unit: '1 image',
+        priceUsd: '$0.04',
+      },
+      {
+        model: 'fal-ai/flux-realism',
+        purpose: 'Portraits / photos ultra-réalistes',
+        unit: '1 image 1MP',
+        priceUsd: '$0.05',
+      },
+      {
+        model: 'fal-ai/nano-banana',
+        purpose: 'Google Gemini Flash Image — génération éco',
+        unit: '1 image',
+        priceUsd: '$0.039',
+      },
+      {
+        model: 'fal-ai/nano-banana/edit',
+        purpose: 'Édition d\'image (variations, in-painting)',
+        unit: '1 image',
+        priceUsd: '$0.039',
+      },
+      {
+        model: 'fal-ai/ideogram/v3',
+        purpose: 'Génération image avec texte lisible (posters)',
+        unit: '1 image',
+        priceUsd: '$0.08',
+      },
+      // ── Utilitaires image (upscale, background removal, captioning) ──
+      {
+        model: 'fal-ai/clarity-upscaler',
+        purpose: 'Upscale HD des visuels produits',
+        unit: '1 image',
+        priceUsd: '~$0.03',
+        note: 'Varie selon résolution de sortie',
+      },
+      {
+        model: 'fal-ai/rembg',
+        purpose: 'Suppression de fond automatique',
+        unit: '1 image',
+        priceUsd: '$0.001',
+      },
+      {
+        model: 'fal-ai/imageutils/rembg',
+        purpose: 'Alias imageutils — rembg + resize/crop',
+        unit: '1 image',
+        priceUsd: '$0.001',
+      },
+      {
+        model: 'fal-ai/florence-2-large/more-detailed-caption',
+        purpose: 'Alt-text automatique (accessibilité, SEO)',
+        unit: '1 image',
+        priceUsd: '$0.003',
+      },
+      // ── LLM (any-llm route vers différents providers, prix pass-through) ──
+      {
+        model: 'fal-ai/any-llm',
+        purpose: 'Router LLM — copywriting landings, descriptions produit',
+        unit: '1M tokens (in+out)',
+        priceUsd: '$0.72 – $18',
+        note: 'Prix pass-through — dépend du modèle (Llama 3.3 → Claude Sonnet)',
+      },
+      {
+        model: 'fal-ai/any-llm/vision',
+        purpose: 'LLM avec vision — analyse d\'images uploadées',
+        unit: '1M tokens',
+        priceUsd: '$3 – $15',
+        note: 'Claude 3.5 Sonnet vision par défaut',
+      },
+      // ── Vidéo (Seedance — pas encore intégré, prévu) ──
+      {
+        model: 'fal-ai/bytedance/seedance/v1/lite/image-to-video',
+        purpose: 'Vidéo produit économique (à intégrer)',
+        unit: '5s en 720p',
+        priceUsd: '$0.18',
+        note: 'ByteDance Seedance Lite — non encore branché',
+      },
+      {
+        model: 'fal-ai/bytedance/seedance/v1/pro/image-to-video',
+        purpose: 'Vidéo produit premium (à intégrer)',
+        unit: '5s en 1080p',
+        priceUsd: '$0.62',
+        note: 'ByteDance Seedance Pro — non encore branché',
+      },
+    ],
   },
 ];
 
@@ -299,6 +420,66 @@ function ProviderCard({
                 </div>
               ))}
             </div>
+          </div>
+        )}
+
+        {/* Coûts par modèle — providers "à la génération" (fal.ai). */}
+        {provider.pricing && provider.pricing.length > 0 && (
+          <div>
+            <div className="mb-1.5 flex items-center justify-between gap-2">
+              <div className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                Coûts par modèle (indicatifs)
+              </div>
+              <span className="rounded-full bg-amber-500/10 px-1.5 py-0.5 text-[9px] font-bold text-amber-700">
+                USD
+              </span>
+            </div>
+            <div className="overflow-hidden rounded-lg border border-border/60">
+              <table className="w-full text-[11px]">
+                <thead>
+                  <tr className="bg-muted/50 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+                    <th className="px-2 py-1.5 text-left">Modèle</th>
+                    <th className="px-2 py-1.5 text-left">Unité</th>
+                    <th className="px-2 py-1.5 text-right">Prix</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {provider.pricing.map((r) => (
+                    <tr key={r.model} className="border-t border-border/60 align-top">
+                      <td className="px-2 py-1.5">
+                        <a
+                          href={`https://fal.ai/models/${r.model}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="font-mono text-[10.5px] leading-tight text-primary hover:underline"
+                        >
+                          {r.model}
+                        </a>
+                        <div className="mt-0.5 text-[10.5px] leading-snug text-muted-foreground">
+                          {r.purpose}
+                        </div>
+                        {r.note && (
+                          <div className="mt-0.5 text-[10px] italic leading-snug text-amber-700/80">
+                            {r.note}
+                          </div>
+                        )}
+                      </td>
+                      <td className="px-2 py-1.5 text-[10.5px] text-muted-foreground">{r.unit}</td>
+                      <td className="px-2 py-1.5 text-right font-mono font-semibold tabular-nums">
+                        {r.priceUsd}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <p className="mt-1.5 text-[10px] leading-snug text-muted-foreground">
+              Ordres de grandeur — la vérité vit sur{' '}
+              <a href={provider.pricingUrl} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">
+                {provider.pricingUrl.replace(/^https?:\/\//, '')}
+              </a>
+              . À revérifier avant chaque forte volumétrie.
+            </p>
           </div>
         )}
 
