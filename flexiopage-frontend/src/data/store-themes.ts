@@ -127,6 +127,13 @@ export interface StoreThemeTemplate {
    * target courses, ebooks, SaaS, templates, etc.
    */
   forStoreTypes: StoreKind[];
+  /**
+   * Réservé au fondateur (email FOUNDER_EMAIL) — les autres vendeurs ne le
+   * voient PAS dans le picker. Sert aux thèmes VIP / vitrines perso où le
+   * design ne convient pas au marché grand public. Optionnel : par défaut,
+   * un thème est visible pour tous.
+   */
+  restrictedToFounder?: boolean;
   theme: ThemeTokens;
 }
 
@@ -897,6 +904,58 @@ const vinum: StoreThemeTemplate = {
   }),
 };
 
+// ─────────────────────────────────────────────────────────────────────
+// AFRO3DPROD — Founder-only VIP theme.
+// Ultra-dark base (#050510) + accent violet néon (#a855f7) et cyan
+// glaçon (#22d3ee). Aesthetic tech / high-end : gros hero fullbleed
+// glow, cartes overlay premium, nav glass, testimonials carousel, footer
+// bold. Le storefront override rend une LANDING au lieu du showcase
+// section-based standard (voir /store/[slug]/page.tsx). Réservé au
+// fondateur — n'apparaît pas dans le picker pour les autres vendeurs.
+// ─────────────────────────────────────────────────────────────────────
+const afro3dprod: StoreThemeTemplate = {
+  id: 'afro3dprod',
+  name: 'Afro3DProd',
+  tagline: 'VIP · dark premium · néon',
+  description:
+    "Thème vitrine réservé au fondateur. Fond ultra-sombre, accents violet/cyan néon, hero massif glow, cartes overlay, nav glass. Rend une landing page (Hero → Shop → Features → Testimonials → CTA → Footer) au lieu du showcase standard. Non disponible dans le picker public.",
+  niche: 'general',
+  nicheLabel: 'Vitrine premium',
+  forStoreTypes: ['physical', 'digital'],
+  restrictedToFounder: true,
+  theme: makeTheme({
+    templateId: 'afro3dprod',
+    primary: '#a855f7',            // violet néon — CTAs et accents forts
+    primaryFg: '#ffffff',
+    accent: '#22d3ee',             // cyan glace — hover / accents secondaires
+    background: '#050510',         // near-black avec teinte bleutée
+    surface: '#0d0d1a',
+    surfaceMuted: '#0a0a15',
+    foreground: '#f5f5fa',
+    muted: '#8b8ba7',
+    border: '#1f1f33',
+    gradientFrom: '#a855f7',
+    gradientTo: '#22d3ee',
+    fontHeading: '"Space Grotesk", "Outfit", "Inter", sans-serif',
+    fontBody: '"Inter", system-ui, -apple-system, sans-serif',
+    fontDisplaySize: 'xlarge',
+    borderRadius: 'medium',
+    spacing: 'normal',
+    style: 'glass',
+    layout: {
+      hero: 'fullbleed',
+      productCard: 'overlay',
+      gridColumns: 3,
+      nav: 'glass',
+      testimonials: 'carousel',
+      footer: 'bold',
+    },
+    pattern: 'grid',               // grille tech en trame de fond
+    shadow: 'glow',                // néons partout
+    dark: true,
+  }),
+};
+
 export const STORE_THEME_TEMPLATES: StoreThemeTemplate[] = [
   // Physical stores
   maison, nova, carthago, volt, atelier, bloom, forge, prima, aurum, vinum,
@@ -904,14 +963,25 @@ export const STORE_THEME_TEMPLATES: StoreThemeTemplate[] = [
   pulse, sage, studio, lumen,
   // Universal / multi-type
   prism,
+  // Founder-only VIP (filtré côté picker)
+  afro3dprod,
 ];
 
 /**
  * Filter themes by store type. Physical stores see only physical-product
  * themes, digital stores see only digital-product themes.
+ *
+ * `opts.founder = true` inclut aussi les thèmes marqués `restrictedToFounder`
+ * (VIP réservés à toi). Par défaut ils sont exclus du picker public.
  */
-export function themesForStoreType(kind: StoreKind): StoreThemeTemplate[] {
-  return STORE_THEME_TEMPLATES.filter((t) => t.forStoreTypes.includes(kind));
+export function themesForStoreType(
+  kind: StoreKind,
+  opts?: { founder?: boolean },
+): StoreThemeTemplate[] {
+  const founder = opts?.founder === true;
+  return STORE_THEME_TEMPLATES.filter(
+    (t) => t.forStoreTypes.includes(kind) && (founder || !t.restrictedToFounder),
+  );
 }
 
 export function getThemeById(id: string): StoreThemeTemplate | undefined {

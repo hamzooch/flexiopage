@@ -30,6 +30,7 @@ import { StorefrontRichText, type RichTextConfig } from '@/components/storefront
 import { AnnouncementBar, type AnnouncementBarConfig } from '@/components/storefront/AnnouncementBar';
 import { HeroMedia } from '@/components/storefront/hero-media';
 import type { WhatsappConfig } from '@/components/storefront/whatsapp-button';
+import { Afro3dprodLanding } from '@/components/storefront/themes/afro3dprod-landing';
 
 interface Props {
   params: Promise<{ storeSlug: string }>;
@@ -307,6 +308,48 @@ export default async function PublicStorePage({ params }: Props) {
   const showGrid = sf.showProductsGrid !== false;
   const showFeatures = sf.showFeatures !== false;
   const showFooter = sf.showFooter !== false;
+
+  // Thème VIP fondateur : la home rend une landing dédiée (Hero → Shop →
+  // Features → Testimonials → CTA) au lieu du showcase section-based
+  // standard. Navbar/AnnouncementBar/Footer restent inchangés pour que
+  // cart/wishlist/product héritent d'une nav cohérente.
+  if (theme.templateId === 'afro3dprod') {
+    return (
+      <>
+        {fontsUrl && <link rel="stylesheet" href={fontsUrl} />}
+        <MarketingPixels config={store.integrations?.marketing} />
+        <StoreTracker storeId={store._id} type="page_view" />
+        <div
+          dir={direction}
+          lang={language}
+          className="min-h-screen"
+          style={tokensToCssVars(theme)}
+        >
+          <AnnouncementBar config={sf.announcementBar} theme={theme} />
+          <StoreNavbar
+            storeName={store.name}
+            storeSlug={store.slug}
+            storeLogo={store.logo}
+            theme={theme}
+            config={sf.navbar}
+            markets={enabledMarkets}
+            currentMarketCountry={market?.country}
+          />
+          <Afro3dprodLanding store={store} products={products} currency={currency} />
+          {showFooter && (
+            <StoreFooter
+              storeName={store.name}
+              storeSlug={store.slug}
+              storeLogo={store.logo}
+              footerNote={sf.footerNote}
+              config={sf.footer}
+              theme={theme}
+            />
+          )}
+        </div>
+      </>
+    );
+  }
 
   return (
     <>

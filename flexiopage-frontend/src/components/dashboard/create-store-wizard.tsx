@@ -18,6 +18,8 @@ import {
 } from 'lucide-react';
 import { themesForStoreType, type StoreThemeTemplate } from '@/data/store-themes';
 import { ThemePreviewGrid } from '@/components/dashboard/theme-preview-card';
+import { useAuthStore } from '@/stores/auth-store';
+import { isStaff } from '@/lib/is-staff';
 import { cn } from '@/lib/utils';
 
 type StoreType = 'physical' | 'digital';
@@ -184,6 +186,9 @@ interface Props {
 export function CreateStoreWizard({ onCreated, triggerLabel = 'Créer une boutique' }: Props) {
   const router = useRouter();
   const setCurrentStore = useStoreStore((s) => s.setCurrentStore);
+  // Fondateur = accès aux thèmes VIP (`restrictedToFounder`) dans le picker.
+  const currentUser = useAuthStore((s) => s.user);
+  const isFounderView = isStaff(currentUser);
   const [step, setStep] = useState<Step>('idle');
   const [selectedType, setSelectedType] = useState<StoreType | null>(null);
   const [selectedTheme, setSelectedTheme] = useState<StoreThemeTemplate | null>(null);
@@ -352,7 +357,7 @@ export function CreateStoreWizard({ onCreated, triggerLabel = 'Créer une boutiq
           subtitle={`Sélectionne un design adapté à ton ${selectedType === 'physical' ? 'commerce physique' : 'produit digital'}. Tu pourras le changer plus tard.`}
         />
         <ThemePreviewGrid
-          templates={themesForStoreType(selectedType)}
+          templates={themesForStoreType(selectedType, { founder: isFounderView })}
           selectedId={selectedTheme?.id}
           onSelect={(t) => { setSelectedTheme(t); setStep('create-form'); }}
         />

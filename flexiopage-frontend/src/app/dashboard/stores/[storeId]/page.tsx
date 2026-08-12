@@ -86,6 +86,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { storesApi, extractApiError } from '@/lib/api';
 import { useAuthStore } from '@/stores/auth-store';
+import { isStaff } from '@/lib/is-staff';
 import { cn, publicStoreUrl } from '@/lib/utils';
 import type {
   StoreType,
@@ -272,6 +273,11 @@ export default function StoreEditPage() {
   // le draft. On le passe en query param `pt` dans l'URL de l'iframe —
   // usage restreint au dashboard du propriétaire, pas de leak externe.
   const authToken = useAuthStore((s) => s.token);
+  // Le fondateur voit les thèmes VIP (`restrictedToFounder`) dans le picker —
+  // les autres vendeurs non. Vérité de source : `isStaff` couvre les rôles
+  // internes ET l'email fondateur.
+  const currentUser = useAuthStore((s) => s.user);
+  const isFounderView = isStaff(currentUser);
   const [store, setStore] = useState<StoreType | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -737,7 +743,7 @@ export default function StoreEditPage() {
             </div>
             <div className="flex-1 overflow-y-auto overscroll-contain touch-pan-y p-5">
               <ThemePreviewGrid
-                templates={themesForStoreType(isDigital ? 'digital' : 'physical')}
+                templates={themesForStoreType(isDigital ? 'digital' : 'physical', { founder: isFounderView })}
                 selectedId={currentThemeId}
                 onSelect={selectTheme}
               />
