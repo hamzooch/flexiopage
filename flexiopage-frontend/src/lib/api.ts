@@ -394,6 +394,19 @@ export interface LandingImageResult {
   copy: LandingImageCopy;
 }
 
+/**
+ * Vidéo IA générée par Seedance (image-to-video). L'URL pointe vers fal.media
+ * (TTL ~24h) — à télécharger côté vendeur si conservation nécessaire.
+ */
+export interface VideoResult {
+  videoUrl: string;
+  width: number;
+  height: number;
+  durationSeconds: number;
+  prompt: string;
+  modelId: string;
+}
+
 // ─────────────────────────────────────────────────────────────────────
 // Store analytics — light 4-KPI shape consumed by the dashboard cards
 // ─────────────────────────────────────────────────────────────────────
@@ -1745,6 +1758,13 @@ export const storesApi = {
     data: { productId: string; language?: string; country?: string; currency?: string }
   ) => api.post<{ result: LandingImageResult; charge: { amount: number; balanceAfter: number; currency: string } }>(
     `/stores/${storeId}/pages/generate-landing-image`,
+    data
+  ),
+  generateVideo: (
+    storeId: string,
+    data: { productId: string; language?: string; country?: string; customPrompt?: string }
+  ) => api.post<{ result: VideoResult; charge: { amount: number; balanceAfter: number; currency: string } }>(
+    `/stores/${storeId}/pages/generate-video`,
     data
   ),
   getTracking: (storeId: string, range: TrackingRange = '30d') =>

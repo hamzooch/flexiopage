@@ -15,7 +15,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import * as htmlToImage from 'html-to-image';
 import {
   Loader2, Sparkles, Download, ArrowLeft, Image as ImageIcon, AlertTriangle,
-  LayoutTemplate, ExternalLink, Wand2,
+  LayoutTemplate, ExternalLink, Wand2, Video as VideoIcon, Play,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -27,6 +27,7 @@ import {
   type PosterTheme,
   type PosterFormat,
   type LandingImageResult,
+  type VideoResult,
 } from '@/lib/api';
 import { PosterCanvas } from '@/components/poster/poster-canvas';
 import { useWalletStore } from '@/stores/wallet-store';
@@ -37,7 +38,7 @@ import { cn } from '@/lib/utils';
 interface StoreLite { _id: string; name: string; slug: string; settings?: { country?: string; language?: string; currency?: string } }
 interface ProductLite { _id: string; name: string; price: number; compareAtPrice?: number; images?: string[] }
 
-type StudioTab = 'poster' | 'landing';
+type StudioTab = 'poster' | 'landing' | 'video';
 
 // ─────────────────────────────────────────────────────────────────────
 // Static options
@@ -88,6 +89,26 @@ const ARAB_COUNTRIES: { code: string; label: string; flag: string; dialect: stri
   { code: 'MR', label: 'Mauritanie',      flag: '🇲🇷', dialect: 'Hassaniya' },
 ];
 
+/**
+ * Exemples de prompts vidéo cliquables — proposent 3 esthétiques distinctes
+ * pour aider le vendeur qui bloque devant la page vide. Cliquer un exemple
+ * remplit le textarea, il reste éditable.
+ */
+const VIDEO_PROMPT_EXAMPLES: { label: string; prompt: string }[] = [
+  {
+    label: '360° studio luxe',
+    prompt: 'Slow 360° rotation of the product on a black marble table, soft warm studio lighting, luxury premium mood, product stays sharp and centered.',
+  },
+  {
+    label: 'Lifestyle chaud',
+    prompt: 'Cinematic dolly-in on the product placed in a bright modern kitchen, morning sunlight, warm cozy mood, subtle bokeh in background.',
+  },
+  {
+    label: 'Ads TikTok punchy',
+    prompt: 'Fast punchy reveal of the product, product zooms in from black background, dynamic light flash, energetic mood, ideal for a TikTok ad hook.',
+  },
+];
+
 function posterPreviewZoom(format: PosterFormat | undefined): number {
   switch (format || 'story') {
     case 'square':    return 0.32;
@@ -105,7 +126,9 @@ export default function StudioPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const initialStoreId = searchParams.get('storeId') || '';
-  const initialTab: StudioTab = searchParams.get('tab') === 'landing' ? 'landing' : 'poster';
+  const rawTab = searchParams.get('tab');
+  const initialTab: StudioTab =
+    rawTab === 'landing' ? 'landing' : rawTab === 'video' ? 'video' : 'poster';
 
   // ── Shared state (top of page) ────────────────────────────────────
   const [tab, setTab] = useState<StudioTab>(initialTab);
@@ -129,6 +152,12 @@ export default function StudioPage() {
   const [landingError, setLandingError] = useState('');
   const [landing, setLanding] = useState<LandingImageResult | null>(null);
   const [landingDownloading, setLandingDownloading] = useState(false);
+
+  // ── Video-specific state ─────────────────────────────────────────
+  const [videoGenerating, setVideoGenerating] = useState(false);
+  const [videoError, setVideoError] = useState('');
+  const [video, setVideo] = useState<VideoResult | null>(null);
+  const [videoCustomPrompt, setVideoCustomPrompt] = useState('');
 
   // ── Wallet / auth ────────────────────────────────────────────────
   const refreshWallet = useWalletStore((s) => s.refresh);
@@ -181,7 +210,7 @@ export default function StudioPage() {
     const store = stores.find((s) => s._id === storeId);
     return store?.settings?.country || undefined;
   }, [isArabic, arabCountry, stores, storeId]);
-  const generating = posterGenerating || landingGenerating;
+  const generating = posterGenerating || landingGenerating || videoGenerating;
   const ready = storeId && productId && !generating;
 
   // ── Actions ──────────────────────────────────────────────────────
@@ -242,6 +271,38 @@ export default function StudioPage() {
       }
     } finally {
       setLandingGenerating(false);
+    }
+  }
+
+  async function handleGenerateVideo() {
+    setVideoError('');
+    setVideo(null);
+    if (!storeId || !productId) {
+      setVideoError('Sélectionne une boutique et un produit.');
+      return;
+    }
+    setVideoGenerating(true);
+    try {
+      const res = await storesApi.generateVideo(storeId, {
+        productId,
+        language,
+        ...(country ? { country } : {}),
+        ...(videoCustomPrompt.trim() ? { customPrompt: videoCustomPrompt.trim() } : {}),
+      });
+      setVideo(res.data.result);
+      refreshWallet();
+    } catch (err) {
+      const e = err as { response?: { data?: { error?: string; code?: string; cost?: number } } };
+      const msg = e.response?.data?.error || 'Erreur lors de la génération';
+      if (e.response?.data?.code === 'insufficient_ai_balance') {
+        const cost = e.response.data.cost;
+        const costStr = typeof cost === 'number' ? ` (coût : ${cost} token${cost === 1 ? '' : 's'})` : '';
+        setVideoError(`${msg}${costStr} — Recharge ton solde IA dans /dashboard/wallet.`);
+      } else {
+        setVideoError(msg);
+      }
+    } finally {
+      setVideoGenerating(false);
     }
   }
 
@@ -420,6 +481,13 @@ export default function StudioPage() {
           sublabel="Page complète 9:16"
           onClick={() => setTab('landing')}
         />
+        <TabButton
+          active={tab === 'video'}
+          icon={<VideoIcon className="h-4 w-4" />}
+          label="Vidéo"
+          sublabel="5s · Seedance IA"
+          onClick={() => setTab('video')}
+        />
       </div>
 
       {/* ── TAB CONTENT ───────────────────────────────────────── */}
@@ -438,7 +506,7 @@ export default function StudioPage() {
           onDownload={handleDownloadPoster}
           exportRef={posterRef}
         />
-      ) : (
+      ) : tab === 'landing' ? (
         <LandingTab
           ready={!!ready}
           generating={landingGenerating}
@@ -447,6 +515,16 @@ export default function StudioPage() {
           downloading={landingDownloading}
           onGenerate={handleGenerateLanding}
           onDownload={handleDownloadLanding}
+        />
+      ) : (
+        <VideoTab
+          ready={!!ready}
+          generating={videoGenerating}
+          error={videoError}
+          video={video}
+          customPrompt={videoCustomPrompt}
+          onCustomPromptChange={setVideoCustomPrompt}
+          onGenerate={handleGenerateVideo}
         />
       )}
     </div>
@@ -467,16 +545,25 @@ function TabButton({
       type="button"
       onClick={onClick}
       className={cn(
-        'flex flex-1 items-center justify-center gap-2.5 rounded-lg px-4 py-2.5 text-sm font-medium transition-all',
+        // Sur mobile : gap plus serré + padding vertical réduit pour tenir 3 tabs sur 375px.
+        'flex min-w-0 flex-1 items-center justify-center gap-1.5 rounded-lg px-2 py-2 text-sm font-medium transition-all sm:gap-2.5 sm:px-4 sm:py-2.5',
         active
           ? 'bg-gradient-to-br from-primary to-fuchsia-600 text-white shadow-md'
           : 'text-muted-foreground hover:bg-muted/60 hover:text-foreground'
       )}
     >
-      {icon}
-      <div className="flex flex-col items-start leading-tight">
-        <span className="text-sm font-semibold">{label}</span>
-        <span className={cn('text-[10px]', active ? 'text-white/80' : 'text-muted-foreground')}>{sublabel}</span>
+      <span className="shrink-0">{icon}</span>
+      <div className="flex min-w-0 flex-col items-start leading-tight">
+        <span className="truncate text-xs font-semibold sm:text-sm">{label}</span>
+        {/* Sublabel caché en dessous de sm — sinon ça déborde à 3 tabs sur 375px. */}
+        <span
+          className={cn(
+            'hidden truncate text-[10px] sm:block',
+            active ? 'text-white/80' : 'text-muted-foreground',
+          )}
+        >
+          {sublabel}
+        </span>
       </div>
     </button>
   );
@@ -749,12 +836,197 @@ function LandingTab(props: LandingTabProps) {
         )}
         {generating && !landing && <GeneratingState text="~30 à 90 secondes" />}
         {landing && (
-          <div className="mx-auto" style={{ maxWidth: 320 }}>
+          <div className="mx-auto w-full max-w-[420px] sm:max-w-[320px]">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
               src={landing.imageUrl}
               alt="Landing page générée"
               className="w-full rounded-lg shadow-sm"
+            />
+          </div>
+        )}
+      </PreviewCard>
+    </div>
+  );
+}
+
+// ── VIDEO TAB ────────────────────────────────────────────────────────
+
+interface VideoTabProps {
+  ready: boolean;
+  generating: boolean;
+  error: string;
+  video: VideoResult | null;
+  customPrompt: string;
+  onCustomPromptChange: (v: string) => void;
+  onGenerate: () => void;
+}
+
+function VideoTab(props: VideoTabProps) {
+  const { ready, generating, error, video, customPrompt, onCustomPromptChange, onGenerate } = props;
+
+  return (
+    <div className="grid gap-4 lg:grid-cols-[1fr_420px]">
+      {/* LEFT — info + optional custom prompt + CTA */}
+      <Card className="overflow-hidden">
+        <div className="border-b border-border/50 bg-gradient-to-r from-muted/20 to-muted/5 px-4 py-2.5">
+          <div className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+            2. Génération vidéo
+          </div>
+        </div>
+        <CardContent className="space-y-4 pt-4">
+          <div className="rounded-xl border border-fuchsia-500/20 bg-gradient-to-br from-fuchsia-500/5 via-pink-500/5 to-transparent p-3">
+            <div className="flex items-start gap-2.5">
+              <div className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-fuchsia-500/15 text-fuchsia-700">
+                <VideoIcon className="h-4 w-4" />
+              </div>
+              <div className="text-xs text-foreground/80">
+                <strong>Vidéo IA 5 secondes</strong> (720p) générée depuis la 1ʳᵉ
+                photo du produit via Seedance (ByteDance). Idéale pour ads Meta,
+                TikTok, ou hero produit animé. Le fichier MP4 reste disponible
+                sur fal.media pendant ~24h — télécharge-le pour le conserver.
+              </div>
+            </div>
+          </div>
+
+          {/* Prompt utilisateur — vraiment central : c'est LA façon de piloter la vidéo.
+              Vide → l'IA écrit un prompt générique depuis le produit. Rempli →
+              le prompt du vendeur est utilisé tel quel (traduction/nettoyage
+              minimum côté backend). */}
+          <div className="space-y-2 rounded-xl border border-primary/25 bg-primary/[0.03] p-3">
+            <div className="flex items-center justify-between">
+              <Label htmlFor="video-prompt" className="flex items-center gap-1.5 text-sm font-semibold">
+                <Sparkles className="h-3.5 w-3.5 text-primary" />
+                Décris la vidéo que tu veux
+              </Label>
+              <button
+                type="button"
+                onClick={() => onCustomPromptChange('')}
+                disabled={!customPrompt}
+                className="text-[10px] font-medium text-muted-foreground underline-offset-2 hover:text-foreground hover:underline disabled:pointer-events-none disabled:opacity-30"
+              >
+                Effacer
+              </button>
+            </div>
+            <textarea
+              id="video-prompt"
+              value={customPrompt}
+              onChange={(e) => onCustomPromptChange(e.target.value)}
+              placeholder="Ex : Rotation lente à 360° sur une table en marbre, lumière chaude studio, ambiance luxe. Le produit reste net et centré, léger zoom en fin de plan."
+              rows={5}
+              maxLength={300}
+              className="w-full resize-y rounded-md border border-input bg-background px-3 py-2 text-xs leading-relaxed focus:border-primary/50 focus:outline-none focus:ring-4 focus:ring-primary/10"
+            />
+            <div className="flex items-center justify-between text-[10px] text-muted-foreground">
+              <span>💡 Vide = l&apos;IA écrit à partir du produit. Rempli = c&apos;est ton prompt qui pilote la vidéo.</span>
+              <span className="tabular-nums">{customPrompt.length}/300</span>
+            </div>
+            {/* 3 exemples cliquables pour aider ceux qui bloquent devant la page vide */}
+            <div className="flex flex-wrap gap-1.5 pt-1">
+              {VIDEO_PROMPT_EXAMPLES.map((ex) => (
+                <button
+                  key={ex.label}
+                  type="button"
+                  onClick={() => onCustomPromptChange(ex.prompt)}
+                  className="rounded-full border border-border/60 bg-background px-2.5 py-1 text-[10px] font-medium text-muted-foreground transition-colors hover:border-primary/50 hover:bg-primary/5 hover:text-foreground"
+                >
+                  {ex.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {error && (
+            <div className="flex items-start gap-2 rounded-lg border border-destructive/30 bg-destructive/5 p-2.5 text-xs text-destructive">
+              <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+              {error}
+            </div>
+          )}
+
+          <Button
+            onClick={onGenerate}
+            disabled={!ready}
+            className="w-full gap-2 gradient-brand h-11 text-sm"
+          >
+            {generating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
+            {generating ? 'Génération en cours…' : video ? 'Régénérer la vidéo' : 'Générer la vidéo'}
+          </Button>
+
+          {generating && (
+            <p className="text-center text-[11px] text-muted-foreground">
+              Étape 1 : écriture du prompt · Étape 2 : rendu Seedance · ~60 à 120s
+            </p>
+          )}
+
+          {/* Prompt utilisé — accordion pour transparence */}
+          {video && (
+            <details className="rounded-xl border border-border/60 bg-muted/20 p-3">
+              <summary className="cursor-pointer text-xs font-semibold text-foreground hover:text-primary">
+                Détails de la génération
+              </summary>
+              <div className="mt-3 space-y-2.5 text-xs">
+                <CopyField label="Prompt utilisé" value={video.prompt} />
+                <div>
+                  <div className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Modèle</div>
+                  <code className="mt-0.5 block break-all font-mono text-[11px]">{video.modelId}</code>
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <div className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Durée</div>
+                    <div className="mt-0.5 tabular-nums">{video.durationSeconds}s</div>
+                  </div>
+                  <div>
+                    <div className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Résolution</div>
+                    <div className="mt-0.5 tabular-nums">{video.width}×{video.height}</div>
+                  </div>
+                </div>
+              </div>
+            </details>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* RIGHT — video preview */}
+      <PreviewCard
+        title="Aperçu"
+        subtitle={video ? 'Vidéo prête à télécharger' : 'La vidéo apparaîtra ici'}
+        downloadButtons={video && (
+          <>
+            <Button size="sm" asChild className="h-8 gap-1 px-2.5 text-xs">
+              {/* `download` demande au navigateur d'enregistrer plutôt que de
+                  naviguer — fal.media renvoie un Content-Disposition compatible. */}
+              <a href={video.videoUrl} download={`video-${Date.now()}.mp4`}>
+                <Download className="h-3.5 w-3.5" /> MP4
+              </a>
+            </Button>
+            <Button size="sm" variant="outline" asChild className="h-8 gap-1 px-2.5 text-xs">
+              <a href={video.videoUrl} target="_blank" rel="noreferrer">
+                <ExternalLink className="h-3.5 w-3.5" /> Ouvrir
+              </a>
+            </Button>
+          </>
+        )}
+      >
+        {!video && !generating && (
+          <EmptyState
+            icon={<Play className="h-8 w-8 text-muted-foreground/50" />}
+            title="La vidéo apparaîtra ici"
+            hint="Configure à gauche et clique Générer"
+          />
+        )}
+        {generating && !video && <GeneratingState text="~60 à 120 secondes" />}
+        {video && (
+          <div className="mx-auto w-full max-w-[420px] sm:max-w-[320px]">
+            {/* Vidéo hébergée sur fal.media — TTL ~24h, télécharge pour conserver. */}
+            <video
+              key={video.videoUrl}
+              src={video.videoUrl}
+              controls
+              autoPlay
+              loop
+              muted
+              playsInline
+              className="w-full rounded-lg bg-black shadow-sm"
             />
           </div>
         )}
@@ -776,14 +1048,17 @@ function PreviewCard({
   return (
     <div className="lg:sticky lg:top-20 lg:self-start">
       <Card className="overflow-hidden">
-        <div className="flex items-center justify-between gap-2 border-b border-border/50 bg-gradient-to-r from-muted/20 to-muted/5 px-4 py-2.5">
-          <div>
-            <div className="text-sm font-semibold">{title}</div>
-            <div className="text-[10px] text-muted-foreground">{subtitle}</div>
+        {/* Header : titre à gauche, boutons à droite. Sur mobile <380px, si
+            les boutons ne rentrent pas ils passent sous le titre grâce au
+            flex-wrap + min-w-0 sur la colonne texte pour éviter overflow. */}
+        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border/50 bg-gradient-to-r from-muted/20 to-muted/5 px-3 py-2 sm:px-4 sm:py-2.5">
+          <div className="min-w-0">
+            <div className="truncate text-sm font-semibold">{title}</div>
+            <div className="truncate text-[10px] text-muted-foreground">{subtitle}</div>
           </div>
-          {downloadButtons && <div className="flex gap-1">{downloadButtons}</div>}
+          {downloadButtons && <div className="flex shrink-0 gap-1">{downloadButtons}</div>}
         </div>
-        <CardContent className="bg-muted/30 p-3">{children}</CardContent>
+        <CardContent className="bg-muted/30 p-2 sm:p-3">{children}</CardContent>
       </Card>
     </div>
   );
