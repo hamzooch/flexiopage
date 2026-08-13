@@ -26,6 +26,7 @@
     "migrate:to-cloudinary": "tsx scripts/migrate-to-cloudinary.ts",
     "migrate:stores-to-markets": "tsx scripts/migrate-stores-to-markets.ts",
     "migrate:products-to-pricing": "tsx scripts/migrate-products-to-pricing.ts",
+    "migrate:demo-product-images": "tsx scripts/migrate-demo-product-images.ts",
     "backfill:phone-key": "tsx scripts/backfill-order-phone-key.ts",
     "test:md-webhook": "tsx scripts/test-md-webhook-parse.ts",
     "test:r2": "tsx scripts/test-r2.ts",

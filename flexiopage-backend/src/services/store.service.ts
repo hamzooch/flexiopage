@@ -163,6 +163,17 @@ async function seedInfoPages(storeId: mongoose.Types.ObjectId, language?: string
 const DEMO_PRODUCT_COUNT = 6;
 const DEMO_PRICES = [25, 35, 45, 30, 60, 40];
 const DEMO_COMPARE_AT = [0, 49, 0, 0, 79, 0];
+// Vraies photos produit e-commerce (Unsplash) — mix universel mode + tech
+// + beauté qui marche pour toutes les niches. Remplace `picsum.photos`
+// qui renvoyait des images aléatoires (souvent paysages / fleurs / arbres).
+const DEMO_PRODUCT_IMAGES = [
+  'https://images.unsplash.com/photo-1521572163474-6864f9cf17ab?w=900&q=80', // t-shirt blanc
+  'https://images.unsplash.com/photo-1542291026-7eec264c27ff?w=900&q=80',   // sneakers modernes
+  'https://images.unsplash.com/photo-1546868871-7041f2a55e12?w=900&q=80',   // montre connectée
+  'https://images.unsplash.com/photo-1590658268037-6bf12165a8df?w=900&q=80', // écouteurs sans-fil
+  'https://images.unsplash.com/photo-1553062407-98eeb64c6a62?w=900&q=80',   // sac à dos
+  'https://images.unsplash.com/photo-1585386959984-a4155224a1ad?w=900&q=80', // flacon cosmétique
+];
 
 async function seedDemoProducts(
   storeId: mongoose.Types.ObjectId,
@@ -187,7 +198,7 @@ async function seedDemoProducts(
       stock: 50,
       trackInventory: true,
       allowBackorder: false,
-      images: [`https://picsum.photos/seed/flexio-demo-${i}/900/900`],
+      images: [DEMO_PRODUCT_IMAGES[idx % DEMO_PRODUCT_IMAGES.length]],
       isPublished: true,
     };
   });
