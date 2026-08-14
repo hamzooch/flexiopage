@@ -9,12 +9,10 @@ import {
 import * as path from 'path';
 import isDev from 'electron-is-dev';
 import log from 'electron-log';
-import { NotificationService } from './services/NotificationService';
 import { AppUpdater } from './services/AppUpdater';
 
 let mainWindow: BrowserWindow | null;
 let tray: Tray | null;
-let notificationService: NotificationService;
 
 (app as any).isQuitting = false;
 
@@ -137,9 +135,6 @@ app.on('ready', () => {
   createWindow();
   createTray();
   createMenu();
-
-  notificationService = new NotificationService(mainWindow!);
-  notificationService.start();
 });
 
 app.on('window-all-closed', () => {
@@ -156,14 +151,22 @@ app.on('activate', () => {
   }
 });
 
-// IPC Handlers for notifications
+// IPC Handlers for notifications — le renderer (site, authentifié) détecte
+// les nouvelles notifs via son polling et demande l'affichage natif ici.
 ipcMain.on('show-notification', (event, { title, body, icon }) => {
   if (mainWindow && !mainWindow.isFocused()) {
-    new Notification({
+    const notification = new Notification({
       title,
       body,
       icon: icon || path.join(__dirname, '../../assets/icon.png'),
-    }).show();
+    });
+    notification.on('click', () => {
+      if (mainWindow) {
+        mainWindow.show();
+        mainWindow.focus();
+      }
+    });
+    notification.show();
   }
 });
 

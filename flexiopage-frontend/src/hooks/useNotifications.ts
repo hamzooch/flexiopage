@@ -5,6 +5,10 @@ export interface NotificationOptions {
   body: string;
   icon?: string;
   type?: 'order' | 'message' | 'payment' | 'alert' | 'system';
+  /** Dédoublonne les notifications navigateur portant le même tag. */
+  tag?: string;
+  /** Navigateur uniquement : action au clic (focus fenêtre + navigation). */
+  onClick?: () => void;
 }
 
 export const useNotifications = () => {
@@ -15,12 +19,21 @@ export const useNotifications = () => {
   const showNotification = useCallback((options: NotificationOptions) => {
     if (!isElectron()) {
       // Fallback to browser notifications
+      // Onglet déjà au premier plan → l'utilisateur voit la cloche se mettre
+      // à jour ; une alerte système serait redondante (même règle qu'Electron,
+      // qui n'affiche que fenêtre non focus).
+      if (document.visibilityState === 'visible' && document.hasFocus()) return;
       if ('Notification' in window && Notification.permission === 'granted') {
-        new Notification(options.title, {
+        const n = new Notification(options.title, {
           body: options.body,
           icon: options.icon,
-          tag: options.type,
+          tag: options.tag || options.type,
         });
+        n.onclick = () => {
+          window.focus();
+          options.onClick?.();
+          n.close();
+        };
       }
       return;
     }

@@ -21,6 +21,7 @@ import {
   type NotificationDoc,
   type NotificationType,
 } from '@/lib/api';
+import { useNotifications } from '@/hooks/useNotifications';
 
 const POLL_INTERVAL_MS = 30_000;
 
@@ -57,15 +58,53 @@ export function NotificationsBell() {
   const [count, setCount] = useState(0);
   const [loading, setLoading] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
+  const { showNotification, requestPermission } = useNotifications();
+  // Notifications système (Electron / navigateur) : on n'alerte que pour les
+  // notifs créées APRÈS le chargement de la page — sinon chaque refresh
+  // re-notifierait tout le backlog non lu.
+  const lastNotifiedAt = useRef<number>(Date.now());
+  const prevCount = useRef<number | null>(null);
+
+  const notifyNewItems = useCallback(async () => {
+    try {
+      const res = await notificationsApi.list({ unreadOnly: true, limit: 10 });
+      const fresh = res.data.notifications.filter(
+        (n) => new Date(n.createdAt).getTime() > lastNotifiedAt.current
+      );
+      if (!fresh.length) return;
+      lastNotifiedAt.current = Math.max(
+        ...fresh.map((n) => new Date(n.createdAt).getTime())
+      );
+      // Au plus 3 alertes système par poll pour ne pas spammer l'OS.
+      for (const n of fresh.slice(0, 3).reverse()) {
+        showNotification({
+          title: n.title,
+          body: n.body,
+          type: n.type.startsWith('order.') ? 'order' : 'system',
+          tag: n._id,
+          onClick: () => {
+            if (n.link) router.push(n.link);
+          },
+        });
+      }
+    } catch {
+      // Silent — l'alerte système est best-effort.
+    }
+  }, [router, showNotification]);
 
   const refreshCount = useCallback(async () => {
     try {
       const res = await notificationsApi.unreadCount();
       setCount(res.data.count);
+      const prev = prevCount.current;
+      prevCount.current = res.data.count;
+      // `prev === null` = premier poll après chargement → pas d'alerte
+      // (on ne notifie que ce qui arrive pendant que la page est ouverte).
+      if (prev !== null && res.data.count > prev) void notifyNewItems();
     } catch {
       // Silent — bell stays at last known count.
     }
-  }, []);
+  }, [notifyNewItems]);
 
   const refreshList = useCallback(async () => {
     setLoading(true);
@@ -134,7 +173,12 @@ export function NotificationsBell() {
       <button
         type="button"
         aria-label="Notifications"
-        onClick={() => setOpen((v) => !v)}
+        onClick={() => {
+          // Geste utilisateur → seul moment fiable pour demander la
+          // permission Notification du navigateur (no-op si déjà décidée).
+          void requestPermission();
+          setOpen((v) => !v);
+        }}
         className="relative grid h-10 w-10 place-items-center rounded-xl text-sidebar-foreground transition-all hover:bg-sidebar-muted hover:text-sidebar-strong"
       >
         <Bell className="h-[18px] w-[18px]" />

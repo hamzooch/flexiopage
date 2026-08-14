@@ -48,23 +48,37 @@ export async function registerNotificationChannels(): Promise<void> {
   }
 }
 
-/** Demande la permission puis renvoie l'ExpoPushToken (ou null si refusé/émulateur). */
-export async function getExpoPushToken(): Promise<string | null> {
-  if (!Device.isDevice) return null; // pas de push sur émulateur
+/** Statut de la chaîne push côté natif — injecté dans la WebView pour que le
+ *  dashboard puisse EXPLIQUER pourquoi les push ne marchent pas (avant, tout
+ *  échec était silencieux : permission refusée ou erreur FCM → token null,
+ *  et le vendeur ne voyait jamais rien). */
+export type PushStatus = 'granted' | 'denied' | 'emulator' | 'error';
+
+export interface PushTokenResult {
+  token: string | null;
+  status: PushStatus;
+}
+
+/** Demande la permission puis renvoie l'ExpoPushToken + le statut détaillé. */
+export async function getExpoPushToken(): Promise<PushTokenResult> {
+  if (!Device.isDevice) return { token: null, status: 'emulator' }; // pas de push sur émulateur
   const current = await Notifications.getPermissionsAsync();
   let status = current.status;
   if (status !== 'granted') {
     const asked = await Notifications.requestPermissionsAsync();
     status = asked.status;
   }
-  if (status !== 'granted') return null;
+  if (status !== 'granted') return { token: null, status: 'denied' };
 
   const projectId =
     (Constants.expoConfig?.extra as { eas?: { projectId?: string } } | undefined)?.eas?.projectId;
   try {
     const token = await Notifications.getExpoPushTokenAsync(projectId ? { projectId } : undefined);
-    return token.data || null;
+    return token.data
+      ? { token: token.data, status: 'granted' }
+      : { token: null, status: 'error' };
   } catch {
-    return null;
+    // Typiquement : google-services.json/FCM mal configuré au build.
+    return { token: null, status: 'error' };
   }
 }

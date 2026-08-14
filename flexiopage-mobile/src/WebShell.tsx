@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
+  AppState,
   View,
   Image,
   Text,
@@ -12,7 +13,7 @@ import {
   RefreshControl,
   ScrollView,
 } from 'react-native';
-import { WebView, type WebViewNavigation } from 'react-native-webview';
+import { WebView, type WebViewMessageEvent, type WebViewNavigation } from 'react-native-webview';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import * as Notifications from 'expo-notifications';
 import { WEB_URL } from './lib/config';
@@ -40,15 +41,20 @@ export function WebShell() {
   const canGoBack = useRef(false);
   // Token push récupéré côté natif ; injecté dans la WebView pour que le site
   // (authentifié) l'enregistre au backend. Gardé en ref pour ré-injecter à
-  // chaque (re)chargement de page.
+  // chaque (re)chargement de page. Le STATUT est injecté même sans token :
+  // c'est lui qui permet au dashboard d'afficher « permission refusée » au
+  // lieu d'échouer en silence.
   const pushToken = useRef<string | null>(null);
+  const pushStatus = useRef<string | null>(null);
 
-  /** Pousse le token dans la page + prévient le site (event) qu'il est dispo. */
+  /** Pousse token + statut dans la page + prévient le site (event). */
   const injectPushToken = useCallback(() => {
     const t = pushToken.current;
-    if (!t) return;
+    const s = pushStatus.current;
+    if (!t && !s) return; // rien encore résolu côté natif
     webRef.current?.injectJavaScript(
       `window.__FLEXIO_PUSH_TOKEN__=${JSON.stringify(t)};` +
+        `window.__FLEXIO_PUSH_STATUS__=${JSON.stringify(s)};` +
         `window.dispatchEvent(new Event("flexio-push-token"));true;`,
     );
   }, []);
@@ -58,9 +64,10 @@ export function WebShell() {
     let mounted = true;
     (async () => {
       await registerNotificationChannels();
-      const token = await getExpoPushToken();
-      if (mounted && token) {
+      const { token, status } = await getExpoPushToken();
+      if (mounted) {
         pushToken.current = token;
+        pushStatus.current = status;
         injectPushToken(); // au cas où la page est déjà chargée
       }
     })();
@@ -73,11 +80,31 @@ export function WebShell() {
         );
       }
     });
+    // Retour depuis les réglages système (bannière « Activer » du dashboard) :
+    // re-tente le token si la permission vient d'être accordée, et ré-injecte
+    // le nouveau statut pour que la bannière disparaisse.
+    const appStateSub = AppState.addEventListener('change', async (state) => {
+      if (state !== 'active' || pushStatus.current === 'granted') return;
+      const { token, status } = await getExpoPushToken();
+      if (!mounted) return;
+      pushToken.current = token;
+      pushStatus.current = status;
+      injectPushToken();
+    });
     return () => {
       mounted = false;
       sub.remove();
+      appStateSub.remove();
     };
   }, [injectPushToken]);
+
+  // Messages postés par le site (window.ReactNativeWebView.postMessage).
+  const onWebMessage = useCallback((e: WebViewMessageEvent) => {
+    if (e.nativeEvent.data === 'flexio-open-settings') {
+      // Bannière « notifications désactivées » → réglages système de l'app.
+      Linking.openSettings().catch(() => {});
+    }
+  }, []);
 
   const onWebScroll = useCallback((e: { nativeEvent: { contentOffset: { y: number } } }) => {
     const y = e?.nativeEvent?.contentOffset?.y ?? 0;
@@ -202,6 +229,7 @@ export function WebShell() {
           // Suit la position de scroll interne → pilote l'activation du
           // RefreshControl (voir onWebScroll / atTop).
           onScroll={onWebScroll}
+          onMessage={onWebMessage}
           onNavigationStateChange={onNavChange}
           onShouldStartLoadWithRequest={onShouldStart}
           onLoadProgress={({ nativeEvent }) => setProgress(nativeEvent.progress)}
