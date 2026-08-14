@@ -31,8 +31,12 @@ let sweepTimer: NodeJS.Timeout | null = null;
 /** Run one sweep. Exposed for the admin "abandon now" button + tests. */
 export async function sweepAbandonedOrders(): Promise<{ scanned: number; flipped: number }> {
   const cutoff = new Date(Date.now() - GRACE_WINDOW_MS);
+  // COD orders live their whole life as `pending` until the seller marks them
+  // paid on delivery — sweeping them would silently erase real orders from the
+  // dashboard KPIs (analytics excludes `abandoned`).
   const filter = {
     paymentStatus: 'pending' as const,
+    paymentMethod: { $ne: 'cod' as const },
     createdAt: { $lt: cutoff },
   };
   const scanned = await Order.countDocuments(filter);
