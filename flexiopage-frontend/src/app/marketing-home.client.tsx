@@ -52,6 +52,8 @@ import {
   CheckCircle2,
   Globe,
   Mail,
+  CreditCard,
+  Lock,
 } from 'lucide-react';
 
 /**
@@ -115,6 +117,7 @@ export default function HomePage() {
         <SocialProofBar />
         <Features />
         <HowItWorks />
+        <FlexioPay />
         <CommissionPanel />
         <Faq />
         <FinalCta />
@@ -294,6 +297,7 @@ function Header() {
         <nav className="hidden items-center gap-7 md:flex">
           <a href="#features" className="text-sm font-medium text-muted-foreground transition-colors hover:text-foreground">Fonctionnalités</a>
           <a href="#how" className="text-sm font-medium text-muted-foreground transition-colors hover:text-foreground">Comment ça marche</a>
+          <a href="#payments" className="text-sm font-medium text-muted-foreground transition-colors hover:text-foreground">Paiements</a>
           <a href="#commission" className="text-sm font-medium text-muted-foreground transition-colors hover:text-foreground">Tarification</a>
           <a href="#faq" className="text-sm font-medium text-muted-foreground transition-colors hover:text-foreground">FAQ</a>
         </nav>
@@ -692,6 +696,155 @@ function Features() {
           </motion.div>
         ))}
       </motion.div>
+    </section>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// FLEXIO PAY — passerelle de paiement intégrée (mobile money + carte)
+// ─────────────────────────────────────────────────────────────────────
+const PAY_METHODS = [
+  { name: 'Wave',          short: 'wave',  chip: 'bg-sky-500',    text: 'text-white' },
+  { name: 'Orange Money',  short: 'OM',    chip: 'bg-orange-500', text: 'text-white' },
+  { name: 'MTN MoMo',      short: 'MTN',   chip: 'bg-yellow-400', text: 'text-black' },
+  { name: 'Moov Money',    short: 'moov',  chip: 'bg-blue-600',   text: 'text-white' },
+  { name: 'Carte bancaire', short: '💳',   chip: 'bg-slate-800',  text: 'text-white' },
+];
+
+function FlexioPay() {
+  const bullets = [
+    { icon: Zap, text: 'Activation instantanée — aucun contrat bancaire, aucun code à écrire.' },
+    { icon: Globe, text: 'Mobile money accepté dans 20+ pays africains (SN, CI, BJ, TG, CM, GH, NG…).' },
+    { icon: Wallet, text: 'L’argent arrive sur ton solde vendeur — retrait vers ton mobile money.' },
+    { icon: ShieldCheck, text: 'Paiements vérifiés côté serveur, webhooks signés — sécurité bancaire.' },
+  ];
+
+  return (
+    <section id="payments" className="mx-auto max-w-6xl px-4 py-16 sm:px-6 sm:py-24 lg:py-32">
+      <div className="grid items-center gap-10 lg:grid-cols-2 lg:gap-16">
+        {/* Texte + points forts */}
+        <motion.div
+          initial="hidden"
+          whileInView="show"
+          viewport={{ once: true, margin: '-80px' }}
+          variants={staggerContainer}
+        >
+          <motion.div
+            variants={fadeUp}
+            className="mb-3 inline-flex items-center gap-1.5 rounded-full bg-emerald-500/10 px-3 py-1 text-xs font-semibold text-emerald-700"
+          >
+            <CreditCard className="h-3 w-3" /> Flexio Pay
+          </motion.div>
+          <motion.h2
+            variants={fadeUp}
+            className="text-balance text-2xl font-bold tracking-tight sm:text-3xl md:text-4xl lg:text-5xl"
+          >
+            Encaisse en ligne. <span className="text-muted-foreground">Partout en Afrique.</span>
+          </motion.h2>
+          <motion.p
+            variants={fadeUp}
+            className="mt-3 text-sm text-muted-foreground sm:mt-4 sm:text-base lg:text-lg"
+          >
+            Flexio Pay est la passerelle de paiement intégrée de FlexioPage : tes clients paient
+            en mobile money ou par carte directement sur ta boutique et tes landing pages —
+            sans compte marchand, sans intégration technique.
+          </motion.p>
+
+          {/* Moyens de paiement */}
+          <motion.div variants={fadeUp} className="mt-6 flex flex-wrap items-center gap-2">
+            {PAY_METHODS.map((m) => (
+              <span
+                key={m.name}
+                className="inline-flex items-center gap-2 rounded-full border border-border/60 bg-card py-1.5 pl-1.5 pr-3 text-xs font-semibold shadow-sm"
+              >
+                <span className={`grid h-6 min-w-6 place-items-center rounded-full px-1 text-[9px] font-extrabold ${m.chip} ${m.text}`}>
+                  {m.short}
+                </span>
+                {m.name}
+              </span>
+            ))}
+          </motion.div>
+
+          <motion.ul variants={fadeUp} className="mt-6 space-y-3">
+            {bullets.map((b) => (
+              <li key={b.text} className="flex items-start gap-2.5 text-sm text-foreground/85 sm:text-[15px]">
+                <span className="mt-0.5 grid h-5 w-5 shrink-0 place-items-center rounded-md bg-emerald-500/10 text-emerald-600">
+                  <b.icon className="h-3 w-3" />
+                </span>
+                {b.text}
+              </li>
+            ))}
+          </motion.ul>
+
+          <motion.div variants={fadeUp} className="mt-8">
+            <Link href="/register">
+              <Button size="lg" className="h-12 gap-2 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-600 px-6 text-white shadow-lg shadow-emerald-500/25 hover:from-emerald-600 hover:to-teal-700">
+                Commencer à encaisser
+                <ArrowRight className="h-4 w-4" />
+              </Button>
+            </Link>
+          </motion.div>
+        </motion.div>
+
+        {/* Mockup — feuille de paiement Flexio Pay */}
+        <motion.div
+          initial={{ opacity: 0, y: 32 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          viewport={{ once: true, margin: '-80px' }}
+          transition={{ duration: 0.6, ease: 'easeOut' }}
+          className="mx-auto w-full max-w-sm"
+          style={{ perspective: 1000 }}
+        >
+          <TiltCard className="overflow-hidden rounded-3xl border border-border/60 bg-card shadow-2xl shadow-emerald-500/10">
+            {/* En-tête de la feuille */}
+            <div className="flex items-center justify-between border-b border-border/60 bg-gradient-to-r from-emerald-500/10 to-teal-500/5 px-5 py-4">
+              <div className="flex items-center gap-2">
+                <span className="grid h-8 w-8 place-items-center rounded-xl bg-gradient-to-br from-emerald-500 to-teal-600 text-white shadow-md">
+                  <CreditCard className="h-4 w-4" />
+                </span>
+                <div>
+                  <div className="text-sm font-bold leading-none">Flexio Pay</div>
+                  <div className="mt-0.5 text-[10px] text-muted-foreground">Paiement sécurisé</div>
+                </div>
+              </div>
+              <Lock className="h-4 w-4 text-emerald-600" />
+            </div>
+            {/* Montant */}
+            <div className="border-b border-border/60 px-5 py-4 text-center">
+              <div className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Total à payer</div>
+              <div className="mt-1 text-3xl font-extrabold tracking-tight">15 000 <span className="text-base font-bold text-muted-foreground">FCFA</span></div>
+            </div>
+            {/* Choix du moyen */}
+            <div className="space-y-2 px-5 py-4">
+              {PAY_METHODS.slice(0, 4).map((m, i) => (
+                <div
+                  key={m.name}
+                  className={`flex items-center justify-between rounded-xl border px-3 py-2.5 ${
+                    i === 0 ? 'border-emerald-500/60 bg-emerald-500/5 ring-1 ring-emerald-500/30' : 'border-border/60'
+                  }`}
+                >
+                  <span className="flex items-center gap-2.5 text-sm font-semibold">
+                    <span className={`grid h-7 min-w-7 place-items-center rounded-lg px-1 text-[9px] font-extrabold ${m.chip} ${m.text}`}>
+                      {m.short}
+                    </span>
+                    {m.name}
+                  </span>
+                  <span className={`h-4 w-4 rounded-full border-2 ${i === 0 ? 'border-emerald-500 bg-emerald-500' : 'border-border'}`} />
+                </div>
+              ))}
+              <div className="pt-1">
+                <div className="grid h-11 place-items-center rounded-xl bg-gradient-to-r from-emerald-500 to-teal-600 text-sm font-bold text-white shadow-md">
+                  Payer avec Wave →
+                </div>
+              </div>
+              <div className="flex items-center justify-center gap-1 pt-1 text-[10px] text-muted-foreground">
+                <ShieldCheck className="h-3 w-3 text-emerald-600" />
+                Transaction vérifiée par Flexio Pay
+              </div>
+            </div>
+          </TiltCard>
+        </motion.div>
+      </div>
     </section>
   );
 }
