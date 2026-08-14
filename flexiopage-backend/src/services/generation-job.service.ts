@@ -10,6 +10,7 @@ import {
   type ProductInput,
   type GenerationContext,
 } from './fal-landing.service';
+import { generateVideo, type VideoInput } from './video-generation.service';
 
 export interface ProgressUpdate {
   step: JobStep;
@@ -30,7 +31,7 @@ const STEP_PROGRESS: Record<JobStep, { running: number; done: number }> = {
 export async function createJob(args: {
   storeId: string;
   ownerId: string;
-  kind: 'landing-from-product' | 'landing-from-image';
+  kind: 'landing-from-product' | 'landing-from-image' | 'video';
   input?: Record<string, unknown>;
 }): Promise<IGenerationJob> {
   return GenerationJob.create({
@@ -64,6 +65,47 @@ function buildProgressCb(jobId: string): ProgressCallback {
       status: 'running' as JobStatus,
     });
   };
+}
+
+/**
+ * Génère la vidéo Seedance en tâche de fond. Le rendu prend 1 à 6 min : en
+ * synchrone, le reverse proxy (nginx) coupait la connexion avant la réponse
+ * → 502 côté vendeur alors que la vidéo (déjà facturée) finissait dans le
+ * vide. Le job + polling supprime toute requête HTTP longue.
+ * Progression grossière (pas de hook interne dans generateVideo) : les
+ * paliers correspondent aux étapes réelles prompt → rendu → persistance.
+ */
+export async function runVideoPipeline(jobId: string, input: VideoInput): Promise<void> {
+  try {
+    await update(jobId, {
+      status: 'running',
+      startedAt: new Date(),
+      currentStep: 'copy',
+      'steps.analyze': 'done',
+      'steps.copy': 'running',
+      progress: 15,
+    });
+    const result = await generateVideo(input);
+    await update(jobId, {
+      status: 'succeeded',
+      progress: 100,
+      currentStep: 'assemble',
+      'steps.copy': 'done',
+      'steps.images': 'done',
+      'steps.assemble': 'done',
+      result,
+      finishedAt: new Date(),
+    });
+  } catch (err) {
+    const e = err as Error & { publicMessage?: string };
+    console.error(`[video job ${jobId}] failed:`, e.message);
+    await update(jobId, {
+      status: 'failed',
+      error: e.publicMessage || e.message || 'Génération vidéo échouée',
+      'steps.images': 'failed',
+      finishedAt: new Date(),
+    });
+  }
 }
 
 /**

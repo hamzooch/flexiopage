@@ -1760,10 +1760,12 @@ export const storesApi = {
     `/stores/${storeId}/pages/generate-landing-image`,
     data
   ),
+  // Asynchrone : renvoie un jobId à poller via jobsApi.get (le rendu Seedance
+  // prend 1-6 min — une réponse synchrone se faisait couper par le proxy).
   generateVideo: (
     storeId: string,
     data: { productId: string; language?: string; country?: string; customPrompt?: string; duration?: number }
-  ) => api.post<{ result: VideoResult; charge: { amount: number; balanceAfter: number; currency: string } }>(
+  ) => api.post<{ jobId: string; charge: { amount: number; balanceAfter: number; currency: string } }>(
     `/stores/${storeId}/pages/generate-video`,
     data
   ),
@@ -2037,6 +2039,13 @@ export interface GenerationJob {
     dialect?: string;
     imagesGenerated?: number;
     imageCaption?: string;
+    /** kind='video' : résultat Seedance. */
+    videoUrl?: string;
+    width?: number;
+    height?: number;
+    durationSeconds?: number;
+    prompt?: string;
+    modelId?: string;
   };
   error?: string;
   startedAt?: string;

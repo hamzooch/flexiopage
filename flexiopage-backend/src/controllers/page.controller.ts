@@ -7,7 +7,6 @@ import { getSectionsFromTemplate, generateLandingWithAI } from '../services/ai-l
 import { generateLandingFromProduct, generateLandingFromImage } from '../services/fal-landing.service';
 import { generatePoster, type PosterTheme, type PosterFormat } from '../services/poster.service';
 import { generateLandingImage } from '../services/landing-image.service';
-import { generateVideo } from '../services/video-generation.service';
 import { extractProductFromUrl, ImportError } from '../services/product-import.service';
 import { persistRemoteImage } from '../services/storage.service';
 import { cleanScrapedImages } from '../services/image-generation.service';
@@ -734,9 +733,11 @@ export async function generateLandingImagePage(req: AuthRequest, res: Response):
  * Génère une vidéo IA image-to-video (Seedance Lite) à partir de la 1ʳᵉ
  * photo du produit + un prompt LLM court. Retourne l'URL MP4 hébergée
  * chez fal.media (TTL ~24h — à re-uploader chez soi si conservation).
- * Body: { productId, language?, country?, customPrompt? }
- * Synchrone (~60-120s). Débit du wallet AI (kind = 'video') UNIQUEMENT
- * si la génération réussit — pattern identique à poster/landing.
+ * Body: { productId, language?, country?, customPrompt?, duration? }
+ * ASYNCHRONE : répond immédiatement { jobId, charge } puis le rendu tourne
+ * en tâche de fond (runVideoPipeline) — le frontend poll /api/jobs/:id.
+ * Avant, la route attendait la fin du rendu (1-6 min) et nginx coupait la
+ * connexion → 502 alors que la vidéo était déjà facturée et rendue.
  */
 export async function generateVideoPage(req: AuthRequest, res: Response): Promise<void> {
   const store = req.store!;
@@ -765,25 +766,25 @@ export async function generateVideoPage(req: AuthRequest, res: Response): Promis
   }
   const charge = await chargeOrFail(req, res, 'video');
   if (!charge) return;
-  try {
-    const result = await generateVideo({
-      storeName: store.name,
-      product: {
-        name: product.name,
-        description: product.description,
-        images: product.images,
-        price: product.price,
-      },
-      language: body.language || store.settings?.language,
-      country: body.country || store.settings?.country,
-      customPrompt: body.customPrompt,
-      duration: body.duration,
-    });
-    res.json({ result, charge });
-  } catch (err) {
-    const e = err as Error & { statusCode?: number; publicMessage?: string };
-    res.status(e.statusCode || 500).json({
-      error: e.publicMessage || e.message || 'Video generation failed',
-    });
-  }
+  const job = await jobService.createJob({
+    storeId: (store._id as { toString(): string }).toString(),
+    ownerId: req.user!._id.toString(),
+    kind: 'video',
+    input: { productId: body.productId, duration: body.duration, language: body.language },
+  });
+  // Fire-and-forget — DO NOT await (même pattern que les landing jobs).
+  void jobService.runVideoPipeline(job._id.toString(), {
+    storeName: store.name,
+    product: {
+      name: product.name,
+      description: product.description,
+      images: product.images,
+      price: product.price,
+    },
+    language: body.language || store.settings?.language,
+    country: body.country || store.settings?.country,
+    customPrompt: body.customPrompt,
+    duration: body.duration,
+  });
+  res.status(202).json({ jobId: job._id.toString(), charge });
 }

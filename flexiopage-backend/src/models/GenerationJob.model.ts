@@ -20,7 +20,7 @@ export const JOB_STEPS: JobStep[] = ['analyze', 'copy', 'images', 'assemble'];
 export interface IGenerationJob extends Document {
   storeId: mongoose.Types.ObjectId;
   ownerId: mongoose.Types.ObjectId;
-  kind: 'landing-from-product' | 'landing-from-image';
+  kind: 'landing-from-product' | 'landing-from-image' | 'video';
   status: JobStatus;
   /** 0–100 — visual progress bar */
   progress: number;
@@ -42,6 +42,13 @@ export interface IGenerationJob extends Document {
     dialect?: string;
     imagesGenerated?: number;
     imageCaption?: string;
+    /** kind='video' : résultat Seedance (URL MP4 persistée + métadonnées). */
+    videoUrl?: string;
+    width?: number;
+    height?: number;
+    durationSeconds?: number;
+    prompt?: string;
+    modelId?: string;
   };
   error?: string;
   startedAt: Date;
@@ -56,7 +63,7 @@ const GenerationJobSchema = new Schema<IGenerationJob>(
   {
     storeId: { type: Schema.Types.ObjectId, ref: 'Store', required: true, index: true },
     ownerId: { type: Schema.Types.ObjectId, ref: 'User', required: true, index: true },
-    kind: { type: String, enum: ['landing-from-product', 'landing-from-image'], required: true },
+    kind: { type: String, enum: ['landing-from-product', 'landing-from-image', 'video'], required: true },
     status: { type: String, enum: ['pending', 'running', 'succeeded', 'failed'], default: 'pending' },
     progress: { type: Number, default: 0, min: 0, max: 100 },
     currentStep: { type: String, enum: JOB_STEPS, default: 'analyze' },

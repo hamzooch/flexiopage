@@ -27,6 +27,7 @@ import {
   type CategoryClass,
 } from './image-generation.service';
 import { persistRemoteImage } from './storage.service';
+import { logger } from '../lib/logger';
 
 const FAL_BASE = 'https://fal.run';
 
@@ -341,6 +342,10 @@ async function falRequest<T>(
     });
     if (!res.ok) {
       const text = await res.text();
+      // Log du corps complet — les contrôleurs avalent l'erreur et le vendeur
+      // ne voit que "code 422" : sans cette ligne, impossible de diagnostiquer
+      // en prod (quel champ rejeté, image inaccessible, modèle retiré…).
+      logger.error({ model, status: res.status, body: text.slice(0, 2000) }, '[fal] sync request failed');
       const err = new Error(`fal.ai ${model} error ${res.status}: ${text}`) as Error & {
         statusCode?: number;
         publicMessage?: string;
@@ -537,6 +542,7 @@ export async function falQueueRequest<T>(
   });
   if (!submit.ok) {
     const text = await submit.text();
+    logger.error({ model, status: submit.status, body: text.slice(0, 2000) }, '[fal] queue submit failed');
     const err = new Error(`fal.ai ${model} queue submit error ${submit.status}: ${text}`) as Error & {
       statusCode?: number;
       publicMessage?: string;

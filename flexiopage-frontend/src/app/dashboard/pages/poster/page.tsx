@@ -23,6 +23,7 @@ import { Label } from '@/components/ui/label';
 import Link from 'next/link';
 import {
   storesApi,
+  jobsApi,
   type PosterContent,
   type PosterTheme,
   type PosterFormat,
@@ -291,8 +292,32 @@ export default function StudioPage() {
         ...(country ? { country } : {}),
         ...(videoCustomPrompt.trim() ? { customPrompt: videoCustomPrompt.trim() } : {}),
       });
-      setVideo(res.data.result);
       refreshWallet();
+      // Rendu asynchrone (1-6 min) : on poll le job toutes les 3 s jusqu'à
+      // succès/échec. Une requête synchrone se faisait couper par le proxy
+      // (502) sur les durées longues.
+      const jobId = res.data.jobId;
+      const deadline = Date.now() + 8 * 60_000;
+      let done = false;
+      while (Date.now() < deadline && !done) {
+        await new Promise((r) => setTimeout(r, 3000));
+        try {
+          const jr = await jobsApi.get(jobId);
+          const job = jr.data.job;
+          if (job.status === 'succeeded' && job.result?.videoUrl) {
+            setVideo(job.result as VideoResult);
+            done = true;
+          } else if (job.status === 'failed') {
+            setVideoError(job.error || 'Génération vidéo échouée. Réessaie.');
+            done = true;
+          }
+        } catch {
+          // Poll transitoirement en échec (réseau) — on continue jusqu'au deadline.
+        }
+      }
+      if (!done) {
+        setVideoError("La génération prend plus de temps que prévu. Réessaie dans quelques minutes — ta vidéo n'est facturée qu'une fois.");
+      }
     } catch (err) {
       const e = err as { response?: { data?: { error?: string; code?: string; cost?: number } } };
       const msg = e.response?.data?.error || 'Erreur lors de la génération';

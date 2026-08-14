@@ -77,10 +77,19 @@ Write ONE English prompt (max 40 words) describing a premium ${durationSec}-seco
 subtle motion (rotation, dolly, product highlight), lighting, mood. NO text overlay. NO people
 holding the product. Focus on the product hero shot. Output the prompt text only, no quotes,
 no preamble.`;
-  const raw = (await runLLM(prompt)).trim();
+  const fallback = `Cinematic product hero shot of ${input.product.name}, slow rotation, soft studio lighting, premium mood, ${durationSec} seconds`;
+  // Le prompt LLM est un « nice to have » : si any-llm échoue (422 modèle
+  // retiré, quota, indispo), on part sur le prompt générique plutôt que de
+  // faire échouer toute la génération (déjà facturée au vendeur).
+  let raw: string;
+  try {
+    raw = (await runLLM(prompt)).trim();
+  } catch (err) {
+    logger.warn({ err: (err as Error).message }, '[video-gen] LLM prompt failed — using fallback prompt');
+    return fallback;
+  }
   // Sécurité : coupe à 300 chars et retire les guillemets englobants s'il y en a.
-  return raw.replace(/^["'\s]+|["'\s]+$/g, '').slice(0, 300) ||
-    `Cinematic product hero shot of ${input.product.name}, slow rotation, soft studio lighting, premium mood, ${durationSec} seconds`;
+  return raw.replace(/^["'\s]+|["'\s]+$/g, '').slice(0, 300) || fallback;
 }
 
 /**
@@ -99,7 +108,7 @@ export async function generateVideo(input: VideoInput): Promise<VideoResult> {
     throw err;
   }
 
-  // Whitelist stricte : durée doit être 10, 15 ou 20 — sinon fallback default.
+  // Whitelist stricte : durée doit être 5, 8 ou 12 — sinon fallback default.
   const duration = ALLOWED_DURATIONS.includes(input.duration as (typeof ALLOWED_DURATIONS)[number])
     ? (input.duration as number)
     : DEFAULT_DURATION;
