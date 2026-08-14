@@ -2,8 +2,7 @@ import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
 import { User, IUser } from '../models/User.model';
 import type { IStore } from '../models/Store.model';
-
-const JWT_SECRET = process.env.JWT_SECRET || 'change-me-in-production';
+import { JWT_SECRET } from '../lib/jwtSecret';
 
 export interface AuthRequest extends Request {
   user?: IUser;

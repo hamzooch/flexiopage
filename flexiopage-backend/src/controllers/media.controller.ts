@@ -9,6 +9,43 @@ import { logger } from '../lib/logger';
 // (~15MB), et de courts clips audio. Au-delà il faudrait des uploads chunkés.
 const MAX_UPLOAD_BYTES = 50 * 1024 * 1024;
 
+// ── Validation de type ──────────────────────────────────────────────
+// Le mimetype vient du CLIENT (spoofable) → on vérifie aussi l'extension.
+// `media` (images/covers affichés sur les vitrines) : images/vidéo/audio
+// uniquement. SVG exclu : il peut embarquer du <script> et serait servi
+// depuis /uploads sur l'origine API (stored XSS).
+// `deliverable` (fichiers vendus, téléchargés par l'acheteur) : formats
+// libres par design (ZIP, PDF, EPUB…), mais on bloque ce qui s'exécute
+// dans un navigateur ou un OS au double-clic.
+const MEDIA_MIME = /^(image|video|audio)\//;
+const BLOCKED_MIME = new Set([
+  'image/svg+xml',
+  'text/html',
+  'application/xhtml+xml',
+  'application/javascript',
+  'text/javascript',
+]);
+const BLOCKED_EXT = new Set([
+  'html', 'htm', 'xhtml', 'svg', 'js', 'mjs', 'php',
+  'exe', 'msi', 'bat', 'cmd', 'sh', 'ps1', 'vbs', 'scr', 'com', 'jar',
+]);
+
+function fileExt(name: string): string {
+  return (name.split('.').pop() || '').toLowerCase();
+}
+
+/** Renvoie un message d'erreur si le fichier est refusé, sinon null. */
+function rejectReason(file: Express.Multer.File, purpose: 'media' | 'deliverable'): string | null {
+  const ext = fileExt(file.originalname);
+  if (BLOCKED_MIME.has(file.mimetype) || BLOCKED_EXT.has(ext)) {
+    return 'Type de fichier non autorisé (exécutable ou code web).';
+  }
+  if (purpose === 'media' && !MEDIA_MIME.test(file.mimetype)) {
+    return 'Seuls les fichiers image, vidéo ou audio sont acceptés ici.';
+  }
+  return null;
+}
+
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: MAX_UPLOAD_BYTES },
@@ -47,6 +84,11 @@ export async function uploadMedia(req: AuthRequest, res: Response): Promise<void
   // (images, covers) stays on the default driver (Cloudinary in prod).
   const purpose: 'media' | 'deliverable' =
     req.body?.purpose === 'deliverable' ? 'deliverable' : 'media';
+  const rejected = rejectReason(file, purpose);
+  if (rejected) {
+    res.status(400).json({ error: rejected });
+    return;
+  }
   const storeId = store._id.toString();
   const folder = purpose === 'deliverable'
     ? `stores/${storeId}/deliverables`

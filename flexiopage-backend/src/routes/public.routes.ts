@@ -31,8 +31,7 @@ import { recordEvent, deviceFromUserAgent, classifySource } from '../services/tr
 import { botstoreChat, type BotstoreMessage } from '../services/botstore.service';
 import mongoose from 'mongoose';
 import jwt from 'jsonwebtoken';
-
-const JWT_SECRET = process.env.JWT_SECRET || 'change-me-in-production';
+import { JWT_SECRET } from '../lib/jwtSecret';
 
 /**
  * Preview-only auth : décode le Bearer de la requête pour vérifier que le

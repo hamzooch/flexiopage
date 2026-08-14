@@ -7,6 +7,7 @@ import { Subscription } from '../models/Subscription.model';
 import { getSettings } from '../models/Settings.model';
 import { logActivity } from './activity-log.service';
 import { sendVerificationEmail, sendPasswordResetEmail } from './email.service';
+import { JWT_SECRET } from '../lib/jwtSecret';
 
 // ─────────────────────────────────────────────────────────────────────
 // Email verification helpers
@@ -39,7 +40,6 @@ async function issueVerificationToken(user: IUser): Promise<void> {
   }
 }
 
-const JWT_SECRET = process.env.JWT_SECRET || 'change-me-in-production';
 const JWT_EXPIRES = (process.env.JWT_EXPIRES || '7d') as SignOptions['expiresIn'];
 const SALT_ROUNDS = 12;
 const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID || '';
