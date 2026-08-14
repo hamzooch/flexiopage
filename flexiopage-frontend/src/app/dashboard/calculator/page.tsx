@@ -42,6 +42,7 @@ import {
 } from 'recharts';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
+import { AutoFitValue } from '@/components/dashboard/auto-fit-value';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { usePrompt } from '@/components/ui/confirm-dialog';
@@ -648,9 +649,9 @@ function KpiGrid({ outputs, currency }: { outputs: ReturnType<typeof calculate>;
     <div className="grid grid-cols-2 gap-2">
       <Card className={cn('p-3', profitable ? 'border-emerald-500/30 bg-emerald-500/5' : 'border-red-500/30 bg-red-500/5')}>
         <div className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Profit net</div>
-        <div className={cn('mt-1 text-lg font-bold tabular-nums sm:text-2xl', profitable ? 'text-emerald-700' : 'text-red-700')}>
+        <AutoFitValue className={cn('mt-1 text-lg font-bold tabular-nums sm:text-2xl', profitable ? 'text-emerald-700' : 'text-red-700')}>
           <AnimatedNumber value={outputs.netProfit} format={(n) => `${n >= 0 ? '+' : ''}${formatCurrency(n, currency)}`} />
-        </div>
+        </AutoFitValue>
         <div className="mt-0.5 inline-flex items-center gap-1 text-[10px] text-muted-foreground">
           {profitable ? <TrendingUp className="h-3 w-3" /> : <TrendingDown className="h-3 w-3" />}
           {profitable ? 'rentable' : 'en perte'}
@@ -675,9 +676,9 @@ function KpiGrid({ outputs, currency }: { outputs: ReturnType<typeof calculate>;
       </Card>
       <Card className="p-3">
         <div className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Profit / livraison</div>
-        <div className="mt-1 text-lg font-bold tabular-nums sm:text-2xl">
+        <AutoFitValue className="mt-1 text-lg font-bold tabular-nums sm:text-2xl">
           <AnimatedNumber value={outputs.profitPerDelivered} format={(n) => formatCurrency(n, currency)} />
-        </div>
+        </AutoFitValue>
         <div className="mt-0.5 text-[10px] text-muted-foreground">par colis livré</div>
       </Card>
     </div>

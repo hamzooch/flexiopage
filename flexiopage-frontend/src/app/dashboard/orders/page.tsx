@@ -21,6 +21,7 @@ import { formatCurrency, formatDate, cn, mediaUrl } from '@/lib/utils';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { usePrompt } from '@/components/ui/confirm-dialog';
+import { AutoFitValue } from '@/components/dashboard/auto-fit-value';
 import {
   ShoppingCart,
   Search,
@@ -951,7 +952,7 @@ function KpiCard({
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0 flex-1">
           <div className="text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">{label}</div>
-          <div className="mt-1.5 truncate text-2xl font-bold tracking-tight">{value}</div>
+          <AutoFitValue className="mt-1.5 text-2xl font-bold tracking-tight">{value}</AutoFitValue>
         </div>
         <div className={cn('grid h-9 w-9 shrink-0 place-items-center rounded-xl', c.bg, c.text)}>
           <Icon className="h-4 w-4" />

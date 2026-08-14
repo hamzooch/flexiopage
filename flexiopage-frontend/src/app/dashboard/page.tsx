@@ -13,6 +13,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { AutoFitValue } from '@/components/dashboard/auto-fit-value';
 import Link from 'next/link';
 import {
   Store,
@@ -462,7 +463,7 @@ export default function DashboardOverviewPage() {
           />
           <KpiCard
             label="Commandes"
-            value={String(k?.orders.value ?? 0)}
+            value={(k?.orders.value ?? 0).toLocaleString('fr-FR')}
             deltaPct={k?.orders.deltaPct ?? null}
             previousValue={String(k?.orders.previous ?? 0)}
             icon={ShoppingCart}
@@ -480,7 +481,7 @@ export default function DashboardOverviewPage() {
           />
           <KpiCard
             label="Vues de pages"
-            value={String(k?.pageViews.value ?? 0)}
+            value={(k?.pageViews.value ?? 0).toLocaleString('fr-FR')}
             deltaPct={k?.pageViews.deltaPct ?? null}
             previousValue={String(k?.pageViews.previous ?? 0)}
             icon={Eye}
@@ -821,9 +822,9 @@ function KpiCard({
           <div className="truncate text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
             {label}
           </div>
-          <div className="mt-0.5 truncate text-lg font-extrabold tracking-tight sm:mt-1.5 sm:text-2xl">
+          <AutoFitValue className="mt-0.5 text-lg font-extrabold tracking-tight sm:mt-1.5 sm:text-2xl">
             {loading ? <span className="inline-block h-5 w-14 animate-pulse rounded bg-muted sm:h-6 sm:w-20" /> : value}
-          </div>
+          </AutoFitValue>
           {!loading && deltaPct !== null && (
             <div className="mt-0.5 flex items-center gap-1 sm:mt-1 sm:gap-1.5">
               <span
@@ -1245,7 +1246,7 @@ function FunnelStrip({
                   </span>
                 )}
               </div>
-              <div className="text-lg font-extrabold">{s.value}</div>
+              <div className="text-lg font-extrabold">{s.value.toLocaleString('fr-FR')}</div>
               <div className="h-1.5 overflow-hidden rounded-full bg-muted">
                 <div className={cn('h-full bg-gradient-to-r transition-all', s.tone)} style={{ width: `${pct}%` }} />
               </div>
@@ -1567,7 +1568,7 @@ function QualityStrip({
       <MiniStat
         icon={Users}
         label="Clients uniques"
-        value={String(uniqueCustomers)}
+        value={uniqueCustomers.toLocaleString('fr-FR')}
         tone="indigo"
         hint="Emails distincts"
       />
@@ -1615,9 +1616,9 @@ function MiniStat({
           {label}
         </span>
       </div>
-      <div className="mt-1 truncate text-lg font-extrabold tracking-tight sm:text-xl">
+      <AutoFitValue className="mt-1 text-lg font-extrabold tracking-tight sm:text-xl">
         {value}
-      </div>
+      </AutoFitValue>
       {hint && (
         <div className="text-[10px] text-muted-foreground">{hint}</div>
       )}

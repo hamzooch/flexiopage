@@ -12,6 +12,7 @@ import { storesApi, type TrackingStats, type TrackingRange } from '@/lib/api';
 import { useScopedStoreId } from '@/lib/use-scoped-store';
 import { cn } from '@/lib/utils';
 import { PageHeader } from '@/components/dashboard/page-header';
+import { AutoFitValue } from '@/components/dashboard/auto-fit-value';
 import {
   Activity, Eye, ShoppingCart, PackageCheck, CircleSlash, Loader2,
 } from 'lucide-react';
@@ -215,7 +216,7 @@ function Kpi({
       <div className={cn('grid h-10 w-10 place-items-center rounded-xl bg-gradient-to-br text-white shadow-md', accent)}>
         {icon}
       </div>
-      <div className="mt-3 text-2xl font-bold tabular-nums">{value.toLocaleString('fr-FR')}</div>
+      <AutoFitValue className="mt-3 text-2xl font-bold tabular-nums">{value.toLocaleString('fr-FR')}</AutoFitValue>
       <div className="text-xs font-medium text-muted-foreground">{label}</div>
       {sub && <div className="mt-0.5 text-[11px] text-muted-foreground">{sub}</div>}
     </div>
