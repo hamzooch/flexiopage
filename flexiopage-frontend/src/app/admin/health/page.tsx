@@ -15,6 +15,7 @@ import {
   RefreshCw,
   Plug,
   Activity,
+  Bell,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -44,6 +45,49 @@ export default function AdminHealthPage() {
   const [data, setData] = useState<AdminHealth | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [notifTesting, setNotifTesting] = useState(false);
+  const [notifReport, setNotifReport] = useState<string[]>([]);
+
+  async function runServerNotifTest() {
+    setNotifTesting(true);
+    setNotifReport([]);
+    try {
+      const res = await adminApi.testNotification();
+      const p = res.data.channels.push;
+      setNotifReport([
+        '✓ Cloche : notification créée en base — elle apparaît dans le dashboard d’ici 30 s (badge + liste).',
+        p.tokens === 0
+          ? '· Push mobile Expo : aucun appareil enregistré — normal si tu utilises la version web.'
+          : p.sent > 0
+            ? `✓ Push mobile Expo : envoyée à ${p.sent} appareil(s).`
+            : `✗ Push mobile Expo : échec — ${p.errors.join(', ') || 'erreur inconnue'}.`,
+      ]);
+    } catch {
+      setNotifReport(['✗ Échec de l’appel serveur — vérifie que l’API répond.']);
+    } finally {
+      setNotifTesting(false);
+    }
+  }
+
+  async function runBrowserNotifTest() {
+    if (!('Notification' in window)) {
+      setNotifReport(['✗ Ce navigateur ne supporte pas les notifications système.']);
+      return;
+    }
+    let perm = Notification.permission;
+    if (perm === 'default') perm = await Notification.requestPermission();
+    if (perm !== 'granted') {
+      setNotifReport([
+        '✗ Permission refusée dans le navigateur.',
+        'Active les notifications pour flexiopage.com dans les réglages du site (icône 🔒 dans la barre d’adresse), puis reteste.',
+      ]);
+      return;
+    }
+    new Notification('Test FlexioPage 🔔', {
+      body: 'Les alertes système fonctionnent sur cet appareil.',
+    });
+    setNotifReport(['✓ Alerte système affichée — la couche navigateur fonctionne sur cet appareil.']);
+  }
 
   const load = useCallback(async () => {
     setRefreshing(true);
@@ -107,6 +151,48 @@ export default function AdminHealthPage() {
           </CardContent>
         </Card>
       )}
+
+      {/* ── Test des notifications ─────────────────────────────── */}
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="flex items-center gap-2 text-sm">
+            <Bell className="h-4 w-4 text-amber-600" />
+            Test des notifications
+          </CardTitle>
+          <CardDescription className="text-xs">
+            Vérifie l’arrivée des notifications sur ce compte : le test serveur passe par la
+            chaîne réelle (cloche du dashboard + Telegram + push mobile), le test navigateur
+            vérifie la permission et l’affichage système sur cet appareil.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <div className="flex flex-wrap gap-2">
+            <Button size="sm" onClick={runServerNotifTest} disabled={notifTesting} className="gap-2">
+              {notifTesting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Bell className="h-3.5 w-3.5" />}
+              Envoyer une notification de test
+            </Button>
+            <Button size="sm" variant="outline" onClick={runBrowserNotifTest} className="gap-2">
+              Tester l’alerte navigateur
+            </Button>
+          </div>
+          {notifReport.length > 0 && (
+            <div className="space-y-1 rounded-lg border border-border/60 bg-muted/30 p-3 text-xs">
+              {notifReport.map((line) => (
+                <p key={line} className={cn(
+                  line.startsWith('✓') && 'text-emerald-700',
+                  line.startsWith('✗') && 'text-rose-700',
+                )}>{line}</p>
+              ))}
+            </div>
+          )}
+          <p className="text-[11px] leading-relaxed text-muted-foreground">
+            Rappel : l’alerte système du dashboard ne s’affiche que si l’onglet est en
+            arrière-plan et la permission accordée (clique sur la cloche du dashboard pour
+            l’activer). Navigateur fermé = pas d’alerte — le Web Push (service worker) n’est
+            pas encore implémenté.
+          </p>
+        </CardContent>
+      </Card>
 
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
         <KpiCard

@@ -1693,3 +1693,44 @@ export async function getAiProviders(_req: AuthRequest, res: Response): Promise<
     checkedAt: new Date().toISOString(),
   });
 }
+
+/**
+ * POST /api/admin/test-notification — envoie une notification de test au
+ * compte admin COURANT, à travers toute la chaîne réelle : document en base
+ * (cloche du dashboard, poll 30 s), fan-out Telegram (best-effort dans
+ * createNotification) et push mobile Expo. Renvoie un diagnostic par canal
+ * pour identifier où la chaîne casse quand « rien n'arrive ».
+ */
+export async function sendTestNotification(req: AuthRequest, res: Response): Promise<void> {
+  const userId = req.user!._id;
+  const now = new Date();
+  const stamp = now.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+
+  const { createNotification } = await import('../services/notification.service');
+  const notif = await createNotification({
+    userId,
+    type: 'system.test',
+    title: 'Notification de test 🔔',
+    body: `Envoyée depuis l'admin à ${stamp}. Si tu la vois, la cloche fonctionne.`,
+    link: '/dashboard',
+    meta: { test: true, sentAt: now.toISOString() },
+  });
+
+  // Push mobile Expo (si des appareils sont enregistrés) — diagnostic inclus.
+  const { sendToUser } = await import('../services/push.service');
+  const push = await sendToUser(userId, {
+    title: 'Notification de test 🔔',
+    body: `Test admin à ${stamp} — la chaîne push mobile fonctionne.`,
+    link: '/dashboard',
+    data: { type: 'system.test' },
+  });
+
+  res.json({
+    ok: true,
+    notificationId: notif._id,
+    channels: {
+      bell: 'created', // en base — visible au prochain poll de la cloche (≤30 s)
+      push,            // { tokens, sent, removed, errors }
+    },
+  });
+}

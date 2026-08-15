@@ -30,6 +30,7 @@ const TYPE_ICON: Record<NotificationType, React.ComponentType<{ className?: stri
   'order.status_changed': Truck,
   'team.member_added': UsersRound,
   'team.member_removed': UsersRound,
+  'system.test': Bell,
 };
 
 const TYPE_TINT: Record<NotificationType, string> = {
@@ -37,6 +38,7 @@ const TYPE_TINT: Record<NotificationType, string> = {
   'order.status_changed': 'bg-indigo-500/15 text-indigo-600',
   'team.member_added': 'bg-fuchsia-500/15 text-fuchsia-600',
   'team.member_removed': 'bg-amber-500/15 text-amber-700',
+  'system.test': 'bg-sky-500/15 text-sky-600',
 };
 
 function timeAgo(iso: string): string {

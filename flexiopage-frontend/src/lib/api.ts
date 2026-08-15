@@ -944,6 +944,16 @@ export const adminApi = {
 
   // ── Health ──
   health: () => api.get<AdminHealth>('/admin/health'),
+  /** Notifie le compte admin courant via la chaîne réelle (cloche + Telegram + push mobile). */
+  testNotification: () =>
+    api.post<{
+      ok: boolean;
+      notificationId: string;
+      channels: {
+        bell: string;
+        push: { tokens: number; sent: number; removed: number; errors: string[] };
+      };
+    }>('/admin/test-notification'),
 
   // ── Delivery config diag ──
   getStoreDeliveryConfig: (storeId: string) =>
@@ -2061,7 +2071,8 @@ export type NotificationType =
   | 'order.created'
   | 'order.status_changed'
   | 'team.member_added'
-  | 'team.member_removed';
+  | 'team.member_removed'
+  | 'system.test';
 
 export interface NotificationDoc {
   _id: string;

@@ -41,6 +41,9 @@ router.get('/stores/:storeId/analytics', admin.getStoreDrilldown);
 router.get('/orders', admin.listOrders);
 router.get('/wallets', admin.listWallets);
 router.get('/activity', admin.listActivity);
+// Diagnostic : notifie le compte admin courant via la chaîne réelle
+// (cloche + Telegram + push mobile) et renvoie un rapport par canal.
+router.post('/test-notification', admin.sendTestNotification);
 
 // Mutations open to admin+ (excludes supervisor)
 router.patch('/users/:userId', requireAdminWrite, admin.patchUser);
