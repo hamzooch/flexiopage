@@ -41,6 +41,19 @@ export async function createNotification(args: CreateArgs) {
   } catch {
     /* non-fatal */
   }
+  // Fan-out Web Push (navigateur/PWA — délivré même app fermée via le service
+  // worker). Même couverture totale que Telegram, best-effort.
+  try {
+    const { sendWebPushToUser } = await import('./webpush.service');
+    await sendWebPushToUser(args.userId, {
+      title: args.title,
+      body: args.body,
+      link: args.link,
+      tag: String(notif._id),
+    });
+  } catch {
+    /* non-fatal */
+  }
   return notif;
 }
 

@@ -951,6 +951,7 @@ export const adminApi = {
       notificationId: string;
       channels: {
         bell: string;
+        webPush: { configured: boolean; subscriptions: number };
         push: { tokens: number; sent: number; removed: number; errors: string[] };
       };
     }>('/admin/test-notification'),

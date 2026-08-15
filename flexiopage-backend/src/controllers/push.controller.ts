@@ -74,3 +74,47 @@ export async function setSound(req: AuthRequest, res: Response): Promise<void> {
   await User.updateOne({ _id: req.user!._id }, { $set: { pushSoundPreference: sound } });
   res.json({ ok: true, sound });
 }
+
+// ─── Web Push (navigateur / PWA) ────────────────────────────────────────
+
+/** GET /api/push/web/public-key — clé VAPID publique pour l'abonnement. */
+export async function getWebPushPublicKey(_req: AuthRequest, res: Response): Promise<void> {
+  const { isWebPushConfigured, getVapidPublicKey } = await import('../services/webpush.service');
+  if (!isWebPushConfigured()) {
+    res.status(503).json({ error: 'Web Push non configuré sur le serveur.' });
+    return;
+  }
+  res.json({ publicKey: getVapidPublicKey() });
+}
+
+/** POST /api/push/web/subscribe — body: PushSubscription.toJSON()
+ *  Enregistre l'abonnement du navigateur (multi-device, dédupliqué par endpoint). */
+export async function webSubscribe(req: AuthRequest, res: Response): Promise<void> {
+  const sub = (req.body || {}) as { endpoint?: unknown; keys?: { p256dh?: unknown; auth?: unknown } };
+  if (
+    typeof sub.endpoint !== 'string' || !sub.endpoint.startsWith('https://') ||
+    typeof sub.keys?.p256dh !== 'string' || typeof sub.keys?.auth !== 'string'
+  ) {
+    res.status(400).json({ error: 'Abonnement push invalide.' });
+    return;
+  }
+  const entry = {
+    endpoint: sub.endpoint,
+    keys: { p256dh: sub.keys.p256dh, auth: sub.keys.auth },
+  };
+  // Remplace un éventuel abonnement existant du même endpoint (clés régénérées).
+  await User.updateOne({ _id: req.user!._id }, { $pull: { webPushSubscriptions: { endpoint: entry.endpoint } } });
+  await User.updateOne({ _id: req.user!._id }, { $push: { webPushSubscriptions: entry } });
+  res.json({ ok: true });
+}
+
+/** POST /api/push/web/unsubscribe — body { endpoint } : retire cet abonnement. */
+export async function webUnsubscribe(req: AuthRequest, res: Response): Promise<void> {
+  const { endpoint } = (req.body || {}) as { endpoint?: unknown };
+  if (typeof endpoint !== 'string' || !endpoint.trim()) {
+    res.status(400).json({ error: 'endpoint requis.' });
+    return;
+  }
+  await User.updateOne({ _id: req.user!._id }, { $pull: { webPushSubscriptions: { endpoint } } });
+  res.json({ ok: true });
+}

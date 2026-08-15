@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { adminApi, type AdminHealth } from '@/lib/api';
+import { ensureWebPushSubscription } from '@/lib/web-push';
 import {
   Loader2,
   HeartPulse,
@@ -54,8 +55,14 @@ export default function AdminHealthPage() {
     try {
       const res = await adminApi.testNotification();
       const p = res.data.channels.push;
+      const w = res.data.channels.webPush;
       setNotifReport([
         '✓ Cloche : notification créée en base — elle apparaît dans le dashboard d’ici 30 s (badge + liste).',
+        !w?.configured
+          ? '✗ Web Push : non configuré côté serveur (clés VAPID absentes de l’env).'
+          : w.subscriptions === 0
+            ? '· Web Push : aucun navigateur abonné — clique sur la cloche du dashboard (ou « Tester l’alerte navigateur » ici) pour abonner cet appareil, puis reteste.'
+            : `✓ Web Push : envoyée à ${w.subscriptions} navigateur(s) abonné(s) — la popup arrive même app fermée.`,
         p.tokens === 0
           ? '· Push mobile Expo : aucun appareil enregistré — normal si tu utilises la version web.'
           : p.sent > 0
@@ -86,7 +93,17 @@ export default function AdminHealthPage() {
     new Notification('Test FlexioPage 🔔', {
       body: 'Les alertes système fonctionnent sur cet appareil.',
     });
-    setNotifReport(['✓ Alerte système affichée — la couche navigateur fonctionne sur cet appareil.']);
+    // Permission accordée → on abonne aussi ce navigateur au Web Push pour
+    // qu'il reçoive les notifs serveur même fermé.
+    const sub = await ensureWebPushSubscription();
+    setNotifReport([
+      '✓ Alerte système affichée — la couche navigateur fonctionne sur cet appareil.',
+      sub === 'subscribed'
+        ? '✓ Ce navigateur est abonné au Web Push — relance le test serveur pour vérifier la chaîne complète.'
+        : sub === 'unsupported'
+          ? '· Web Push non supporté par ce navigateur.'
+          : '✗ Abonnement Web Push échoué — vérifie les clés VAPID côté serveur.',
+    ]);
   }
 
   const load = useCallback(async () => {
@@ -186,10 +203,9 @@ export default function AdminHealthPage() {
             </div>
           )}
           <p className="text-[11px] leading-relaxed text-muted-foreground">
-            Rappel : l’alerte système du dashboard ne s’affiche que si l’onglet est en
-            arrière-plan et la permission accordée (clique sur la cloche du dashboard pour
-            l’activer). Navigateur fermé = pas d’alerte — le Web Push (service worker) n’est
-            pas encore implémenté.
+            Avec le Web Push activé (permission accordée + navigateur abonné), les
+            notifications arrivent même navigateur fermé ou téléphone verrouillé. Sur
+            iPhone, il faut installer la PWA sur l’écran d’accueil (iOS 16.4+).
           </p>
         </CardContent>
       </Card>

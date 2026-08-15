@@ -1725,11 +1725,21 @@ export async function sendTestNotification(req: AuthRequest, res: Response): Pro
     data: { type: 'system.test' },
   });
 
+  // Web Push : l'envoi réel est déjà parti via le fan-out de createNotification ;
+  // ici on rapporte l'état de configuration + abonnements pour le diagnostic.
+  const { isWebPushConfigured } = await import('../services/webpush.service');
+  const { User } = await import('../models/User.model');
+  const me = await User.findById(userId).select('webPushSubscriptions').lean();
+
   res.json({
     ok: true,
     notificationId: notif._id,
     channels: {
       bell: 'created', // en base — visible au prochain poll de la cloche (≤30 s)
+      webPush: {
+        configured: isWebPushConfigured(),
+        subscriptions: me?.webPushSubscriptions?.length || 0,
+      },
       push,            // { tokens, sent, removed, errors }
     },
   });

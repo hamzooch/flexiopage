@@ -67,6 +67,11 @@ export interface IUser extends Document {
   storeLimit?: number;
   /** Tokens de push Expo des appareils du vendeur (multi-device). */
   expoPushTokens?: string[];
+  /** Abonnements Web Push (navigateur/PWA, multi-device) — endpoint + clés. */
+  webPushSubscriptions?: Array<{
+    endpoint: string;
+    keys: { p256dh: string; auth: string };
+  }>;
   /** Son de notification choisi par le vendeur (clé du catalogue push.service). */
   pushSoundPreference?: string;
   /**
@@ -148,6 +153,19 @@ const UserSchema = new Schema<IUser>(
     suspendedAt: { type: Date },
     storeLimit: { type: Number, min: 0 },
     expoPushTokens: { type: [String], default: undefined },
+    webPushSubscriptions: {
+      type: [
+        {
+          _id: false,
+          endpoint: { type: String, required: true },
+          keys: {
+            p256dh: { type: String, required: true },
+            auth: { type: String, required: true },
+          },
+        },
+      ],
+      default: undefined,
+    },
     pushSoundPreference: { type: String },
     country: { type: String, trim: true, uppercase: true, maxlength: 2 },
     currency: { type: String, trim: true, uppercase: true, maxlength: 3 },

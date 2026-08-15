@@ -22,6 +22,7 @@ import {
   type NotificationType,
 } from '@/lib/api';
 import { useNotifications } from '@/hooks/useNotifications';
+import { ensureWebPushSubscription } from '@/lib/web-push';
 
 const POLL_INTERVAL_MS = 30_000;
 
@@ -128,6 +129,13 @@ export function NotificationsBell() {
     return () => window.clearInterval(id);
   }, [refreshCount]);
 
+  // Web Push : si la permission est déjà accordée, (ré)abonne ce navigateur
+  // au chargement du dashboard — c'est ce qui permet de recevoir les notifs
+  // NAVIGATEUR FERMÉ (service worker), pas seulement pendant le polling.
+  useEffect(() => {
+    void ensureWebPushSubscription();
+  }, []);
+
   // Open dropdown → fetch the latest list (don't rely on cached items).
   useEffect(() => {
     if (open) refreshList();
@@ -178,7 +186,10 @@ export function NotificationsBell() {
         onClick={() => {
           // Geste utilisateur → seul moment fiable pour demander la
           // permission Notification du navigateur (no-op si déjà décidée).
-          void requestPermission();
+          // Si accordée, on abonne aussi ce navigateur au Web Push.
+          void requestPermission().then((granted) => {
+            if (granted) void ensureWebPushSubscription();
+          });
           setOpen((v) => !v);
         }}
         className="relative grid h-10 w-10 place-items-center rounded-xl text-sidebar-foreground transition-all hover:bg-sidebar-muted hover:text-sidebar-strong"
