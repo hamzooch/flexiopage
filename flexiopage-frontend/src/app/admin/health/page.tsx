@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { adminApi, type AdminHealth } from '@/lib/api';
+import { api, adminApi, type AdminHealth } from '@/lib/api';
 import { ensureWebPushSubscription } from '@/lib/web-push';
 import {
   Loader2,
@@ -48,6 +48,66 @@ export default function AdminHealthPage() {
   const [refreshing, setRefreshing] = useState(false);
   const [notifTesting, setNotifTesting] = useState(false);
   const [notifReport, setNotifReport] = useState<string[]>([]);
+  // Auto-diagnostic de la chaîne Web Push sur CET appareil — affiché dès le
+  // chargement de la page pour éviter tout aller-retour d'interprétation.
+  const [notifDiag, setNotifDiag] = useState<string[]>([]);
+
+  const runAutoDiag = useCallback(async () => {
+    const lines: string[] = [];
+    if (typeof window === 'undefined') return;
+    if (!('Notification' in window)) {
+      setNotifDiag(['✗ Ce navigateur ne supporte pas les notifications. Sur iPhone : installer la PWA sur l’écran d’accueil (Partager → Sur l’écran d’accueil), iOS 16.4+.']);
+      return;
+    }
+    const perm = Notification.permission;
+    lines.push(
+      perm === 'granted'
+        ? '✓ Permission notifications : accordée sur cet appareil.'
+        : perm === 'denied'
+          ? '✗ Permission notifications : REFUSÉE — débloque-la dans les réglages du site (icône 🔒 dans la barre d’adresse) puis recharge.'
+          : '· Permission notifications : pas encore demandée — clique « Tester l’alerte navigateur » ci-dessous.'
+    );
+    if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
+      lines.push('✗ Web Push non supporté par ce navigateur (service worker/PushManager absents).');
+      setNotifDiag(lines);
+      return;
+    }
+    try {
+      const reg = await navigator.serviceWorker.getRegistration('/sw.js');
+      lines.push(reg ? '✓ Service worker : enregistré.' : '· Service worker : pas encore enregistré (il s’enregistre après la permission).');
+      const sub = reg ? await reg.pushManager.getSubscription() : null;
+      lines.push(sub ? '✓ Abonnement Web Push de CE navigateur : actif.' : '· Abonnement Web Push de CE navigateur : absent.');
+      // Si tout est prêt sauf l'abonnement, tente-le silencieusement.
+      if (perm === 'granted' && !sub) {
+        const r = await ensureWebPushSubscription();
+        lines.push(
+          r === 'subscribed'
+            ? '✓ Abonnement créé automatiquement à l’instant.'
+            : r === 'error'
+              ? '✗ Abonnement impossible — le serveur a-t-il les clés VAPID ? (vérifie aussi la ligne suivante)'
+              : `· Abonnement non créé (${r}).`
+        );
+      }
+    } catch (e) {
+      lines.push(`✗ Erreur service worker : ${(e as Error).message}`);
+    }
+    try {
+      await api.get('/push/web/public-key');
+      lines.push('✓ Serveur : clés VAPID configurées.');
+    } catch (e) {
+      const status = (e as { response?: { status?: number } }).response?.status;
+      lines.push(
+        status === 503
+          ? '✗ Serveur : clés VAPID ABSENTES — ajoute VAPID_PUBLIC_KEY / VAPID_PRIVATE_KEY au .env du backend et redémarre-le.'
+          : `✗ Serveur : /push/web/public-key en erreur (${status || 'réseau'}).`
+      );
+    }
+    setNotifDiag(lines);
+  }, []);
+
+  useEffect(() => {
+    void runAutoDiag();
+  }, [runAutoDiag]);
 
   async function runServerNotifTest() {
     setNotifTesting(true);
@@ -104,6 +164,7 @@ export default function AdminHealthPage() {
           ? '· Web Push non supporté par ce navigateur.'
           : '✗ Abonnement Web Push échoué — vérifie les clés VAPID côté serveur.',
     ]);
+    void runAutoDiag();
   }
 
   const load = useCallback(async () => {
@@ -183,6 +244,17 @@ export default function AdminHealthPage() {
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-3">
+          {notifDiag.length > 0 && (
+            <div className="space-y-1 rounded-lg border border-border/60 bg-muted/20 p-3 text-xs">
+              <p className="mb-1 font-semibold text-muted-foreground">État de cet appareil :</p>
+              {notifDiag.map((line) => (
+                <p key={line} className={cn(
+                  line.startsWith('✓') && 'text-emerald-700',
+                  line.startsWith('✗') && 'font-semibold text-rose-700',
+                )}>{line}</p>
+              ))}
+            </div>
+          )}
           <div className="flex flex-wrap gap-2">
             <Button size="sm" onClick={runServerNotifTest} disabled={notifTesting} className="gap-2">
               {notifTesting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Bell className="h-3.5 w-3.5" />}

@@ -57,7 +57,7 @@ import {
 import { useAuthStore } from '@/stores/auth-store';
 import { useStoreStore } from '@/stores/store-store';
 import { storesApi } from '@/lib/api';
-import { formatCurrency, cn } from '@/lib/utils';
+import { formatCurrency, cn, mediaUrl } from '@/lib/utils';
 import type { StoreAnalyticsRich, RangeKey } from '@/types/analytics';
 import { Button } from '@/components/ui/button';
 import { PageHeader } from '@/components/dashboard/page-header';
@@ -1076,7 +1076,7 @@ function TopProductsCard({
               </span>
               {p.image ? (
                 /* eslint-disable-next-line @next/next/no-img-element */
-                <img src={p.image} alt="" className="h-9 w-9 shrink-0 rounded-md object-cover" />
+                <img src={mediaUrl(p.image)} alt="" className="h-9 w-9 shrink-0 rounded-md object-cover" />
               ) : (
                 <span className="grid h-9 w-9 shrink-0 place-items-center rounded-md bg-muted">
                   <Package className="h-3.5 w-3.5 text-muted-foreground" />
