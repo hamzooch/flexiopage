@@ -25,8 +25,16 @@ self.addEventListener('push', (event) => {
     self.registration.showNotification(data.title, {
       body: data.body,
       tag: data.tag,
-      icon: '/brand/icon.png',
-      badge: '/brand/icon.png',
+      // icon = grande vignette de la notif (côté droit sur Android, à gauche
+      // sur desktop). PNG plein-cadre sans coins arrondis pré-cuits : Android
+      // les recadre en cercle, un canvas transparent aux angles produirait
+      // un double-crop moche.
+      icon: '/brand/notification-icon.png',
+      // badge = petit pictogramme monochrome dans la barre de statut Android.
+      // Android force un masque : chaque pixel opaque devient blanc. Passer
+      // l'icône colorée pleine → gros bloc blanc sans détail. On envoie une
+      // silhouette du "F." blanche sur fond transparent.
+      badge: '/brand/badge.png',
       data: { link: data.link || '/dashboard' },
     })
   );
