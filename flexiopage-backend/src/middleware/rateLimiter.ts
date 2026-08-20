@@ -25,6 +25,12 @@ const POLLING_PATHS = [
   /^\/api\/wallet$/,        // sidebar badge refresh every 30s
   /^\/api\/wallet\/.*/,     // wallet sub-endpoints
   /^\/api\/webhooks\//,     // payment + delivery providers (external)
+  // Webhooks messenger-bot : Meta / WhatsApp Cloud / Wasender envoient
+  // depuis leurs IPs partagées entre TOUS leurs clients — le rate-limiter
+  // par IP pouvait donc bouffer notre quota et retourner 429 en amont du
+  // controller (aucune trace dans le panel debug côté vendeur). Chaque
+  // webhook a sa propre signature validée dans son controller.
+  /^\/webhook\//,
 ];
 
 function isPollingRequest(req: Request): boolean {
