@@ -20,8 +20,25 @@ export async function listConversations(req: AuthRequest, res: Response): Promis
 
   const limit = Math.min(Number(req.query.limit) || 20, 100);
   const skip = Math.max(Number(req.query.skip) || 0, 0);
-  const filter: Record<string, unknown> = { vendor_id: storeId, channel: getChannel(req) };
+  const channel = getChannel(req);
+  const filter: Record<string, unknown> = { vendor_id: storeId, channel };
   if (req.query.status) filter.status = String(req.query.status);
+
+  // Filtre par bot_number courant : quand le vendeur a changé de numéro
+  // WhatsApp (ou de page Facebook), l'inbox n'affiche que les conversations
+  // reçues sur le numéro/page ACTUEL. Les anciennes conversations restent en
+  // base (historiques accessibles par ID), mais ne polluent plus l'inbox.
+  //
+  // Rétrocompat : les conversations créées avant l'introduction du champ
+  // `bot_number` (bot_number = null) sont incluses SI la config n'a jamais
+  // eu de bot_number (nouvelle install). Sinon on filtre strict.
+  const config = await BotConfig.findOne({ vendor_id: storeId, channel }).lean();
+  const currentBotNumber = channel === 'whatsapp'
+    ? config?.whatsapp_display_number
+    : config?.facebook_page_id || config?.page_name;
+  if (currentBotNumber) {
+    filter.bot_number = currentBotNumber;
+  }
 
   const [items, total] = await Promise.all([
     Conversation.find(filter).sort({ last_message_at: -1, created_at: -1 }).skip(skip).limit(limit).lean(),

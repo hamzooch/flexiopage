@@ -24,6 +24,7 @@ import crypto from 'crypto';
 import type { AuthRequest } from '../../../middleware/auth.middleware';
 import { logger } from '../../../lib/logger';
 import { BotConfig } from '../models/BotConfig.model';
+import { Conversation } from '../models/Conversation.model';
 import { encryptionService } from '../services/encryption.service';
 import { botConfigInsertDefaults } from '../services/botDefaults.service';
 import { wasenderService, WasenderApiError, hashWasenderToken } from '../services/wasender.service';
@@ -425,6 +426,10 @@ export async function disconnectWasender(req: AuthRequest, res: Response): Promi
       logger.warn({ err: (err as Error).message }, '[wasender] deleteSession échec (on wipe local quand même)');
     }
   }
+  // Archive les conversations liées à l'ancien numéro : sans ça, l'inbox du
+  // NOUVEAU numéro afficherait l'historique de l'ancien mélangé au nouveau
+  // (bug de conception réglé par le champ bot_number).
+  await archiveConversationsForOldNumber(storeId, config.whatsapp_display_number);
   await BotConfig.updateOne(
     { _id: config._id },
     {
@@ -442,6 +447,33 @@ export async function disconnectWasender(req: AuthRequest, res: Response): Promi
     },
   );
   res.json({ disconnected: true });
+}
+
+/**
+ * Passe en `completed` toutes les conversations WhatsApp `active`/`human_takeover`
+ * du vendeur qui étaient reçues sur l'ancien numéro. Best-effort — si la
+ * requête échoue on continue quand même le disconnect.
+ *
+ * Rétrocompat : si `oldBotNumber` est undefined (conversation créée avant
+ * l'introduction du champ), on archive AUSSI les conversations sans
+ * bot_number — sinon elles resteraient orphelines dans l'inbox du nouveau
+ * numéro (déjà filtré par bot_number côté listConversations).
+ */
+async function archiveConversationsForOldNumber(vendorId: string, oldBotNumber: string | undefined): Promise<void> {
+  try {
+    const filter: Record<string, unknown> = {
+      vendor_id: vendorId,
+      channel: 'whatsapp',
+      status: { $in: ['active', 'human_takeover'] },
+    };
+    if (oldBotNumber) {
+      filter.$or = [{ bot_number: oldBotNumber }, { bot_number: { $exists: false } }, { bot_number: null }];
+    }
+    const result = await Conversation.updateMany(filter, { $set: { status: 'completed' } });
+    logger.info({ vendorId, oldBotNumber, archived: result.modifiedCount }, '[wasender] conversations anciennes archivées');
+  } catch (err) {
+    logger.warn({ err: (err as Error).message, vendorId }, '[wasender] archive conversations échec (ignoré)');
+  }
 }
 
 /**
@@ -463,6 +495,10 @@ export async function deleteWasenderIntegration(req: AuthRequest, res: Response)
       logger.warn({ err: (err as Error).message }, '[wasender] deleteSession échec (on supprime la BotConfig quand même)');
     }
   }
+  // Archive aussi ici : "supprimer l'intégration" = fresh start complet →
+  // les conversations restent en base pour audit mais disparaissent de
+  // l'inbox par défaut.
+  await archiveConversationsForOldNumber(storeId, config.whatsapp_display_number);
   await BotConfig.deleteOne({ _id: config._id });
   res.json({ deleted: true });
 }

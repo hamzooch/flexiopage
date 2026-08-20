@@ -108,6 +108,8 @@ export async function receiveWebhook(req: Request, res: Response): Promise<void>
             vendor_id: config.vendor_id,
             bot_config_id: config._id,
             channel: 'messenger',
+            // Séparation par page Facebook (utile si le vendeur change de page).
+            bot_number: config.facebook_page_id || config.page_name || undefined,
             customer_psid: psid,
             status: 'active',
           });

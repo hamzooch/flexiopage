@@ -397,6 +397,7 @@ export async function receiveWasenderWebhook(req: Request, res: Response): Promi
         vendor_id: config.vendor_id,
         bot_config_id: config._id,
         channel: 'whatsapp',
+        bot_number: config.whatsapp_display_number || undefined,
         customer_psid: norm.fromJid,
         customer_name: norm.fromName,
         status: 'active',
