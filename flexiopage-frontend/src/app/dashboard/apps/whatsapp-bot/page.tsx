@@ -877,6 +877,8 @@ function WasenderWebhookDebug({ storeId }: { storeId: string }) {
   const [items, setItems] = useState<Awaited<ReturnType<typeof whatsappBotApi.wasenderRecentWebhooks>>['data']['items']>([]);
   const [loading, setLoading] = useState(false);
   const [expandedIdx, setExpandedIdx] = useState<number | null>(null);
+  const [syncing, setSyncing] = useState(false);
+  const [syncMsg, setSyncMsg] = useState('');
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -887,6 +889,17 @@ function WasenderWebhookDebug({ storeId }: { storeId: string }) {
       setItems([]);
     } finally { setLoading(false); }
   }, [storeId]);
+
+  const syncWebhook = useCallback(async () => {
+    setSyncing(true); setSyncMsg('');
+    try {
+      await whatsappBotApi.wasenderSyncWebhook(storeId);
+      setSyncMsg('✅ Webhook réparé — envoie un message test.');
+      await refresh();
+    } catch (e) {
+      setSyncMsg(`❌ ${extractApiError(e, 'Réparation échouée.')}`);
+    } finally { setSyncing(false); }
+  }, [storeId, refresh]);
 
   useEffect(() => { void refresh(); }, [refresh]);
 
@@ -912,6 +925,22 @@ function WasenderWebhookDebug({ storeId }: { storeId: string }) {
           <RefreshCw className={cn('h-3.5 w-3.5', loading && 'animate-spin')} />
         </button>
       </div>
+      {items.length === 0 && (
+        <div className="border-b border-border/40 bg-amber-500/5 px-5 py-3">
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <p className="text-[11px] text-amber-900">
+              🔧 <strong>Webhook mal configuré ?</strong> Si tu ne vois aucun event après un message test,
+              clique <strong>Réparer</strong> — on va re-pousser la config webhook sur Wasender
+              (URL + secret + events).
+            </p>
+            <Button size="sm" variant="outline" onClick={syncWebhook} disabled={syncing} className="gap-1.5 shrink-0">
+              {syncing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
+              Réparer le webhook
+            </Button>
+          </div>
+          {syncMsg && <p className="mt-2 text-[11px] text-muted-foreground">{syncMsg}</p>}
+        </div>
+      )}
       <ul className="divide-y divide-border/40">
         {items.length === 0 && (
           <li className="px-5 py-6 text-center text-xs text-muted-foreground">

@@ -98,6 +98,18 @@ function normalizeStatus(raw: unknown): WasenderSessionStatus {
   return 'unknown';
 }
 
+/**
+ * Events Wasender que le backend sait traiter (voir wasenderWebhook.controller
+ * pour la logique de filtrage/dispatch). Toute création ou update de session
+ * DOIT souscrire à ces events, sinon Wasender n'enverra rien.
+ */
+export const WASENDER_REQUIRED_EVENTS = [
+  'messages.received',
+  'messages.upsert',
+  'session.status',
+  'qrcode.updated',
+] as const;
+
 export class WasenderService {
   private http(token: string): AxiosInstance {
     return axios.create({
@@ -124,6 +136,12 @@ export class WasenderService {
    *
    * Champs requis par Wasender : `name`, `phone_number`, `account_protection`,
    * `webhook_url` (publique — localhost rejeté).
+   *
+   * Bug historique : passer `webhook_url` + `webhook_secret` ne suffit pas.
+   * Wasender exige aussi `webhook_enabled: true` ET une liste explicite
+   * `webhook_events` (sinon la section "Subscriptions" reste vide → aucun
+   * event n'est envoyé → bot ne répond jamais). On souscrit aux 4 events
+   * dont le backend a besoin.
    */
   async createSession(args: {
     pat: string;
@@ -138,6 +156,8 @@ export class WasenderService {
         name: args.name,
         phone_number: args.phoneNumber,
         webhook_url: args.webhookUrl,
+        webhook_enabled: true,
+        webhook_events: WASENDER_REQUIRED_EVENTS,
         // Anti-ban activé par défaut — protège le compte d'une déconnexion
         // rapide en cas de comportement suspect.
         account_protection: args.accountProtection ?? true,
@@ -149,6 +169,31 @@ export class WasenderService {
       const e = wasenderErrorFromAxios(err, 'Wasender createSession failed');
       logger.error({ status: e.status, code: e.code, message: e.message }, '[wasender] createSession échec');
       throw e;
+    }
+  }
+
+  /**
+   * PUT /api/whatsapp-sessions/{id} — met à jour une session existante,
+   * notamment pour ré-activer le webhook + souscrire aux events sur des
+   * sessions déjà créées mais mal configurées. Utilisé par le endpoint
+   * "Réparer le webhook" pour les vendeurs coincés avec 0 subscription.
+   */
+  async updateSessionWebhook(args: {
+    pat: string;
+    sessionId: string;
+    webhookUrl: string;
+    webhookSecret?: string;
+  }): Promise<void> {
+    try {
+      const body: Record<string, unknown> = {
+        webhook_url: args.webhookUrl,
+        webhook_enabled: true,
+        webhook_events: WASENDER_REQUIRED_EVENTS,
+      };
+      if (args.webhookSecret) body.webhook_secret = args.webhookSecret;
+      await this.http(args.pat).put(`/api/whatsapp-sessions/${encodeURIComponent(args.sessionId)}`, body);
+    } catch (err) {
+      throw wasenderErrorFromAxios(err, 'Wasender updateSessionWebhook failed');
     }
   }
 

@@ -389,6 +389,54 @@ export async function pauseWasender(req: AuthRequest, res: Response): Promise<vo
   res.json({ paused: true });
 }
 
+/**
+ * "Réparer le webhook" — pour les sessions Wasender déjà créées mais avec
+ * webhook mal configuré (0 events subscribed, toggle enabled OFF…). Génère
+ * un nouveau secret, met à jour la session côté Wasender (webhook_enabled=true
+ * + webhook_events + webhook_url + webhook_secret) et rafraîchit le hash en
+ * base. Idempotent — peut être appelé plusieurs fois sans casser.
+ */
+export async function syncWasenderWebhook(req: AuthRequest, res: Response): Promise<void> {
+  const storeId = await getOwnedStoreId(req);
+  if (!storeId) { res.status(403).json({ error: 'storeId requis et doit t’appartenir.' }); return; }
+  const config = await BotConfig.findOne({ vendor_id: storeId, channel: 'whatsapp', whatsapp_provider: 'wasender' });
+  if (!config || !config.wasender_session_id || !config.page_access_token_encrypted) {
+    res.status(404).json({ error: 'Aucune session Wasender à réparer.' });
+    return;
+  }
+  const webhookId = config.wasender_webhook_id || generateWebhookId();
+  const webhookUrl = webhookUrlFor(webhookId);
+  if (!webhookUrl) {
+    res.status(400).json({ error: 'API_PUBLIC_URL manquant / invalide côté backend.' });
+    return;
+  }
+  const webhookSecret = generatePerSessionWebhookSecret();
+  try {
+    const pat = encryptionService.decrypt(config.page_access_token_encrypted);
+    await wasenderService.updateSessionWebhook({
+      pat,
+      sessionId: config.wasender_session_id,
+      webhookUrl,
+      webhookSecret,
+    });
+    await BotConfig.updateOne(
+      { _id: config._id },
+      { $set: {
+        wasender_webhook_id: webhookId,
+        wasender_webhook_secret_hash: hashWasenderToken(webhookSecret),
+      } },
+    );
+    res.json({ synced: true, webhookUrl });
+  } catch (err) {
+    if (err instanceof WasenderApiError) {
+      res.status(err.isAuthError ? 401 : 502).json({ error: err.message });
+      return;
+    }
+    logger.error({ err: (err as Error).message }, '[wasender] sync-webhook échec');
+    res.status(500).json({ error: 'Erreur interne.' });
+  }
+}
+
 /** "Réactiver" — inverse de pause. */
 export async function resumeWasender(req: AuthRequest, res: Response): Promise<void> {
   const storeId = await getOwnedStoreId(req);

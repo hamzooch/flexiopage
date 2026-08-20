@@ -2247,6 +2247,10 @@ export const whatsappBotApi = {
   wasenderResume: (storeId: string) =>
     api.post<{ resumed: boolean }>(
       `/messenger-bot/wasender/resume?storeId=${encodeURIComponent(storeId)}`, { storeId }),
+  /** Réparer un webhook mal configuré (0 events subscribed / URL absente sur la session Wasender). */
+  wasenderSyncWebhook: (storeId: string) =>
+    api.post<{ synced: boolean; webhookUrl: string }>(
+      `/messenger-bot/wasender/sync-webhook?storeId=${encodeURIComponent(storeId)}`, { storeId }),
   /** Wipe credentials (session Wasender + PAT). Garde la config bot. Retombe sur le WasenderConnectForm. */
   wasenderDisconnect: (storeId: string) =>
     api.post<{ disconnected: boolean }>(

@@ -21,6 +21,7 @@ import {
   getWasenderStatus,
   pauseWasender,
   resumeWasender,
+  syncWasenderWebhook,
   recentWasenderWebhooks,
   recentWorkerRuns,
 } from '../controllers/wasenderConnect.controller';
@@ -52,6 +53,7 @@ apiRouter.get('/wasender/qr', getWasenderQr);
 apiRouter.get('/wasender/status', getWasenderStatus);
 apiRouter.post('/wasender/pause', pauseWasender);
 apiRouter.post('/wasender/resume', resumeWasender);
+apiRouter.post('/wasender/sync-webhook', syncWasenderWebhook);
 // disconnect = wipe credentials (garde la config bot). delete = wipe tout.
 apiRouter.post('/wasender/disconnect', disconnectWasender);
 apiRouter.delete('/wasender', deleteWasenderIntegration);
