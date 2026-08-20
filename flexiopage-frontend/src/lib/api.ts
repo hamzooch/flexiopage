@@ -2241,9 +2241,20 @@ export const whatsappBotApi = {
   wasenderStatus: (storeId: string) =>
     api.get<{ status: 'need_scan' | 'connected' | 'disconnected' | 'unknown'; phoneNumber?: string }>(
       `/messenger-bot/wasender/status?storeId=${encodeURIComponent(storeId)}`),
+  wasenderPause: (storeId: string) =>
+    api.post<{ paused: boolean }>(
+      `/messenger-bot/wasender/pause?storeId=${encodeURIComponent(storeId)}`, { storeId }),
+  wasenderResume: (storeId: string) =>
+    api.post<{ resumed: boolean }>(
+      `/messenger-bot/wasender/resume?storeId=${encodeURIComponent(storeId)}`, { storeId }),
+  /** Wipe credentials (session Wasender + PAT). Garde la config bot. Retombe sur le WasenderConnectForm. */
   wasenderDisconnect: (storeId: string) =>
     api.post<{ disconnected: boolean }>(
       `/messenger-bot/wasender/disconnect?storeId=${encodeURIComponent(storeId)}`, { storeId }),
+  /** Supprime toute la BotConfig WhatsApp. Retombe sur le ProviderPicker vierge. Irréversible. */
+  wasenderDeleteIntegration: (storeId: string) =>
+    api.delete<{ deleted: boolean }>(
+      `/messenger-bot/wasender?storeId=${encodeURIComponent(storeId)}`),
   wasenderRecentWebhooks: (storeId: string) =>
     api.get<{
       items: Array<{

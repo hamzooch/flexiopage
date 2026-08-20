@@ -5,9 +5,17 @@
  *   1. POST /wasender/connect  → vendeur colle son PAT Wasender → crée la
  *      session côté Wasender (avec webhook_url pointant vers notre /webhook/
  *      wasender) → stocke session_id + api_token (chiffré) dans BotConfig.
- *   2. GET  /wasender/qr       → renvoie le QR à scanner.
+ *   2. GET  /wasender/qr       → renvoie le QR à scanner. Auto-répare si la
+ *      session Wasender est en `disconnected` (appelle /connect avant retry).
  *   3. GET  /wasender/status   → poll : 'need_scan' | 'connected' | …
- *   4. POST /wasender/disconnect → logout + bascule status=disconnected.
+ *   4. POST /wasender/pause    → status='paused' (garde tout, réversible).
+ *   5. POST /wasender/resume   → status='active' si session existe.
+ *   6. POST /wasender/disconnect → DELETE session Wasender + wipe des
+ *      credentials (PAT, session_id/token, webhook_id/secret). Garde la
+ *      config bot (langue, messages, shipping). Utilisé pour "Changer de
+ *      numéro" ou "Déconnecter".
+ *   7. DELETE /wasender        → supprime toute la BotConfig WhatsApp.
+ *      Utilisé pour "Supprimer l'intégration" (retour onboarding vierge).
  *
  * Le PAT et le session token ne sont JAMAIS renvoyés au client.
  */
@@ -59,6 +67,50 @@ function generateWebhookId(): string {
   return crypto.randomBytes(16).toString('hex');
 }
 
+/**
+ * Regex de détection "phone number already taken" — Wasender renvoie ce
+ * message quand une session existe déjà pour le même numéro (peu importe son
+ * état). On l'utilise pour déclencher le fallback DELETE+retry.
+ */
+function isPhoneTakenError(err: unknown): boolean {
+  return err instanceof WasenderApiError && /phone[_ ]?number.*taken|already.*taken/i.test(err.message);
+}
+
+/**
+ * Détecte le message "Session does not need scanning" (état `disconnected`
+ * côté Wasender). Utilisé pour déclencher un `connectSession` transparent
+ * avant de re-demander le QR.
+ */
+function isNeedInitError(err: unknown): boolean {
+  return err instanceof WasenderApiError && /does not need scanning|initialize the session|not.*active/i.test(err.message);
+}
+
+/**
+ * Trouve puis supprime toute session Wasender existante pour ce numéro.
+ * Best-effort : on ignore les erreurs (session déjà supprimée, etc). Utilisé
+ * pour repartir d'un état propre quand `createSession` échoue avec
+ * "phone number already taken".
+ */
+async function purgeExistingSessionsForPhone(args: { pat: string; phoneNumber: string }): Promise<number> {
+  const normalized = args.phoneNumber.replace(/[^\d]/g, '');
+  try {
+    const list = await wasenderService.listSessions({ pat: args.pat });
+    const matches = list.filter((s) => (s.phoneNumber || '').replace(/[^\d]/g, '') === normalized && s.id);
+    for (const s of matches) {
+      try {
+        await wasenderService.deleteSession({ pat: args.pat, sessionId: s.id });
+        logger.info({ sessionId: s.id, phone: normalized }, '[wasender] session existante supprimée avant recréation');
+      } catch (err) {
+        logger.warn({ err: (err as Error).message, sessionId: s.id }, '[wasender] deleteSession pré-recréation échec (ignoré)');
+      }
+    }
+    return matches.length;
+  } catch (err) {
+    logger.warn({ err: (err as Error).message }, '[wasender] listSessions pré-purge échec (ignoré)');
+    return 0;
+  }
+}
+
 export async function connectWasender(req: AuthRequest, res: Response): Promise<void> {
   const storeId = await getOwnedStoreId(req);
   if (!storeId) { res.status(403).json({ error: 'storeId requis et doit t’appartenir.' }); return; }
@@ -94,16 +146,22 @@ export async function connectWasender(req: AuthRequest, res: Response): Promise<
         accountProtection,
       });
     } catch (err) {
-      // "The phone number has already been taken" : une session existe déjà
-      // côté Wasender (tentative précédente). On la retrouve via listSessions
-      // et on la ré-attache à cette boutique au lieu de demander au vendeur
-      // d'aller supprimer la session dans le dashboard Wasender.
-      const isTaken = err instanceof WasenderApiError && /phone[_ ]?number.*taken|already.*taken/i.test(err.message);
-      if (!isTaken) throw err;
-      const existing = await wasenderService.listSessions({ pat: personalAccessToken });
-      const normalized = phoneNumber.replace(/[^\d]/g, '');
-      session = existing.find((s) => (s.phoneNumber || '').replace(/[^\d]/g, '') === normalized);
-      if (!session || !session.id) throw err;
+      // "phone number already taken" : ancien flow rattachait la session
+      // existante (recovery hack) mais ne pouvait pas synchroniser
+      // webhook_url/secret → webhooks reçus mais rejetés en signature.
+      // Nouveau flow : on SUPPRIME la (les) session(s) existante(s) sur ce
+      // numéro puis on recrée proprement avec le bon webhook.
+      if (!isPhoneTakenError(err)) throw err;
+      const purged = await purgeExistingSessionsForPhone({ pat: personalAccessToken, phoneNumber });
+      if (purged === 0) throw err;
+      session = await wasenderService.createSession({
+        pat: personalAccessToken,
+        name: sessionName || `FlexioPage ${String(storeId).slice(-6)}`,
+        phoneNumber,
+        webhookUrl,
+        webhookSecret,
+        accountProtection,
+      });
     }
 
     if (!session.id) {
@@ -168,18 +226,63 @@ export async function connectWasender(req: AuthRequest, res: Response): Promise<
   }
 }
 
-/** Renvoie le QR à scanner pour la session en cours. */
+/**
+ * Renvoie le QR à scanner. Auto-répare le cas "Session does not need
+ * scanning" (état disconnected) en appelant `connectSession` avant retry —
+ * l'user n'a plus à aller cliquer "Connect" dans le dashboard Wasender.
+ */
 export async function getWasenderQr(req: AuthRequest, res: Response): Promise<void> {
   const storeId = await getOwnedStoreId(req);
   if (!storeId) { res.status(403).json({ error: 'storeId requis et doit t’appartenir.' }); return; }
   const config = await BotConfig.findOne({ vendor_id: storeId, channel: 'whatsapp', whatsapp_provider: 'wasender' });
-  if (!config || !config.wasender_session_id) { res.status(404).json({ error: 'Aucune session Wasender.' }); return; }
+  if (!config || !config.wasender_session_id || !config.page_access_token_encrypted) {
+    res.status(404).json({ error: 'Aucune session Wasender.' });
+    return;
+  }
+  const pat = encryptionService.decrypt(config.page_access_token_encrypted);
+  const sessionId = config.wasender_session_id;
+
+  async function fetchQr() {
+    return wasenderService.getQrCode({ pat, sessionId });
+  }
+
   try {
-    const pat = encryptionService.decrypt(config.page_access_token_encrypted);
-    const out = await wasenderService.getQrCode({ pat, sessionId: config.wasender_session_id });
+    let out;
+    try {
+      out = await fetchQr();
+    } catch (err) {
+      // Auto-répare : session en `disconnected` côté Wasender → force un
+      // /connect qui la remet en `need_scan`, puis re-fetch le QR.
+      if (!isNeedInitError(err)) throw err;
+      logger.info({ sessionId }, '[wasender] auto-connect avant re-fetch QR');
+      await wasenderService.connectSession({ pat, sessionId });
+      out = await fetchQr();
+    }
     res.json({ qr: out.qr, status: out.status });
   } catch (err) {
     if (err instanceof WasenderApiError) {
+      // 404 côté Wasender = session supprimée dans leur dashboard par l'user
+      // → on wipe les credentials pour que l'UI retombe sur l'onboarding.
+      if (err.status === 404) {
+        await BotConfig.updateOne(
+          { _id: config._id },
+          {
+            $set: { status: 'disconnected' },
+            $unset: {
+              wasender_session_id: '',
+              wasender_session_token_encrypted: '',
+              wasender_session_token_hash: '',
+              wasender_webhook_id: '',
+              wasender_webhook_secret_hash: '',
+              page_access_token_encrypted: '',
+              whatsapp_display_number: '',
+              page_name: '',
+            },
+          },
+        );
+        res.status(410).json({ error: 'Session supprimée côté Wasender. Reconnecte le bot.' });
+        return;
+      }
       res.status(err.isAuthError ? 401 : 502).json({ error: err.message });
       return;
     }
@@ -197,7 +300,10 @@ export async function getWasenderStatus(req: AuthRequest, res: Response): Promis
   const storeId = await getOwnedStoreId(req);
   if (!storeId) { res.status(403).json({ error: 'storeId requis et doit t’appartenir.' }); return; }
   const config = await BotConfig.findOne({ vendor_id: storeId, channel: 'whatsapp', whatsapp_provider: 'wasender' });
-  if (!config || !config.wasender_session_id) { res.status(404).json({ error: 'Aucune session Wasender.' }); return; }
+  if (!config || !config.wasender_session_id || !config.page_access_token_encrypted) {
+    res.status(404).json({ error: 'Aucune session Wasender.' });
+    return;
+  }
   try {
     const pat = encryptionService.decrypt(config.page_access_token_encrypted);
     const session = await wasenderService.getSessionStatus({ pat, sessionId: config.wasender_session_id });
@@ -267,26 +373,96 @@ export async function recentWorkerRuns(req: AuthRequest, res: Response): Promise
   res.json({ items, total: items.length });
 }
 
+/**
+ * "Mettre en pause" — status='paused', tout est conservé (session Wasender,
+ * PAT, config). Le bot arrête de répondre mais peut être réactivé en 1 clic
+ * via /resume sans re-scanner de QR. Idéal pour vacances / coupure courte.
+ */
+export async function pauseWasender(req: AuthRequest, res: Response): Promise<void> {
+  const storeId = await getOwnedStoreId(req);
+  if (!storeId) { res.status(403).json({ error: 'storeId requis et doit t’appartenir.' }); return; }
+  const config = await BotConfig.findOne({ vendor_id: storeId, channel: 'whatsapp', whatsapp_provider: 'wasender' });
+  if (!config) { res.status(404).json({ error: 'Aucune session Wasender.' }); return; }
+  config.status = 'paused';
+  await config.save();
+  res.json({ paused: true });
+}
+
+/** "Réactiver" — inverse de pause. */
+export async function resumeWasender(req: AuthRequest, res: Response): Promise<void> {
+  const storeId = await getOwnedStoreId(req);
+  if (!storeId) { res.status(403).json({ error: 'storeId requis et doit t’appartenir.' }); return; }
+  const config = await BotConfig.findOne({ vendor_id: storeId, channel: 'whatsapp', whatsapp_provider: 'wasender' });
+  if (!config) { res.status(404).json({ error: 'Aucune session Wasender.' }); return; }
+  if (!config.wasender_session_id) {
+    res.status(400).json({ error: 'Aucune session à réactiver — reconnecte le bot.' });
+    return;
+  }
+  config.status = 'active';
+  await config.save();
+  res.json({ resumed: true });
+}
+
+/**
+ * "Déconnecter" / "Changer de numéro" — supprime la session côté Wasender
+ * (best-effort) puis wipe les credentials en base. Garde la config bot
+ * (langue, welcome_message, shipping…) pour que la reconnexion soit rapide.
+ * L'UI retombe alors sur le WasenderConnectForm.
+ */
 export async function disconnectWasender(req: AuthRequest, res: Response): Promise<void> {
   const storeId = await getOwnedStoreId(req);
   if (!storeId) { res.status(403).json({ error: 'storeId requis et doit t’appartenir.' }); return; }
   const config = await BotConfig.findOne({ vendor_id: storeId, channel: 'whatsapp', whatsapp_provider: 'wasender' });
   if (!config) { res.status(404).json({ error: 'Aucune session Wasender.' }); return; }
-  try {
-    if (config.wasender_session_id) {
+  // Best-effort : on tente de supprimer la session côté Wasender pour libérer
+  // le numéro. Si ça échoue (déjà supprimée, PAT invalide…), on wipe quand
+  // même la BotConfig localement — l'user attend une action irréversible.
+  if (config.wasender_session_id && config.page_access_token_encrypted) {
+    try {
       const pat = encryptionService.decrypt(config.page_access_token_encrypted);
-      try {
-        await wasenderService.disconnectSession({ pat, sessionId: config.wasender_session_id });
-      } catch (err) {
-        // Best-effort : on bascule en disconnected même si l'API distante échoue.
-        logger.warn({ err: (err as Error).message }, '[wasender] disconnect API échec — on bascule local quand même');
-      }
+      await wasenderService.deleteSession({ pat, sessionId: config.wasender_session_id });
+    } catch (err) {
+      logger.warn({ err: (err as Error).message }, '[wasender] deleteSession échec (on wipe local quand même)');
     }
-    config.status = 'disconnected';
-    await config.save();
-    res.json({ disconnected: true });
-  } catch (err) {
-    logger.error({ err: (err as Error).message }, '[wasender] disconnect échec');
-    res.status(500).json({ error: 'Erreur interne.' });
   }
+  await BotConfig.updateOne(
+    { _id: config._id },
+    {
+      $set: { status: 'disconnected' },
+      $unset: {
+        wasender_session_id: '',
+        wasender_session_token_encrypted: '',
+        wasender_session_token_hash: '',
+        wasender_webhook_id: '',
+        wasender_webhook_secret_hash: '',
+        page_access_token_encrypted: '',
+        whatsapp_display_number: '',
+        page_name: '',
+      },
+    },
+  );
+  res.json({ disconnected: true });
+}
+
+/**
+ * "Supprimer l'intégration" — DELETE Wasender session (best-effort) puis
+ * supprime TOUTE la BotConfig WhatsApp (config incluse). L'UI retombe sur
+ * l'écran ProviderPicker vierge, comme si le bot n'avait jamais existé.
+ * Irréversible.
+ */
+export async function deleteWasenderIntegration(req: AuthRequest, res: Response): Promise<void> {
+  const storeId = await getOwnedStoreId(req);
+  if (!storeId) { res.status(403).json({ error: 'storeId requis et doit t’appartenir.' }); return; }
+  const config = await BotConfig.findOne({ vendor_id: storeId, channel: 'whatsapp', whatsapp_provider: 'wasender' });
+  if (!config) { res.status(404).json({ error: 'Aucune session Wasender.' }); return; }
+  if (config.wasender_session_id && config.page_access_token_encrypted) {
+    try {
+      const pat = encryptionService.decrypt(config.page_access_token_encrypted);
+      await wasenderService.deleteSession({ pat, sessionId: config.wasender_session_id });
+    } catch (err) {
+      logger.warn({ err: (err as Error).message }, '[wasender] deleteSession échec (on supprime la BotConfig quand même)');
+    }
+  }
+  await BotConfig.deleteOne({ _id: config._id });
+  res.json({ deleted: true });
 }

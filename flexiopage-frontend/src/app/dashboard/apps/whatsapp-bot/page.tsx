@@ -9,7 +9,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
-import { Loader2, Check, Send, MessageSquare, RefreshCw, Power, AlertTriangle, Sparkles, Plug, QrCode } from 'lucide-react';
+import { Loader2, Check, Send, MessageSquare, RefreshCw, Power, AlertTriangle, Sparkles, Plug, QrCode, Pause, Play, Trash2, HelpCircle } from 'lucide-react';
 import { whatsappBotApi, extractApiError, type MessengerBotConfig, type MessengerConversation, type MessengerMessage } from '@/lib/api';
 import { COUNTRIES, COUNTRY_GROUPS } from '@/data/countries';
 import { useStoreStore } from '@/stores/store-store';
@@ -113,88 +113,82 @@ export default function WhatsAppBotPage() {
         </div>
       )}
 
-      {(!config || showPicker) && (
-        <ProviderPicker
-          storeId={storeId}
-          onConnected={async () => { setShowPicker(false); await load(); }}
-          onClose={config ? () => setShowPicker(false) : undefined}
-        />
-      )}
+      {(() => {
+        // État "wasender déconnecté" (post disconnect ou after 410) : provider
+        // reste 'wasender' mais session_id/PAT wipés → l'user reprend
+        // l'onboarding sans repasser par le ProviderPicker.
+        const wasenderNeedsReconnect = !!config
+          && config.whatsapp_provider === 'wasender'
+          && !config.wasender_session_id;
 
-      {config && showUpdate && (
-        config.whatsapp_provider === 'wasender' ? (
-          <WasenderConnectForm storeId={storeId} mode="update" onCancel={() => setShowUpdate(false)} onConnected={async () => { setShowUpdate(false); await load(); }} />
-        ) : (
-          <ConnectForm
-            storeId={storeId}
-            mode="update"
-            currentNumber={config.whatsapp_display_number}
-            onCancel={() => setShowUpdate(false)}
-            onConnected={async () => { setShowUpdate(false); await load(); }}
-          />
-        )
-      )}
+        if (!config || showPicker) {
+          return (
+            <ProviderPicker
+              storeId={storeId}
+              onConnected={async () => { setShowPicker(false); await load(); }}
+              onClose={config ? () => setShowPicker(false) : undefined}
+            />
+          );
+        }
 
-      {config && !showUpdate && !showPicker && config.whatsapp_provider === 'wasender' && config.status !== 'active' && (
-        <WasenderSessionStatus storeId={storeId} onConnected={load} />
-      )}
+        if (showUpdate) {
+          return config.whatsapp_provider === 'wasender' ? (
+            <WasenderConnectForm storeId={storeId} mode="update" onCancel={() => setShowUpdate(false)} onConnected={async () => { setShowUpdate(false); await load(); }} />
+          ) : (
+            <ConnectForm
+              storeId={storeId}
+              mode="update"
+              currentNumber={config.whatsapp_display_number}
+              onCancel={() => setShowUpdate(false)}
+              onConnected={async () => { setShowUpdate(false); await load(); }}
+            />
+          );
+        }
 
-      {config && !showUpdate && !showPicker && (
-        <>
-          {overview && <StatsRow overview={overview} />}
-          <BotLimitsCard storeId={storeId} channel="whatsapp" config={config} onSaved={load} />
-          <div className="grid gap-6 lg:grid-cols-2">
-            <ConfigForm storeId={storeId} config={config} onSaved={load} />
-            <TestBox storeId={storeId} />
-          </div>
-          <div className="flex flex-col gap-3 rounded-2xl border border-border/60 bg-gradient-to-br from-green-500/5 to-emerald-600/5 p-4 sm:flex-row sm:items-center sm:justify-between">
-            <div className="min-w-0">
-              <div className="text-sm font-semibold">Messagerie</div>
-              <p className="text-xs text-muted-foreground">Vue plein écran type WhatsApp Web : consulter et répondre aux clients.</p>
-            </div>
-            <Link href={`/dashboard/apps/whatsapp-bot/chat?storeId=${encodeURIComponent(storeId)}`} className="shrink-0">
-              <Button size="sm" className="w-full gap-1.5 gradient-brand text-white sm:w-auto">
-                <MessageSquare className="h-3.5 w-3.5" /> Ouvrir la messagerie
-              </Button>
-            </Link>
-          </div>
-          <Inbox storeId={storeId} />
-          {config.whatsapp_provider === 'wasender' && devMode && (
-            <>
-              <WasenderWorkerDebug storeId={storeId} />
-              <WasenderWebhookDebug storeId={storeId} />
-            </>
-          )}
-          <div className="flex flex-wrap gap-2">
-            <Button variant="outline" size="sm" className="gap-1.5"
-              onClick={() => setShowUpdate(true)}>
-              <RefreshCw className="h-3.5 w-3.5" /> Mettre à jour le numéro
-            </Button>
-            <Button variant="outline" size="sm" className="gap-1.5"
-              onClick={() => setShowPicker(true)}>
-              <Plug className="h-3.5 w-3.5" /> Changer de fournisseur
-            </Button>
-            <Button variant="outline" size="sm" className="gap-1.5 text-rose-600"
-              onClick={async () => {
-                if (!confirm('Déconnecter WhatsApp ?')) return;
-                if (config.whatsapp_provider === 'wasender') {
-                  await whatsappBotApi.wasenderDisconnect(storeId);
-                } else {
-                  await whatsappBotApi.disconnect(storeId);
-                }
-                await load();
-              }}>
-              <Power className="h-3.5 w-3.5" /> Déconnecter WhatsApp
-            </Button>
-            {config.whatsapp_provider === 'wasender' && (
-              <Button variant="ghost" size="sm" className="gap-1.5 text-muted-foreground hover:text-foreground"
-                onClick={toggleDevMode} title="Affiche/masque les panels Debug Worker + Debug Webhooks">
-                {devMode ? '🛠️ Mode dev (ON)' : '🛠️ Mode dev'}
-              </Button>
+        if (wasenderNeedsReconnect) {
+          return <WasenderConnectForm storeId={storeId} mode="connect" onConnected={load} />;
+        }
+
+        return (
+          <>
+            {config.whatsapp_provider === 'wasender' && config.status !== 'active' && (
+              <WasenderSessionStatus storeId={storeId} onConnected={load} status={config.status} />
             )}
-          </div>
-        </>
-      )}
+            {overview && <StatsRow overview={overview} />}
+            <BotLimitsCard storeId={storeId} channel="whatsapp" config={config} onSaved={load} />
+            <div className="grid gap-6 lg:grid-cols-2">
+              <ConfigForm storeId={storeId} config={config} onSaved={load} />
+              <TestBox storeId={storeId} />
+            </div>
+            <div className="flex flex-col gap-3 rounded-2xl border border-border/60 bg-gradient-to-br from-green-500/5 to-emerald-600/5 p-4 sm:flex-row sm:items-center sm:justify-between">
+              <div className="min-w-0">
+                <div className="text-sm font-semibold">Messagerie</div>
+                <p className="text-xs text-muted-foreground">Vue plein écran type WhatsApp Web : consulter et répondre aux clients.</p>
+              </div>
+              <Link href={`/dashboard/apps/whatsapp-bot/chat?storeId=${encodeURIComponent(storeId)}`} className="shrink-0">
+                <Button size="sm" className="w-full gap-1.5 gradient-brand text-white sm:w-auto">
+                  <MessageSquare className="h-3.5 w-3.5" /> Ouvrir la messagerie
+                </Button>
+              </Link>
+            </div>
+            <Inbox storeId={storeId} />
+            {config.whatsapp_provider === 'wasender' && devMode && (
+              <>
+                <WasenderWorkerDebug storeId={storeId} />
+                <WasenderWebhookDebug storeId={storeId} />
+              </>
+            )}
+            <WhatsAppActionsBar
+              config={config}
+              storeId={storeId}
+              onChanged={load}
+              onChangeProvider={() => setShowPicker(true)}
+              devMode={devMode}
+              onToggleDevMode={toggleDevMode}
+            />
+          </>
+        );
+      })()}
     </div>
   );
 }
@@ -565,6 +559,7 @@ function WasenderConnectForm({ storeId, onConnected, mode = 'connect', onCancel 
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
   const [created, setCreated] = useState(false);
+  const [showTuto, setShowTuto] = useState(false);
 
   async function connect() {
     setBusy(true); setErr('');
@@ -595,21 +590,35 @@ function WasenderConnectForm({ storeId, onConnected, mode = 'connect', onCancel 
         <QrCode className="h-7 w-7" />
       </div>
       <h2 className="text-center text-base font-semibold">
-        {isUpdate ? 'Reconnecter via WasenderAPI' : 'Connecter via WasenderAPI'}
+        {isUpdate ? 'Reconnecter via WasenderAPI' : 'Connecter WhatsApp via WasenderAPI'}
       </h2>
       <p className="mx-auto mt-1 max-w-md text-center text-sm text-muted-foreground">
-        Crée un compte sur <a href="https://wasenderapi.com" target="_blank" rel="noopener noreferrer" className="underline">wasenderapi.com</a>,
-        génère un <strong>Personal Access Token</strong> (Settings → Personal Access Token), puis colle-le ici.
+        Colle ton <strong>Personal Access Token</strong> Wasender, ton numéro WhatsApp, et scanne le QR.
+        Prêt en moins d'une minute.
       </p>
       <div className="mx-auto mt-5 max-w-md space-y-3">
         <div className="space-y-1">
-          <Label className="text-xs">Personal Access Token</Label>
+          <div className="flex items-center justify-between">
+            <Label className="text-xs">Personal Access Token</Label>
+            <button type="button" onClick={() => setShowTuto((v) => !v)}
+              className="inline-flex items-center gap-1 text-[11px] font-medium text-emerald-700 hover:underline">
+              <HelpCircle className="h-3 w-3" /> {showTuto ? 'Masquer' : 'Comment l\'obtenir ?'}
+            </button>
+          </div>
           <Input value={pat} onChange={(e) => setPat(e.target.value)} placeholder="wsk_..." type="password" className="h-10" />
+          {showTuto && (
+            <ol className="mt-2 space-y-1 rounded-md bg-muted/40 px-3 py-2 text-[11px] leading-relaxed text-muted-foreground">
+              <li>1. Va sur <a href="https://wasenderapi.com" target="_blank" rel="noopener noreferrer" className="font-medium text-emerald-700 underline">wasenderapi.com</a> et connecte-toi.</li>
+              <li>2. Ouvre <strong>Settings → Personal Access Token</strong> (ou <em>API Tokens</em>).</li>
+              <li>3. Clique <strong>Generate New Token</strong>, donne-lui un nom (ex: <code>flexiopage</code>).</li>
+              <li>4. Copie le token affiché <strong>immédiatement</strong> (il ne sera plus visible ensuite) et colle-le ci-dessus.</li>
+            </ol>
+          )}
         </div>
         <div className="space-y-1">
           <Label className="text-xs">Numéro WhatsApp <span className="text-rose-500">*</span></Label>
           <Input value={phoneNumber} onChange={(e) => setPhoneNumber(e.target.value)} placeholder="+212600000000" className="h-10" />
-          <p className="text-[10px] text-muted-foreground">Format international, avec indicatif pays.</p>
+          <p className="text-[10px] text-muted-foreground">Format international, avec indicatif pays (ex: +212 pour le Maroc).</p>
         </div>
         <div className="space-y-1">
           <Label className="text-xs">Nom de session (optionnel)</Label>
@@ -626,9 +635,13 @@ function WasenderConnectForm({ storeId, onConnected, mode = 'connect', onCancel 
           )}
           <Button onClick={connect} disabled={busy || !pat.trim() || !phoneNumber.trim()} className="w-full gap-2 gradient-brand text-white">
             {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plug className="h-4 w-4" />}
-            {isUpdate ? 'Reconnecter' : 'Créer la session'}
+            {isUpdate ? 'Reconnecter' : 'Connecter WhatsApp'}
           </Button>
         </div>
+        <p className="text-center text-[11px] text-muted-foreground">
+          Si un numéro identique est déjà utilisé sur Wasender, l'ancienne session sera automatiquement supprimée
+          avant de recréer proprement — aucune action manuelle requise.
+        </p>
         {/* Note dev-only : Wasender refuse les webhooks vers localhost.
             En prod (API_PUBLIC_URL pointe vers api.flexiopage.com) c'est
             inutile à afficher — le backend pré-check de toute façon. */}
@@ -650,17 +663,31 @@ function WasenderQrPanel({ storeId, onConnected }: { storeId: string; onConnecte
   const [qr, setQr] = useState<string | null>(null);
   const [status, setStatus] = useState<'need_scan' | 'connected' | 'disconnected' | 'unknown'>('need_scan');
   const [err, setErr] = useState('');
+  const [refreshing, setRefreshing] = useState(false);
   const stopRef = useRef(false);
 
   const refreshQr = useCallback(async () => {
+    setRefreshing(true);
+    setErr('');
     try {
       const res = await whatsappBotApi.wasenderQr(storeId);
       setQr(res.data.qr);
       setStatus(res.data.status);
     } catch (e) {
+      // 410 : le backend a détecté que la session est supprimée côté Wasender
+      // et a wipé les credentials → on remonte pour que le parent reload et
+      // affiche le WasenderConnectForm à nouveau.
+      const anyErr = e as { response?: { status?: number } };
+      if (anyErr?.response?.status === 410) {
+        stopRef.current = true;
+        onConnected();
+        return;
+      }
       setErr(extractApiError(e, 'Impossible de récupérer le QR.'));
+    } finally {
+      setRefreshing(false);
     }
-  }, [storeId]);
+  }, [storeId, onConnected]);
 
   useEffect(() => {
     void refreshQr();
@@ -691,23 +718,36 @@ function WasenderQrPanel({ storeId, onConnected }: { storeId: string; onConnecte
           Ouvre WhatsApp → Paramètres → Appareils connectés → Connecter un appareil, puis scanne ce code.
         </p>
       </div>
-      {err && <p className="mt-3 text-center text-xs text-rose-600">{err}</p>}
+      {err && (
+        <div className="mt-3 rounded-md border border-rose-500/30 bg-rose-500/5 px-3 py-2 text-center text-xs text-rose-700">
+          {err}
+          <div className="mt-1 text-[10px] text-rose-600/80">
+            Clique <strong>Régénérer le QR</strong> ci-dessous — on retente automatiquement.
+          </div>
+        </div>
+      )}
       <div className="mx-auto mt-5 grid place-items-center">
         {qr ? (
           <img src={qrSrc(qr)} alt="QR code WhatsApp"
             className="h-64 w-64 rounded-xl border border-border/60 bg-white p-2" />
         ) : (
           <div className="grid h-64 w-64 place-items-center rounded-xl border border-dashed border-border/60 bg-muted/30">
-            <Loader2 className="h-7 w-7 animate-spin text-muted-foreground" />
+            {refreshing || !err ? (
+              <Loader2 className="h-7 w-7 animate-spin text-muted-foreground" />
+            ) : (
+              <AlertTriangle className="h-7 w-7 text-rose-500/70" />
+            )}
           </div>
         )}
       </div>
       <div className="mt-4 text-center text-xs text-muted-foreground">
-        Statut : <strong>{status === 'connected' ? '✅ Connecté' : status === 'need_scan' ? '⏳ En attente du scan' : status}</strong>
+        Statut : <strong>{status === 'connected' ? '✅ Connecté' : status === 'need_scan' ? '⏳ En attente du scan' : status === 'disconnected' ? '⚠️ Déconnectée' : status}</strong>
       </div>
       <div className="mt-3 flex justify-center">
-        <Button variant="outline" size="sm" onClick={refreshQr} className="gap-1.5">
-          <RefreshCw className="h-3.5 w-3.5" /> Rafraîchir le QR
+        <Button variant={err ? 'default' : 'outline'} size="sm" onClick={refreshQr} disabled={refreshing}
+          className={cn('gap-1.5', err && 'gradient-brand text-white')}>
+          {refreshing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
+          Régénérer le QR
         </Button>
       </div>
     </section>
@@ -905,13 +945,136 @@ function WasenderWebhookDebug({ storeId }: { storeId: string }) {
 }
 
 /** Bandeau de statut pour une session Wasender existante mais pas active. */
-function WasenderSessionStatus({ storeId, onConnected }: { storeId: string; onConnected: () => void }) {
+function WasenderSessionStatus({ storeId, onConnected, status }: {
+  storeId: string;
+  onConnected: () => void;
+  status: 'active' | 'paused' | 'disconnected';
+}) {
+  // Statut 'paused' déclenché par l'user via /wasender/pause : garde la
+  // session vivante — inutile de re-scanner. Message dédié + bouton
+  // "Réactiver" (voir WhatsAppActionsBar). Le QR n'est PAS affiché ici.
+  if (status === 'paused') {
+    return (
+      <div className="flex items-start gap-3 rounded-2xl border border-amber-500/30 bg-amber-500/5 p-4">
+        <Pause className="mt-0.5 h-5 w-5 shrink-0 text-amber-700" />
+        <div className="min-w-0">
+          <div className="text-sm font-semibold text-amber-900">Bot en pause</div>
+          <p className="mt-1 text-xs text-amber-800/80">
+            Le bot ne répond plus aux messages entrants. Ta session WhatsApp reste connectée
+            — clique <strong>Réactiver</strong> ci-dessous pour reprendre.
+          </p>
+        </div>
+      </div>
+    );
+  }
   return (
     <div className="rounded-2xl border border-amber-500/30 bg-amber-500/5 p-4">
       <div className="mb-3 flex items-center gap-2 text-sm font-semibold text-amber-800">
-        <AlertTriangle className="h-4 w-4" /> Session Wasender en pause — scanne le QR pour réactiver
+        <AlertTriangle className="h-4 w-4" /> Session déconnectée — scanne le QR pour réactiver
       </div>
       <WasenderQrPanel storeId={storeId} onConnected={onConnected} />
+    </div>
+  );
+}
+
+/**
+ * Barre d'actions pour un bot déjà connecté : boutons différents selon le
+ * provider et le statut. Wasender expose 4 actions distinctes (pause/reprendre,
+ * changer de numéro, supprimer, changer de fournisseur) car chacune a une
+ * sémantique bien différente côté données. Meta garde son flow historique.
+ */
+function WhatsAppActionsBar({
+  config, storeId, onChanged, onChangeProvider, devMode, onToggleDevMode,
+}: {
+  config: MessengerBotConfig;
+  storeId: string;
+  onChanged: () => void;
+  onChangeProvider: () => void;
+  devMode: boolean;
+  onToggleDevMode: () => void;
+}) {
+  const [busy, setBusy] = useState<null | 'pause' | 'resume' | 'change' | 'delete'>(null);
+  const isWasender = config.whatsapp_provider === 'wasender';
+  const isPaused = config.status === 'paused';
+
+  async function guarded(action: 'pause' | 'resume' | 'change' | 'delete', fn: () => Promise<void>) {
+    setBusy(action);
+    try { await fn(); await onChanged(); }
+    catch (e) { alert(extractApiError(e, 'Action échouée.')); }
+    finally { setBusy(null); }
+  }
+
+  if (!isWasender) {
+    return (
+      <div className="flex flex-wrap gap-2">
+        <Button variant="outline" size="sm" className="gap-1.5"
+          onClick={onChangeProvider}>
+          <Plug className="h-3.5 w-3.5" /> Changer de fournisseur
+        </Button>
+        <Button variant="outline" size="sm" className="gap-1.5 text-rose-600"
+          onClick={async () => {
+            if (!confirm('Déconnecter WhatsApp ?')) return;
+            await whatsappBotApi.disconnect(storeId);
+            await onChanged();
+          }}>
+          <Power className="h-3.5 w-3.5" /> Déconnecter WhatsApp
+        </Button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex flex-wrap gap-2">
+      {/* Pause ↔ Réactiver : n'affecte que le statut, session/config préservées. */}
+      {isPaused ? (
+        <Button variant="outline" size="sm" className="gap-1.5 text-emerald-700"
+          disabled={busy !== null}
+          onClick={() => guarded('resume', () => whatsappBotApi.wasenderResume(storeId).then(() => undefined))}>
+          {busy === 'resume' ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Play className="h-3.5 w-3.5" />}
+          Réactiver le bot
+        </Button>
+      ) : (
+        <Button variant="outline" size="sm" className="gap-1.5"
+          disabled={busy !== null}
+          onClick={() => guarded('pause', () => whatsappBotApi.wasenderPause(storeId).then(() => undefined))}>
+          {busy === 'pause' ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Pause className="h-3.5 w-3.5" />}
+          Mettre en pause
+        </Button>
+      )}
+
+      {/* Changer de numéro : DELETE session Wasender + wipe credentials, garde config bot. */}
+      <Button variant="outline" size="sm" className="gap-1.5"
+        disabled={busy !== null}
+        onClick={() => guarded('change', async () => {
+          const num = config.whatsapp_display_number || 'ce numéro';
+          if (!confirm(`Changer de numéro ?\n\nLa session actuelle (${num}) sera supprimée sur Wasender.\nTa configuration (langue, messages, tarifs) sera conservée.`)) return;
+          await whatsappBotApi.wasenderDisconnect(storeId);
+        })}>
+        {busy === 'change' ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
+        Changer de numéro
+      </Button>
+
+      <Button variant="outline" size="sm" className="gap-1.5"
+        disabled={busy !== null}
+        onClick={onChangeProvider}>
+        <Plug className="h-3.5 w-3.5" /> Changer de fournisseur
+      </Button>
+
+      {/* Supprimer l'intégration : DELETE session Wasender + supprime toute la BotConfig. */}
+      <Button variant="outline" size="sm" className="gap-1.5 text-rose-600"
+        disabled={busy !== null}
+        onClick={() => guarded('delete', async () => {
+          if (!confirm('Supprimer l\'intégration WhatsApp ?\n\nCela effacera définitivement : la session Wasender, ton token, ta configuration (langue, messages, tarifs).\n\nAction irréversible.')) return;
+          await whatsappBotApi.wasenderDeleteIntegration(storeId);
+        })}>
+        {busy === 'delete' ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
+        Supprimer l'intégration
+      </Button>
+
+      <Button variant="ghost" size="sm" className="gap-1.5 text-muted-foreground hover:text-foreground"
+        onClick={onToggleDevMode} title="Affiche/masque les panels Debug Worker + Debug Webhooks">
+        {devMode ? '🛠️ Mode dev (ON)' : '🛠️ Mode dev'}
+      </Button>
     </div>
   );
 }

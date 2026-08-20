@@ -237,6 +237,7 @@ export async function processIncomingMessage(job: IncomingMessageJob): Promise<P
         const sessionToken = encryptionService.decrypt(config.wasender_session_token_encrypted);
         await wasenderService.sendText({ sessionToken, to: conversation.customer_psid, message: replyText });
       } else if (config.channel === 'whatsapp') {
+        if (!config.page_access_token_encrypted) throw new Error('WhatsApp access token absent — reconnecte le bot');
         const token = encryptionService.decrypt(config.page_access_token_encrypted);
         await whatsappService.sendText({
           phoneNumberId: config.whatsapp_phone_number_id || '',
@@ -245,6 +246,7 @@ export async function processIncomingMessage(job: IncomingMessageJob): Promise<P
           message: replyText,
         });
       } else {
+        if (!config.page_access_token_encrypted) throw new Error('Messenger page access token absent — reconnecte la page');
         const token = encryptionService.decrypt(config.page_access_token_encrypted);
         await messengerService.sendTypingIndicator({ pageAccessToken: token, recipientPsid: conversation.customer_psid });
         await messengerService.sendMessage({ pageAccessToken: token, recipientPsid: conversation.customer_psid, message: replyText });
@@ -410,6 +412,7 @@ async function loadWhatsAppImageBlock(
       // le webhook — pas besoin d'auth pour la télécharger.
       media = await wasenderService.fetchMediaFromUrl({ url: mediaId });
     } else {
+      if (!config.page_access_token_encrypted) return null;
       const token = encryptionService.decrypt(config.page_access_token_encrypted);
       media = await whatsappService.fetchMedia({ mediaId, accessToken: token });
     }

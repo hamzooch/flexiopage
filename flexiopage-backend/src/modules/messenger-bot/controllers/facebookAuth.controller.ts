@@ -155,13 +155,15 @@ export async function disconnect(req: AuthRequest, res: Response): Promise<void>
   if (!config) { res.status(404).json({ error: 'Aucune page connectée.' }); return; }
 
   // Désabonnement best-effort.
-  try {
-    const token = encryptionService.decrypt(config.page_access_token_encrypted);
-    await axios.delete(`${GRAPH_API_BASE}/${config.facebook_page_id}/subscribed_apps`, {
-      params: { access_token: token }, timeout: 10_000,
-    });
-  } catch {
-    // peu importe : on déconnecte côté Flexiopage de toute façon
+  if (config.page_access_token_encrypted) {
+    try {
+      const token = encryptionService.decrypt(config.page_access_token_encrypted);
+      await axios.delete(`${GRAPH_API_BASE}/${config.facebook_page_id}/subscribed_apps`, {
+        params: { access_token: token }, timeout: 10_000,
+      });
+    } catch {
+      // peu importe : on déconnecte côté Flexiopage de toute façon
+    }
   }
   config.status = 'disconnected';
   await config.save();

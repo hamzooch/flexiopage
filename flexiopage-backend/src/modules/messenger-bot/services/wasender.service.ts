@@ -230,6 +230,33 @@ export class WasenderService {
   }
 
   /**
+   * DELETE /api/whatsapp-sessions/{id} — supprime définitivement la session
+   * côté Wasender (libère le numéro pour un futur `createSession`). Utilisé
+   * par le flow "Supprimer l'intégration" ou "Changer de numéro".
+   */
+  async deleteSession(args: { pat: string; sessionId: string }): Promise<void> {
+    try {
+      await this.http(args.pat).delete(`/api/whatsapp-sessions/${encodeURIComponent(args.sessionId)}`);
+    } catch (err) {
+      throw wasenderErrorFromAxios(err, 'Wasender deleteSession failed');
+    }
+  }
+
+  /**
+   * POST /api/whatsapp-sessions/{id}/connect — force le passage d'une session
+   * `disconnected` en `need_scan` pour régénérer un QR. Requis avant
+   * `getQrCode` quand Wasender renvoie "Session does not need scanning".
+   */
+  async connectSession(args: { pat: string; sessionId: string }): Promise<WasenderSession> {
+    try {
+      const res = await this.http(args.pat).post(`/api/whatsapp-sessions/${encodeURIComponent(args.sessionId)}/connect`, {});
+      return this.adaptSession(res.data);
+    } catch (err) {
+      throw wasenderErrorFromAxios(err, 'Wasender connectSession failed');
+    }
+  }
+
+  /**
    * POST /api/send-message — envoie un message texte via la session.
    * `sessionToken` = api_token renvoyé par createSession.
    * `to` = numéro destinataire au format international (avec ou sans +).

@@ -16,8 +16,11 @@ import { connectWhatsApp, disconnectWhatsApp } from '../controllers/whatsappConn
 import {
   connectWasender,
   disconnectWasender,
+  deleteWasenderIntegration,
   getWasenderQr,
   getWasenderStatus,
+  pauseWasender,
+  resumeWasender,
   recentWasenderWebhooks,
   recentWorkerRuns,
 } from '../controllers/wasenderConnect.controller';
@@ -47,7 +50,11 @@ apiRouter.post('/whatsapp/disconnect', disconnectWhatsApp);
 apiRouter.post('/wasender/connect', connectWasender);
 apiRouter.get('/wasender/qr', getWasenderQr);
 apiRouter.get('/wasender/status', getWasenderStatus);
+apiRouter.post('/wasender/pause', pauseWasender);
+apiRouter.post('/wasender/resume', resumeWasender);
+// disconnect = wipe credentials (garde la config bot). delete = wipe tout.
 apiRouter.post('/wasender/disconnect', disconnectWasender);
+apiRouter.delete('/wasender', deleteWasenderIntegration);
 apiRouter.get('/wasender/recent-webhooks', recentWasenderWebhooks);
 apiRouter.get('/wasender/recent-worker-runs', recentWorkerRuns);
 

@@ -90,6 +90,7 @@ export async function sendManual(req: AuthRequest, res: Response): Promise<void>
       const sessionToken = encryptionService.decrypt(config.wasender_session_token_encrypted);
       await wasenderService.sendText({ sessionToken, to: conv.customer_psid, message: parsed.data.message });
     } else if (config.channel === 'whatsapp') {
+      if (!config.page_access_token_encrypted) throw new Error('WhatsApp access token absent');
       const token = encryptionService.decrypt(config.page_access_token_encrypted);
       await whatsappService.sendText({
         phoneNumberId: config.whatsapp_phone_number_id || '',
@@ -98,6 +99,7 @@ export async function sendManual(req: AuthRequest, res: Response): Promise<void>
         message: parsed.data.message,
       });
     } else {
+      if (!config.page_access_token_encrypted) throw new Error('Messenger page access token absent');
       const token = encryptionService.decrypt(config.page_access_token_encrypted);
       await messengerService.sendMessage({ pageAccessToken: token, recipientPsid: conv.customer_psid, message: parsed.data.message });
     }

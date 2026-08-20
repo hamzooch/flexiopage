@@ -97,8 +97,11 @@ export interface IBotConfig extends Document {
    *   - WhatsApp (meta)  : access token Meta WhatsApp Cloud.
    *   - WhatsApp (wasender) : Personal Access Token WasenderAPI (utilisé pour
    *     gérer la session — QR, status, disconnect).
+   *
+   * Optionnel : peut être temporairement absent après un "changer de numéro"
+   * (credentials wipés, config conservée), jusqu'à la reconnexion.
    */
-  page_access_token_encrypted: string;
+  page_access_token_encrypted?: string;
   page_name?: string;
   page_picture_url?: string;
 
@@ -193,7 +196,10 @@ const BotConfigSchema = new Schema<IBotConfig>(
     wasender_session_token_hash: { type: String },
     wasender_webhook_id: { type: String },
     wasender_webhook_secret_hash: { type: String },
-    page_access_token_encrypted: { type: String, required: true },
+    // Ex-required : rendu optionnel pour permettre un "changer de numéro"
+    // (wipe des credentials tout en conservant la config bot — langue,
+    // messages, shipping) sans avoir à supprimer toute la BotConfig.
+    page_access_token_encrypted: { type: String },
     page_name: { type: String },
     page_picture_url: { type: String },
 
