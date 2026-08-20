@@ -104,7 +104,13 @@ function normalizeStatus(raw: unknown): WasenderSessionStatus {
  * DOIT souscrire à ces events, sinon Wasender n'enverra rien.
  */
 export const WASENDER_REQUIRED_EVENTS = [
+  // Message entrant (multiple noms selon version de leur API) :
+  // - `messages.received` : alias générique (souvent utilisé pour les tests)
+  // - `messages-personal.received` : DM 1-to-1 (semble être requis en prod
+  //   sur les versions récentes — sinon les vrais messages ne fire pas)
+  // - `messages.upsert` : format Baileys pour tout message
   'messages.received',
+  'messages-personal.received',
   'messages.upsert',
   'session.status',
   'qrcode.updated',
