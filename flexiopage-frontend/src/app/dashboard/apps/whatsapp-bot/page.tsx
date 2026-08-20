@@ -925,22 +925,38 @@ function WasenderWebhookDebug({ storeId }: { storeId: string }) {
           <RefreshCw className={cn('h-3.5 w-3.5', loading && 'animate-spin')} />
         </button>
       </div>
-      {items.length === 0 && (
-        <div className="border-b border-border/40 bg-amber-500/5 px-5 py-3">
-          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-            <p className="text-[11px] text-amber-900">
-              🔧 <strong>Webhook mal configuré ?</strong> Si tu ne vois aucun event après un message test,
-              clique <strong>Réparer</strong> — on va re-pousser la config webhook sur Wasender
-              (URL + secret + events).
-            </p>
-            <Button size="sm" variant="outline" onClick={syncWebhook} disabled={syncing} className="gap-1.5 shrink-0">
-              {syncing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
-              Réparer le webhook
-            </Button>
+      {(() => {
+        // Affiche le bandeau "Réparer" si :
+        //   - aucun webhook reçu (config probablement absente côté Wasender)
+        //   - OU au moins un webhook rejeté en signature invalide (secret mismatch)
+        //   - OU tous les webhooks reçus sont en erreur (worker cassé)
+        const hasSignatureErr = items.some((w) => !w.signatureMatched || /signature.*invalide/i.test(w.reason || ''));
+        const allErrored = items.length > 0 && items.every((w) => w.processed === 'error');
+        const showBanner = items.length === 0 || hasSignatureErr || allErrored;
+        if (!showBanner) return null;
+        const isRedFlag = hasSignatureErr || allErrored;
+        return (
+          <div className={cn('border-b border-border/40 px-5 py-3', isRedFlag ? 'bg-rose-500/5' : 'bg-amber-500/5')}>
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+              <p className={cn('text-[11px]', isRedFlag ? 'text-rose-900' : 'text-amber-900')}>
+                {hasSignatureErr ? (
+                  <>❌ <strong>Signature invalide détectée.</strong> Le secret Wasender ne correspond pas au hash en base. Clique <strong>Réparer</strong> — on régénère le secret + re-configure la session.</>
+                ) : allErrored ? (
+                  <>❌ <strong>Tous les webhooks sont en erreur.</strong> Clique <strong>Réparer</strong> pour re-pousser la config webhook sur Wasender.</>
+                ) : (
+                  <>🔧 <strong>Webhook mal configuré ?</strong> Si tu ne vois aucun event après un message test, clique <strong>Réparer</strong> — on va re-pousser la config webhook sur Wasender (URL + secret + events).</>
+                )}
+              </p>
+              <Button size="sm" variant={isRedFlag ? 'default' : 'outline'} onClick={syncWebhook} disabled={syncing}
+                className={cn('gap-1.5 shrink-0', isRedFlag && 'bg-rose-600 hover:bg-rose-700 text-white')}>
+                {syncing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
+                Réparer le webhook
+              </Button>
+            </div>
+            {syncMsg && <p className="mt-2 text-[11px] text-muted-foreground">{syncMsg}</p>}
           </div>
-          {syncMsg && <p className="mt-2 text-[11px] text-muted-foreground">{syncMsg}</p>}
-        </div>
-      )}
+        );
+      })()}
       <ul className="divide-y divide-border/40">
         {items.length === 0 && (
           <li className="px-5 py-6 text-center text-xs text-muted-foreground">
