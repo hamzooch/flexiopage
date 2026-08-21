@@ -183,12 +183,19 @@ export class WasenderService {
    * notamment pour ré-activer le webhook + souscrire aux events sur des
    * sessions déjà créées mais mal configurées. Utilisé par le endpoint
    * "Réparer le webhook" pour les vendeurs coincés avec 0 subscription.
+   *
+   * IMPORTANT : Wasender IGNORE `webhook_secret` sur PUT — leur backend
+   * garde le secret initial fixé à la création. Régénérer le secret ici
+   * casserait la validation côté FlexioPage (mismatch hash DB ↔ secret
+   * que Wasender continue d'envoyer). D'où l'absence volontaire du champ
+   * webhookSecret dans les args : on ne rotate JAMAIS le secret via update.
+   * Si un vendeur a réellement besoin de changer de secret : full reset via
+   * disconnect + reconnect (createSession).
    */
   async updateSessionWebhook(args: {
     pat: string;
     sessionId: string;
     webhookUrl: string;
-    webhookSecret?: string;
   }): Promise<void> {
     try {
       const body: Record<string, unknown> = {
@@ -196,7 +203,6 @@ export class WasenderService {
         webhook_enabled: true,
         webhook_events: WASENDER_REQUIRED_EVENTS,
       };
-      if (args.webhookSecret) body.webhook_secret = args.webhookSecret;
       await this.http(args.pat).put(`/api/whatsapp-sessions/${encodeURIComponent(args.sessionId)}`, body);
     } catch (err) {
       throw wasenderErrorFromAxios(err, 'Wasender updateSessionWebhook failed');

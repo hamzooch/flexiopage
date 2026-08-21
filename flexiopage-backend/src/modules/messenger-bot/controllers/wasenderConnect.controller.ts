@@ -390,11 +390,16 @@ export async function pauseWasender(req: AuthRequest, res: Response): Promise<vo
 }
 
 /**
- * "Réparer le webhook" — pour les sessions Wasender déjà créées mais avec
- * webhook mal configuré (0 events subscribed, toggle enabled OFF…). Génère
- * un nouveau secret, met à jour la session côté Wasender (webhook_enabled=true
- * + webhook_events + webhook_url + webhook_secret) et rafraîchit le hash en
- * base. Idempotent — peut être appelé plusieurs fois sans casser.
+ * "Réparer le webhook" — re-pousse webhook_url + webhook_enabled + events
+ * sur une session Wasender existante (utile si la subscription list est
+ * vide côté Wasender). NE ROTATE PAS le secret : Wasender ignore
+ * `webhook_secret` sur PUT et garde le secret initial de createSession, donc
+ * régénérer ici cassait la validation (mismatch hash DB ↔ secret Wasender).
+ * Idempotent — peut être appelé plusieurs fois sans casser.
+ *
+ * Si le secret est perdu / désynchronisé (ex. session créée avant un fix),
+ * la seule vraie solution est un full disconnect + reconnect (nouvelle
+ * createSession avec un nouveau secret pris en compte par Wasender).
  */
 export async function syncWasenderWebhook(req: AuthRequest, res: Response): Promise<void> {
   const storeId = await getOwnedStoreId(req);
@@ -410,22 +415,18 @@ export async function syncWasenderWebhook(req: AuthRequest, res: Response): Prom
     res.status(400).json({ error: 'API_PUBLIC_URL manquant / invalide côté backend.' });
     return;
   }
-  const webhookSecret = generatePerSessionWebhookSecret();
   try {
     const pat = encryptionService.decrypt(config.page_access_token_encrypted);
     await wasenderService.updateSessionWebhook({
       pat,
       sessionId: config.wasender_session_id,
       webhookUrl,
-      webhookSecret,
     });
-    await BotConfig.updateOne(
-      { _id: config._id },
-      { $set: {
-        wasender_webhook_id: webhookId,
-        wasender_webhook_secret_hash: hashWasenderToken(webhookSecret),
-      } },
-    );
+    // On persiste seulement le webhookId (nouveau si absent en DB) — le hash
+    // du secret reste celui posé par createSession initial.
+    if (!config.wasender_webhook_id) {
+      await BotConfig.updateOne({ _id: config._id }, { $set: { wasender_webhook_id: webhookId } });
+    }
     res.json({ synced: true, webhookUrl });
   } catch (err) {
     if (err instanceof WasenderApiError) {
