@@ -28,6 +28,7 @@
     "migrate:products-to-pricing": "tsx scripts/migrate-products-to-pricing.ts",
     "migrate:demo-product-images": "tsx scripts/migrate-demo-product-images.ts",
     "backfill:phone-key": "tsx scripts/backfill-order-phone-key.ts",
+    "backfill:url-scheme": "tsx scripts/backfill-fix-url-scheme.ts",
     "restore:cod-abandoned": "tsx scripts/restore-cod-abandoned.ts",
     "test:md-webhook": "tsx scripts/test-md-webhook-parse.ts",
     "test:r2": "tsx scripts/test-r2.ts",

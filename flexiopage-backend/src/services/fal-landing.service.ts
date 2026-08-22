@@ -228,21 +228,28 @@ const LANGUAGE_LABEL: Record<string, string> = {
 // ─────────────────────────────────────────────────────────────────────
 export async function resolveImageForFal(imageUrl: string): Promise<string> {
   if (imageUrl.startsWith('data:')) return imageUrl;
+  // Répare les URLs corrompues où le colon du scheme a disparu
+  // (ex: `https//res.cloudinary.com/...` au lieu de `https://…`).
+  // Sans ça, `new URL()` throw, on renvoie la chaîne cassée à fal-ai,
+  // et fal répond 422 — la génération vidéo échoue silencieusement.
+  const fixed = /^https?\/\//i.test(imageUrl)
+    ? imageUrl.replace(/^(https?)\/\//i, '$1://')
+    : imageUrl;
   let url: URL;
-  try { url = new URL(imageUrl); } catch { return imageUrl; }
+  try { url = new URL(fixed); } catch { return fixed; }
   const isLocal =
     url.hostname === 'localhost' ||
     url.hostname === '127.0.0.1' ||
     url.hostname === '0.0.0.0' ||
     url.hostname.endsWith('.local');
-  if (!isLocal) return imageUrl;
+  if (!isLocal) return fixed;
   const publicPrefix = (process.env.PUBLIC_URL_PREFIX || '/uploads').replace(/\/+$/, '');
-  if (!url.pathname.startsWith(publicPrefix + '/')) return imageUrl;
+  if (!url.pathname.startsWith(publicPrefix + '/')) return fixed;
   const relKey = url.pathname.slice(publicPrefix.length + 1);
   const uploadRoot = process.env.UPLOAD_PATH || path.join(process.cwd(), 'uploads');
   const filePath = path.join(uploadRoot, relKey);
   const resolved = path.resolve(filePath);
-  if (!resolved.startsWith(path.resolve(uploadRoot))) return imageUrl;
+  if (!resolved.startsWith(path.resolve(uploadRoot))) return fixed;
   const buf = await fs.readFile(resolved);
   const ext = path.extname(resolved).toLowerCase();
   const mime = MIME_BY_EXT[ext] || 'application/octet-stream';

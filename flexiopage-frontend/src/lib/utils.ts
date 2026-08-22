@@ -148,11 +148,17 @@ export function publicStoreUrl(
  */
 export function mediaUrl(url?: string | null): string | undefined {
   if (!url) return undefined;
-  if (/^(https?:)?\/\//.test(url) || url.startsWith('data:') || url.startsWith('blob:')) {
-    return url;
+  // Certaines URLs stockées en base ont perdu le colon du scheme
+  // (`https//res.cloudinary.com/…` au lieu de `https://…`). Sans ce
+  // rattrapage, la regex ci-dessous ne matche pas et l'URL est traitée
+  // comme un chemin relatif → le navigateur tente de charger
+  // `api.flexiopage.comhttps//…` et se prend un ERR_NAME_NOT_RESOLVED.
+  const repaired = /^https?\/\//i.test(url) ? url.replace(/^(https?)\/\//i, '$1://') : url;
+  if (/^(https?:)?\/\//.test(repaired) || repaired.startsWith('data:') || repaired.startsWith('blob:')) {
+    return repaired;
   }
   const apiBase = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000').replace(/\/$/, '');
-  return `${apiBase}${url.startsWith('/') ? '' : '/'}${url}`;
+  return `${apiBase}${repaired.startsWith('/') ? '' : '/'}${repaired}`;
 }
 
 /**
