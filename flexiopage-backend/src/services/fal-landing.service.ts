@@ -226,26 +226,52 @@ const LANGUAGE_LABEL: Record<string, string> = {
 // ─────────────────────────────────────────────────────────────────────
 // Local-image fal helper (unchanged)
 // ─────────────────────────────────────────────────────────────────────
+/**
+ * Prépare une URL image pour fal.ai. Fal.ai a besoin d'une URL
+ * absolue publique OU d'un data URL — jamais d'un chemin relatif ni
+ * d'un hostname `localhost`.
+ *
+ * Trois cas :
+ *   1. data:… → renvoyé tel quel.
+ *   2. URL relative (`/uploads/…`) OU localhost → lecture disque +
+ *      encodage base64 en data URL. Le fichier voyage avec la requête.
+ *   3. URL absolue publique → renvoyée telle quelle (fal-ai fetch).
+ *
+ * Répare aussi les URLs `https//…` (colon manquant) au passage — sinon
+ * `new URL()` throw, on renvoie la chaîne cassée, fal-ai répond 422.
+ */
 export async function resolveImageForFal(imageUrl: string): Promise<string> {
   if (imageUrl.startsWith('data:')) return imageUrl;
-  // Répare les URLs corrompues où le colon du scheme a disparu
-  // (ex: `https//res.cloudinary.com/...` au lieu de `https://…`).
-  // Sans ça, `new URL()` throw, on renvoie la chaîne cassée à fal-ai,
-  // et fal répond 422 — la génération vidéo échoue silencieusement.
   const fixed = /^https?\/\//i.test(imageUrl)
     ? imageUrl.replace(/^(https?)\/\//i, '$1://')
     : imageUrl;
-  let url: URL;
-  try { url = new URL(fixed); } catch { return fixed; }
-  const isLocal =
-    url.hostname === 'localhost' ||
-    url.hostname === '127.0.0.1' ||
-    url.hostname === '0.0.0.0' ||
-    url.hostname.endsWith('.local');
-  if (!isLocal) return fixed;
+
   const publicPrefix = (process.env.PUBLIC_URL_PREFIX || '/uploads').replace(/\/+$/, '');
-  if (!url.pathname.startsWith(publicPrefix + '/')) return fixed;
-  const relKey = url.pathname.slice(publicPrefix.length + 1);
+
+  // Extrait un pathname exploitable pour la lecture disque :
+  //   - URL absolue localhost → url.pathname
+  //   - Chemin relatif (`/uploads/...`) → tel quel (sans query)
+  //   - URL absolue publique → null (on la renvoie sans toucher)
+  let pathname: string | null = null;
+  try {
+    const url = new URL(fixed);
+    const isLocalHost =
+      url.hostname === 'localhost' ||
+      url.hostname === '127.0.0.1' ||
+      url.hostname === '0.0.0.0' ||
+      url.hostname.endsWith('.local');
+    if (isLocalHost) pathname = url.pathname;
+  } catch {
+    // Relative path — c'est ce que le backend stocke par défaut quand le
+    // driver de storage est `local` (pas Cloudinary/S3). Fal-ai ne peut
+    // pas fetch un chemin relatif, il faut inliner le fichier.
+    if (fixed.startsWith('/')) pathname = fixed.split('?')[0];
+  }
+
+  if (!pathname) return fixed;
+  if (!pathname.startsWith(publicPrefix + '/')) return fixed;
+
+  const relKey = pathname.slice(publicPrefix.length + 1);
   const uploadRoot = process.env.UPLOAD_PATH || path.join(process.cwd(), 'uploads');
   const filePath = path.join(uploadRoot, relKey);
   const resolved = path.resolve(filePath);
