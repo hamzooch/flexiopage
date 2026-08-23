@@ -160,12 +160,25 @@ const MIME_BY_EXT: Record<string, string> = {
 
 async function inlinePrivateUrl(url: string): Promise<string> {
   if (!url || url.startsWith('data:') || url.startsWith('blob:')) return url;
-  let parsed: URL;
-  try { parsed = new URL(url); } catch { return url; }
-  if (!PRIVATE_HOST_RE.test(parsed.hostname)) return url;
 
-  // Map http://localhost:.../uploads/<key> → <UPLOAD_PATH>/<key>
-  const m = parsed.pathname.match(/^\/uploads\/(.+)$/);
+  // Extrait un pathname `/uploads/...` exploitable dans trois cas :
+  //   - URL absolue localhost/privée → parsed.pathname
+  //   - URL relative (`/uploads/…`) — stockée telle quelle en prod quand
+  //     le driver de storage est local — `new URL()` throw, on prend la
+  //     chaîne directement. Sans ce cas, fal-ai reçoit une URL relative
+  //     et répond 422 « Could not generate images with the given prompts
+  //     and images ».
+  //   - URL absolue publique (S3/R2/CDN/Cloudinary) → passe sans toucher.
+  let pathnameForUpload: string | null = null;
+  try {
+    const parsed = new URL(url);
+    if (PRIVATE_HOST_RE.test(parsed.hostname)) pathnameForUpload = parsed.pathname;
+  } catch {
+    if (url.startsWith('/')) pathnameForUpload = url.split('?')[0];
+  }
+  if (!pathnameForUpload) return url;
+
+  const m = pathnameForUpload.match(/^\/uploads\/(.+)$/);
   if (!m) {
     console.warn('[image-gen] private URL not in /uploads/, cannot inline:', url);
     return url;
