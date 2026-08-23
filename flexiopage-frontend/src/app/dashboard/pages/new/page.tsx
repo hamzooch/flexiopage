@@ -33,7 +33,7 @@ import {
   Link2,
   Globe,
 } from 'lucide-react';
-import { cn, formatCurrency } from '@/lib/utils';
+import { cn, formatCurrency, mediaUrl } from '@/lib/utils';
 
 type Step =
   | 'choice'
@@ -796,7 +796,7 @@ export default function NewLandingPagePage() {
                 <div className="flex items-start gap-3">
                   {p.images?.[0] ? (
                     // eslint-disable-next-line @next/next/no-img-element
-                    <img src={p.images[0]} alt={p.name} className="h-14 w-14 shrink-0 rounded-xl object-cover" />
+                    <img src={mediaUrl(p.images[0])} alt={p.name} className="h-14 w-14 shrink-0 rounded-xl object-cover" />
                   ) : (
                     <div className="grid h-14 w-14 shrink-0 place-items-center rounded-xl bg-muted text-muted-foreground">
                       <Package className="h-5 w-5" />
@@ -953,7 +953,7 @@ export default function NewLandingPagePage() {
                 {urlPreview.images[0] && (
                   // eslint-disable-next-line @next/next/no-img-element
                   <img
-                    src={urlPreview.images[0]}
+                    src={mediaUrl(urlPreview.images[0])}
                     alt={urlPreview.title}
                     className="h-20 w-20 shrink-0 rounded-lg object-cover"
                   />
