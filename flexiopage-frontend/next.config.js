@@ -21,6 +21,14 @@ const nextConfig = {
   async rewrites() {
     return [];
   },
+  async redirects() {
+    return [
+      // Studio IA a été renommé /dashboard/pages/poster → /dashboard/studio.
+      // Redirect permanent pour ne casser ni les bookmarks vendeur ni les
+      // liens envoyés par mail/Slack. Préserve la query string automatiquement.
+      { source: '/dashboard/pages/poster', destination: '/dashboard/studio', permanent: true },
+    ];
+  },
 };
 
 module.exports = nextConfig;
