@@ -83,6 +83,8 @@ router.post('/:storeId/pages/generate-from-url/async', pageController.generateFr
 router.post('/:storeId/pages/generate-poster', pageController.generatePosterPage);
 router.post('/:storeId/pages/generate-landing-image', pageController.generateLandingImagePage);
 router.post('/:storeId/pages/generate-video', pageController.generateVideoPage);
+// Historique Studio AI — dernières N générations (poster/landing/video)
+router.get('/:storeId/ai-generations', pageController.listAiGenerations);
 router.post('/:storeId/pages/from-template', pageController.getSectionsFromTemplateId);
 router.post('/:storeId/pages', pageController.createPage);
 router.get('/:storeId/pages/:pageId', pageController.getPage);

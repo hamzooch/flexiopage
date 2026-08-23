@@ -218,9 +218,9 @@ export interface WalletState {
   /** Montant minimum pour demander un versement (dans la payoutCurrency). */
   payoutMinimum: number;
   /** Coût par génération, en tokens. */
-  aiCosts: { landing: number; product_page: number; text_only: number; poster?: number };
+  aiCosts: { landing: number; product_page: number; text_only: number; poster?: number; video?: number };
   /** Alias explicite — même contenu que aiCosts. */
-  aiTokenCosts?: { landing: number; product_page: number; text_only: number; poster?: number };
+  aiTokenCosts?: { landing: number; product_page: number; text_only: number; poster?: number; video?: number };
   /** Tokens crédités pour 1 USD versé (paramètre admin, défaut 1.5). */
   usdToTokens?: number;
   transactions: WalletTransaction[];
@@ -405,6 +405,22 @@ export interface VideoResult {
   durationSeconds: number;
   prompt: string;
   modelId: string;
+}
+
+/**
+ * Entrée d'historique renvoyée par listAiGenerations. `result` est typé
+ * large car son shape dépend de `kind` — le composant qui rend narrow
+ * localement selon le tab courant.
+ */
+export interface AiGenerationItem {
+  _id: string;
+  storeId: string;
+  productId?: string;
+  kind: 'poster' | 'landing' | 'video';
+  result: Record<string, unknown>;
+  cost?: number;
+  preview?: { thumbnailUrl?: string; title?: string; subtitle?: string };
+  createdAt: string;
 }
 
 // ─────────────────────────────────────────────────────────────────────
@@ -1779,6 +1795,18 @@ export const storesApi = {
   ) => api.post<{ jobId: string; charge: { amount: number; balanceAfter: number; currency: string } }>(
     `/stores/${storeId}/pages/generate-video`,
     data
+  ),
+  /**
+   * Historique des générations Studio AI (poster/landing/video) pour un store.
+   * Backend stocke les résultats réussis 30j — utilisé par le panneau
+   * « Récentes » du Studio pour revoir/re-télécharger sans perdre au refresh.
+   */
+  listAiGenerations: (
+    storeId: string,
+    params?: { kind?: 'poster' | 'landing' | 'video'; limit?: number },
+  ) => api.get<{ items: AiGenerationItem[] }>(
+    `/stores/${storeId}/ai-generations`,
+    { params },
   ),
   getTracking: (storeId: string, range: TrackingRange = '30d') =>
     api.get<TrackingStats>(`/stores/${storeId}/tracking`, { params: { range } }),

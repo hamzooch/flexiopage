@@ -29,7 +29,10 @@ import {
   type PosterFormat,
   type LandingImageResult,
   type VideoResult,
+  type AiGenerationItem,
 } from '@/lib/api';
+import { mediaUrl } from '@/lib/utils';
+import { History, RotateCcw } from 'lucide-react';
 import { PosterCanvas } from '@/components/poster/poster-canvas';
 import { useWalletStore } from '@/stores/wallet-store';
 import { useAuthStore } from '@/stores/auth-store';
@@ -161,6 +164,13 @@ export default function StudioPage() {
   const [videoCustomPrompt, setVideoCustomPrompt] = useState('');
   const [videoDuration, setVideoDuration] = useState<5 | 8 | 12>(8);
 
+  // ── Recent generations (historique 30j côté backend) ────────────
+  // On garde la liste par-kind pour que le panneau récentes affiche
+  // uniquement les items pertinents pour le tab courant.
+  const [recentPoster, setRecentPoster] = useState<AiGenerationItem[]>([]);
+  const [recentLanding, setRecentLanding] = useState<AiGenerationItem[]>([]);
+  const [recentVideo, setRecentVideo] = useState<AiGenerationItem[]>([]);
+
   // ── Wallet / auth ────────────────────────────────────────────────
   const refreshWallet = useWalletStore((s) => s.refresh);
   const wallet = useWalletStore((s) => s.wallet);
@@ -205,6 +215,31 @@ export default function StudioPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [storeId]);
 
+  // ── Load recent generations for the active store (all 3 kinds) ───
+  // Silent — l'historique est un « nice to have » ; on ne rouge pas la
+  // page si l'endpoint échoue.
+  const reloadRecent = useMemo(
+    () => async (kind?: 'poster' | 'landing' | 'video') => {
+      if (!storeId) return;
+      try {
+        if (!kind || kind === 'poster') {
+          const r = await storesApi.listAiGenerations(storeId, { kind: 'poster', limit: 8 });
+          setRecentPoster(r.data.items);
+        }
+        if (!kind || kind === 'landing') {
+          const r = await storesApi.listAiGenerations(storeId, { kind: 'landing', limit: 8 });
+          setRecentLanding(r.data.items);
+        }
+        if (!kind || kind === 'video') {
+          const r = await storesApi.listAiGenerations(storeId, { kind: 'video', limit: 8 });
+          setRecentVideo(r.data.items);
+        }
+      } catch { /* silencieux */ }
+    },
+    [storeId],
+  );
+  useEffect(() => { reloadRecent(); }, [reloadRecent]);
+
   // ── Derived ──────────────────────────────────────────────────────
   const isArabic = language === 'ar';
   const country = useMemo(() => {
@@ -216,6 +251,41 @@ export default function StudioPage() {
   const ready = storeId && productId && !generating;
 
   // ── Actions ──────────────────────────────────────────────────────
+
+  /**
+   * Traduit une erreur d'API en message actionnable pour le vendeur.
+   * Messages génériques du backend ("Erreur lors de la génération")
+   * sont remplacés par une explication + une action concrète.
+   */
+  function humanErrorMessage(err: unknown): string {
+    const e = err as {
+      code?: string;
+      message?: string;
+      response?: { status?: number; data?: { error?: string; code?: string; cost?: number; message?: string } };
+    };
+    // Network-level errors : pas de réponse HTTP du tout.
+    if (e.code === 'ERR_NETWORK') return 'Connexion perdue. Vérifie ton internet puis réessaie.';
+    if (e.code === 'ECONNABORTED') return 'Le serveur met trop de temps. Réessaie dans un instant.';
+    const status = e.response?.status;
+    const data = e.response?.data;
+    const backendMsg = data?.error || data?.message;
+
+    if (data?.code === 'insufficient_ai_balance') {
+      const cost = data.cost;
+      const costStr = typeof cost === 'number' ? ` — il te faut au moins ${cost} token${cost === 1 ? '' : 's'}` : '';
+      return `Solde IA insuffisant${costStr}. Recharge dans /dashboard/wallet puis réessaie.`;
+    }
+    if (data?.error === 'product_has_no_image') {
+      return backendMsg || "Ce produit n'a pas de photo — ajoute au moins une image avant de générer.";
+    }
+    if (status === 502 || status === 503 || status === 504) {
+      return 'Le service IA est momentanément indisponible. Réessaie dans une minute — ta génération sera rejouée sans re-facturer.';
+    }
+    if (status === 429) return 'Trop de générations en peu de temps. Attends 30s et réessaie.';
+    if (backendMsg) return backendMsg;
+    return 'Génération échouée. Réessaie — si le problème persiste, contacte le support.';
+  }
+
   async function handleGeneratePoster() {
     setPosterError('');
     setPoster(null);
@@ -231,16 +301,9 @@ export default function StudioPage() {
       });
       setPoster(res.data.poster);
       refreshWallet();
+      reloadRecent('poster');
     } catch (err) {
-      const e = err as { response?: { data?: { error?: string; code?: string; cost?: number } } };
-      const msg = e.response?.data?.error || 'Erreur lors de la génération';
-      if (e.response?.data?.code === 'insufficient_ai_balance') {
-        const cost = e.response.data.cost;
-        const costStr = typeof cost === 'number' ? ` (coût : ${cost} token${cost === 1 ? '' : 's'})` : '';
-        setPosterError(`${msg}${costStr} — Recharge ton solde IA dans /dashboard/wallet.`);
-      } else {
-        setPosterError(msg);
-      }
+      setPosterError(humanErrorMessage(err));
     } finally {
       setPosterGenerating(false);
     }
@@ -261,16 +324,9 @@ export default function StudioPage() {
       });
       setLanding(res.data.result);
       refreshWallet();
+      reloadRecent('landing');
     } catch (err) {
-      const e = err as { response?: { data?: { error?: string; code?: string; cost?: number } } };
-      const msg = e.response?.data?.error || 'Erreur lors de la génération';
-      if (e.response?.data?.code === 'insufficient_ai_balance') {
-        const cost = e.response.data.cost;
-        const costStr = typeof cost === 'number' ? ` (coût : ${cost} token${cost === 1 ? '' : 's'})` : '';
-        setLandingError(`${msg}${costStr} — Recharge ton solde IA dans /dashboard/wallet.`);
-      } else {
-        setLandingError(msg);
-      }
+      setLandingError(humanErrorMessage(err));
     } finally {
       setLandingGenerating(false);
     }
@@ -306,6 +362,7 @@ export default function StudioPage() {
           const job = jr.data.job;
           if (job.status === 'succeeded' && job.result?.videoUrl) {
             setVideo(job.result as VideoResult);
+            reloadRecent('video');
             done = true;
           } else if (job.status === 'failed') {
             setVideoError(job.error || 'Génération vidéo échouée. Réessaie.');
@@ -319,15 +376,7 @@ export default function StudioPage() {
         setVideoError("La génération prend plus de temps que prévu. Réessaie dans quelques minutes — ta vidéo n'est facturée qu'une fois.");
       }
     } catch (err) {
-      const e = err as { response?: { data?: { error?: string; code?: string; cost?: number } } };
-      const msg = e.response?.data?.error || 'Erreur lors de la génération';
-      if (e.response?.data?.code === 'insufficient_ai_balance') {
-        const cost = e.response.data.cost;
-        const costStr = typeof cost === 'number' ? ` (coût : ${cost} token${cost === 1 ? '' : 's'})` : '';
-        setVideoError(`${msg}${costStr} — Recharge ton solde IA dans /dashboard/wallet.`);
-      } else {
-        setVideoError(msg);
-      }
+      setVideoError(humanErrorMessage(err));
     } finally {
       setVideoGenerating(false);
     }
@@ -380,9 +429,20 @@ export default function StudioPage() {
         title="Studio IA"
         description="Génère affiches et landing pages depuis ton produit. Choisis l'audience une fois, switch entre les formats."
         actions={wallet ? (
-          <div className="rounded-lg border border-fuchsia-500/30 bg-gradient-to-r from-fuchsia-500/10 to-pink-500/10 px-3 py-1.5 text-[11px]">
-            <span className="font-semibold text-fuchsia-700">Solde IA</span> · {Math.round(wallet.aiBalance).toLocaleString()} token{Math.round(wallet.aiBalance) === 1 ? '' : 's'}
-            <span className="ml-2 text-muted-foreground">coût ≈ {wallet.aiCosts.landing} token{wallet.aiCosts.landing === 1 ? '' : 's'}/génération</span>
+          <div className="flex flex-wrap items-center gap-2 text-[11px]">
+            <div className="rounded-lg border border-fuchsia-500/30 bg-gradient-to-r from-fuchsia-500/10 to-pink-500/10 px-3 py-1.5">
+              <span className="font-semibold text-fuchsia-700">Solde IA</span> · {Math.round(wallet.aiBalance).toLocaleString()} token{Math.round(wallet.aiBalance) === 1 ? '' : 's'}
+            </div>
+            {/* Coût par type — le vendeur voit avant de cliquer combien chaque
+                génération va lui coûter. Fallback wallet.aiCosts.landing si
+                le backend n'a pas encore un tarif dédié pour poster/video. */}
+            <div className="flex items-center gap-1.5 rounded-lg border border-border/60 bg-muted/30 px-2.5 py-1.5 text-muted-foreground">
+              <span className="font-medium text-foreground/80">Affiche</span> {wallet.aiCosts.poster ?? wallet.aiCosts.landing}
+              <span className="mx-1 opacity-40">·</span>
+              <span className="font-medium text-foreground/80">Landing</span> {wallet.aiCosts.landing}
+              <span className="mx-1 opacity-40">·</span>
+              <span className="font-medium text-foreground/80">Vidéo</span> {wallet.aiCosts.video ?? wallet.aiCosts.landing}
+            </div>
           </div>
         ) : undefined}
       />
@@ -532,6 +592,7 @@ export default function StudioPage() {
           onGenerate={handleGeneratePoster}
           onDownload={handleDownloadPoster}
           exportRef={posterRef}
+          cost={wallet?.aiCosts.poster ?? wallet?.aiCosts.landing}
         />
       ) : tab === 'landing' ? (
         <LandingTab
@@ -542,6 +603,7 @@ export default function StudioPage() {
           downloading={landingDownloading}
           onGenerate={handleGenerateLanding}
           onDownload={handleDownloadLanding}
+          cost={wallet?.aiCosts.landing}
         />
       ) : (
         <VideoTab
@@ -554,8 +616,22 @@ export default function StudioPage() {
           duration={videoDuration}
           onDurationChange={setVideoDuration}
           onGenerate={handleGenerateVideo}
+          cost={wallet?.aiCosts.video ?? wallet?.aiCosts.landing}
         />
       )}
+
+      {/* ── RÉCENTES (par tab) ─────────────────────────────────────
+          Historique 30j des générations réussies — permet de revoir /
+          retélécharger sans reperdre les tokens ni le contexte. */}
+      <RecentGenerationsPanel
+        kind={tab}
+        items={tab === 'poster' ? recentPoster : tab === 'landing' ? recentLanding : recentVideo}
+        onLoad={(item) => {
+          if (item.kind === 'poster') setPoster(item.result as unknown as PosterContent);
+          else if (item.kind === 'landing') setLanding(item.result as unknown as LandingImageResult);
+          else if (item.kind === 'video') setVideo(item.result as unknown as VideoResult);
+        }}
+      />
     </div>
   );
 }
@@ -613,12 +689,13 @@ interface PosterTabProps {
   onGenerate: () => void;
   onDownload: (fmt: 'png' | 'jpg') => void;
   exportRef: React.MutableRefObject<HTMLDivElement | null>;
+  cost?: number;
 }
 
 function PosterTab(props: PosterTabProps) {
   const {
     ready, generating, error, poster, theme, format, isAdmin,
-    onThemeChange, onFormatChange, onGenerate, onDownload, exportRef,
+    onThemeChange, onFormatChange, onGenerate, onDownload, exportRef, cost,
   } = props;
 
   return (
@@ -703,6 +780,11 @@ function PosterTab(props: PosterTabProps) {
             {generating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
             {generating ? 'Génération en cours…' : poster ? "Régénérer l'affiche" : "Générer l'affiche"}
           </Button>
+          {cost != null && !generating && (
+            <div className="text-center text-[10px] text-muted-foreground">
+              Coût : {cost} token{cost === 1 ? '' : 's'} facturés à la génération
+            </div>
+          )}
 
           {generating && (
             <p className="text-center text-[11px] text-muted-foreground">
@@ -760,10 +842,11 @@ interface LandingTabProps {
   downloading: boolean;
   onGenerate: () => void;
   onDownload: () => void;
+  cost?: number;
 }
 
 function LandingTab(props: LandingTabProps) {
-  const { ready, generating, error, landing, downloading, onGenerate, onDownload } = props;
+  const { ready, generating, error, landing, downloading, onGenerate, onDownload, cost } = props;
 
   return (
     <div className="grid gap-4 lg:grid-cols-[1fr_420px]">
@@ -803,6 +886,11 @@ function LandingTab(props: LandingTabProps) {
             {generating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
             {generating ? 'Génération en cours…' : landing ? 'Régénérer la landing' : 'Générer la landing'}
           </Button>
+          {cost != null && !generating && (
+            <div className="text-center text-[10px] text-muted-foreground">
+              Coût : {cost} token{cost === 1 ? '' : 's'} facturés à la génération
+            </div>
+          )}
 
           {generating && (
             <p className="text-center text-[11px] text-muted-foreground">
@@ -891,12 +979,13 @@ interface VideoTabProps {
   duration: 5 | 8 | 12;
   onDurationChange: (v: 5 | 8 | 12) => void;
   onGenerate: () => void;
+  cost?: number;
 }
 
 const VIDEO_DURATIONS = [5, 8, 12] as const;
 
 function VideoTab(props: VideoTabProps) {
-  const { ready, generating, error, video, customPrompt, onCustomPromptChange, duration, onDurationChange, onGenerate } = props;
+  const { ready, generating, error, video, customPrompt, onCustomPromptChange, duration, onDurationChange, onGenerate, cost } = props;
 
   return (
     <div className="grid gap-4 lg:grid-cols-[1fr_420px]">
@@ -916,8 +1005,8 @@ function VideoTab(props: VideoTabProps) {
               <div className="text-xs text-foreground/80">
                 <strong>Vidéo IA {duration} secondes</strong> (720p) générée depuis la 1ʳᵉ
                 photo du produit via Seedance (ByteDance). Idéale pour ads Meta,
-                TikTok, ou hero produit animé. Le fichier MP4 reste disponible
-                sur fal.media pendant ~24h — télécharge-le pour le conserver.
+                TikTok, ou hero produit animé. Le fichier MP4 est sauvegardé
+                automatiquement — retrouve tes vidéos dans « Récentes » ci-dessous.
               </div>
             </div>
           </div>
@@ -1011,6 +1100,11 @@ function VideoTab(props: VideoTabProps) {
             {generating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
             {generating ? 'Génération en cours…' : video ? 'Régénérer la vidéo' : 'Générer la vidéo'}
           </Button>
+          {cost != null && !generating && (
+            <div className="text-center text-[10px] text-muted-foreground">
+              Coût : {cost} token{cost === 1 ? '' : 's'} facturés à la génération
+            </div>
+          )}
 
           {generating && (
             <p className="text-center text-[11px] text-muted-foreground">
@@ -1077,7 +1171,9 @@ function VideoTab(props: VideoTabProps) {
         {generating && !video && <GeneratingState text="~60 à 120 secondes" />}
         {video && (
           <div className="mx-auto w-full max-w-[420px] sm:max-w-[320px]">
-            {/* Vidéo hébergée sur fal.media — TTL ~24h, télécharge pour conserver. */}
+            {/* URL permanente : `persistRemoteVideo` ré-héberge le rendu
+                fal.media dans notre storage (R2/local/S3), donc le player
+                ne se retrouve jamais avec un lien expiré. */}
             <video
               key={video.videoUrl}
               src={video.videoUrl}
@@ -1150,5 +1246,95 @@ function CopyField({ label, value }: { label: string; value: string }) {
       <div className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">{label}</div>
       <div className="mt-0.5">{value}</div>
     </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// Récentes — historique des générations réussies (30j côté backend)
+// ─────────────────────────────────────────────────────────────────────
+
+/** Format « il y a X min/h/j » — évite d'importer date-fns pour 6 lignes. */
+function timeAgo(iso: string): string {
+  const diff = Date.now() - new Date(iso).getTime();
+  const min = Math.floor(diff / 60_000);
+  if (min < 1) return "à l'instant";
+  if (min < 60) return `il y a ${min} min`;
+  const h = Math.floor(min / 60);
+  if (h < 24) return `il y a ${h} h`;
+  const d = Math.floor(h / 24);
+  return `il y a ${d} j`;
+}
+
+function RecentGenerationsPanel({
+  kind, items, onLoad,
+}: {
+  kind: StudioTab;
+  items: AiGenerationItem[];
+  onLoad: (item: AiGenerationItem) => void;
+}) {
+  if (items.length === 0) return null;
+  const label = kind === 'poster' ? 'affiches' : kind === 'landing' ? 'landings' : 'vidéos';
+  return (
+    <Card className="overflow-hidden">
+      <div className="flex items-center justify-between border-b border-border/50 bg-gradient-to-r from-muted/20 to-muted/5 px-4 py-2.5">
+        <div className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+          <History className="h-3.5 w-3.5" />
+          Récentes {label} · {items.length}
+        </div>
+        <div className="text-[10px] text-muted-foreground">Conservées 30 jours</div>
+      </div>
+      <CardContent className="pt-4">
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4">
+          {items.map((item) => {
+            const thumb = item.preview?.thumbnailUrl;
+            const isVideo = item.kind === 'video';
+            const videoUrl = isVideo ? (item.result.videoUrl as string | undefined) : undefined;
+            return (
+              <div
+                key={item._id}
+                className="group relative overflow-hidden rounded-xl border border-border/60 bg-card transition-all hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-md"
+              >
+                <div className="relative aspect-square w-full bg-muted">
+                  {isVideo && videoUrl ? (
+                    // Preview vidéo silencieuse — pas de contrôles pour rester compact.
+                    <video
+                      src={videoUrl}
+                      className="h-full w-full object-cover"
+                      muted
+                      loop
+                      playsInline
+                      onMouseEnter={(e) => (e.currentTarget as HTMLVideoElement).play().catch(() => {})}
+                      onMouseLeave={(e) => { const v = e.currentTarget as HTMLVideoElement; v.pause(); v.currentTime = 0; }}
+                    />
+                  ) : thumb ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={mediaUrl(thumb) || thumb} alt={item.preview?.title || ''} className="h-full w-full object-cover" />
+                  ) : (
+                    <div className="grid h-full place-items-center text-muted-foreground">
+                      <ImageIcon className="h-6 w-6" />
+                    </div>
+                  )}
+                </div>
+                <div className="space-y-1 px-2.5 pb-2.5 pt-2">
+                  <div className="truncate text-[11px] font-medium">{item.preview?.title || 'Sans titre'}</div>
+                  <div className="flex items-center justify-between text-[10px] text-muted-foreground">
+                    <span>{timeAgo(item.createdAt)}</span>
+                    {item.cost != null && <span>{item.cost} tk</span>}
+                  </div>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => onLoad(item)}
+                    className="mt-1 h-7 w-full gap-1 px-2 text-[10px]"
+                  >
+                    <RotateCcw className="h-3 w-3" /> Réutiliser
+                  </Button>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </CardContent>
+    </Card>
   );
 }

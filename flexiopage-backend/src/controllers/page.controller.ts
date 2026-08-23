@@ -11,6 +11,7 @@ import { extractProductFromUrl, ImportError } from '../services/product-import.s
 import { persistRemoteImage } from '../services/storage.service';
 import { cleanScrapedImages } from '../services/image-generation.service';
 import { Product } from '../models/Product.model';
+import { AiGeneration } from '../models/AiGeneration.model';
 import * as jobService from '../services/generation-job.service';
 import { chargeAiGeneration, aiCostInCurrency } from '../services/wallet.service';
 import { getOrCreateWallet } from '../services/wallet.service';
@@ -673,6 +674,21 @@ export async function generatePosterPage(req: AuthRequest, res: Response): Promi
       country: body.country || store.settings?.country,
       currency: body.currency || store.settings?.currency,
     });
+    // Historique — sauvegarde jamais bloquante : si Mongo est en carafe on
+    // renvoie quand même la réponse au vendeur (il a payé, il aura son résultat).
+    AiGeneration.create({
+      storeId: store._id,
+      ownerId: req.user!._id,
+      productId: product._id,
+      kind: 'poster',
+      result: poster as unknown as Record<string, unknown>,
+      cost: charge?.amount,
+      preview: {
+        thumbnailUrl: product.images?.[0],
+        title: product.name,
+        subtitle: body.theme || 'poster',
+      },
+    }).catch((e) => logger.warn({ err: e.message }, '[ai-gen] failed to persist poster'));
     res.json({ poster, charge });
   } catch (err) {
     const e = err as Error & { statusCode?: number };
@@ -721,11 +737,48 @@ export async function generateLandingImagePage(req: AuthRequest, res: Response):
       country: body.country || store.settings?.country,
       currency: body.currency || store.settings?.currency,
     });
+    AiGeneration.create({
+      storeId: store._id,
+      ownerId: req.user!._id,
+      productId: product._id,
+      kind: 'landing',
+      result: result as unknown as Record<string, unknown>,
+      cost: charge?.amount,
+      preview: {
+        thumbnailUrl: result.imageUrl,
+        title: product.name,
+        subtitle: 'landing',
+      },
+    }).catch((e) => logger.warn({ err: e.message }, '[ai-gen] failed to persist landing'));
     res.json({ result, charge });
   } catch (err) {
     const e = err as Error & { statusCode?: number };
     res.status(e.statusCode || 500).json({ error: e.message || 'Landing image generation failed' });
   }
+}
+
+/**
+ * GET /api/stores/:storeId/ai-generations?kind=poster|landing|video&limit=10
+ * Historique des générations Studio AI pour un store. TTL 30j côté DB
+ * (voir AiGeneration.model.ts). Filtrable par kind pour n'afficher que
+ * les vidéos dans l'onglet vidéo, etc.
+ */
+export async function listAiGenerations(req: AuthRequest, res: Response): Promise<void> {
+  const store = req.store!;
+  const kindRaw = typeof req.query.kind === 'string' ? req.query.kind : '';
+  const allowedKinds = ['poster', 'landing', 'video'] as const;
+  const kind = allowedKinds.find((k) => k === kindRaw);
+  const rawLimit = Number(req.query.limit);
+  const limit = Number.isFinite(rawLimit) && rawLimit > 0 ? Math.min(rawLimit, 50) : 10;
+
+  const filter: Record<string, unknown> = { storeId: store._id };
+  if (kind) filter.kind = kind;
+
+  const items = await AiGeneration.find(filter)
+    .sort({ createdAt: -1 })
+    .limit(limit)
+    .lean();
+  res.json({ items });
 }
 
 /**

@@ -4,6 +4,7 @@
  * the job document at each step so the frontend can poll progress.
  */
 import { GenerationJob, type IGenerationJob, type JobStep, type JobStatus } from '../models/GenerationJob.model';
+import { AiGeneration } from '../models/AiGeneration.model';
 import {
   generateLandingFromProduct,
   generateLandingFromImage,
@@ -11,6 +12,7 @@ import {
   type GenerationContext,
 } from './fal-landing.service';
 import { generateVideo, type VideoInput } from './video-generation.service';
+import { logger } from '../lib/logger';
 
 export interface ProgressUpdate {
   step: JobStep;
@@ -96,6 +98,24 @@ export async function runVideoPipeline(jobId: string, input: VideoInput): Promis
       result,
       finishedAt: new Date(),
     });
+    // Historique — jamais bloquant. On récupère storeId/ownerId/productId
+    // depuis le job (l'input pipeline ne les porte pas nativement).
+    const jobDoc = await GenerationJob.findById(jobId).lean<IGenerationJob>();
+    if (jobDoc) {
+      const productId = (jobDoc.input as { productId?: string } | undefined)?.productId;
+      AiGeneration.create({
+        storeId: jobDoc.storeId,
+        ownerId: jobDoc.ownerId,
+        productId,
+        kind: 'video',
+        result: result as unknown as Record<string, unknown>,
+        preview: {
+          thumbnailUrl: input.product.images?.[0],
+          title: input.product.name,
+          subtitle: `${result.durationSeconds}s`,
+        },
+      }).catch((e) => logger.warn({ err: e.message }, '[ai-gen] failed to persist video'));
+    }
   } catch (err) {
     const e = err as Error & { publicMessage?: string };
     console.error(`[video job ${jobId}] failed:`, e.message);
