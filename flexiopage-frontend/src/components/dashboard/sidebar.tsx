@@ -50,6 +50,9 @@ interface NavItem {
   /** Translation key — resolved at render time via `useT()`. */
   labelKey: TKey;
   icon: React.ComponentType<{ className?: string }>;
+  /** Sub-items rendus indentés sous l'entrée parente. Reste au même style
+   *  visuel que les sous-items « Applications installées » pour la cohérence. */
+  children?: NavItem[];
 }
 
 /**
@@ -92,11 +95,20 @@ const SECTIONS: { titleKey: TKey; items: NavItem[] }[] = [
     titleKey: 'sidebar.sales',
     items: [
       { href: '/dashboard/orders', labelKey: 'sidebar.orders', icon: ShoppingCart },
-      { href: '/dashboard/products', labelKey: 'sidebar.products', icon: Package },
-      { href: '/dashboard/collections', labelKey: 'sidebar.collections', icon: Layers },
-      { href: '/dashboard/marketplace', labelKey: 'sidebar.marketplace', icon: Store },
+      {
+        href: '/dashboard/products',
+        labelKey: 'sidebar.products',
+        icon: Package,
+        // Collections / Marketplace / Offres sont conceptuellement des
+        // extensions du catalogue produit — on les groupe dessous pour
+        // désencombrer le rail principal.
+        children: [
+          { href: '/dashboard/collections', labelKey: 'sidebar.collections', icon: Layers },
+          { href: '/dashboard/marketplace',  labelKey: 'sidebar.marketplace', icon: Store },
+          { href: '/dashboard/offers',       labelKey: 'sidebar.offers',      icon: Layers },
+        ],
+      },
       { href: '/dashboard/suppliers', labelKey: 'sidebar.suppliers', icon: Building2 },
-      { href: '/dashboard/offers', labelKey: 'sidebar.offers', icon: Layers },
       { href: '/dashboard/pages', labelKey: 'sidebar.landingPages', icon: FileText },
       { href: '/dashboard/studio', labelKey: 'sidebar.aiStudio', icon: Wand2 },
       { href: '/dashboard/tracking', labelKey: 'sidebar.tracking', icon: Activity },
@@ -179,13 +191,19 @@ export function Sidebar({ mobileOpen = false, onMobileClose }: Props) {
     user?.email?.toLowerCase() === FOUNDER_EMAIL;
 
   // Team members see a scoped sidebar based on their team role. Sellers
-  // (no teamRole) see everything.
+  // (no teamRole) see everything. Les children sont filtrés séparément
+  // pour ne pas exposer un sous-item non autorisé sous un parent autorisé.
   const teamRole = user?.teamRole as TeamRole | undefined;
   const sections = teamRole
     ? SECTIONS
         .map((section) => ({
           ...section,
-          items: section.items.filter((item) => TEAM_ALLOWED[teamRole].includes(item.href)),
+          items: section.items
+            .filter((item) => TEAM_ALLOWED[teamRole].includes(item.href))
+            .map((item) => ({
+              ...item,
+              children: item.children?.filter((c) => TEAM_ALLOWED[teamRole].includes(c.href)),
+            })),
         }))
         .filter((section) => section.items.length > 0)
     : SECTIONS;
@@ -355,6 +373,35 @@ export function Sidebar({ mobileOpen = false, onMobileClose }: Props) {
                                     <SubIcon className="h-3 w-3" />
                                   </span>
                                   <span className="truncate">{app.name}</span>
+                                </Link>
+                              </li>
+                            );
+                          })}
+                        </ul>
+                      )}
+                      {/* Sous-items statiques (ex : Collections / Marketplace /
+                          Offres sous Produits). Toujours visibles — pas de
+                          collapse, on reste simple. */}
+                      {item.children && item.children.length > 0 && (
+                        <ul className="ms-3 mt-0.5 space-y-0.5 border-s border-sidebar-border ps-2.5">
+                          {item.children.map((child) => {
+                            const childActive =
+                              pathname === child.href ||
+                              pathname.startsWith(child.href + '/');
+                            return (
+                              <li key={child.href}>
+                                <Link
+                                  href={child.href}
+                                  onClick={onMobileClose}
+                                  className={cn(
+                                    'group flex items-center gap-2 rounded-md px-2 py-1.5 text-[13px] transition-all duration-200',
+                                    childActive
+                                      ? 'bg-sidebar-muted text-sidebar-strong font-medium'
+                                      : 'text-sidebar-foreground hover:translate-x-0.5 hover:bg-sidebar-muted/60 hover:text-sidebar-strong'
+                                  )}
+                                >
+                                  <child.icon className="h-3.5 w-3.5 shrink-0" />
+                                  <span className="truncate">{t(child.labelKey)}</span>
                                 </Link>
                               </li>
                             );
