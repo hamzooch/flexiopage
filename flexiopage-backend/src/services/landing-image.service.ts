@@ -18,6 +18,7 @@
  */
 import { runLLM, getDialect, getPhotoCulture } from './fal-landing.service';
 import { generateImage } from './image-generation.service';
+import { analyzeProduct, type ProductBrief } from './product-brief.service';
 
 const LANDING_IMAGE_MODEL = process.env.FAL_LANDING_IMAGE_MODEL || 'fal-ai/nano-banana';
 
@@ -79,7 +80,7 @@ function safeJsonExtract<T>(raw: string): T | null {
 }
 
 /** Step 1 — write the real landing copy in the target language. */
-function buildCopyPrompt(input: LandingImageInput): string {
+function buildCopyPrompt(input: LandingImageInput, brief: ProductBrief): string {
   const lang = (input.language || 'fr').toLowerCase().split('-')[0];
   const langName = LANG_NAME[lang] || input.language || 'French';
   const currency = input.currency || 'TND';
@@ -91,7 +92,18 @@ function buildCopyPrompt(input: LandingImageInput): string {
   return `You are a senior creative copywriter at a top MENA ecommerce agency. You have written 800+ winning landing pages and you OWN the voice of the ${country} market — direct, vivid, locally idiomatic, scroll-stopping, never corporate.
 Write the copy for a HIGH-CONVERTING, EMOTIONALLY-CHARGED landing page in ${langName}.
 ${dialect ? `\nLOCAL VOICE / DIALECT (${country}) — MANDATORY:\n${dialect}\nThe reader must INSTANTLY recognise their own way of speaking. NEVER fall back to neutral Modern Standard Arabic if a dialect is specified.\n` : ''}
-PRODUCT — Use ONLY these facts. Do NOT invent inventory counts ("only 3 left"), fake certifications, invented delivery times, or numeric review counts that were not provided. If the data isn't here, don't make it up.
+PRODUCT BRIEF (pre-analyzed by our strategist — this is your source of truth):
+- Essence: ${brief.essence}
+- Key benefits ranked:
+  1. ${brief.keyBenefits[0]}
+  2. ${brief.keyBenefits[1]}
+  3. ${brief.keyBenefits[2]}
+- Buyer persona: ${brief.targetPersona}
+- Emotional core: ${brief.emotionalCore}
+- Visual mood suggested: ${brief.visualMood}
+- DO NOT SAY (product-specific anti-patterns): ${brief.antiPatterns.join(' · ')}
+
+PRODUCT — Raw facts (already digested by the brief above; provided here as factual source only). Do NOT invent inventory counts ("only 3 left"), fake certifications, invented delivery times, or numeric review counts that were not provided. If the data isn't here, don't make it up.
 - Name: ${p.name}
 - Category: ${p.category || (p.tags && p.tags[0]) || 'general'}
 ${p.type ? `- Type: ${p.type === 'digital' ? 'DIGITAL product (download/license/course) — do NOT talk about physical delivery, packaging, shipping' : 'PHYSICAL product — delivery is relevant'}\n` : ''}${p.tags && p.tags.length ? `- Tags: ${p.tags.join(', ')}\n` : ''}${p.description ? `- Description: ${p.description}\n` : ''}${p.price != null ? `- Price: ${p.price} ${currency}\n` : ''}${p.compareAtPrice != null ? `- Old price: ${p.compareAtPrice} ${currency}\n` : ''}
@@ -204,10 +216,24 @@ ABSOLUTE RULES:
 }
 
 export async function generateLandingImage(input: LandingImageInput): Promise<LandingImageResult> {
+  // 0. Analyse produit — brief structuré injecté dans le prompt copy pour
+  //    que le LLM cible ce produit précis. Failsafe interne (fallback si
+  //    l'analyse échoue) — la génération ne bloque jamais.
+  const brief = await analyzeProduct({
+    name: input.product.name,
+    description: input.product.description,
+    type: input.product.type,
+    tags: input.product.tags,
+    price: input.product.price,
+    currency: input.currency,
+    language: input.language,
+    country: input.country,
+  });
+
   // 1. Real copy in the target language.
   let copy: LandingCopy;
   try {
-    const raw = await runLLM(buildCopyPrompt(input));
+    const raw = await runLLM(buildCopyPrompt(input, brief));
     const parsed = safeJsonExtract<Partial<LandingCopy>>(raw);
     if (!parsed) throw new Error('LLM returned invalid JSON');
     copy = {

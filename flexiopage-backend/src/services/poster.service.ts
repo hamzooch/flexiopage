@@ -15,6 +15,7 @@
  */
 import { runLLM, getDialect, getPhotoCulture } from './fal-landing.service';
 import { generateImage, generateImagesParallel } from './image-generation.service';
+import { analyzeProduct, type ProductBrief } from './product-brief.service';
 
 export type PosterTheme = 'gold-dark' | 'cinema' | 'warm-tan';
 
@@ -131,7 +132,7 @@ const THEME_GUIDANCE: Record<PosterTheme, string> = {
     'editorial natural — sand, beige, terracotta, oat, warm linen and raw wood textures; soft window light and analog film grain, slow-living artisan aesthetic (Aesop / Le Labo / Kinfolk magazine). Copy tone: warm, sensory, story-driven, human.',
 };
 
-function buildPrompt(input: PosterInput, theme: PosterTheme): string {
+function buildPrompt(input: PosterInput, theme: PosterTheme, brief: ProductBrief): string {
   const lang = (input.language || 'fr').toLowerCase();
   const country = input.country || 'SN';
   const currency = input.currency || 'USD';
@@ -142,7 +143,18 @@ function buildPrompt(input: PosterInput, theme: PosterTheme): string {
   return `Tu es un DIRECTEUR ARTISTIQUE + COPYWRITER d'élite pour des ads social media (Instagram / TikTok / Meta) du marché ${country}, langue ${lang}${rtl ? ' (RTL — lis et écris de droite à gauche)' : ''}.
 Tu as écrit pour Nike, Apple, L'Oréal, Sephora MENA. Ton job : transformer un produit ordinaire en OBJET DE DÉSIR avec un copy qui scroll-stoppe en 0.5s.${dialect ? `\n\n# DIALECTE / VOIX LOCALE (${country}) — IMPÉRATIF\n${dialect}\nLe lecteur doit RECONNAÎTRE sa langue dès le premier mot, comme un ami du quartier qui lui parle. JAMAIS de fusha plate, JAMAIS de français corporate.` : ''}\n\n# Ambiance photo locale (utilisée pour les scènes / portraits)\n${photoCulture}
 
-# Produit — utilise UNIQUEMENT ces infos, n'invente RIEN (pas de stock, pas de garantie non listée, pas de témoignage nominatif faux, pas de chiffre de vente précis non fourni).
+# Brief produit (analysé par notre stratège) — c'est TA source de vérité
+Essence : ${brief.essence}
+Bénéfices clés (hiérarchisés) :
+  1. ${brief.keyBenefits[0]}
+  2. ${brief.keyBenefits[1]}
+  3. ${brief.keyBenefits[2]}
+Persona d'achat : ${brief.targetPersona}
+Ancre émotionnelle centrale : ${brief.emotionalCore}
+Mood visuel recommandé : ${brief.visualMood}
+À NE PAS dire pour ce produit précis : ${brief.antiPatterns.join(' · ')}
+
+# Produit — données brutes (le brief ci-dessus les a déjà digérées ; ces données servent juste de source factuelle) — n'invente RIEN au-delà (pas de stock, pas de garantie non listée, pas de témoignage nominatif faux, pas de chiffre de vente précis non fourni).
 Nom: ${input.product.name}
 ${input.product.type ? `Type: ${input.product.type === 'digital' ? 'produit numérique (téléchargement, licence, formation…) — NE PAS parler de livraison physique' : 'produit physique — livraison OK'}\n` : ''}${input.product.tags && input.product.tags.length ? `Catégorie/tags: ${input.product.tags.join(', ')}\n` : ''}${input.product.description ? `Description officielle: ${input.product.description}\n` : ''}${input.product.price ? `Prix: ${input.product.price} ${currency}\n` : ''}${input.product.compareAtPrice ? `Prix avant remise: ${input.product.compareAtPrice} ${currency}\n` : ''}
 
@@ -316,8 +328,21 @@ export async function generatePoster(input: PosterInput): Promise<PosterContent>
   const theme: PosterTheme = input.theme || 'gold-dark';
   const format: PosterFormat = input.format || 'story';
 
-  // 1. LLM call
-  const prompt = buildPrompt(input, theme);
+  // 0. Analyse produit — donne au copywriter un vrai brief plutôt qu'une soupe
+  //    de champs. Failsafe interne : brief minimal si le LLM analyse throw.
+  const brief: ProductBrief = await analyzeProduct({
+    name: input.product.name,
+    description: input.product.description,
+    type: input.product.type,
+    tags: input.product.tags,
+    price: input.product.price,
+    currency: input.currency,
+    language: input.language,
+    country: input.country,
+  });
+
+  // 1. LLM call — le prompt utilise le brief pour cibler ce produit précis.
+  const prompt = buildPrompt(input, theme, brief);
   let llmRaw = '';
   try {
     llmRaw = await runLLM(prompt);
