@@ -97,6 +97,12 @@ interface PosterInput {
     images?: string[];
     price?: number;
     compareAtPrice?: number;
+    /** 'physical' | 'digital' — évite au LLM d'inventer un discours livraison
+     *  pour un produit numérique, et vice-versa. */
+    type?: 'physical' | 'digital';
+    /** Tags du catalogue (fashion, electronics, beauty…). Donne au LLM la
+     *  catégorie exacte pour adapter ton + trust badges. */
+    tags?: string[];
   };
   theme?: PosterTheme;
   format?: PosterFormat;
@@ -136,9 +142,9 @@ function buildPrompt(input: PosterInput, theme: PosterTheme): string {
   return `Tu es un DIRECTEUR ARTISTIQUE + COPYWRITER d'élite pour des ads social media (Instagram / TikTok / Meta) du marché ${country}, langue ${lang}${rtl ? ' (RTL — lis et écris de droite à gauche)' : ''}.
 Tu as écrit pour Nike, Apple, L'Oréal, Sephora MENA. Ton job : transformer un produit ordinaire en OBJET DE DÉSIR avec un copy qui scroll-stoppe en 0.5s.${dialect ? `\n\n# DIALECTE / VOIX LOCALE (${country}) — IMPÉRATIF\n${dialect}\nLe lecteur doit RECONNAÎTRE sa langue dès le premier mot, comme un ami du quartier qui lui parle. JAMAIS de fusha plate, JAMAIS de français corporate.` : ''}\n\n# Ambiance photo locale (utilisée pour les scènes / portraits)\n${photoCulture}
 
-# Produit
+# Produit — utilise UNIQUEMENT ces infos, n'invente RIEN (pas de stock, pas de garantie non listée, pas de témoignage nominatif faux, pas de chiffre de vente précis non fourni).
 Nom: ${input.product.name}
-${input.product.description ? `Description: ${input.product.description}\n` : ''}${input.product.price ? `Prix: ${input.product.price} ${currency}\n` : ''}${input.product.compareAtPrice ? `Prix avant remise: ${input.product.compareAtPrice} ${currency}\n` : ''}
+${input.product.type ? `Type: ${input.product.type === 'digital' ? 'produit numérique (téléchargement, licence, formation…) — NE PAS parler de livraison physique' : 'produit physique — livraison OK'}\n` : ''}${input.product.tags && input.product.tags.length ? `Catégorie/tags: ${input.product.tags.join(', ')}\n` : ''}${input.product.description ? `Description officielle: ${input.product.description}\n` : ''}${input.product.price ? `Prix: ${input.product.price} ${currency}\n` : ''}${input.product.compareAtPrice ? `Prix avant remise: ${input.product.compareAtPrice} ${currency}\n` : ''}
 
 # Direction artistique
 Thème "${theme}" — ${THEME_GUIDANCE[theme]}
@@ -154,7 +160,7 @@ Thème "${theme}" — ${THEME_GUIDANCE[theme]}
 # Format de sortie : JSON pur uniquement (pas de markdown), structure exacte :
 {
   "hero": {
-    "badge": "ÉDITION LIMITÉE",                                 // 2-3 mots, ALL CAPS, percutant (ex: "NOUVEAU 2026", "STOCK FINAL", "−72H SEULEMENT", "PRIVATE DROP"). Évite "ÉDITION LIMITÉE" si pas créatif.
+    "badge": "ÉDITION LIMITÉE",                                 // 2-3 mots, ALL CAPS, percutant (ex: "NOUVEAU 2026", "−72H SEULEMENT", "PRIVATE DROP", "NOUVELLE COLLECTION"). ⚠ INTERDIT : toute mention chiffrée de stock/inventaire ("plus que X en stock", "X restants", "stock final"). Évite "ÉDITION LIMITÉE" si pas créatif.
     "eyebrow": "tagline 3-5 mots, mood / promesse, posée au-dessus du titre (ex: 'Quand le détail change tout', 'Le confort, niveau pro')",
     "title": "TITRE PRINCIPAL — 4 à 7 mots, SCROLL-STOPPER. Pas une description, une PROMESSE ou une PROVOCATION. Évite 'Découvrez' / 'Profitez'. Privilégie verbe d'action ou image mentale forte.",
     "subtitle": "Sous-titre — 1 phrase, 10-16 mots. Explique le 'pourquoi maintenant' ou ajoute un bénéfice sensoriel concret. Pas de listing de features, raconte une mini-expérience."
@@ -188,7 +194,7 @@ Thème "${theme}" — ${THEME_GUIDANCE[theme]}
   ],
   "cta": {
     "label": "COMMANDER MAINTENANT",                            // 2-3 mots ALL CAPS, verbe d'action direct
-    "hook": "Phrase 3-6 mots avec ! final — URGENCE / RARETÉ / FOMO. Pas un cliché ('Ne ratez pas !'), invente un angle frais (stock, deadline, statut, transformation). Langue cible.",
+    "hook": "Phrase 3-6 mots avec ! final — URGENCE / DÉSIR / FOMO. Pas un cliché ('Ne ratez pas !'), invente un angle frais (deadline, statut, transformation, saison). ⚠ INTERDIT : chiffres d'inventaire ou 'plus que X en stock'. Langue cible.",
     "reassurance": "1 ligne courte (4-8 mots) qui lève la dernière objection — paiement, retour, garantie. Langue cible."
   },
   "productShot": {

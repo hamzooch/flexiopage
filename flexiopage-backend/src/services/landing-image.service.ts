@@ -38,6 +38,11 @@ export interface LandingImageInput {
     images?: string[];
     price?: number;
     compareAtPrice?: number;
+    /** 'physical' | 'digital' — évite au LLM d'inventer un discours livraison
+     *  pour un produit numérique. */
+    type?: 'physical' | 'digital';
+    /** Tags catalogue — donne au LLM la catégorie exacte. */
+    tags?: string[];
   };
   language?: string;
   country?: string;
@@ -86,16 +91,17 @@ function buildCopyPrompt(input: LandingImageInput): string {
   return `You are a senior creative copywriter at a top MENA ecommerce agency. You have written 800+ winning landing pages and you OWN the voice of the ${country} market — direct, vivid, locally idiomatic, scroll-stopping, never corporate.
 Write the copy for a HIGH-CONVERTING, EMOTIONALLY-CHARGED landing page in ${langName}.
 ${dialect ? `\nLOCAL VOICE / DIALECT (${country}) — MANDATORY:\n${dialect}\nThe reader must INSTANTLY recognise their own way of speaking. NEVER fall back to neutral Modern Standard Arabic if a dialect is specified.\n` : ''}
-PRODUCT
+PRODUCT — Use ONLY these facts. Do NOT invent inventory counts ("only 3 left"), fake certifications, invented delivery times, or numeric review counts that were not provided. If the data isn't here, don't make it up.
 - Name: ${p.name}
-- Category: ${p.category || 'general'}
-${p.description ? `- Description: ${p.description}\n` : ''}${p.price != null ? `- Price: ${p.price} ${currency}\n` : ''}${p.compareAtPrice != null ? `- Old price: ${p.compareAtPrice} ${currency}\n` : ''}
+- Category: ${p.category || (p.tags && p.tags[0]) || 'general'}
+${p.type ? `- Type: ${p.type === 'digital' ? 'DIGITAL product (download/license/course) — do NOT talk about physical delivery, packaging, shipping' : 'PHYSICAL product — delivery is relevant'}\n` : ''}${p.tags && p.tags.length ? `- Tags: ${p.tags.join(', ')}\n` : ''}${p.description ? `- Description: ${p.description}\n` : ''}${p.price != null ? `- Price: ${p.price} ${currency}\n` : ''}${p.compareAtPrice != null ? `- Old price: ${p.compareAtPrice} ${currency}\n` : ''}
 
 COPY PHILOSOPHY (critical — read carefully):
 - Sell the TRANSFORMATION, not the spec. ("a screen that hurts your eyes" → "the kind of screen you forget is there").
 - Every line earns its place. If a sentence could appear on any competitor's page, REWRITE IT.
 - One concrete sensory detail per benefit (a sound, a texture, a number, a moment).
 - BAN this list of clichés: "premium", "haute qualité", "the best", "amazing", "revolutionary", "découvrez", "profitez", "n'attendez plus".
+- BAN inventory language: NEVER say "only X left in stock", "3 remaining", "last units" — the vendor hasn't shared any inventory data and lies erode trust.
 - Prefer: punchy verbs, specific numbers, micro-stories, fresh metaphors, friendly slang that locals actually say.
 - Tone: like a smart friend recommending it in a voice message — confident, warm, never salesy.
 
