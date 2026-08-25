@@ -146,7 +146,7 @@ export function publicStoreUrl(
  * so prefix relative paths with the API base. Absolute URLs and data URIs
  * are returned untouched.
  */
-export function mediaUrl(url?: string | null): string | undefined {
+export function mediaUrl(url?: string | null, opts?: MediaOptOpts): string | undefined {
   if (!url) return undefined;
   // Certaines URLs stockées en base ont perdu le colon du scheme
   // (`https//res.cloudinary.com/…` au lieu de `https://…`). Sans ce
@@ -155,10 +155,40 @@ export function mediaUrl(url?: string | null): string | undefined {
   // `api.flexiopage.comhttps//…` et se prend un ERR_NAME_NOT_RESOLVED.
   const repaired = /^https?\/\//i.test(url) ? url.replace(/^(https?)\/\//i, '$1://') : url;
   if (/^(https?:)?\/\//.test(repaired) || repaired.startsWith('data:') || repaired.startsWith('blob:')) {
-    return repaired;
+    return applyCloudinaryOpts(repaired, opts);
   }
   const apiBase = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000').replace(/\/$/, '');
   return `${apiBase}${repaired.startsWith('/') ? '' : '/'}${repaired}`;
+}
+
+/** Options pour les transformations Cloudinary appliquées via URL. */
+export interface MediaOptOpts {
+  /** Largeur cible en px. Cloudinary applique `c_limit` → jamais d'upscale. */
+  width?: number;
+  /** Qualité 1-100 ; défaut Cloudinary q_auto (adaptatif visuel). */
+  quality?: number | 'auto';
+}
+
+/**
+ * Injecte les transformations Cloudinary dans une URL `res.cloudinary.com`.
+ * Non-Cloudinary : retourne l'URL telle quelle.
+ *
+ * Par défaut on ajoute `f_auto,q_auto` — Cloudinary sert alors du WebP/AVIF
+ * quand le navigateur le supporte et ajuste la qualité perceptuelle. Gain
+ * typique 40-60% de poids sans changer une ligne côté composant.
+ *
+ * Si `opts.width` est fourni, on ajoute `w_<n>,c_limit` (ne dépasse jamais
+ * la largeur d'origine — évite le mode blur+upscale).
+ */
+function applyCloudinaryOpts(url: string, opts?: MediaOptOpts): string {
+  if (!/res\.cloudinary\.com\/.+\/upload\//.test(url)) return url;
+  // Si des transformations sont déjà présentes (une URL déjà optimisée), on
+  // ne double pas — laisse passer.
+  const alreadyTransformed = /\/upload\/[a-z]_[^/]+\//i.test(url);
+  if (alreadyTransformed) return url;
+  const parts: string[] = ['f_auto', `q_${opts?.quality ?? 'auto'}`];
+  if (opts?.width) parts.push(`w_${Math.round(opts.width)}`, 'c_limit');
+  return url.replace('/upload/', `/upload/${parts.join(',')}/`);
 }
 
 /**

@@ -67,7 +67,17 @@ app.use(
     res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
     next();
   },
-  express.static(uploadPath),
+  // Cache 1 an + immutable : les noms de fichiers uploads sont générés
+  // aléatoirement (`Date.now()-random.ext`) → jamais réutilisés, jamais
+  // écrasés. On peut donc dire au navigateur/CDN de ne plus jamais
+  // revalider. Gain énorme sur le storefront (navigation interne,
+  // repeat views) — avant, chaque visite déclenchait un 304 conditional
+  // GET par image (~150-300ms/img × 10-20 images).
+  express.static(uploadPath, {
+    maxAge: '365d',
+    immutable: true,
+    etag: true,
+  }),
 );
 
 // ── API CORS — credentialed, origin allow-list ──────────────────────

@@ -3,7 +3,9 @@ import fs from 'fs/promises';
 import { S3Client, PutObjectCommand, GetObjectCommand } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { v2 as cloudinary } from 'cloudinary';
+import sharp from 'sharp';
 import type { StorageConfig, UploadResult, StorageDriver, UploadPurpose } from '../config/storage';
+import { logger } from '../lib/logger';
 
 const config: StorageConfig = {
   driver: (process.env.STORAGE_DRIVER as StorageDriver) || 'local',
@@ -28,6 +30,19 @@ const config: StorageConfig = {
 export function isR2Configured(): boolean {
   return !!(config.r2AccountId && config.r2Bucket && config.r2AccessKeyId && config.r2SecretAccessKey);
 }
+
+// Log de démarrage pour lever toute ambiguïté sur le driver actif. Utile
+// après un changement d'env (`STORAGE_DRIVER=cloudinary` ajouté mais oublié
+// de restart le process → uploads continuaient sur local sans qu'on le voie).
+logger.info(
+  {
+    driver: config.driver,
+    cloudinaryReady: !!(config.cloudinaryCloudName && config.cloudinaryApiKey && config.cloudinaryApiSecret),
+    r2Ready: isR2Configured(),
+    s3Ready: !!(config.s3Bucket && config.s3AccessKey),
+  },
+  '[storage] driver loaded',
+);
 
 // Configure Cloudinary once at module load. The SDK keeps the config on its
 // global v2 object, so we don't need to pass credentials on every call.
@@ -246,6 +261,55 @@ async function uploadCloudinary(
  *     Falls back to the default driver if R2 credentials aren't set, so
  *     dev environments without R2 still work.
  */
+/** Plafond dimensions & qualité pour les images du storefront.
+ *  1600px couvre les écrans retina desktop (~1200 CSS × 2 DPR) tout en
+ *  restant raisonnable en poids. mozjpeg encode ~15-20% plus efficace que
+ *  libjpeg à qualité visuelle égale. */
+const IMAGE_MAX_WIDTH = 1600;
+const IMAGE_JPEG_QUALITY = 82;
+
+/**
+ * Optimise une image avant upload : normalise l'orientation EXIF (photos
+ * iPhone en mode portrait arrivent souvent rotées de 90°), plafonne à
+ * 1600px de large sans upscale, ré-encode en JPEG mozjpeg progressif.
+ *
+ * Skip volontaires :
+ *   - SVG : format vectoriel, resize sans intérêt et sharp rasterise → pertes.
+ *   - GIF : perd l'animation à la conversion. Si un jour on veut optimiser
+ *     les GIFs, il faut passer par `sharp({animated: true}).webp()` en gardant
+ *     l'animation, mais ce n'est pas un cas courant sur le storefront.
+ *   - deliverable : les fichiers vendus (PDF ebook, ZIP ressources) doivent
+ *     rester intacts — appliquer sharp planterait sur non-images de toute façon.
+ *
+ * Retourne le buffer optimisé + le nouveau mimeType + la nouvelle extension.
+ * Si l'optimisation échoue (fichier corrompu, format non supporté), on
+ * retourne les valeurs d'origine — l'upload continue avec la version brute.
+ */
+async function optimizeImageBuffer(
+  buffer: Buffer,
+  mimeType: string | undefined,
+  ext: string,
+): Promise<{ buffer: Buffer; mimeType: string; ext: string }> {
+  const original = { buffer, mimeType: mimeType || 'application/octet-stream', ext };
+  if (!mimeType?.startsWith('image/')) return original;
+  // Ne pas toucher aux formats spéciaux (voir doc au-dessus).
+  if (/svg|gif|avif/.test(mimeType)) return original;
+  try {
+    const optimized = await sharp(buffer)
+      .rotate() // Auto-orient depuis EXIF avant tout resize (sinon dimensions swap).
+      .resize({ width: IMAGE_MAX_WIDTH, withoutEnlargement: true })
+      .jpeg({ quality: IMAGE_JPEG_QUALITY, progressive: true, mozjpeg: true })
+      .toBuffer();
+    return { buffer: optimized, mimeType: 'image/jpeg', ext: '.jpg' };
+  } catch (err) {
+    logger.warn(
+      { err: (err as Error).message, mimeType, originalSize: buffer.byteLength },
+      '[storage] image optimization failed — uploading original',
+    );
+    return original;
+  }
+}
+
 export async function uploadFile(
   buffer: Buffer,
   filename: string,
@@ -253,20 +317,28 @@ export async function uploadFile(
   mimeType?: string,
   purpose: UploadPurpose = 'media'
 ): Promise<UploadResult> {
-  const ext = path.extname(filename) || '';
-  const safeName = `${Date.now()}-${Math.random().toString(36).slice(2, 10)}${ext}`;
+  const originalExt = path.extname(filename) || '';
+
+  // Optimisation seulement pour les médias affichés (pas les fichiers vendus).
+  // Sur un iPhone photo de 5-8 Mo, on divise typiquement par 5-10 le poids
+  // avec un impact visuel imperceptible aux tailles storefront (400-800px).
+  const opt = purpose === 'media'
+    ? await optimizeImageBuffer(buffer, mimeType, originalExt)
+    : { buffer, mimeType: mimeType || 'application/octet-stream', ext: originalExt };
+
+  const safeName = `${Date.now()}-${Math.random().toString(36).slice(2, 10)}${opt.ext}`;
   const key = `${folder}/${safeName}`;
 
   if (purpose === 'deliverable' && isR2Configured()) {
-    return uploadR2(key, buffer, mimeType);
+    return uploadR2(key, opt.buffer, opt.mimeType);
   }
   if (config.driver === 'cloudinary') {
-    return uploadCloudinary(key, buffer, mimeType);
+    return uploadCloudinary(key, opt.buffer, opt.mimeType);
   }
   if (config.driver === 's3' && config.s3Bucket) {
-    return uploadS3(key, buffer, mimeType);
+    return uploadS3(key, opt.buffer, opt.mimeType);
   }
-  return uploadLocal(key, buffer, mimeType);
+  return uploadLocal(key, opt.buffer, opt.mimeType);
 }
 
 const EXT_BY_MIME: Record<string, string> = {
