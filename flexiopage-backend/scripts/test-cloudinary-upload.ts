@@ -68,7 +68,24 @@ async function main() {
 }
 
 main().catch((err) => {
-  console.error('\n❌ ERREUR :', err.message);
-  console.error(err.stack);
+  // La SDK Cloudinary renvoie parfois l'erreur détaillée dans `err.error`
+  // ou `err.http_code`, et le message générique « Server returned unexpected
+  // status code - 403 » masque la vraie raison. On extrait tout ce qu'on peut.
+  console.error('\n❌ ERREUR');
+  console.error('   Message : ', err.message);
+  if (err.http_code) console.error('   HTTP code : ', err.http_code);
+  if (err.error) {
+    const e = err.error;
+    console.error('   error.message : ', e.message);
+    console.error('   error.http_code : ', e.http_code);
+  }
+  if (err.name) console.error('   name : ', err.name);
+  // Dump complet avec scrubbing anti-fuite credentials (>15 char alphanum).
+  try {
+    const dump = JSON.stringify(err, Object.getOwnPropertyNames(err), 2);
+    const scrubbed = dump.replace(/[A-Za-z0-9_-]{20,}/g, '***REDACTED***');
+    console.error('\n── Raw error (scrubbed) ────────────');
+    console.error(scrubbed);
+  } catch { /* ignore */ }
   process.exit(1);
 });
