@@ -1791,10 +1791,31 @@ export const storesApi = {
   // prend 1-6 min — une réponse synchrone se faisait couper par le proxy).
   generateVideo: (
     storeId: string,
-    data: { productId: string; language?: string; country?: string; customPrompt?: string; duration?: number }
+    data: {
+      productId: string;
+      language?: string;
+      country?: string;
+      customPrompt?: string;
+      duration?: number;
+      /** Image alternative (upload custom, URL externe, image scrapée d'une
+       *  URL produit). Si fournie, remplace la 1ʳᵉ photo du produit. */
+      sourceImageUrl?: string;
+    }
   ) => api.post<{ jobId: string; charge: { amount: number; balanceAfter: number; currency: string } }>(
     `/stores/${storeId}/pages/generate-video`,
     data
+  ),
+  /**
+   * Scrape l'image principale d'une page produit externe (Amazon,
+   * AliExpress, blog…) via og:image / twitter:image / meilleure <img>.
+   * Utilisé par le Studio Vidéo pour anime une image issue d'un lien.
+   */
+  scrapeImageForVideo: (
+    storeId: string,
+    url: string,
+  ) => api.post<{ imageUrl: string; sourceUrl: string; title?: string; origin: string }>(
+    `/stores/${storeId}/ai/scrape-image`,
+    { url },
   ),
   /**
    * Historique des générations Studio AI (poster/landing/video) pour un store.

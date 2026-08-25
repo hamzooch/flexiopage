@@ -46,6 +46,12 @@ export interface VideoInput {
   customPrompt?: string;
   /** Durée souhaitée en secondes — 5, 8 ou 12 (limite Seedance). Défaut 8s. */
   duration?: number;
+  /**
+   * URL image alternative pour piloter Seedance (upload custom, URL externe,
+   * scrape produit). Si fourni, remplace product.images[0]. Le brief produit
+   * reste utilisé pour écrire le prompt LLM (ambiance, ton).
+   */
+  sourceImageUrl?: string;
 }
 
 export interface VideoResult {
@@ -97,14 +103,16 @@ no preamble.`;
  * mettre 60-120s selon la charge fal.
  */
 export async function generateVideo(input: VideoInput): Promise<VideoResult> {
-  const cover = input.product.images?.[0];
+  // Priorité à la sourceImageUrl (upload custom / URL / scrape produit).
+  // Sinon on retombe sur la 1ʳᵉ photo du produit — comportement historique.
+  const cover = input.sourceImageUrl?.trim() || input.product.images?.[0];
   if (!cover) {
-    const err = new Error('Product has no image — cannot generate video') as Error & {
+    const err = new Error('No source image available — cannot generate video') as Error & {
       statusCode?: number;
       publicMessage?: string;
     };
     err.statusCode = 400;
-    err.publicMessage = 'Ce produit n\'a pas de photo. Ajoute au moins une image avant de générer une vidéo.';
+    err.publicMessage = 'Aucune image source. Choisis une photo produit ou fournis une image / un lien.';
     throw err;
   }
 

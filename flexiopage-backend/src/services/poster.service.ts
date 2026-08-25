@@ -16,6 +16,8 @@
 import { runLLM, getDialect, getPhotoCulture } from './fal-landing.service';
 import { generateImage, generateImagesParallel } from './image-generation.service';
 import { analyzeProduct, type ProductBrief } from './product-brief.service';
+import { persistRemoteImage } from './storage.service';
+import { logger } from '../lib/logger';
 
 export type PosterTheme = 'gold-dark' | 'cinema' | 'warm-tan';
 
@@ -304,7 +306,18 @@ async function enhanceProductImage(
       model: 'fal-ai/nano-banana/edit',
       referenceImages: [rawUrl],
     });
-    return result.url;
+    // Persist immédiatement — l'URL fal expire en ~24h et cette image finit
+    // dans l'historique 30j. Best-effort : si le storage est down on renvoie
+    // l'URL fal (le vendeur voit son affiche tout de suite).
+    try {
+      return await persistRemoteImage(result.url, 'ai-generated/poster');
+    } catch (persistErr) {
+      logger.warn(
+        { err: (persistErr as Error).message, falUrl: result.url },
+        '[poster] hero persist failed — returning fal URL',
+      );
+      return result.url;
+    }
   } catch (err) {
     console.warn(`[poster] hero scene generation failed for "${productName}", falling back to raw:`, (err as Error).message);
     return rawUrl;
@@ -358,12 +371,31 @@ export async function generatePoster(input: PosterInput): Promise<PosterContent>
   //    fall back gracefully on failure so the poster always renders).
   const rawProductImage = input.product.images?.[0];
   const avatarPrompts = (parsed.testimonials || []).map((t) => t.avatarPrompt || '').filter(Boolean);
-  const [avatars, enhancedProductImage] = await Promise.all([
+  const [avatarsRaw, enhancedProductImage] = await Promise.all([
     avatarPrompts.length > 0
       ? generateImagesParallel(avatarPrompts.map((p) => ({ prompt: p, isAvatar: true })))
       : Promise.resolve([] as Awaited<ReturnType<typeof generateImagesParallel>>),
     enhanceProductImage(rawProductImage, parsed.productShot?.scene, input.product.name, theme),
   ]);
+
+  // Persist des avatars (URLs fal.media) — même raison que le hero : sinon
+  // l'historique 30j pointe vers un 404 au bout de 24h. On persiste chaque
+  // avatar en parallèle, best-effort (fallback URL fal si storage down).
+  const avatars = await Promise.all(
+    avatarsRaw.map(async (a) => {
+      if (!a?.url) return a;
+      try {
+        const persistedUrl = await persistRemoteImage(a.url, 'ai-generated/poster/avatars');
+        return { ...a, url: persistedUrl };
+      } catch (err) {
+        logger.warn(
+          { err: (err as Error).message, falUrl: a.url },
+          '[poster] avatar persist failed — keeping fal URL',
+        );
+        return a;
+      }
+    }),
+  );
 
   // 3. Assemble
   const productImage = enhancedProductImage || rawProductImage;

@@ -52,6 +52,43 @@ export const rateLimiter = rateLimit({
   },
 });
 
+/**
+ * Anti double-clic sur les générations AI Studio (poster / landing / video).
+ * Chaque génération coûte plusieurs tokens et déclenche un pipeline lourd
+ * (LLM + image/vidéo). Sans ce garde-fou, un vendeur qui double-clique ou
+ * qui a un souci réseau (retry navigateur, autocomplete formulaire) peut
+ * être facturé 2× en quelques ms.
+ *
+ * Fenêtre volontairement courte (3s) : couvre le double-clic accidentel et
+ * les retries automatiques du navigateur, mais ne gêne pas un vendeur qui
+ * veut régénérer après avoir vu le résultat (retour visuel ≥ quelques
+ * dizaines de secondes de toute façon).
+ *
+ * Keyé sur (userId, kind) : autorise poster + landing + video en parallèle
+ * pour un même user (ce sont 3 CTA distincts dans l'UI), bloque seulement
+ * un double-clic sur le même bouton.
+ */
+export const aiGenerationLimiter = rateLimit({
+  windowMs: 3_000,
+  max: 1,
+  keyGenerator: (req) => {
+    const user = (req as unknown as { user?: { _id?: { toString(): string } } }).user;
+    const userKey = user?._id?.toString() || req.ip || 'anon';
+    const kind = req.path.split('/').pop() || 'unknown';
+    return `ai:${userKey}:${kind}`;
+  },
+  message: {
+    error: 'generation_in_flight',
+    message: 'Une génération est déjà en cours pour ce format. Attends la fin ou réessaie dans 3 secondes.',
+  },
+  standardHeaders: true,
+  legacyHeaders: false,
+  handler: (req, res, _next, options) => {
+    onLimitReached(req, res);
+    res.status(options.statusCode).json(options.message);
+  },
+});
+
 export const authRateLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 20,

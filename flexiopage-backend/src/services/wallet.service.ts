@@ -258,6 +258,33 @@ export async function chargeAiGeneration(args: {
 }
 
 /**
+ * Rembourse une génération AI échouée en re-créditant le bucket AI.
+ * Idempotent sur `refundKey` (paymentReference) — un même échec ne peut
+ * pas rembourser deux fois. Passer le jobId comme refundKey quand il
+ * existe ; sinon un uuid généré au moment du charge.
+ */
+export async function refundAiGeneration(args: {
+  userId: string | mongoose.Types.ObjectId;
+  amount: number;
+  refundKey: string;
+  note?: string;
+}): Promise<{ balanceAfter: number; alreadyApplied: boolean }> {
+  if (args.amount <= 0) {
+    const wallet = await getOrCreateWallet(args.userId);
+    return { balanceAfter: wallet.aiBalance, alreadyApplied: true };
+  }
+  const { transaction, alreadyApplied } = await credit({
+    userId: args.userId,
+    amount: args.amount,
+    bucket: 'ai',
+    kind: 'refund',
+    paymentReference: `ai-refund:${args.refundKey}`,
+    note: args.note || `Refund génération AI · ${args.amount} tokens · ${args.refundKey}`,
+  });
+  return { balanceAfter: transaction.balanceAfter, alreadyApplied };
+}
+
+/**
  * Charge the standard commission for a delivered order. Idempotent.
  *
  * Currency rule: the order MUST be in the same currency as the wallet. If a

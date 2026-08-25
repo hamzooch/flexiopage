@@ -19,6 +19,8 @@
 import { runLLM, getDialect, getPhotoCulture } from './fal-landing.service';
 import { generateImage } from './image-generation.service';
 import { analyzeProduct, type ProductBrief } from './product-brief.service';
+import { persistRemoteImage } from './storage.service';
+import { logger } from '../lib/logger';
 
 const LANDING_IMAGE_MODEL = process.env.FAL_LANDING_IMAGE_MODEL || 'fal-ai/nano-banana';
 
@@ -269,8 +271,23 @@ export async function generateLandingImage(input: LandingImageInput): Promise<La
     ...(refs.length ? { referenceImages: refs } : {}),
   });
 
+  // Persistance : les URLs fal.media expirent en ~24h. Sans ré-hébergement,
+  // l'historique 30j (AiGeneration) devient un mur de 404. On persiste vers
+  // notre stockage (Cloudinary/R2/local) AVANT de retourner. En cas d'échec
+  // (storage down), on log et on retourne l'URL fal — le vendeur voit sa
+  // landing tout de suite, quitte à perdre l'archive.
+  let persistedUrl = image.url;
+  try {
+    persistedUrl = await persistRemoteImage(image.url, 'ai-generated/landing');
+  } catch (err) {
+    logger.warn(
+      { err: (err as Error).message, falUrl: image.url },
+      '[landing-image] persist to storage failed — returning fal URL as fallback',
+    );
+  }
+
   return {
-    imageUrl: image.url,
+    imageUrl: persistedUrl,
     width: image.width,
     height: image.height,
     copy,

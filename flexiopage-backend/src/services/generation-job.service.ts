@@ -12,6 +12,7 @@ import {
   type GenerationContext,
 } from './fal-landing.service';
 import { generateVideo, type VideoInput } from './video-generation.service';
+import { refundAiGeneration } from './wallet.service';
 import { logger } from '../lib/logger';
 
 export interface ProgressUpdate {
@@ -125,6 +126,27 @@ export async function runVideoPipeline(jobId: string, input: VideoInput): Promis
       'steps.images': 'failed',
       finishedAt: new Date(),
     });
+    // Refund : le contrôleur a débité `chargeAmount` tokens AVANT ce pipeline
+    // fire-and-forget. Sans refund ici, le vendeur paie une vidéo qu'il n'a
+    // jamais reçue. paymentReference = jobId → une reprise du même job
+    // n'accumule pas de crédits (idempotent côté wallet.credit).
+    try {
+      const jobDoc = await GenerationJob.findById(jobId).lean<IGenerationJob>();
+      if (jobDoc) {
+        const chargeAmount = Number((jobDoc.input as { chargeAmount?: number } | undefined)?.chargeAmount || 0);
+        if (chargeAmount > 0) {
+          await refundAiGeneration({
+            userId: jobDoc.ownerId.toString(),
+            amount: chargeAmount,
+            refundKey: jobId,
+            note: `Refund vidéo échouée · ${(e.message || 'unknown').slice(0, 120)}`,
+          });
+          logger.info({ jobId, amount: chargeAmount }, '[ai-refund] video refund applied');
+        }
+      }
+    } catch (refundErr) {
+      logger.error({ err: refundErr, jobId }, '[ai-refund] video refund failed');
+    }
   }
 }
 

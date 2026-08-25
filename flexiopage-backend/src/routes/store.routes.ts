@@ -15,6 +15,7 @@ import * as marketplaceVendorController from '../controllers/marketplace-vendor.
 import { authMiddleware } from '../middleware/auth.middleware';
 import { requireStoreAccess } from '../middleware/storeAccess';
 import { sanitizeMiddleware } from '../middleware/validate';
+import { aiGenerationLimiter } from '../middleware/rateLimiter';
 
 const router = Router();
 
@@ -80,9 +81,15 @@ router.post('/:storeId/pages/generate-from-image/async', pageController.generate
 // standard landing pipeline. Async car ça enchaîne scraping + import images
 // + génération LLM + génération d'images (typiquement 30-90s).
 router.post('/:storeId/pages/generate-from-url/async', pageController.generateFromUrlAsync);
-router.post('/:storeId/pages/generate-poster', pageController.generatePosterPage);
-router.post('/:storeId/pages/generate-landing-image', pageController.generateLandingImagePage);
-router.post('/:storeId/pages/generate-video', pageController.generateVideoPage);
+// aiGenerationLimiter : 1 req / 3s / (userId, kind) — anti double-clic.
+// Chaque génération coûte plusieurs tokens ; sans ce middleware un
+// double-clic accidentel ou un retry navigateur pouvait facturer 2×.
+router.post('/:storeId/pages/generate-poster', aiGenerationLimiter, pageController.generatePosterPage);
+router.post('/:storeId/pages/generate-landing-image', aiGenerationLimiter, pageController.generateLandingImagePage);
+router.post('/:storeId/pages/generate-video', aiGenerationLimiter, pageController.generateVideoPage);
+// Scrape l'image principale d'une page web (og:image + fallbacks) —
+// utilisé par le Studio Vidéo pour animer une image issue d'un lien produit.
+router.post('/:storeId/ai/scrape-image', pageController.scrapeImageForVideo);
 // Historique Studio AI — dernières N générations (poster/landing/video)
 router.get('/:storeId/ai-generations', pageController.listAiGenerations);
 router.post('/:storeId/pages/from-template', pageController.getSectionsFromTemplateId);

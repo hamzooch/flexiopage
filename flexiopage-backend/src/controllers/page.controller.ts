@@ -13,8 +13,9 @@ import { cleanScrapedImages } from '../services/image-generation.service';
 import { Product } from '../models/Product.model';
 import { AiGeneration } from '../models/AiGeneration.model';
 import * as jobService from '../services/generation-job.service';
-import { chargeAiGeneration, aiCostInCurrency } from '../services/wallet.service';
+import { chargeAiGeneration, aiCostInCurrency, refundAiGeneration } from '../services/wallet.service';
 import { getOrCreateWallet } from '../services/wallet.service';
+import { randomUUID } from 'crypto';
 import type { AiKind } from '../models/Settings.model';
 import validator from 'validator';
 import { logger } from '../lib/logger';
@@ -656,6 +657,10 @@ export async function generatePosterPage(req: AuthRequest, res: Response): Promi
     res.status(404).json({ error: 'Product not found in this store' });
     return;
   }
+  // refundKey unique par requête — sert de paymentReference idempotent au
+  // refund si la génération échoue. Ainsi une double-tentative de refund
+  // (par ex. retry côté ops) n'accumule pas des crédits.
+  const refundKey = randomUUID();
   const charge = await chargeOrFail(req, res, 'poster');
   if (!charge) return;
   try {
@@ -694,6 +699,20 @@ export async function generatePosterPage(req: AuthRequest, res: Response): Promi
     res.json({ poster, charge });
   } catch (err) {
     const e = err as Error & { statusCode?: number };
+    // Refund : la génération a été débitée avant l'appel. Si le service
+    // échoue (fal 502, JSON invalide, timeout), on rend les tokens.
+    // Best-effort : si le refund lui-même échoue on log mais on ne masque
+    // pas l'erreur d'origine au vendeur.
+    if (charge.amount > 0) {
+      refundAiGeneration({
+        userId: req.user!._id,
+        amount: charge.amount,
+        refundKey,
+        note: `Refund poster · ${(e.message || 'unknown').slice(0, 120)}`,
+      }).catch((refundErr) =>
+        logger.error({ err: refundErr, userId: req.user!._id.toString() }, '[ai-refund] poster refund failed'),
+      );
+    }
     res.status(e.statusCode || 500).json({ error: e.message || 'Poster generation failed' });
   }
 }
@@ -723,6 +742,7 @@ export async function generateLandingImagePage(req: AuthRequest, res: Response):
     res.status(404).json({ error: 'Product not found in this store' });
     return;
   }
+  const refundKey = randomUUID();
   const charge = await chargeOrFail(req, res, 'landing');
   if (!charge) return;
   try {
@@ -757,6 +777,16 @@ export async function generateLandingImagePage(req: AuthRequest, res: Response):
     res.json({ result, charge });
   } catch (err) {
     const e = err as Error & { statusCode?: number };
+    if (charge.amount > 0) {
+      refundAiGeneration({
+        userId: req.user!._id,
+        amount: charge.amount,
+        refundKey,
+        note: `Refund landing · ${(e.message || 'unknown').slice(0, 120)}`,
+      }).catch((refundErr) =>
+        logger.error({ err: refundErr, userId: req.user!._id.toString() }, '[ai-refund] landing refund failed'),
+      );
+    }
     res.status(e.statusCode || 500).json({ error: e.message || 'Landing image generation failed' });
   }
 }
@@ -804,6 +834,9 @@ export async function generateVideoPage(req: AuthRequest, res: Response): Promis
     country?: string;
     customPrompt?: string;
     duration?: number;
+    /** Photo source alternative (upload custom / URL / scrape). Si fournie,
+     *  remplace la 1ʳᵉ image du produit dans Seedance. */
+    sourceImageUrl?: string;
   };
   if (!body.productId) {
     res.status(400).json({ error: 'productId is required' });
@@ -814,10 +847,22 @@ export async function generateVideoPage(req: AuthRequest, res: Response): Promis
     res.status(404).json({ error: 'Product not found in this store' });
     return;
   }
-  if (!product.images || product.images.length === 0) {
+  // Valide la sourceImageUrl si fournie — évite d'accepter n'importe quel
+  // string qui échouerait plus tard dans le pipeline fal.
+  let sourceImageUrl: string | undefined;
+  if (body.sourceImageUrl && body.sourceImageUrl.trim()) {
+    const raw = body.sourceImageUrl.trim();
+    if (!validator.isURL(raw, { protocols: ['http', 'https'], require_protocol: true })) {
+      res.status(400).json({ error: 'invalid_source_image_url', message: 'URL image invalide.' });
+      return;
+    }
+    sourceImageUrl = raw;
+  }
+  const hasImage = (product.images && product.images.length > 0) || !!sourceImageUrl;
+  if (!hasImage) {
     res.status(400).json({
       error: 'product_has_no_image',
-      message: 'Ce produit n\'a pas de photo. Ajoute au moins une image avant de générer une vidéo.',
+      message: 'Ce produit n\'a pas de photo. Ajoute une image, uploade-en une ou colle un lien.',
     });
     return;
   }
@@ -827,7 +872,15 @@ export async function generateVideoPage(req: AuthRequest, res: Response): Promis
     storeId: (store._id as { toString(): string }).toString(),
     ownerId: req.user!._id.toString(),
     kind: 'video',
-    input: { productId: body.productId, duration: body.duration, language: body.language },
+    // chargeAmount stocké sur le job — le pipeline s'en sert pour rembourser
+    // via `refundAiGeneration({ refundKey: jobId })` en cas d'échec.
+    input: {
+      productId: body.productId,
+      duration: body.duration,
+      language: body.language,
+      sourceImageUrl,
+      chargeAmount: charge.amount,
+    },
   });
   // Fire-and-forget — DO NOT await (même pattern que les landing jobs).
   void jobService.runVideoPipeline(job._id.toString(), {
@@ -843,6 +896,46 @@ export async function generateVideoPage(req: AuthRequest, res: Response): Promis
     country: body.country || store.settings?.country,
     customPrompt: body.customPrompt,
     duration: body.duration,
+    sourceImageUrl,
   });
   res.status(202).json({ jobId: job._id.toString(), charge });
+}
+
+/**
+ * POST /api/stores/:storeId/ai/scrape-image
+ * Récupère l'image principale d'une page web (og:image + fallbacks).
+ * Utilisé par le Studio Vidéo pour permettre de coller un lien de page
+ * produit externe (Amazon, AliExpress…) et anime automatiquement l'image
+ * pertinente. Le storeId sert uniquement à scoper l'appel à un vendeur
+ * authentifié (aucune persistance côté store).
+ * Body: { url }  →  { imageUrl, sourceUrl, title? }
+ */
+export async function scrapeImageForVideo(req: AuthRequest, res: Response): Promise<void> {
+  const body = req.body as { url?: string };
+  const raw = (body.url || '').trim();
+  if (!raw) {
+    res.status(400).json({ error: 'url is required' });
+    return;
+  }
+  if (!validator.isURL(raw, { protocols: ['http', 'https'], require_protocol: true })) {
+    res.status(400).json({ error: 'invalid_url', message: 'Lien invalide. Format attendu : https://...' });
+    return;
+  }
+  try {
+    const { scrapeImageFromUrl, logScrapeOrigin, isScrapeError } = await import('../services/image-scraper.service');
+    try {
+      const result = await scrapeImageFromUrl(raw);
+      logScrapeOrigin(result.sourceUrl, result.origin);
+      res.json(result);
+    } catch (err) {
+      if (isScrapeError(err)) {
+        res.status(err.statusCode).json({ error: 'scrape_failed', message: err.publicMessage });
+        return;
+      }
+      throw err;
+    }
+  } catch (err) {
+    logger.error({ err, url: raw }, '[scrape-image] unexpected error');
+    res.status(500).json({ error: 'scrape_failed', message: 'Impossible de lire cette page.' });
+  }
 }
