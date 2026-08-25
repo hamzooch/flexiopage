@@ -29,9 +29,17 @@ cloudinary.api
     console.log('   Response :', r);
     process.exit(0);
   })
-  .catch((e: { message?: string; http_code?: number }) => {
+  .catch((e: unknown) => {
+    // La SDK Cloudinary inclut les credentials complets (`auth: "key:secret"`)
+    // dans certaines erreurs — jamais les logger tel quel. On extrait uniquement
+    // le http_code et le message texte, en filtrant tout ce qui ressemble à un
+    // secret par mesure de sécurité.
+    const err = e as { message?: string; http_code?: number; error?: { message?: string; http_code?: number } };
+    const httpCode = err.http_code ?? err.error?.http_code ?? '?';
+    const rawMsg = err.error?.message ?? err.message ?? '(no message)';
+    const cleanMsg = String(rawMsg).replace(/[A-Za-z0-9_-]{15,}/g, '***REDACTED***');
     console.error('❌ AUTH FAILED');
-    console.error('   HTTP code :', e.http_code ?? '?');
-    console.error('   Message   :', e.message || e);
+    console.error('   HTTP code :', httpCode);
+    console.error('   Message   :', cleanMsg);
     process.exit(1);
   });
