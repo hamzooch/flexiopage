@@ -16,6 +16,11 @@ import {
   withLayoutFallback,
   type ThemeTokens,
 } from '@/data/store-themes';
+import {
+  getDemoProductsByTheme,
+  type DemoThemeId,
+  type DemoProduct,
+} from '@/data/theme-demo-products';
 import { MarketingPixels, type MarketingConfig } from '@/components/storefront/MarketingPixels';
 import { StoreTracker } from '@/components/storefront/StoreTracker';
 import { StorefrontSlider, type SliderConfig } from '@/components/storefront/Slider';
@@ -109,6 +114,44 @@ interface ProductDoc {
   stock?: number;
   /** createdAt utilisé pour le tri 'recent' — peut manquer sur les anciens docs. */
   createdAt?: string;
+}
+
+/**
+ * IDs des thèmes qui exposent des produits demo dans `theme-demo-products.ts`.
+ * Sert de garde-fou pour ne charger des demos que pour les thèmes couverts.
+ */
+const DEMO_THEME_IDS: DemoThemeId[] = ['volt', 'atelier', 'bloom', 'pulse', 'sage', 'studio', 'lumen'];
+
+/**
+ * Convertit un produit demo (data statique Unsplash) au format ProductDoc
+ * attendu par `<ProductCard>`. Le slug commence par `__demo-` pour qu'on
+ * puisse détecter à tout moment qu'il s'agit d'un exemple (non-cliquable).
+ */
+function demoToProductDoc(demo: DemoProduct, isDigital: boolean): ProductDoc {
+  const images = [demo.image, ...(demo.images || [])].filter(Boolean);
+  return {
+    _id: `demo-${demo.id}`,
+    name: demo.name,
+    price: demo.price,
+    compareAtPrice: demo.originalPrice,
+    slug: `__demo-${demo.id}`,
+    images,
+    description: demo.description,
+    type: isDigital ? 'digital' : 'physical',
+  };
+}
+
+/**
+ * Retourne les demos à afficher pour un store vide. Se base sur le
+ * `templateId` du thème sauvegardé — si le store est sur un thème sans
+ * demos (ex. thème custom ou Forge), renvoie [] pour retomber sur le
+ * message « Aucun produit ».
+ */
+function getStoreDemoProducts(store: StoreDoc, isDigital: boolean): ProductDoc[] {
+  const templateId = (store.theme as { templateId?: string } | undefined)?.templateId;
+  if (!templateId || !DEMO_THEME_IDS.includes(templateId as DemoThemeId)) return [];
+  const demos = getDemoProductsByTheme(templateId as DemoThemeId);
+  return demos.map((d) => demoToProductDoc(d, isDigital));
 }
 
 /**
@@ -399,6 +442,7 @@ export default async function PublicStorePage({ params }: Props) {
                 subtitle={sf.productsGridSubtitle}
                 columnsOverride={sf.productsGridColumns}
                 discountAnim={sf.discountBadgeAnimation}
+                store={store}
               />
             ) : null,
             testimonials: <StorefrontTestimonials config={sf.testimonials} theme={theme} />,
@@ -1082,6 +1126,7 @@ function ProductsGrid({
   subtitle,
   columnsOverride,
   discountAnim,
+  store,
 }: {
   theme: ThemeTokens;
   products: ProductDoc[];
@@ -1095,6 +1140,8 @@ function ProductsGrid({
   columnsOverride?: 2 | 3 | 4;
   /** Motion class for the "-XX%" discount pill. Undefined → default pulse. */
   discountAnim?: DiscountBadgeAnimation;
+  /** Store — sert à charger les produits demo du thème quand `products` est vide. */
+  store?: StoreDoc;
 }) {
   const radius = RADIUS_PX[theme.borderRadius];
   // "Bold" nav themes (Volt, Studio) also use loud uppercase section heads.
@@ -1139,34 +1186,73 @@ function ProductsGrid({
           )}
         </div>
 
-        {products.length === 0 ? (
-          <div
-            className="grid place-items-center border border-dashed p-10 text-sm sm:p-16"
-            style={{
-              borderColor: theme.border,
-              color: theme.muted,
-              backgroundColor: theme.surfaceMuted,
-              borderRadius: radius,
-            }}
-          >
-            Aucun produit pour l&apos;instant.
-          </div>
-        ) : (
-          <div className={`grid gap-3 sm:gap-6 ${gridClass}`}>
-            {products.map((p, i) => (
-              <ProductCard
-                key={p._id}
-                product={p}
-                theme={theme}
-                storeSlug={storeSlug}
-                currency={currency}
-                isDigital={isDigital}
-                index={i}
-                discountAnim={discountAnim}
-              />
-            ))}
-          </div>
-        )}
+        {(() => {
+          // Store vide + thème couvert par les demos → on affiche des exemples
+          // pour que le vendeur voie son storefront « vivant » dès la 1ʳᵉ minute.
+          // Bandeau explicite en tête pour ne pas tromper d'éventuels visiteurs
+          // arrivés tôt, et pointer-events:none sur les cartes pour empêcher
+          // les clics vers des pages produit qui n'existent pas.
+          const demoProducts = products.length === 0 && store
+            ? getStoreDemoProducts(store, isDigital)
+            : [];
+          if (products.length === 0 && demoProducts.length === 0) {
+            return (
+              <div
+                className="grid place-items-center border border-dashed p-10 text-sm sm:p-16"
+                style={{
+                  borderColor: theme.border,
+                  color: theme.muted,
+                  backgroundColor: theme.surfaceMuted,
+                  borderRadius: radius,
+                }}
+              >
+                Aucun produit pour l&apos;instant.
+              </div>
+            );
+          }
+          const showDemos = products.length === 0 && demoProducts.length > 0;
+          const displayed = showDemos ? demoProducts : products;
+          return (
+            <>
+              {showDemos && (
+                <div
+                  className="mb-4 flex items-center gap-2 rounded-lg border border-dashed p-3 text-xs sm:text-sm"
+                  style={{
+                    borderColor: theme.border,
+                    color: theme.muted,
+                    backgroundColor: theme.surfaceMuted,
+                  }}
+                >
+                  <span aria-hidden className="text-base">🛠️</span>
+                  <span>
+                    <strong style={{ color: theme.foreground }}>Boutique en cours de configuration.</strong>{' '}
+                    Ces produits sont des <em>exemples</em> pour prévisualiser le thème — ils ne sont pas
+                    disponibles à l&apos;achat. Ajoute tes vrais produits depuis ton dashboard.
+                  </span>
+                </div>
+              )}
+              <div
+                className={`grid gap-3 sm:gap-6 ${gridClass}`}
+                // Cartes non-cliquables en mode démo : évite toute navigation
+                // vers une page produit inexistante. Le hover CSS reste actif.
+                style={showDemos ? { pointerEvents: 'none' } : undefined}
+              >
+                {displayed.map((p, i) => (
+                  <ProductCard
+                    key={p._id}
+                    product={p}
+                    theme={theme}
+                    storeSlug={storeSlug}
+                    currency={currency}
+                    isDigital={isDigital}
+                    index={i}
+                    discountAnim={discountAnim}
+                  />
+                ))}
+              </div>
+            </>
+          );
+        })()}
         {/* Product-card animations — colocated so the section is self-contained.
             `pc-reveal` runs once on mount; per-card delay comes from inline
             style. Hover-only effects degrade gracefully without JS. */}
