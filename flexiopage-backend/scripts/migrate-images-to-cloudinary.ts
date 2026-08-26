@@ -218,12 +218,12 @@ async function main() {
   console.log('Target      :', [...targets].join(', '));
   console.log('Limit       :', limitArg || 'no limit');
   console.log('Sleep       :', `${sleepMs}ms entre uploads`);
-  console.log('MongoDB     :', process.env.MONGO_URI ? 'from env' : '(unset)');
+  console.log('MongoDB     :', process.env.MONGODB_URI ? 'from env' : '(unset)');
   console.log('Storage     :', process.env.STORAGE_DRIVER || 'local');
   console.log('');
 
-  if (!process.env.MONGO_URI) {
-    console.error('❌ MONGO_URI manquant dans .env');
+  if (!process.env.MONGODB_URI) {
+    console.error('❌ MONGODB_URI manquant dans .env');
     process.exit(1);
   }
   if (process.env.STORAGE_DRIVER !== 'cloudinary') {
@@ -232,7 +232,7 @@ async function main() {
     process.exit(1);
   }
 
-  await mongoose.connect(process.env.MONGO_URI);
+  await mongoose.connect(process.env.MONGODB_URI);
   console.log('✓ MongoDB connected\n');
 
   const totals: Record<string, Stats> = {};
