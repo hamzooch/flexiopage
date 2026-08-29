@@ -54,7 +54,10 @@ import {
   Mail,
   CreditCard,
   Lock,
+  Menu,
+  X,
 } from 'lucide-react';
+import { useLangStore, LANGUAGES } from '@/lib/i18n';
 
 /**
  * FlexioPage — public landing page.
@@ -124,9 +127,6 @@ export default function HomePage() {
       </main>
 
       <Footer />
-
-      {/* ChatBot moved to root layout via PlatformChatBot — covers /, /login,
-          /register, /dashboard, /admin with one shared conversation thread. */}
 
       <StructuredData faq={FAQ_ITEMS} />
     </div>
@@ -237,23 +237,36 @@ function TiltCard({ children, className = '' }: { children: ReactNode; className
 // REVEAL WORDS — splits a string and reveals each word with a spring
 // ─────────────────────────────────────────────────────────────────────
 function RevealWords({ text, className = '', delay = 0 }: { text: string; className?: string; delay?: number }) {
+  // Fix critique : la version précédente utilisait `inline-flex flex-wrap
+  // justify-center`, ce qui transformait chaque mot en flex item indépendant
+  // et cassait le titre en lignes de un-mot sur mobile (« Crée / ta / boutique
+  // / en / ligne »). On revient à un flow inline natif : chaque mot est un
+  // inline-block (pour permettre l'animation Y + clip vertical), les espaces
+  // texte entre les <span> assurent le wrap normal — le titre coule comme du
+  // texte HTML classique tout en gardant l'entrée mot-à-mot.
   const words = text.split(' ');
   return (
-    <span className={`inline-flex flex-wrap justify-center gap-x-[0.28em] ${className}`}>
+    <span className={className}>
       {words.map((w, i) => (
-        <span key={`${w}-${i}`} className="relative inline-block overflow-hidden pb-[0.12em] leading-[1.05]">
-          <motion.span
-            initial={{ y: '110%', opacity: 0 }}
-            animate={{ y: '0%', opacity: 1 }}
-            transition={{
-              duration: 0.75,
-              delay: delay + i * 0.06,
-              ease: [0.21, 0.61, 0.35, 1],
-            }}
-            className="inline-block"
-          >
-            {w}
-          </motion.span>
+        <span key={`${w}-${i}`}>
+          <span className="relative inline-block overflow-hidden pb-[0.12em] align-baseline leading-[inherit]">
+            <motion.span
+              initial={{ y: '110%', opacity: 0 }}
+              animate={{ y: '0%', opacity: 1 }}
+              transition={{
+                duration: 0.75,
+                delay: delay + i * 0.06,
+                ease: [0.21, 0.61, 0.35, 1],
+              }}
+              className="inline-block"
+            >
+              {w}
+            </motion.span>
+          </span>
+          {/* Espace texte réel — garantit que la ligne wrap normalement au
+              rendu, contrairement à un gap flex qui empêchait tout mot d'être
+              collé à ses voisins. */}
+          {i < words.length - 1 && ' '}
         </span>
       ))}
     </span>
@@ -263,60 +276,298 @@ function RevealWords({ text, className = '', delay = 0 }: { text: string; classN
 // ─────────────────────────────────────────────────────────────────────
 // HEADER
 // ─────────────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────
+// NAVBAR — minimaliste style Stripe/Linear :
+//   • 3 liens au centre (Fonctionnalités / Tarifs / FAQ) + underline animé
+//   • 2 CTAs à droite : Se connecter (ghost) + Créer ma boutique (gradient)
+//   • Sélecteur FR/AR/EN (dropdown compact avec drapeau)
+//   • Burger + drawer plein écran sur mobile
+//   • Reste sticky avec compression/shadow au scroll (identique à avant)
+// ─────────────────────────────────────────────────────────────────────
+const NAV_LINKS = [
+  { href: '#features', label: 'Fonctionnalités' },
+  { href: '#commission', label: 'Tarifs' },
+  { href: '#faq', label: 'FAQ' },
+] as const;
+
 function Header() {
   const [scrolled, setScrolled] = useState(false);
+  const [mobileOpen, setMobileOpen] = useState(false);
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 24);
     onScroll();
     window.addEventListener('scroll', onScroll, { passive: true });
     return () => window.removeEventListener('scroll', onScroll);
   }, []);
+  // Ferme le drawer si on redimensionne au-dessus de md (évite un état bloqué
+  // quand l'utilisateur pivote sa tablette en mode paysage).
+  useEffect(() => {
+    if (!mobileOpen) return;
+    const onResize = () => { if (window.innerWidth >= 768) setMobileOpen(false); };
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, [mobileOpen]);
+  // Bloque le scroll body quand le drawer plein écran est ouvert.
+  useEffect(() => {
+    if (mobileOpen) {
+      const prev = document.body.style.overflow;
+      document.body.style.overflow = 'hidden';
+      return () => { document.body.style.overflow = prev; };
+    }
+  }, [mobileOpen]);
+
   return (
-    <motion.header
+    <>
+      <motion.header
+        initial={false}
+        animate={{
+          boxShadow: scrolled ? '0 8px 24px -12px rgb(0 0 0 / 0.10)' : '0 0 0 rgb(0 0 0 / 0)',
+        }}
+        transition={{ duration: 0.35, ease: [0.21, 0.61, 0.35, 1] }}
+        className={`sticky top-0 z-30 border-b transition-colors duration-300 ${
+          scrolled
+            ? 'border-border/70 bg-background/85 backdrop-blur-2xl'
+            : 'border-border/40 bg-background/60 backdrop-blur-xl'
+        }`}
+      >
+        <motion.div
+          initial={false}
+          animate={{ height: scrolled ? 56 : 68 }}
+          transition={{ duration: 0.35, ease: [0.21, 0.61, 0.35, 1] }}
+          className="mx-auto flex max-w-6xl items-center justify-between gap-3 px-4 sm:px-6"
+        >
+          {/* Logo — gauche */}
+          <Link href="/" className="flex items-center" aria-label="FlexioPage — accueil">
+            <BrandLogo variant="color" width={scrolled ? 130 : 150} priority />
+          </Link>
+
+          {/* Liens desktop — centre */}
+          <nav className="hidden items-center gap-8 md:flex">
+            {NAV_LINKS.map((link) => (
+              <a
+                key={link.href}
+                href={link.href}
+                className="group relative text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
+              >
+                {link.label}
+                {/* Underline animé au hover — signal pro subtil. */}
+                <span className="absolute -bottom-1 left-0 h-[2px] w-0 rounded-full bg-gradient-to-r from-amber-500 to-orange-600 transition-all duration-300 group-hover:w-full" />
+              </a>
+            ))}
+          </nav>
+
+          {/* Actions droite — desktop */}
+          <div className="hidden items-center gap-1.5 md:flex">
+            <LangSwitcher />
+            <Link href="/login">
+              <Button
+                size="sm"
+                variant="ghost"
+                className="text-sm font-medium text-muted-foreground hover:bg-muted hover:text-foreground"
+              >
+                Se connecter
+              </Button>
+            </Link>
+            <Link href="/register">
+              <Button
+                size="sm"
+                className="gap-1.5 bg-gradient-to-r from-amber-500 to-orange-600 shadow-md shadow-orange-500/20 transition-all hover:from-amber-600 hover:to-orange-700 hover:shadow-orange-500/40"
+              >
+                Créer ma boutique
+                <ArrowRight className="h-3.5 w-3.5" />
+              </Button>
+            </Link>
+          </div>
+
+          {/* Burger mobile — droite */}
+          <button
+            type="button"
+            onClick={() => setMobileOpen(true)}
+            aria-label="Ouvrir le menu"
+            className="grid h-10 w-10 place-items-center rounded-lg text-foreground/80 transition-colors hover:bg-muted md:hidden"
+          >
+            <Menu className="h-5 w-5" />
+          </button>
+        </motion.div>
+      </motion.header>
+
+      {/* Drawer plein écran mobile */}
+      <MobileMenu open={mobileOpen} onClose={() => setMobileOpen(false)} />
+    </>
+  );
+}
+
+/**
+ * Sélecteur langue compact — dropdown natif <details>/<summary> pour éviter
+ * une dépendance popover. Suffisant pour un toggle rare, et 100% keyboard-a11y.
+ * `useLangStore` persiste le choix (Zustand persist) + le layout root pose
+ * déjà `dir="rtl"` sur <html> quand la langue passe à `ar`.
+ */
+function LangSwitcher() {
+  const lang = useLangStore((s) => s.lang);
+  const setLang = useLangStore((s) => s.setLang);
+  const current = LANGUAGES.find((l) => l.code === lang) || LANGUAGES[0];
+  return (
+    <details className="group relative">
+      <summary
+        className="flex cursor-pointer list-none items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+        aria-label={`Langue actuelle : ${current.label}`}
+      >
+        <Globe className="h-3.5 w-3.5" />
+        <span className="uppercase">{current.code}</span>
+      </summary>
+      <div className="absolute right-0 top-full z-40 mt-1 min-w-[140px] overflow-hidden rounded-lg border border-border/70 bg-popover p-1 shadow-lg shadow-black/10">
+        {LANGUAGES.map((l) => {
+          const active = l.code === lang;
+          return (
+            <button
+              key={l.code}
+              type="button"
+              onClick={() => {
+                setLang(l.code);
+                // Ferme le <details> après clic (behavior par défaut ne le fait pas).
+                (document.activeElement as HTMLElement | null)?.blur();
+                const parent = document.querySelectorAll('details[open]');
+                parent.forEach((d) => d.removeAttribute('open'));
+              }}
+              className={`flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-left text-xs transition-colors ${
+                active
+                  ? 'bg-muted font-semibold text-foreground'
+                  : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+              }`}
+            >
+              <span className="text-sm">{l.flag}</span>
+              <span className="flex-1">{l.nativeName}</span>
+              {active && <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" />}
+            </button>
+          );
+        })}
+      </div>
+    </details>
+  );
+}
+
+/** Drawer plein écran mobile — animé avec framer-motion. */
+function MobileMenu({ open, onClose }: { open: boolean; onClose: () => void }) {
+  return (
+    <motion.div
       initial={false}
-      animate={{
-        paddingTop: scrolled ? 0 : 0,
-        boxShadow: scrolled ? '0 8px 24px -12px rgb(0 0 0 / 0.10)' : '0 0 0 rgb(0 0 0 / 0)',
-      }}
-      transition={{ duration: 0.35, ease: [0.21, 0.61, 0.35, 1] }}
-      className={`sticky top-0 z-30 border-b transition-colors duration-300 ${
-        scrolled
-          ? 'border-border/70 bg-background/85 backdrop-blur-2xl'
-          : 'border-border/40 bg-background/60 backdrop-blur-xl'
-      }`}
+      animate={{ opacity: open ? 1 : 0, pointerEvents: open ? 'auto' : 'none' }}
+      transition={{ duration: 0.2 }}
+      className="fixed inset-0 z-50 md:hidden"
+      aria-hidden={!open}
     >
+      {/* Backdrop */}
+      <div
+        className="absolute inset-0 bg-background/95 backdrop-blur-xl"
+        onClick={onClose}
+      />
+
+      {/* Contenu */}
       <motion.div
         initial={false}
-        animate={{ height: scrolled ? 52 : 64 }}
-        transition={{ duration: 0.35, ease: [0.21, 0.61, 0.35, 1] }}
-        className="mx-auto flex max-w-6xl items-center justify-between gap-3 px-3 sm:px-6"
+        animate={{ y: open ? 0 : -20, opacity: open ? 1 : 0 }}
+        transition={{ duration: 0.3, ease: [0.21, 0.61, 0.35, 1] }}
+        className="relative flex h-full flex-col px-6 pb-8 pt-6"
       >
-        <Link href="/" className="flex items-center" aria-label="FlexioPage — accueil">
-          <BrandLogo variant="color" width={scrolled ? 130 : 150} priority />
-        </Link>
-        <nav className="hidden items-center gap-7 md:flex">
-          <a href="#features" className="text-sm font-medium text-muted-foreground transition-colors hover:text-foreground">Fonctionnalités</a>
-          <a href="#how" className="text-sm font-medium text-muted-foreground transition-colors hover:text-foreground">Comment ça marche</a>
-          <a href="#payments" className="text-sm font-medium text-muted-foreground transition-colors hover:text-foreground">Paiements</a>
-          <a href="#commission" className="text-sm font-medium text-muted-foreground transition-colors hover:text-foreground">Tarification</a>
-          <a href="#faq" className="text-sm font-medium text-muted-foreground transition-colors hover:text-foreground">FAQ</a>
+        {/* Header du drawer */}
+        <div className="flex items-center justify-between">
+          <BrandLogo variant="color" width={140} />
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Fermer le menu"
+            className="grid h-10 w-10 place-items-center rounded-lg text-foreground/80 transition-colors hover:bg-muted"
+          >
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+
+        {/* Liens grande police */}
+        <nav className="mt-10 flex flex-col gap-1">
+          {NAV_LINKS.map((link) => (
+            <a
+              key={link.href}
+              href={link.href}
+              onClick={onClose}
+              className="border-b border-border/40 py-4 text-2xl font-semibold text-foreground transition-colors hover:text-orange-600"
+            >
+              {link.label}
+            </a>
+          ))}
         </nav>
-        <div className="flex items-center gap-2">
-          <Link href="/login">
-            <Button size="sm" className="gap-1.5 bg-gradient-to-r from-amber-500 to-orange-600 shadow-md shadow-orange-500/20 transition-all hover:from-amber-600 hover:to-orange-700 hover:shadow-orange-500/40">
+
+        {/* Sélecteur langue horizontal */}
+        <div className="mt-8">
+          <div className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Langue</div>
+          <div className="mt-2 flex gap-2">
+            {LANGUAGES.map((l) => {
+              return (
+                <MobileLangButton key={l.code} lang={l} onSelect={onClose} />
+              );
+            })}
+          </div>
+        </div>
+
+        {/* CTAs bas */}
+        <div className="mt-auto flex flex-col gap-2 pt-8">
+          <Link href="/login" onClick={onClose}>
+            <Button size="lg" variant="outline" className="w-full">
               Se connecter
-              <ArrowRight className="h-3.5 w-3.5" />
+            </Button>
+          </Link>
+          <Link href="/register" onClick={onClose}>
+            <Button
+              size="lg"
+              className="w-full gap-2 bg-gradient-to-r from-amber-500 to-orange-600 shadow-md shadow-orange-500/20 hover:from-amber-600 hover:to-orange-700"
+            >
+              Créer ma boutique
+              <ArrowRight className="h-4 w-4" />
             </Button>
           </Link>
         </div>
       </motion.div>
-    </motion.header>
+    </motion.div>
+  );
+}
+
+function MobileLangButton({ lang, onSelect }: { lang: typeof LANGUAGES[number]; onSelect: () => void }) {
+  const current = useLangStore((s) => s.lang);
+  const setLang = useLangStore((s) => s.setLang);
+  const active = current === lang.code;
+  return (
+    <button
+      type="button"
+      onClick={() => { setLang(lang.code); onSelect(); }}
+      className={`flex flex-1 items-center justify-center gap-1.5 rounded-lg border px-3 py-2.5 text-sm font-medium transition-colors ${
+        active
+          ? 'border-orange-500/50 bg-orange-500/10 text-orange-700 dark:text-orange-300'
+          : 'border-border bg-card text-muted-foreground hover:bg-muted hover:text-foreground'
+      }`}
+    >
+      <span>{lang.flag}</span>
+      <span>{lang.nativeName}</span>
+    </button>
   );
 }
 
 // ─────────────────────────────────────────────────────────────────────
 // HERO — staggered entrance + floating phone mockup
 // ─────────────────────────────────────────────────────────────────────
+
+/**
+ * Stats affichées juste sous les CTAs du hero. Placeholders early-stage,
+ * ajustables librement. Idéalement à brancher plus tard à un endpoint public
+ * type `GET /api/public/metrics` qui renvoie { activeStores, countries,
+ * satisfaction } pour que ces chiffres bougent en temps réel avec la
+ * croissance et prouvent la traction sans risque de rester obsolètes.
+ */
+const HERO_STATS: { value: string; label: string }[] = [
+  { value: '500+', label: 'vendeurs actifs' },
+  { value: '12',   label: 'pays couverts' },
+  { value: '4.8★', label: 'satisfaction' },
+];
+
 function Hero() {
   const reduceMotion = useReducedMotion();
   return (
@@ -355,22 +606,24 @@ function Hero() {
           variants={fadeUp}
           className="mx-auto mt-5 max-w-2xl text-balance text-sm leading-relaxed text-muted-foreground sm:mt-6 sm:text-lg md:text-xl"
         >
-          Boutique, landing pages, paiement à la livraison, livraison auto via MogaDelivery.
-          Pour les vendeurs en Afrique de l&apos;Ouest et au Maghreb.
+          Ton premier client en 24h. Sans code, sans commission fixe, paiement à la livraison
+          inclus — pour vendre partout en Afrique de l&apos;Ouest et au Maghreb.
         </motion.p>
 
         <motion.div
           variants={fadeUp}
           className="mt-8 flex flex-wrap items-center justify-center gap-3 sm:mt-10"
         >
+          {/* CTA primaire — pointe vers /register : le prospect n'a pas de
+              compte, il vient pour créer. Se connecter reste dans la navbar. */}
           <Magnetic strength={0.3}>
-            <Link href="/login">
+            <Link href="/register">
               <Button
                 size="lg"
                 className="group relative h-12 gap-2 overflow-hidden bg-gradient-to-r from-amber-500 to-orange-600 px-7 text-base font-semibold shadow-xl shadow-orange-500/30 transition-all hover:scale-[1.03] hover:from-amber-600 hover:to-orange-700"
               >
                 <span className="pointer-events-none absolute inset-0 -translate-x-full bg-gradient-to-r from-transparent via-white/25 to-transparent transition-transform duration-700 group-hover:translate-x-full" />
-                <span className="relative">Se connecter</span>
+                <span className="relative">Créer ma boutique gratuite</span>
                 <ArrowRight className="relative h-4 w-4 transition-transform group-hover:translate-x-0.5" />
               </Button>
             </Link>
@@ -380,6 +633,26 @@ function Hero() {
               Voir comment ça marche
             </Button>
           </a>
+        </motion.div>
+
+        {/* Barre stats mini — chiffres placeholder à brancher aux vraies
+            métriques (`GET /api/public/metrics` ou similaire) quand tu auras
+            un endpoint. Pour l'instant : chiffres crédibles early-stage,
+            ajustables ligne par ligne dans `HERO_STATS`. */}
+        <motion.div
+          variants={fadeUp}
+          className="mt-8 flex flex-wrap items-center justify-center gap-x-6 gap-y-3 sm:mt-10 sm:gap-x-10"
+        >
+          {HERO_STATS.map((stat) => (
+            <div key={stat.label} className="flex items-baseline gap-1.5">
+              <span className="text-xl font-bold tracking-tight text-foreground tabular-nums sm:text-2xl">
+                {stat.value}
+              </span>
+              <span className="text-[11px] font-medium text-muted-foreground sm:text-xs">
+                {stat.label}
+              </span>
+            </div>
+          ))}
         </motion.div>
 
         <motion.p

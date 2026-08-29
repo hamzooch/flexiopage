@@ -16,7 +16,8 @@
  */
 
 import { useEffect, useRef, useState } from 'react';
-import { MessageCircle, X, ArrowDown, RefreshCw } from 'lucide-react';
+import { X, ArrowDown, RefreshCw } from 'lucide-react';
+import { BrandLogo } from '../brand-logo';
 import type { ChatScript } from './scripts';
 
 type Msg =
@@ -167,8 +168,11 @@ export function ChatBot({
           {/* Header */}
           <div className="relative flex items-center gap-3 bg-gradient-to-br from-amber-500 via-orange-500 to-orange-600 px-4 py-3.5 text-white">
             <div className="absolute inset-0 bg-[radial-gradient(circle_at_20%_0%,rgba(255,255,255,0.3),transparent_60%)]" aria-hidden />
-            <div className="relative grid h-10 w-10 shrink-0 place-items-center rounded-full bg-white/15 backdrop-blur ring-1 ring-white/30">
-              <MessageCircle className="h-5 w-5" />
+            {/* Mini logo FlexioPage (F. sur fond orange), placé dans un cercle
+                blanc semi-transparent pour bien se démarquer du header orange
+                du panel. Renforce l'identité de marque du bot. */}
+            <div className="relative grid h-10 w-10 shrink-0 place-items-center rounded-full bg-white/95 ring-1 ring-white/30 shadow-sm">
+              <BrandLogo variant="icon" width={26} />
             </div>
             <div className="relative min-w-0 flex-1">
               <div className="flex items-center gap-1.5 text-sm font-semibold leading-tight">
@@ -244,8 +248,8 @@ export function ChatBot({
         aria-label={open ? 'Fermer le chat' : 'Ouvrir le chat'}
         className="group fixed bottom-20 right-4 z-[59] inline-flex h-14 items-center gap-2.5 rounded-full bg-gradient-to-r from-amber-500 to-orange-600 pl-4 pr-5 text-sm font-semibold text-white shadow-2xl shadow-orange-500/40 ring-1 ring-white/20 transition-all hover:scale-[1.04] hover:from-amber-600 hover:to-orange-700 sm:bottom-6 sm:right-6"
       >
-        <span className="relative grid h-9 w-9 place-items-center rounded-full bg-white/15 ring-1 ring-white/30">
-          {open ? <ArrowDown className="h-4 w-4" /> : <MessageCircle className="h-4.5 w-4.5" />}
+        <span className="relative grid h-9 w-9 place-items-center rounded-full bg-white/95 ring-1 ring-white/30 shadow-inner">
+          {open ? <ArrowDown className="h-4 w-4 text-orange-600" /> : <BrandLogo variant="icon" width={22} />}
           {!open && unread > 0 && (
             <span className="absolute -right-1 -top-1 grid h-5 min-w-[1.25rem] place-items-center rounded-full bg-rose-500 px-1 text-[10px] font-bold ring-2 ring-white">
               {unread}
