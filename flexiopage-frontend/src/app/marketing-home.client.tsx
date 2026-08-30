@@ -22,6 +22,10 @@ import { isStaff } from '@/lib/is-staff';
 
 // Mirrors the FAQ rendered inside <Faq /> so Google can index the
 // questions as rich results without scraping the React tree.
+// Reste en FR volontairement : la landing est sur une URL unique (/) partagée
+// par toutes les langues et le marché principal est francophone — Google
+// indexe la version FR canonique. La version AR/EN visible à l'écran est
+// rendue via useT() dans <Faq />.
 const FAQ_ITEMS = [
   {
     q: 'Comment fonctionne le solde ?',
@@ -42,6 +46,7 @@ const FAQ_ITEMS = [
 ];
 import {
   ArrowRight,
+  ArrowLeft,
   Sparkles,
   Wallet,
   Truck,
@@ -57,7 +62,19 @@ import {
   Menu,
   X,
 } from 'lucide-react';
-import { useLangStore, LANGUAGES } from '@/lib/i18n';
+import { useLangStore, LANGUAGES, useT, isRtl } from '@/lib/i18n';
+
+/**
+ * `ArrowRight` de lucide pointe vers la droite → en RTL (arabe) l'utilisateur
+ * attend une flèche qui pointe vers l'avant, soit vers la gauche. On swap
+ * l'icône côté rendu. Toutes les flèches "action suivante / CTA" de la
+ * landing passent par ce composant.
+ */
+function DirArrow({ className }: { className?: string }) {
+  const { lang } = useT();
+  const Icon = isRtl(lang) ? ArrowLeft : ArrowRight;
+  return <Icon className={className} />;
+}
 
 /**
  * FlexioPage — public landing page.
@@ -70,6 +87,7 @@ import { useLangStore, LANGUAGES } from '@/lib/i18n';
  */
 export default function HomePage() {
   const router = useRouter();
+  const lang = useLangStore((s) => s.lang);
 
   // Un vendeur déjà connecté qui tape "back" depuis le dashboard atterrit ici
   // (le login utilise `router.replace`, donc `/login` n'est plus dans
@@ -90,6 +108,16 @@ export default function HomePage() {
       if (typeof unsub === 'function') unsub();
     };
   }, [router]);
+
+  // Synchronise <html lang="…" dir="…"> avec le choix live du visiteur.
+  // Le script pré-hydration du root layout fixe déjà dir/lang au 1er paint
+  // depuis localStorage (évite le flash LTR→RTL) — cet effet gère le swap
+  // en direct quand l'utilisateur clique dans le LangSwitcher, sans reload.
+  useEffect(() => {
+    if (typeof document === 'undefined') return;
+    document.documentElement.lang = lang;
+    document.documentElement.dir = isRtl(lang) ? 'rtl' : 'ltr';
+  }, [lang]);
 
   return (
     <div className="relative min-h-screen overflow-x-hidden bg-background text-foreground">
@@ -284,13 +312,16 @@ function RevealWords({ text, className = '', delay = 0 }: { text: string; classN
 //   • Burger + drawer plein écran sur mobile
 //   • Reste sticky avec compression/shadow au scroll (identique à avant)
 // ─────────────────────────────────────────────────────────────────────
+// Les libellés viennent du dico i18n — on garde ici seulement les hrefs +
+// la clé i18n associée. Le rendu résout la clé via `useT()` à chaque frame.
 const NAV_LINKS = [
-  { href: '#features', label: 'Fonctionnalités' },
-  { href: '#commission', label: 'Tarifs' },
-  { href: '#faq', label: 'FAQ' },
+  { href: '#features', key: 'landing.nav.features' },
+  { href: '#commission', key: 'landing.nav.pricing' },
+  { href: '#faq', key: 'landing.nav.faq' },
 ] as const;
 
 function Header() {
+  const { t } = useT();
   const [scrolled, setScrolled] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   useEffect(() => {
@@ -337,7 +368,7 @@ function Header() {
           className="mx-auto flex max-w-6xl items-center justify-between gap-3 px-4 sm:px-6"
         >
           {/* Logo — gauche */}
-          <Link href="/" className="flex items-center" aria-label="FlexioPage — accueil">
+          <Link href="/" className="flex items-center" aria-label={t('landing.nav.logoAria')}>
             <BrandLogo variant="color" width={scrolled ? 130 : 150} priority />
           </Link>
 
@@ -349,7 +380,7 @@ function Header() {
                 href={link.href}
                 className="group relative text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
               >
-                {link.label}
+                {t(link.key)}
                 {/* Underline animé au hover — signal pro subtil. */}
                 <span className="absolute -bottom-1 left-0 h-[2px] w-0 rounded-full bg-gradient-to-r from-amber-500 to-orange-600 transition-all duration-300 group-hover:w-full" />
               </a>
@@ -365,7 +396,7 @@ function Header() {
                 variant="ghost"
                 className="text-sm font-medium text-muted-foreground hover:bg-muted hover:text-foreground"
               >
-                Se connecter
+                {t('landing.nav.login')}
               </Button>
             </Link>
             <Link href="/register">
@@ -373,8 +404,8 @@ function Header() {
                 size="sm"
                 className="gap-1.5 bg-gradient-to-r from-amber-500 to-orange-600 shadow-md shadow-orange-500/20 transition-all hover:from-amber-600 hover:to-orange-700 hover:shadow-orange-500/40"
               >
-                Créer ma boutique
-                <ArrowRight className="h-3.5 w-3.5" />
+                {t('landing.nav.createStore')}
+                <DirArrow className="h-3.5 w-3.5" />
               </Button>
             </Link>
           </div>
@@ -383,7 +414,7 @@ function Header() {
           <button
             type="button"
             onClick={() => setMobileOpen(true)}
-            aria-label="Ouvrir le menu"
+            aria-label={t('landing.nav.openMenu')}
             className="grid h-10 w-10 place-items-center rounded-lg text-foreground/80 transition-colors hover:bg-muted md:hidden"
           >
             <Menu className="h-5 w-5" />
@@ -404,6 +435,7 @@ function Header() {
  * déjà `dir="rtl"` sur <html> quand la langue passe à `ar`.
  */
 function LangSwitcher() {
+  const { t } = useT();
   const lang = useLangStore((s) => s.lang);
   const setLang = useLangStore((s) => s.setLang);
   const current = LANGUAGES.find((l) => l.code === lang) || LANGUAGES[0];
@@ -411,7 +443,7 @@ function LangSwitcher() {
     <details className="group relative">
       <summary
         className="flex cursor-pointer list-none items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-        aria-label={`Langue actuelle : ${current.label}`}
+        aria-label={`${t('landing.nav.currentLang')} : ${current.label}`}
       >
         <Globe className="h-3.5 w-3.5" />
         <span className="uppercase">{current.code}</span>
@@ -449,6 +481,7 @@ function LangSwitcher() {
 
 /** Drawer plein écran mobile — animé avec framer-motion. */
 function MobileMenu({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const { t } = useT();
   return (
     <motion.div
       initial={false}
@@ -476,7 +509,7 @@ function MobileMenu({ open, onClose }: { open: boolean; onClose: () => void }) {
           <button
             type="button"
             onClick={onClose}
-            aria-label="Fermer le menu"
+            aria-label={t('landing.nav.closeMenu')}
             className="grid h-10 w-10 place-items-center rounded-lg text-foreground/80 transition-colors hover:bg-muted"
           >
             <X className="h-5 w-5" />
@@ -492,14 +525,14 @@ function MobileMenu({ open, onClose }: { open: boolean; onClose: () => void }) {
               onClick={onClose}
               className="border-b border-border/40 py-4 text-2xl font-semibold text-foreground transition-colors hover:text-orange-600"
             >
-              {link.label}
+              {t(link.key)}
             </a>
           ))}
         </nav>
 
         {/* Sélecteur langue horizontal */}
         <div className="mt-8">
-          <div className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Langue</div>
+          <div className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">{t('landing.nav.langLabel')}</div>
           <div className="mt-2 flex gap-2">
             {LANGUAGES.map((l) => {
               return (
@@ -513,7 +546,7 @@ function MobileMenu({ open, onClose }: { open: boolean; onClose: () => void }) {
         <div className="mt-auto flex flex-col gap-2 pt-8">
           <Link href="/login" onClick={onClose}>
             <Button size="lg" variant="outline" className="w-full">
-              Se connecter
+              {t('landing.nav.login')}
             </Button>
           </Link>
           <Link href="/register" onClick={onClose}>
@@ -521,8 +554,8 @@ function MobileMenu({ open, onClose }: { open: boolean; onClose: () => void }) {
               size="lg"
               className="w-full gap-2 bg-gradient-to-r from-amber-500 to-orange-600 shadow-md shadow-orange-500/20 hover:from-amber-600 hover:to-orange-700"
             >
-              Créer ma boutique
-              <ArrowRight className="h-4 w-4" />
+              {t('landing.nav.createStore')}
+              <DirArrow className="h-4 w-4" />
             </Button>
           </Link>
         </div>
@@ -561,14 +594,16 @@ function MobileLangButton({ lang, onSelect }: { lang: typeof LANGUAGES[number]; 
  * type `GET /api/public/metrics` qui renvoie { activeStores, countries,
  * satisfaction } pour que ces chiffres bougent en temps réel avec la
  * croissance et prouvent la traction sans risque de rester obsolètes.
+ * `labelKey` est résolu au rendu via `useT()` pour supporter FR / EN / AR.
  */
-const HERO_STATS: { value: string; label: string }[] = [
-  { value: '500+', label: 'vendeurs actifs' },
-  { value: '12',   label: 'pays couverts' },
-  { value: '4.8★', label: 'satisfaction' },
+const HERO_STATS: { value: string; labelKey: 'landing.hero.stat1Label' | 'landing.hero.stat2Label' | 'landing.hero.stat3Label' }[] = [
+  { value: '500+', labelKey: 'landing.hero.stat1Label' },
+  { value: '12',   labelKey: 'landing.hero.stat2Label' },
+  { value: '4.8★', labelKey: 'landing.hero.stat3Label' },
 ];
 
 function Hero() {
+  const { t } = useT();
   const reduceMotion = useReducedMotion();
   return (
     <section className="relative mx-auto max-w-6xl px-4 pb-16 pt-10 sm:px-6 sm:pb-24 sm:pt-16 md:pt-32">
@@ -586,19 +621,19 @@ function Hero() {
             <span className="absolute h-1.5 w-1.5 animate-ping rounded-full bg-emerald-500 opacity-60" />
             <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
           </span>
-          Sans abonnement · Tes 30 premières commandes sont gratuites
+          {t('landing.hero.badge')}
         </motion.div>
 
         <motion.h1
           variants={fadeUp}
           className="text-balance text-3xl font-bold leading-[1.05] tracking-tight sm:text-5xl md:text-6xl lg:text-7xl"
         >
-          <RevealWords text="Crée ta boutique en ligne." delay={0.15} />{' '}
+          <RevealWords text={t('landing.hero.title1')} delay={0.15} />{' '}
           <span
             className="bg-gradient-to-r from-amber-400 via-orange-500 to-orange-700 bg-clip-text text-transparent animate-gradient-shift"
             style={{ backgroundSize: '200% 200%' }}
           >
-            <RevealWords text="Vends dès aujourd’hui." delay={0.45} />
+            <RevealWords text={t('landing.hero.title2')} delay={0.45} />
           </span>
         </motion.h1>
 
@@ -606,8 +641,7 @@ function Hero() {
           variants={fadeUp}
           className="mx-auto mt-5 max-w-2xl text-balance text-sm leading-relaxed text-muted-foreground sm:mt-6 sm:text-lg md:text-xl"
         >
-          Ton premier client en 24h. Sans code, sans commission fixe, paiement à la livraison
-          inclus — pour vendre partout en Afrique de l&apos;Ouest et au Maghreb.
+          {t('landing.hero.subtitle')}
         </motion.p>
 
         <motion.div
@@ -623,14 +657,16 @@ function Hero() {
                 className="group relative h-12 gap-2 overflow-hidden bg-gradient-to-r from-amber-500 to-orange-600 px-7 text-base font-semibold shadow-xl shadow-orange-500/30 transition-all hover:scale-[1.03] hover:from-amber-600 hover:to-orange-700"
               >
                 <span className="pointer-events-none absolute inset-0 -translate-x-full bg-gradient-to-r from-transparent via-white/25 to-transparent transition-transform duration-700 group-hover:translate-x-full" />
-                <span className="relative">Créer ma boutique gratuite</span>
-                <ArrowRight className="relative h-4 w-4 transition-transform group-hover:translate-x-0.5" />
+                <span className="relative">{t('landing.hero.ctaPrimary')}</span>
+                <span className="relative h-4 w-4 transition-transform group-hover:translate-x-0.5">
+                  <DirArrow className="h-4 w-4" />
+                </span>
               </Button>
             </Link>
           </Magnetic>
           <a href="#how">
             <Button size="lg" variant="outline" className="h-12 px-7 text-base transition-all hover:border-orange-500/50 hover:bg-orange-50/50">
-              Voir comment ça marche
+              {t('landing.hero.ctaSecondary')}
             </Button>
           </a>
         </motion.div>
@@ -644,12 +680,12 @@ function Hero() {
           className="mt-8 flex flex-wrap items-center justify-center gap-x-6 gap-y-3 sm:mt-10 sm:gap-x-10"
         >
           {HERO_STATS.map((stat) => (
-            <div key={stat.label} className="flex items-baseline gap-1.5">
+            <div key={stat.labelKey} className="flex items-baseline gap-1.5">
               <span className="text-xl font-bold tracking-tight text-foreground tabular-nums sm:text-2xl">
                 {stat.value}
               </span>
               <span className="text-[11px] font-medium text-muted-foreground sm:text-xs">
-                {stat.label}
+                {t(stat.labelKey)}
               </span>
             </div>
           ))}
@@ -659,7 +695,7 @@ function Hero() {
           variants={fadeUp}
           className="mt-6 inline-flex items-center gap-1.5 text-xs text-muted-foreground"
         >
-          <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" /> Aucune carte bancaire pour commencer · Aucun engagement
+          <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" /> {t('landing.hero.reassure')}
         </motion.p>
       </motion.div>
 
@@ -682,6 +718,7 @@ function Hero() {
 }
 
 function HeroScreenMock() {
+  const { t } = useT();
   const reduceMotion = useReducedMotion();
   return (
     <div className="relative">
@@ -714,7 +751,7 @@ function HeroScreenMock() {
               transition={{ duration: 0.6, delay: 1.4, type: 'spring', stiffness: 200 }}
               className="absolute right-3 top-3 inline-flex items-center gap-1 rounded-full bg-card/90 px-2 py-0.5 text-[9px] font-semibold backdrop-blur sm:right-4 sm:top-4 sm:px-2.5 sm:py-1 sm:text-[10px]"
             >
-              <Wallet className="h-2.5 w-2.5 sm:h-3 sm:w-3" /> Cash
+              <Wallet className="h-2.5 w-2.5 sm:h-3 sm:w-3" /> {t('landing.heroMock.cash')}
             </motion.div>
             <div className="absolute inset-x-4 bottom-4 grid grid-cols-4 gap-1 sm:inset-x-6 sm:bottom-6 sm:gap-1.5">
               {[0,1,2,3].map((i) => (
@@ -732,9 +769,9 @@ function HeroScreenMock() {
           {/* Mock product details + tiny form */}
           <div className="space-y-3 sm:space-y-4">
             <div>
-              <div className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Caftan Marrakech</div>
-              <div className="mt-1.5 text-xl font-bold tracking-tight sm:mt-2 sm:text-3xl">Soie brodée main</div>
-              <div className="mt-1.5 text-[11px] text-muted-foreground sm:mt-2 sm:text-xs">Coupe ample · livré sous 48h</div>
+              <div className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">{t('landing.heroMock.category')}</div>
+              <div className="mt-1.5 text-xl font-bold tracking-tight sm:mt-2 sm:text-3xl">{t('landing.heroMock.name')}</div>
+              <div className="mt-1.5 text-[11px] text-muted-foreground sm:mt-2 sm:text-xs">{t('landing.heroMock.desc')}</div>
             </div>
             <div className="flex items-baseline gap-2">
               {/* Pulsing price — draws the eye */}
@@ -748,7 +785,7 @@ function HeroScreenMock() {
               <span className="text-xs text-muted-foreground line-through sm:text-sm">60 000</span>
             </div>
             <div className="space-y-2 rounded-xl border border-border/60 bg-background/40 p-3 text-xs">
-              <div className="font-semibold">Commande à la livraison</div>
+              <div className="font-semibold">{t('landing.heroMock.formTitle')}</div>
               <div className="grid grid-cols-2 gap-2">
                 <div className="h-7 rounded-md border border-border/60 bg-card sm:h-8" />
                 <div className="h-7 rounded-md border border-border/60 bg-card sm:h-8" />
@@ -763,7 +800,7 @@ function HeroScreenMock() {
                 transition={{ duration: 2, repeat: Infinity, ease: 'easeOut', delay: 2.5 }}
                 className="grid h-9 place-items-center rounded-md bg-gradient-to-r from-amber-500 to-orange-600 text-xs font-bold text-white"
               >
-                Commander
+                {t('landing.heroMock.cta')}
               </motion.div>
             </div>
           </div>
@@ -777,11 +814,12 @@ function HeroScreenMock() {
 // SOCIAL PROOF — animated count-up stats
 // ─────────────────────────────────────────────────────────────────────
 function SocialProofBar() {
+  const { t } = useT();
   const stats = [
-    { value: 0, suffix: '€', label: "d'abonnement", customFormat: () => '0 €' },
-    { value: 5, suffix: 'min', label: 'pour ouvrir une boutique', customFormat: (n: number) => `< ${n} min` },
-    { value: 16, suffix: 'pays', label: 'Afrique de l’Ouest + Maghreb', customFormat: (n: number) => `${n} pays` },
-    { value: 24, suffix: '/7', label: 'support FR / AR', customFormat: (n: number) => `${n}/7` },
+    { value: 0, suffix: '€', label: t('landing.stats.subscription'), customFormat: () => '0 €' },
+    { value: 5, suffix: 'min', label: t('landing.stats.openShop'), customFormat: (n: number) => `< ${n} min` },
+    { value: 16, suffix: 'pays', label: t('landing.stats.countries'), customFormat: (n: number) => `${n} ${t('landing.stats.countriesUnit')}` },
+    { value: 24, suffix: '/7', label: t('landing.stats.support'), customFormat: (n: number) => `${n}/7` },
   ];
   return (
     <section className="border-y border-border/40 bg-card/30 backdrop-blur">
@@ -795,41 +833,46 @@ function SocialProofBar() {
   );
 }
 
+// Liste des pays affichés dans le marquee. On garde uniquement le drapeau + la
+// clé i18n ici ; le nom localisé est résolu au rendu via `useT()` — permet à
+// la bannière de bascule instantanément entre FR / EN / AR.
+const MARQUEE_COUNTRIES = [
+  { flag: '🇸🇳', key: 'landing.countries.SN' },
+  { flag: '🇨🇮', key: 'landing.countries.CI' },
+  { flag: '🇲🇱', key: 'landing.countries.ML' },
+  { flag: '🇧🇫', key: 'landing.countries.BF' },
+  { flag: '🇧🇯', key: 'landing.countries.BJ' },
+  { flag: '🇹🇬', key: 'landing.countries.TG' },
+  { flag: '🇬🇳', key: 'landing.countries.GN' },
+  { flag: '🇳🇪', key: 'landing.countries.NE' },
+  { flag: '🇬🇲', key: 'landing.countries.GM' },
+  { flag: '🇬🇭', key: 'landing.countries.GH' },
+  { flag: '🇳🇬', key: 'landing.countries.NG' },
+  { flag: '🇨🇲', key: 'landing.countries.CM' },
+  { flag: '🇲🇦', key: 'landing.countries.MA' },
+  { flag: '🇹🇳', key: 'landing.countries.TN' },
+  { flag: '🇩🇿', key: 'landing.countries.DZ' },
+  { flag: '🇱🇾', key: 'landing.countries.LY' },
+] as const;
+
 function CountryMarquee() {
+  const { t } = useT();
   const reduceMotion = useReducedMotion();
-  const countries = [
-    { flag: '🇸🇳', name: 'Sénégal' },
-    { flag: '🇨🇮', name: 'Côte d’Ivoire' },
-    { flag: '🇲🇱', name: 'Mali' },
-    { flag: '🇧🇫', name: 'Burkina Faso' },
-    { flag: '🇧🇯', name: 'Bénin' },
-    { flag: '🇹🇬', name: 'Togo' },
-    { flag: '🇬🇳', name: 'Guinée' },
-    { flag: '🇳🇪', name: 'Niger' },
-    { flag: '🇬🇲', name: 'Gambie' },
-    { flag: '🇬🇭', name: 'Ghana' },
-    { flag: '🇳🇬', name: 'Nigeria' },
-    { flag: '🇨🇲', name: 'Cameroun' },
-    { flag: '🇲🇦', name: 'Maroc' },
-    { flag: '🇹🇳', name: 'Tunisie' },
-    { flag: '🇩🇿', name: 'Algérie' },
-    { flag: '🇱🇾', name: 'Libye' },
-  ];
   // Duplicate the list so the -50% translate loop is seamless.
-  const track = [...countries, ...countries];
+  const track = [...MARQUEE_COUNTRIES, ...MARQUEE_COUNTRIES];
   return (
     <div
       className="relative overflow-hidden border-b border-border/40 py-3 [mask-image:linear-gradient(to_right,transparent,black_10%,black_90%,transparent)]"
-      aria-label="Pays couverts par FlexioPage"
+      aria-label={t('landing.stats.marqueeAria')}
     >
       <div className={reduceMotion ? 'flex justify-center gap-8' : 'flex w-max gap-8 animate-marquee will-change-transform'}>
-        {(reduceMotion ? countries : track).map((c, i) => (
+        {(reduceMotion ? MARQUEE_COUNTRIES : track).map((c, i) => (
           <div
-            key={`${c.name}-${i}`}
+            key={`${c.key}-${i}`}
             className="flex shrink-0 items-center gap-2 text-xs font-medium text-muted-foreground/80 sm:text-sm"
           >
             <span className="text-base sm:text-lg" aria-hidden>{c.flag}</span>
-            <span>{c.name}</span>
+            <span>{t(c.key)}</span>
           </div>
         ))}
       </div>
@@ -869,41 +912,42 @@ function StatBlock({
 // FEATURES — fade-up + stagger on scroll
 // ─────────────────────────────────────────────────────────────────────
 function Features() {
+  const { t } = useT();
   const items = [
     {
       icon: LayoutTemplate,
-      title: 'Landing pages générées par IA',
-      desc: 'Décris ton produit, l’IA écrit le copy + génère les photos cinématiques. Édition libre ensuite.',
+      title: t('landing.features.item1Title'),
+      desc: t('landing.features.item1Desc'),
       gradient: 'from-fuchsia-500 to-pink-600',
     },
     {
       icon: Wallet,
-      title: 'Paiement à la livraison',
-      desc: 'Aucune carte bancaire requise. Le client paie en espèces au livreur, tu reçois ton argent net.',
+      title: t('landing.features.item2Title'),
+      desc: t('landing.features.item2Desc'),
       gradient: 'from-emerald-500 to-teal-600',
     },
     {
       icon: Truck,
-      title: 'Intègre ta société de livraison facilement',
-      desc: 'Connecte le coursier de ton choix : envoi des commandes, suivi des statuts et collecte du paiement gérés pour toi.',
+      title: t('landing.features.item3Title'),
+      desc: t('landing.features.item3Desc'),
       gradient: 'from-indigo-500 to-violet-600',
     },
     {
       icon: Smartphone,
-      title: '100% mobile-first',
-      desc: 'Tes clients commandent depuis WhatsApp, Instagram ou TikTok. Tout est optimisé mobile.',
+      title: t('landing.features.item4Title'),
+      desc: t('landing.features.item4Desc'),
       gradient: 'from-amber-500 to-orange-600',
     },
     {
       icon: Globe,
-      title: 'Arabe, Français, Darija',
-      desc: 'Interface bilingue, RTL natif, 16 pays préconfigurés (SN, MA, TN, DZ, CI, …).',
+      title: t('landing.features.item5Title'),
+      desc: t('landing.features.item5Desc'),
       gradient: 'from-rose-500 to-fuchsia-600',
     },
     {
       icon: ShieldCheck,
-      title: 'Sécurité bancaire',
-      desc: 'Webhook signés HMAC-SHA256, données chiffrées, conforme aux régulations locales.',
+      title: t('landing.features.item6Title'),
+      desc: t('landing.features.item6Desc'),
       gradient: 'from-cyan-500 to-blue-600',
     },
   ];
@@ -921,19 +965,19 @@ function Features() {
           variants={fadeUp}
           className="mb-3 inline-flex items-center gap-1.5 rounded-full bg-orange-500/10 px-3 py-1 text-xs font-semibold text-orange-700"
         >
-          <Sparkles className="h-3 w-3" /> Une stack complète
+          <Sparkles className="h-3 w-3" /> {t('landing.features.badge')}
         </motion.div>
         <motion.h2
           variants={fadeUp}
           className="text-balance text-2xl font-bold tracking-tight sm:text-3xl md:text-4xl lg:text-5xl"
         >
-          Tout ce qu&apos;il faut pour vendre. <span className="text-muted-foreground">Rien de plus.</span>
+          {t('landing.features.titleA')} <span className="text-muted-foreground">{t('landing.features.titleB')}</span>
         </motion.h2>
         <motion.p
           variants={fadeUp}
           className="mt-3 text-sm text-muted-foreground sm:mt-4 sm:text-base lg:text-lg"
         >
-          FlexioPage combine boutique, landing pages, formulaire COD et logistique en une seule app.
+          {t('landing.features.subtitle')}
         </motion.p>
       </motion.div>
 
@@ -976,20 +1020,24 @@ function Features() {
 // ─────────────────────────────────────────────────────────────────────
 // FLEXIO PAY — passerelle de paiement intégrée (mobile money + carte)
 // ─────────────────────────────────────────────────────────────────────
+// Noms des marques (Wave, OM, MTN, Moov) = universels — pas traduits.
+// Seul « Carte bancaire » a une clé i18n dans la liste (dernier item), résolu
+// au rendu quand on itère `PAY_METHODS`.
 const PAY_METHODS = [
-  { name: 'Wave',          short: 'wave',  chip: 'bg-sky-500',    text: 'text-white' },
-  { name: 'Orange Money',  short: 'OM',    chip: 'bg-orange-500', text: 'text-white' },
-  { name: 'MTN MoMo',      short: 'MTN',   chip: 'bg-yellow-400', text: 'text-black' },
-  { name: 'Moov Money',    short: 'moov',  chip: 'bg-blue-600',   text: 'text-white' },
-  { name: 'Carte bancaire', short: '💳',   chip: 'bg-slate-800',  text: 'text-white' },
+  { name: 'Wave',           short: 'wave',  chip: 'bg-sky-500',    text: 'text-white', i18nKey: null as null | 'landing.pay.methodCard' },
+  { name: 'Orange Money',   short: 'OM',    chip: 'bg-orange-500', text: 'text-white', i18nKey: null },
+  { name: 'MTN MoMo',       short: 'MTN',   chip: 'bg-yellow-400', text: 'text-black', i18nKey: null },
+  { name: 'Moov Money',     short: 'moov',  chip: 'bg-blue-600',   text: 'text-white', i18nKey: null },
+  { name: 'Carte bancaire', short: '💳',    chip: 'bg-slate-800',  text: 'text-white', i18nKey: 'landing.pay.methodCard' as const },
 ];
 
 function FlexioPay() {
+  const { t } = useT();
   const bullets = [
-    { icon: Zap, text: 'Activation instantanée — aucun contrat bancaire, aucun code à écrire.' },
-    { icon: Globe, text: 'Mobile money accepté dans 20+ pays africains (SN, CI, BJ, TG, CM, GH, NG…).' },
-    { icon: Wallet, text: 'L’argent arrive sur ton solde vendeur — retrait vers ton mobile money.' },
-    { icon: ShieldCheck, text: 'Paiements vérifiés côté serveur, webhooks signés — sécurité bancaire.' },
+    { icon: Zap, text: t('landing.pay.bullet1') },
+    { icon: Globe, text: t('landing.pay.bullet2') },
+    { icon: Wallet, text: t('landing.pay.bullet3') },
+    { icon: ShieldCheck, text: t('landing.pay.bullet4') },
   ];
 
   return (
@@ -1006,21 +1054,19 @@ function FlexioPay() {
             variants={fadeUp}
             className="mb-3 inline-flex items-center gap-1.5 rounded-full bg-emerald-500/10 px-3 py-1 text-xs font-semibold text-emerald-700"
           >
-            <CreditCard className="h-3 w-3" /> Flexio Pay
+            <CreditCard className="h-3 w-3" /> {t('landing.pay.badge')}
           </motion.div>
           <motion.h2
             variants={fadeUp}
             className="text-balance text-2xl font-bold tracking-tight sm:text-3xl md:text-4xl lg:text-5xl"
           >
-            Encaisse en ligne. <span className="text-muted-foreground">Partout en Afrique.</span>
+            {t('landing.pay.titleA')} <span className="text-muted-foreground">{t('landing.pay.titleB')}</span>
           </motion.h2>
           <motion.p
             variants={fadeUp}
             className="mt-3 text-sm text-muted-foreground sm:mt-4 sm:text-base lg:text-lg"
           >
-            Flexio Pay est la passerelle de paiement intégrée de FlexioPage : tes clients paient
-            en mobile money ou par carte directement sur ta boutique et tes landing pages —
-            sans compte marchand, sans intégration technique.
+            {t('landing.pay.paragraph')}
           </motion.p>
 
           {/* Moyens de paiement */}
@@ -1033,7 +1079,7 @@ function FlexioPay() {
                 <span className={`grid h-6 min-w-6 place-items-center rounded-full px-1 text-[9px] font-extrabold ${m.chip} ${m.text}`}>
                   {m.short}
                 </span>
-                {m.name}
+                {m.i18nKey ? t(m.i18nKey) : m.name}
               </span>
             ))}
           </motion.div>
@@ -1052,8 +1098,8 @@ function FlexioPay() {
           <motion.div variants={fadeUp} className="mt-8">
             <Link href="/register">
               <Button size="lg" className="h-12 gap-2 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-600 px-6 text-white shadow-lg shadow-emerald-500/25 hover:from-emerald-600 hover:to-teal-700">
-                Commencer à encaisser
-                <ArrowRight className="h-4 w-4" />
+                {t('landing.pay.cta')}
+                <DirArrow className="h-4 w-4" />
               </Button>
             </Link>
           </motion.div>
@@ -1077,14 +1123,14 @@ function FlexioPay() {
                 </span>
                 <div>
                   <div className="text-sm font-bold leading-none">Flexio Pay</div>
-                  <div className="mt-0.5 text-[10px] text-muted-foreground">Paiement sécurisé</div>
+                  <div className="mt-0.5 text-[10px] text-muted-foreground">{t('landing.pay.mockSubtitle')}</div>
                 </div>
               </div>
               <Lock className="h-4 w-4 text-emerald-600" />
             </div>
             {/* Montant */}
             <div className="border-b border-border/60 px-5 py-4 text-center">
-              <div className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Total à payer</div>
+              <div className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">{t('landing.pay.mockTotal')}</div>
               <div className="mt-1 text-3xl font-extrabold tracking-tight">15 000 <span className="text-base font-bold text-muted-foreground">FCFA</span></div>
             </div>
             {/* Choix du moyen */}
@@ -1100,19 +1146,22 @@ function FlexioPay() {
                     <span className={`grid h-7 min-w-7 place-items-center rounded-lg px-1 text-[9px] font-extrabold ${m.chip} ${m.text}`}>
                       {m.short}
                     </span>
-                    {m.name}
+                    {m.i18nKey ? t(m.i18nKey) : m.name}
                   </span>
                   <span className={`h-4 w-4 rounded-full border-2 ${i === 0 ? 'border-emerald-500 bg-emerald-500' : 'border-border'}`} />
                 </div>
               ))}
               <div className="pt-1">
-                <div className="grid h-11 place-items-center rounded-xl bg-gradient-to-r from-emerald-500 to-teal-600 text-sm font-bold text-white shadow-md">
-                  Payer avec Wave →
+                <div className="grid h-11 place-items-center gap-2 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-600 text-sm font-bold text-white shadow-md">
+                  <span className="inline-flex items-center gap-2">
+                    {t('landing.pay.mockCta')}
+                    <DirArrow className="h-4 w-4" />
+                  </span>
                 </div>
               </div>
               <div className="flex items-center justify-center gap-1 pt-1 text-[10px] text-muted-foreground">
                 <ShieldCheck className="h-3 w-3 text-emerald-600" />
-                Transaction vérifiée par Flexio Pay
+                {t('landing.pay.mockFooter')}
               </div>
             </div>
           </TiltCard>
@@ -1126,21 +1175,22 @@ function FlexioPay() {
 // HOW IT WORKS — fade-up steps
 // ─────────────────────────────────────────────────────────────────────
 function HowItWorks() {
+  const { t } = useT();
   const steps = [
     {
       n: '01',
-      title: 'Crée ta boutique en 5 minutes',
-      desc: 'Inscris-toi, choisis un thème, ajoute tes produits avec photos et SKU. Pas de configuration technique.',
+      title: t('landing.how.step1Title'),
+      desc: t('landing.how.step1Desc'),
     },
     {
       n: '02',
-      title: 'Génère une landing page avec l’IA',
-      desc: 'L’IA rédige le copywriting, génère les photos lifestyle et intègre le formulaire de commande.',
+      title: t('landing.how.step2Title'),
+      desc: t('landing.how.step2Desc'),
     },
     {
       n: '03',
-      title: 'Le client commande, tu encaisses',
-      desc: 'Commande à la livraison, MogaDelivery prend le relais, tu encaisses ton paiement. 30 premières livraisons gratuites, ensuite une petite commission seulement.',
+      title: t('landing.how.step3Title'),
+      desc: t('landing.how.step3Desc'),
     },
   ];
   return (
@@ -1156,13 +1206,13 @@ function HowItWorks() {
           variants={fadeUp}
           className="mb-3 inline-flex items-center gap-1.5 rounded-full bg-amber-500/10 px-3 py-1 text-xs font-semibold text-amber-700"
         >
-          <Zap className="h-3 w-3" /> 3 étapes
+          <Zap className="h-3 w-3" /> {t('landing.how.badge')}
         </motion.div>
         <motion.h2
           variants={fadeUp}
           className="text-balance text-2xl font-bold tracking-tight sm:text-3xl md:text-4xl lg:text-5xl"
         >
-          De la création à la première vente.
+          {t('landing.how.title')}
         </motion.h2>
       </motion.div>
 
@@ -1185,7 +1235,9 @@ function HowItWorks() {
             <h3 className="mt-4 text-lg font-bold tracking-tight sm:mt-5 sm:text-xl">{step.title}</h3>
             <p className="mt-2 text-xs leading-relaxed text-muted-foreground sm:mt-2.5 sm:text-sm">{step.desc}</p>
             {i < steps.length - 1 && (
-              <ArrowRight className="absolute right-5 top-5 h-5 w-5 text-muted-foreground/30 sm:right-7 sm:top-7 lg:right-auto lg:-translate-x-3 lg:translate-y-1/2" />
+              <span className="absolute right-5 top-5 text-muted-foreground/30 sm:right-7 sm:top-7 lg:right-auto lg:-translate-x-3 lg:translate-y-1/2">
+                <DirArrow className="h-5 w-5" />
+              </span>
             )}
           </motion.div>
         ))}
@@ -1198,13 +1250,14 @@ function HowItWorks() {
 // COMMISSION PANEL
 // ─────────────────────────────────────────────────────────────────────
 function CommissionPanel() {
+  const { t } = useT();
   const perks = [
-    'Boutique illimitée',
-    'Landing pages illimitées',
-    'Génération IA des landings',
-    'Commandes illimitées',
-    'Dispatch MogaDelivery inclus',
-    'Support FR / AR',
+    t('landing.commission.perk1'),
+    t('landing.commission.perk2'),
+    t('landing.commission.perk3'),
+    t('landing.commission.perk4'),
+    t('landing.commission.perk5'),
+    t('landing.commission.perk6'),
   ];
   return (
     <section id="commission" className="mx-auto max-w-6xl px-4 py-16 sm:px-6 sm:py-24 lg:py-32">
@@ -1220,15 +1273,14 @@ function CommissionPanel() {
         <div className="grid gap-8 lg:grid-cols-[1.1fr_1fr] lg:gap-12">
           <div className="relative">
             <div className="mb-3 inline-flex items-center gap-1.5 rounded-full bg-emerald-500/10 px-3 py-1 text-xs font-semibold text-emerald-700">
-              <Wallet className="h-3 w-3" /> Tarification équitable
+              <Wallet className="h-3 w-3" /> {t('landing.commission.badge')}
             </div>
             <h2 className="text-balance text-2xl font-bold tracking-tight sm:text-3xl md:text-4xl lg:text-5xl">
-              Tes <span className="bg-gradient-to-r from-amber-500 to-orange-600 bg-clip-text text-transparent">30 premières commandes</span> sont gratuites.
+              {t('landing.commission.titleA')} <span className="bg-gradient-to-r from-amber-500 to-orange-600 bg-clip-text text-transparent">{t('landing.commission.titleHighlight')}</span> {t('landing.commission.titleB')}
             </h2>
             <p className="mt-4 text-sm leading-relaxed text-muted-foreground sm:mt-5 sm:text-base lg:text-lg">
-              Pas d&apos;abonnement, pas de carte bancaire à la création, pas de frais cachés.
-              Tu lances ta boutique et tu vends sans payer un centime — une petite commission ne s&apos;applique qu&apos;à partir de la
-              {' '}<strong className="text-foreground">31e commande livrée</strong>.
+              {t('landing.commission.paragraphStart')}
+              {' '}<strong className="text-foreground">{t('landing.commission.paragraphStrong')}</strong>.
             </p>
 
             <motion.div
@@ -1239,17 +1291,17 @@ function CommissionPanel() {
               className="mt-6 inline-flex items-baseline gap-3 rounded-2xl border border-emerald-500/30 bg-emerald-500/5 px-5 py-3.5 backdrop-blur sm:mt-8 sm:px-6 sm:py-4"
             >
               <span className="text-4xl font-black tracking-tight text-emerald-700 sm:text-5xl">30</span>
-              <div className="text-left">
-                <div className="text-xs font-semibold sm:text-sm">premières commandes livrées</div>
-                <div className="text-[11px] text-muted-foreground sm:text-xs">100% gratuites · sans frais cachés</div>
+              <div className="text-start">
+                <div className="text-xs font-semibold sm:text-sm">{t('landing.commission.badge30Main')}</div>
+                <div className="text-[11px] text-muted-foreground sm:text-xs">{t('landing.commission.badge30Sub')}</div>
               </div>
             </motion.div>
 
             <div className="mt-6 flex flex-wrap gap-3">
               <Link href="/register">
                 <Button size="lg" className="h-12 gap-2 bg-gradient-to-r from-amber-500 to-orange-600 px-7 font-semibold">
-                  Créer ma boutique
-                  <ArrowRight className="h-4 w-4" />
+                  {t('landing.commission.cta')}
+                  <DirArrow className="h-4 w-4" />
                 </Button>
               </Link>
             </div>
@@ -1263,7 +1315,7 @@ function CommissionPanel() {
               variants={staggerContainer}
               className="rounded-2xl border border-border/60 bg-background/60 p-5 backdrop-blur sm:p-7"
             >
-              <div className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Inclus pour 0 €</div>
+              <div className="text-xs font-bold uppercase tracking-wider text-muted-foreground">{t('landing.commission.includedTitle')}</div>
               <ul className="mt-4 space-y-2.5 sm:space-y-3">
                 {perks.map((p) => (
                   <motion.li
@@ -1290,23 +1342,12 @@ function CommissionPanel() {
 // FAQ
 // ─────────────────────────────────────────────────────────────────────
 function Faq() {
+  const { t } = useT();
   const items = [
-    {
-      q: 'Comment fonctionne le solde ?',
-      a: 'Tes 30 premières commandes livrées sont 100% gratuites — aucun frais ne sort de ton solde. À partir de la 31e commande, une petite commission s’applique sur chaque livraison confirmée par le transporteur. Tu recharges ton solde via Wave, Orange Money, MTN MoMo ou virement quand tu veux.',
-    },
-    {
-      q: 'Que se passe-t-il si une commande n’est pas livrée ?',
-      a: 'Aucun frais. La commission ne s’applique qu’aux commandes livrées ET payées (transporteur confirme la collecte). Annulation, retour, refus → 0 frais. Les 30 premières livraisons restent gratuites de toute façon.',
-    },
-    {
-      q: 'Dans quels pays vous opérez ?',
-      a: '16 pays : Sénégal, Côte d’Ivoire, Mali, Burkina Faso, Bénin, Togo, Guinée, Niger, Gambie, Ghana, Nigeria, Cameroun, Maroc, Tunisie, Algérie, Libye.',
-    },
-    {
-      q: 'Puis-je vendre des produits digitaux ?',
-      a: 'Oui. Pour les produits digitaux le client paie en ligne (Wave, Orange Money, carte) et reçoit son fichier instantanément. Les 30 premières ventes sont gratuites comme pour les produits physiques.',
-    },
+    { q: t('landing.faq.q1'), a: t('landing.faq.a1') },
+    { q: t('landing.faq.q2'), a: t('landing.faq.a2') },
+    { q: t('landing.faq.q3'), a: t('landing.faq.a3') },
+    { q: t('landing.faq.q4'), a: t('landing.faq.a4') },
   ];
   return (
     <section id="faq" className="mx-auto max-w-4xl px-4 py-16 sm:px-6 sm:py-24 lg:py-32">
@@ -1327,7 +1368,7 @@ function Faq() {
           variants={fadeUp}
           className="text-balance text-2xl font-bold tracking-tight sm:text-3xl md:text-4xl lg:text-5xl"
         >
-          Les questions qu&apos;on nous pose le plus.
+          {t('landing.faq.title')}
         </motion.h2>
       </motion.div>
       <motion.div
@@ -1361,6 +1402,7 @@ function Faq() {
 // FINAL CTA
 // ─────────────────────────────────────────────────────────────────────
 function FinalCta() {
+  const { t } = useT();
   return (
     <section className="mx-auto max-w-6xl px-4 py-16 sm:px-6 sm:py-24 lg:py-32">
       <motion.div
@@ -1373,20 +1415,20 @@ function FinalCta() {
         <div className="absolute inset-0 -z-0 opacity-30" aria-hidden style={{ backgroundImage: 'radial-gradient(white 1px, transparent 1px)', backgroundSize: '32px 32px' }} />
         <div className="relative mx-auto max-w-2xl">
           <h2 className="text-balance text-2xl font-bold tracking-tight sm:text-3xl md:text-4xl lg:text-5xl">
-            Prêt à vendre ?
+            {t('landing.finalCta.title')}
           </h2>
           <p className="mt-3 text-sm text-white/85 sm:mt-4 sm:text-base lg:text-lg">
-            Crée ta boutique en moins de 5 minutes. Aucune carte bancaire, aucun engagement.
+            {t('landing.finalCta.subtitle')}
           </p>
           <div className="mt-6 flex flex-wrap items-center justify-center gap-3 sm:mt-8">
             <Link href="/register">
               <Button size="lg" variant="secondary" className="h-12 gap-2 bg-white px-6 text-base font-bold text-foreground hover:bg-white/90 sm:px-7">
-                Démarrer gratuitement
-                <ArrowRight className="h-4 w-4" />
+                {t('landing.finalCta.ctaPrimary')}
+                <DirArrow className="h-4 w-4" />
               </Button>
             </Link>
             <Link href="/login" className="text-sm font-medium text-white/85 underline-offset-4 hover:text-white hover:underline">
-              J&apos;ai déjà un compte
+              {t('landing.finalCta.ctaSecondary')}
             </Link>
           </div>
         </div>
@@ -1399,6 +1441,7 @@ function FinalCta() {
 // FOOTER
 // ─────────────────────────────────────────────────────────────────────
 function Footer() {
+  const { t } = useT();
   const year = new Date().getFullYear();
   return (
     <footer className="border-t border-border/40 bg-card/30 backdrop-blur">
@@ -1409,28 +1452,28 @@ function Footer() {
           <div className="space-y-3">
             <BrandLogo variant="color" width={130} />
             <p className="text-xs text-muted-foreground">
-              La plateforme tout-en-un pour vendre, livrer et encaisser en Afrique.
+              {t('landing.footer.tagline')}
             </p>
           </div>
 
           {/* Produit */}
           <div className="space-y-2">
-            <div className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">Produit</div>
+            <div className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">{t('landing.footer.product')}</div>
             <ul className="space-y-1.5 text-sm">
-              <li><a href="#features" className="text-foreground/80 hover:text-foreground hover:underline">Fonctionnalités</a></li>
-              <li><a href="#how" className="text-foreground/80 hover:text-foreground hover:underline">Comment ça marche</a></li>
-              <li><a href="#commission" className="text-foreground/80 hover:text-foreground hover:underline">Tarif</a></li>
-              <li><a href="#faq" className="text-foreground/80 hover:text-foreground hover:underline">FAQ</a></li>
+              <li><a href="#features" className="text-foreground/80 hover:text-foreground hover:underline">{t('landing.nav.features')}</a></li>
+              <li><a href="#how" className="text-foreground/80 hover:text-foreground hover:underline">{t('landing.footer.howLink')}</a></li>
+              <li><a href="#commission" className="text-foreground/80 hover:text-foreground hover:underline">{t('landing.footer.pricingLink')}</a></li>
+              <li><a href="#faq" className="text-foreground/80 hover:text-foreground hover:underline">{t('landing.nav.faq')}</a></li>
             </ul>
           </div>
 
           {/* Support — email visible + lien vers /support */}
           <div className="space-y-2">
-            <div className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">Support</div>
+            <div className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">{t('landing.footer.support')}</div>
             <ul className="space-y-1.5 text-sm">
               <li>
                 <Link href="/support" className="text-foreground/80 hover:text-foreground hover:underline">
-                  Nous contacter
+                  {t('landing.footer.contact')}
                 </Link>
               </li>
               <li>
@@ -1447,19 +1490,19 @@ function Footer() {
 
           {/* Légal */}
           <div className="space-y-2">
-            <div className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">Légal</div>
+            <div className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">{t('landing.footer.legal')}</div>
             <ul className="space-y-1.5 text-sm">
-              <li><Link href="/terms-of-service" className="text-foreground/80 hover:text-foreground hover:underline">Conditions</Link></li>
-              <li><Link href="/privacy-policy" className="text-foreground/80 hover:text-foreground hover:underline">Confidentialité</Link></li>
-              <li><Link href="/data-deletion" className="text-foreground/80 hover:text-foreground hover:underline">Suppression données</Link></li>
+              <li><Link href="/terms-of-service" className="text-foreground/80 hover:text-foreground hover:underline">{t('landing.footer.terms')}</Link></li>
+              <li><Link href="/privacy-policy" className="text-foreground/80 hover:text-foreground hover:underline">{t('landing.footer.privacy')}</Link></li>
+              <li><Link href="/data-deletion" className="text-foreground/80 hover:text-foreground hover:underline">{t('landing.footer.dataDeletion')}</Link></li>
             </ul>
           </div>
         </div>
 
         {/* Bas — copyright */}
         <div className="mt-8 flex flex-wrap items-center justify-between gap-3 border-t border-border/40 pt-5 text-[11px] text-muted-foreground sm:text-xs">
-          <span>© {year} FlexioPage. Tous droits réservés.</span>
-          <span>vendre · livrer · encaisser</span>
+          <span>© {year} FlexioPage. {t('landing.footer.rights')}</span>
+          <span>{t('landing.footer.slogan')}</span>
         </div>
       </div>
     </footer>
