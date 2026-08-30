@@ -14,7 +14,21 @@
  */
 import mongoose, { Schema, Document } from 'mongoose';
 
-export type AiKind = 'landing' | 'poster' | 'product_page' | 'text_only' | 'video';
+export type AiKind =
+  | 'landing'
+  | 'poster'
+  | 'product_page'
+  | 'text_only'
+  | 'video'
+  /** Vidéo Seedance + voice-over TTS ElevenLabs muxé par ffmpeg. Coûte plus
+   *  qu'une vidéo muette car on ajoute un appel TTS + un traitement mux. */
+  | 'video_with_voice'
+  /** UGC talking-head : personnage face caméra qui parle du produit,
+   *  lip-sync via Hedra Character-1 (image perso + audio TTS baked-in). */
+  | 'video_ugc_talking'
+  /** UGC lifestyle : personnage qui utilise le produit dans une scène,
+   *  rendu Kling v2 (image-to-video, personnage + prompt). Pas de dialogue. */
+  | 'video_ugc_lifestyle';
 
 export interface IAiPricing {
   /** Tokens consommés par génération (par kind). */
@@ -129,6 +143,17 @@ export const DEFAULT_AI_PRICING: IAiPricing = {
     // Video Seedance Lite ($0.18 côté fal) → ~2 tokens (≈$1.33) laisse
     // une marge saine couvrant aussi le prompt LLM + le stockage éventuel.
     video:        2,
+    // Voice-over ajouté : Seedance + ElevenLabs TTS (~$0.10) + mux ffmpeg.
+    // On garde une marge ~2× sur le voice-over car il double le temps de
+    // traitement backend et la bande passante de stockage.
+    video_with_voice: 4,
+    // UGC talking-head : Hedra Character-1 (~$0.40) + TTS ElevenLabs (~$0.10).
+    // Marge saine pour couvrir stockage + éventuel retry.
+    video_ugc_talking: 5,
+    // UGC lifestyle : Kling v2 image-to-video (~$0.28), pas de TTS ni mux.
+    // Un peu plus cher que Seedance car qualité de motion + personnages
+    // sensiblement meilleure.
+    video_ugc_lifestyle: 4,
   },
   // 10 USD top-up = 15 tokens (ratio confirmé 2026-06-18). L'admin peut
   // ajuster depuis /admin/settings sans redéploiement.
@@ -161,6 +186,9 @@ const SettingsSchema = new Schema<ISettings>(
         product_page: { type: Number, default: DEFAULT_AI_PRICING.prices.product_page },
         text_only:    { type: Number, default: DEFAULT_AI_PRICING.prices.text_only },
         video:        { type: Number, default: DEFAULT_AI_PRICING.prices.video },
+        video_with_voice: { type: Number, default: DEFAULT_AI_PRICING.prices.video_with_voice },
+        video_ugc_talking: { type: Number, default: DEFAULT_AI_PRICING.prices.video_ugc_talking },
+        video_ugc_lifestyle: { type: Number, default: DEFAULT_AI_PRICING.prices.video_ugc_lifestyle },
       },
       usdToTokens: { type: Number, default: DEFAULT_AI_PRICING.usdToTokens, min: 0.01 },
       rates: { type: Schema.Types.Mixed, default: () => ({ ...DEFAULT_AI_PRICING.rates }) },
@@ -216,6 +244,24 @@ export async function getSettings(force = false): Promise<ISettings> {
       // Doc créé avant le passage au modèle token (juin 2026). On met le
       // ratio par défaut, l'admin pourra l'ajuster.
       doc.aiPricing.usdToTokens = DEFAULT_AI_PRICING.usdToTokens;
+      dirty = true;
+    }
+    // Tarif voice-over ajouté après coup — remplir seulement s'il manque
+    // pour ne pas écraser un tarif déjà customisé par l'admin.
+    if (doc.aiPricing?.prices && doc.aiPricing.prices.video_with_voice == null) {
+      doc.aiPricing.prices.video_with_voice = DEFAULT_AI_PRICING.prices.video_with_voice;
+      doc.markModified('aiPricing.prices');
+      dirty = true;
+    }
+    // Tarifs UGC (Hedra talking-head + Kling lifestyle) — même pattern.
+    if (doc.aiPricing?.prices && doc.aiPricing.prices.video_ugc_talking == null) {
+      doc.aiPricing.prices.video_ugc_talking = DEFAULT_AI_PRICING.prices.video_ugc_talking;
+      doc.markModified('aiPricing.prices');
+      dirty = true;
+    }
+    if (doc.aiPricing?.prices && doc.aiPricing.prices.video_ugc_lifestyle == null) {
+      doc.aiPricing.prices.video_ugc_lifestyle = DEFAULT_AI_PRICING.prices.video_ugc_lifestyle;
+      doc.markModified('aiPricing.prices');
       dirty = true;
     }
     // Défauts bot ajoutés le 2026-07-30 — remplir sans écraser les Settings

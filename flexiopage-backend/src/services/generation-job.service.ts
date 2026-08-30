@@ -12,6 +12,7 @@ import {
   type GenerationContext,
 } from './fal-landing.service';
 import { generateVideo, type VideoInput } from './video-generation.service';
+import { generateUgcVideo, type UgcInput } from './ugc-video.service';
 import { refundAiGeneration } from './wallet.service';
 import { logger } from '../lib/logger';
 
@@ -79,20 +80,24 @@ function buildProgressCb(jobId: string): ProgressCallback {
  * paliers correspondent aux étapes réelles prompt → rendu → persistance.
  */
 export async function runVideoPipeline(jobId: string, input: VideoInput): Promise<void> {
+  const onProgress = buildProgressCb(jobId);
   try {
     await update(jobId, {
       status: 'running',
       startedAt: new Date(),
-      currentStep: 'copy',
-      'steps.analyze': 'done',
-      'steps.copy': 'running',
-      progress: 15,
+      currentStep: 'analyze',
+      'steps.analyze': 'running',
+      progress: 5,
     });
-    const result = await generateVideo(input);
+    // Callback pilote la Timeline live côté frontend — chaque transition
+    // (analyze→copy→images→assemble) push un update et le polling l'affiche
+    // en temps réel (au lieu d'un spinner statique de 90 à 150s).
+    const result = await generateVideo(input, onProgress);
     await update(jobId, {
       status: 'succeeded',
       progress: 100,
       currentStep: 'assemble',
+      'steps.analyze': 'done',
       'steps.copy': 'done',
       'steps.images': 'done',
       'steps.assemble': 'done',
@@ -146,6 +151,80 @@ export async function runVideoPipeline(jobId: string, input: VideoInput): Promis
       }
     } catch (refundErr) {
       logger.error({ err: refundErr, jobId }, '[ai-refund] video refund failed');
+    }
+  }
+}
+
+/**
+ * Pipeline UGC vidéo (talking-head Hedra ou lifestyle Kling). Mêmes patterns
+ * que `runVideoPipeline` : Timeline live via onProgress, refund idempotent
+ * sur échec (input.chargeAmount stocké au moment de la facturation).
+ */
+export async function runUgcVideoPipeline(jobId: string, input: UgcInput): Promise<void> {
+  const onProgress = buildProgressCb(jobId);
+  try {
+    await update(jobId, {
+      status: 'running',
+      startedAt: new Date(),
+      currentStep: 'analyze',
+      'steps.analyze': 'running',
+      progress: 5,
+    });
+    const result = await generateUgcVideo(input, onProgress);
+    await update(jobId, {
+      status: 'succeeded',
+      progress: 100,
+      currentStep: 'assemble',
+      'steps.analyze': 'done',
+      'steps.copy': 'done',
+      'steps.images': 'done',
+      'steps.assemble': 'done',
+      result,
+      finishedAt: new Date(),
+    });
+    // Historique — même record que vidéo classique, avec mode UGC dans le
+    // preview subtitle pour le distinguer dans le panneau Récentes.
+    const jobDoc = await GenerationJob.findById(jobId).lean<IGenerationJob>();
+    if (jobDoc) {
+      const productId = (jobDoc.input as { productId?: string } | undefined)?.productId;
+      AiGeneration.create({
+        storeId: jobDoc.storeId,
+        ownerId: jobDoc.ownerId,
+        productId,
+        kind: 'video',
+        result: result as unknown as Record<string, unknown>,
+        preview: {
+          thumbnailUrl: input.avatarUrl,
+          title: input.product.name,
+          subtitle: `UGC ${result.mode} · ${result.durationSeconds}s`,
+        },
+      }).catch((e) => logger.warn({ err: e.message }, '[ai-gen] failed to persist ugc video'));
+    }
+  } catch (err) {
+    const e = err as Error & { publicMessage?: string };
+    console.error(`[ugc job ${jobId}] failed:`, e.message);
+    await update(jobId, {
+      status: 'failed',
+      error: e.publicMessage || e.message || 'Génération UGC échouée',
+      'steps.images': 'failed',
+      finishedAt: new Date(),
+    });
+    try {
+      const jobDoc = await GenerationJob.findById(jobId).lean<IGenerationJob>();
+      if (jobDoc) {
+        const chargeAmount = Number((jobDoc.input as { chargeAmount?: number } | undefined)?.chargeAmount || 0);
+        if (chargeAmount > 0) {
+          await refundAiGeneration({
+            userId: jobDoc.ownerId.toString(),
+            amount: chargeAmount,
+            refundKey: jobId,
+            note: `Refund UGC échouée · ${(e.message || 'unknown').slice(0, 120)}`,
+          });
+          logger.info({ jobId, amount: chargeAmount }, '[ai-refund] ugc refund applied');
+        }
+      }
+    } catch (refundErr) {
+      logger.error({ err: refundErr, jobId }, '[ai-refund] ugc refund failed');
     }
   }
 }

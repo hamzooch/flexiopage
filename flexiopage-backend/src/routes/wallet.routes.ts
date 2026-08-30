@@ -44,7 +44,11 @@ router.get('/', async (req: AuthRequest, res: Response): Promise<void> => {
   // casser le frontend existant ; ajout de `aiTokenCosts` comme alias
   // explicite + `usdToTokens` pour que le formulaire de top-up affiche
   // « 10 USD → 15 tokens » sans recoder le ratio côté client.
-  const KINDS: AiKind[] = ['landing', 'poster', 'product_page', 'text_only'];
+  const KINDS: AiKind[] = [
+    'landing', 'poster', 'product_page', 'text_only',
+    'video', 'video_with_voice',
+    'video_ugc_talking', 'video_ugc_lifestyle',
+  ];
   const aiCosts: Record<string, number> = {};
   for (const k of KINDS) {
     aiCosts[k] = await aiCostTokens(k);

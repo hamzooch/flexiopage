@@ -218,9 +218,9 @@ export interface WalletState {
   /** Montant minimum pour demander un versement (dans la payoutCurrency). */
   payoutMinimum: number;
   /** Coût par génération, en tokens. */
-  aiCosts: { landing: number; product_page: number; text_only: number; poster?: number; video?: number };
+  aiCosts: { landing: number; product_page: number; text_only: number; poster?: number; video?: number; video_with_voice?: number; video_ugc_talking?: number; video_ugc_lifestyle?: number };
   /** Alias explicite — même contenu que aiCosts. */
-  aiTokenCosts?: { landing: number; product_page: number; text_only: number; poster?: number; video?: number };
+  aiTokenCosts?: { landing: number; product_page: number; text_only: number; poster?: number; video?: number; video_with_voice?: number; video_ugc_talking?: number; video_ugc_lifestyle?: number };
   /** Tokens crédités pour 1 USD versé (paramètre admin, défaut 1.5). */
   usdToTokens?: number;
   transactions: WalletTransaction[];
@@ -1800,9 +1800,50 @@ export const storesApi = {
       /** Image alternative (upload custom, URL externe, image scrapée d'une
        *  URL produit). Si fournie, remplace la 1ʳᵉ photo du produit. */
       sourceImageUrl?: string;
+      /** Script du voice-over IA. Vide/absent = vidéo muette (tarif `video`).
+       *  Rempli = TTS ElevenLabs + mux ffmpeg (tarif majoré `video_with_voice`). */
+      voiceoverScript?: string;
+      /** Langue de la voix (fr / en / ar / …) — défaut = langue du produit. */
+      voiceoverLanguage?: string;
     }
   ) => api.post<{ jobId: string; charge: { amount: number; balanceAfter: number; currency: string } }>(
     `/stores/${storeId}/pages/generate-video`,
+    data
+  ),
+  /**
+   * UGC vidéo — talking-head (Hedra lip-sync) ou lifestyle (Kling scène).
+   * Toujours async (60-180s selon mode). Poll via jobsApi.get comme la
+   * vidéo Seedance standard. Tarif majoré selon `mode` côté backend.
+   */
+  generateUgcVideo: (
+    storeId: string,
+    data: {
+      productId: string;
+      mode: 'talking-head' | 'lifestyle';
+      avatarUrl: string;
+      /** Requis si mode = 'talking-head'. Max 300 chars. */
+      script?: string;
+      /** Requis si mode = 'lifestyle'. Max 300 chars. */
+      scenePrompt?: string;
+      duration?: number;
+      language?: string;
+      country?: string;
+      voice?: string;
+    }
+  ) => api.post<{ jobId: string; charge: { amount: number; balanceAfter: number; currency: string } }>(
+    `/stores/${storeId}/pages/generate-ugc-video`,
+    data
+  ),
+  /**
+   * Suggestions de prompts IA (poster/landing/video) — gratuit, 0 token.
+   * Retourne 3 propositions courtes basées sur le produit courant. Utilisé
+   * dans le Studio pour débloquer les vendeurs devant la textarea vide.
+   */
+  suggestPrompt: (
+    storeId: string,
+    data: { productId: string; kind: 'poster' | 'landing' | 'video' },
+  ) => api.post<{ suggestions: string[]; kind: string }>(
+    `/stores/${storeId}/ai/suggest-prompt`,
     data
   ),
   /**

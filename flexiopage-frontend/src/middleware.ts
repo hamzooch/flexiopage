@@ -59,6 +59,7 @@ const RESERVED_TOP_LEVEL = new Set([
   'brand',
   'uploads',
   'integrations',
+  'avatars',   // bibliothèque UGC (public/avatars/manifest.json)
 ]);
 
 /** Subdomains that are NOT a store — never rewrite their requests. */

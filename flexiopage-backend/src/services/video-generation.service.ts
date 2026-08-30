@@ -15,6 +15,7 @@
  */
 import { falQueueRequest, resolveImageForFal, runLLM } from './fal-landing.service';
 import { persistRemoteVideo } from './storage.service';
+import { addVoiceoverToVideo } from './voiceover.service';
 import { logger } from '../lib/logger';
 
 // Modèle Seedance Lite (i2v) — 5s en 720p pour ~$0.18. La Pro variant
@@ -52,6 +53,15 @@ export interface VideoInput {
    * reste utilisé pour écrire le prompt LLM (ambiance, ton).
    */
   sourceImageUrl?: string;
+  /**
+   * Script de voix-off optionnel. Si présent, on ajoute une piste TTS après
+   * le rendu Seedance (ElevenLabs multilingual v2 muxé par ffmpeg) et le
+   * MP4 final est persisté avec l'audio. Le controller doit avoir déjà
+   * facturé au tarif `video_with_voice` avant d'appeler generateVideo().
+   */
+  voiceoverScript?: string;
+  /** Langue de la voix (fr / en / ar / ...) — ElevenLabs auto-détecte sinon. */
+  voiceoverLanguage?: string;
 }
 
 export interface VideoResult {
@@ -61,6 +71,10 @@ export interface VideoResult {
   durationSeconds: number;
   prompt: string;
   modelId: string;
+  /** True si un voice-over IA a été demandé ET intégré avec succès. False
+   *  si non demandé, ou si demandé mais que le TTS/mux a échoué (dans ce
+   *  cas le vendeur récupère la vidéo muette — refund manuel si besoin). */
+  hasVoiceover?: boolean;
 }
 
 /**
@@ -99,10 +113,37 @@ no preamble.`;
 }
 
 /**
+ * Callback optionnel pour émettre les transitions d'étapes au consommateur
+ * (typiquement `runVideoPipeline` qui persiste en DB pour piloter la
+ * Timeline live côté frontend). Découplé de la DB pour rester testable /
+ * utilisable dans un contexte non-job (script one-shot).
+ */
+export type VideoProgressStep = 'analyze' | 'copy' | 'images' | 'assemble';
+export type VideoProgressCallback = (u: {
+  step: VideoProgressStep;
+  status: 'running' | 'done' | 'failed';
+  progress?: number;
+}) => Promise<void>;
+
+/**
  * Génère la vidéo. Le maxWaitMs est augmenté à 6 min car Seedance peut
  * mettre 60-120s selon la charge fal.
+ *
+ * `onProgress` est appelé à chaque transition d'étape — sert au job
+ * pipeline à mettre à jour `job.steps.*` que le frontend poll pour
+ * afficher la Timeline live. Best-effort : une exception dans le callback
+ * ne fait pas échouer la génération (juste un log).
  */
-export async function generateVideo(input: VideoInput): Promise<VideoResult> {
+export async function generateVideo(
+  input: VideoInput,
+  onProgress?: VideoProgressCallback,
+): Promise<VideoResult> {
+  const emit = async (u: Parameters<VideoProgressCallback>[0]) => {
+    if (!onProgress) return;
+    try { await onProgress(u); } catch (e) {
+      logger.warn({ err: (e as Error).message, step: u.step }, '[video-gen] onProgress cb threw');
+    }
+  };
   // Priorité à la sourceImageUrl (upload custom / URL / scrape produit).
   // Sinon on retombe sur la 1ʳᵉ photo du produit — comportement historique.
   const cover = input.sourceImageUrl?.trim() || input.product.images?.[0];
@@ -121,10 +162,18 @@ export async function generateVideo(input: VideoInput): Promise<VideoResult> {
     ? (input.duration as number)
     : DEFAULT_DURATION;
 
-  // Fal a besoin d'une URL absolue publique — resolveImageForFal upload sur
-  // fal.storage si le chemin est local ou déjà signé.
+  // Étape analyze : préparation de l'image (upload sur fal.storage si local).
+  await emit({ step: 'analyze', status: 'running' });
   const imageUrl = await resolveImageForFal(cover);
+  await emit({ step: 'analyze', status: 'done' });
+
+  // Étape copy : écriture du prompt vidéo par le LLM (ou custom du vendeur).
+  await emit({ step: 'copy', status: 'running' });
   const prompt = await writeVideoPrompt(input, duration);
+  await emit({ step: 'copy', status: 'done' });
+
+  // Étape images : rendu Seedance — LA plus longue (60-120s).
+  await emit({ step: 'images', status: 'running' });
 
   // Rendu plus long → attente plus longue côté fal (facteur ~2× la durée demandée).
   const maxWaitMs = Math.max(6 * 60_000, duration * 30_000);
@@ -154,17 +203,46 @@ export async function generateVideo(input: VideoInput): Promise<VideoResult> {
     throw err;
   }
 
-  // Persist en R2/S3/local pour que l'URL ne dépende plus du TTL fal.media.
-  // Si l'upload échoue (R2 down, timeout), on log mais on retourne l'URL fal
-  // en fallback — le vendeur aura sa vidéo, quitte à ne pas être conservée.
+  // Rendu Seedance terminé — étape assemble (voice-over éventuel + persist).
+  await emit({ step: 'images', status: 'done' });
+  await emit({ step: 'assemble', status: 'running' });
+
+  // Voice-over optionnel : si un script est fourni, on ajoute une piste
+  // TTS + mux ffmpeg AVANT de persister — comme ça on stocke directement
+  // le MP4 final avec audio, une seule URL retournée au frontend.
+  // Si le voice-over échoue (TTS down, ffmpeg crash), on log et on retombe
+  // sur la vidéo muette persistée normalement — la facture est déjà passée,
+  // vaut mieux livrer une vidéo sans voix qu'un échec total.
+  const wantsVoice = !!input.voiceoverScript && input.voiceoverScript.trim().length > 0;
   let videoUrl = falVideoUrl;
-  try {
-    videoUrl = await persistRemoteVideo(falVideoUrl);
-  } catch (persistErr) {
-    logger.warn(
-      { err: (persistErr as Error).message, falVideoUrl },
-      '[video-gen] persist to storage failed — returning fal URL as fallback',
-    );
+  let voiceoverAdded = false;
+
+  if (wantsVoice) {
+    try {
+      videoUrl = await addVoiceoverToVideo(falVideoUrl, {
+        script: input.voiceoverScript!,
+        language: input.voiceoverLanguage || input.language,
+      });
+      voiceoverAdded = true;
+    } catch (voErr) {
+      logger.warn(
+        { err: (voErr as Error).message, falVideoUrl },
+        '[video-gen] voice-over failed — falling back to silent video',
+      );
+    }
+  }
+
+  // Persistance seulement si le voice-over n'a pas déjà pris le relais
+  // (addVoiceoverToVideo persiste lui-même via persistVideoBuffer).
+  if (!voiceoverAdded) {
+    try {
+      videoUrl = await persistRemoteVideo(falVideoUrl);
+    } catch (persistErr) {
+      logger.warn(
+        { err: (persistErr as Error).message, falVideoUrl },
+        '[video-gen] persist to storage failed — returning fal URL as fallback',
+      );
+    }
   }
 
   // Résolution effective — Seedance Lite 720p vertical (portrait) par défaut.
@@ -180,5 +258,6 @@ export async function generateVideo(input: VideoInput): Promise<VideoResult> {
     durationSeconds: duration,
     prompt,
     modelId: VIDEO_MODEL,
+    hasVoiceover: voiceoverAdded,
   };
 }

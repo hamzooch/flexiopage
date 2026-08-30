@@ -1,0 +1,69 @@
+{
+  "$note": "Bibliothèque d'avatars UGC pour Studio Vidéo. URLs pravatar.cc en 512×512 (Kling/Hedra exigent ≥300×300). Portraits stables par imgId. À remplacer plus tard par des avatars custom générés fal-ai flux via un script one-shot.",
+  "avatars": [
+    {
+      "id": "aya",
+      "name": "Aya",
+      "gender": "female",
+      "region": "north-africa",
+      "ageRange": "25-35",
+      "imageUrl": "https://i.pravatar.cc/512?img=44"
+    },
+    {
+      "id": "leila",
+      "name": "Leila",
+      "gender": "female",
+      "region": "middle-east",
+      "ageRange": "30-40",
+      "imageUrl": "https://i.pravatar.cc/512?img=45"
+    },
+    {
+      "id": "amina",
+      "name": "Amina",
+      "gender": "female",
+      "region": "west-africa",
+      "ageRange": "25-35",
+      "imageUrl": "https://i.pravatar.cc/512?img=47"
+    },
+    {
+      "id": "sophia",
+      "name": "Sophia",
+      "gender": "female",
+      "region": "europe",
+      "ageRange": "35-45",
+      "imageUrl": "https://i.pravatar.cc/512?img=48"
+    },
+    {
+      "id": "youssef",
+      "name": "Youssef",
+      "gender": "male",
+      "region": "north-africa",
+      "ageRange": "25-35",
+      "imageUrl": "https://i.pravatar.cc/512?img=51"
+    },
+    {
+      "id": "karim",
+      "name": "Karim",
+      "gender": "male",
+      "region": "middle-east",
+      "ageRange": "30-40",
+      "imageUrl": "https://i.pravatar.cc/512?img=52"
+    },
+    {
+      "id": "moussa",
+      "name": "Moussa",
+      "gender": "male",
+      "region": "west-africa",
+      "ageRange": "30-40",
+      "imageUrl": "https://i.pravatar.cc/512?img=53"
+    },
+    {
+      "id": "thomas",
+      "name": "Thomas",
+      "gender": "male",
+      "region": "europe",
+      "ageRange": "35-45",
+      "imageUrl": "https://i.pravatar.cc/512?img=57"
+    }
+  ]
+}

@@ -4,7 +4,7 @@ import * as pageService from '../services/page.service';
 import * as productService from '../services/product.service';
 import { LANDING_TEMPLATES } from '../data/landing-templates';
 import { getSectionsFromTemplate, generateLandingWithAI } from '../services/ai-landing.service';
-import { generateLandingFromProduct, generateLandingFromImage } from '../services/fal-landing.service';
+import { generateLandingFromProduct, generateLandingFromImage, runLLM } from '../services/fal-landing.service';
 import { generatePoster, type PosterTheme, type PosterFormat } from '../services/poster.service';
 import { generateLandingImage } from '../services/landing-image.service';
 import { extractProductFromUrl, ImportError } from '../services/product-import.service';
@@ -837,9 +837,24 @@ export async function generateVideoPage(req: AuthRequest, res: Response): Promis
     /** Photo source alternative (upload custom / URL / scrape). Si fournie,
      *  remplace la 1ʳᵉ image du produit dans Seedance. */
     sourceImageUrl?: string;
+    /** Script de voix-off optionnel. Si présent + non vide, on facture au
+     *  tarif `video_with_voice` et le pipeline ajoute une piste TTS muxée. */
+    voiceoverScript?: string;
+    /** Langue de la voix — défaut = langue du produit / boutique. */
+    voiceoverLanguage?: string;
   };
   if (!body.productId) {
     res.status(400).json({ error: 'productId is required' });
+    return;
+  }
+  // Normalisation + validation du voice-over. Trim vide → traité comme absent.
+  const voiceoverScript = (body.voiceoverScript || '').trim();
+  const wantsVoice = voiceoverScript.length > 0;
+  if (wantsVoice && voiceoverScript.length > 300) {
+    res.status(400).json({
+      error: 'voiceover_script_too_long',
+      message: 'Le script du voice-over doit faire au maximum 300 caractères.',
+    });
     return;
   }
   const product = await Product.findOne({ _id: body.productId, storeId: store._id }).lean();
@@ -866,7 +881,9 @@ export async function generateVideoPage(req: AuthRequest, res: Response): Promis
     });
     return;
   }
-  const charge = await chargeOrFail(req, res, 'video');
+  // Tarif majoré si voice-over demandé (Settings.aiPricing.prices.video_with_voice).
+  // Facturé AVANT la création du job comme pour toutes les générations IA.
+  const charge = await chargeOrFail(req, res, wantsVoice ? 'video_with_voice' : 'video');
   if (!charge) return;
   const job = await jobService.createJob({
     storeId: (store._id as { toString(): string }).toString(),
@@ -879,6 +896,7 @@ export async function generateVideoPage(req: AuthRequest, res: Response): Promis
       duration: body.duration,
       language: body.language,
       sourceImageUrl,
+      hasVoiceover: wantsVoice,
       chargeAmount: charge.amount,
     },
   });
@@ -897,6 +915,8 @@ export async function generateVideoPage(req: AuthRequest, res: Response): Promis
     customPrompt: body.customPrompt,
     duration: body.duration,
     sourceImageUrl,
+    voiceoverScript: wantsVoice ? voiceoverScript : undefined,
+    voiceoverLanguage: body.voiceoverLanguage || body.language || store.settings?.language,
   });
   res.status(202).json({ jobId: job._id.toString(), charge });
 }
@@ -938,4 +958,198 @@ export async function scrapeImageForVideo(req: AuthRequest, res: Response): Prom
     logger.error({ err, url: raw }, '[scrape-image] unexpected error');
     res.status(500).json({ error: 'scrape_failed', message: 'Impossible de lire cette page.' });
   }
+}
+
+/**
+ * UGC vidéo (personnage IA parlant ou en scène). Deux modes distincts :
+ *  - `talking-head`  : Hedra Character-1 (avatar + audio TTS lip-sync)
+ *  - `lifestyle`     : Kling v2 (avatar + prompt de scène, muet)
+ *
+ * Facturation : tarif spécifique par mode (video_ugc_talking / video_ugc_lifestyle)
+ * facturé AVANT création du job. Retour = jobId pour polling comme pour
+ * la vidéo Seedance normale.
+ */
+export async function generateUgcVideoPage(req: AuthRequest, res: Response): Promise<void> {
+  const store = req.store!;
+  const body = req.body as {
+    productId?: string;
+    mode?: 'talking-head' | 'lifestyle';
+    avatarUrl?: string;
+    script?: string;
+    scenePrompt?: string;
+    duration?: number;
+    language?: string;
+    country?: string;
+    voice?: string;
+  };
+
+  if (!body.productId) {
+    res.status(400).json({ error: 'productId is required' });
+    return;
+  }
+  if (body.mode !== 'talking-head' && body.mode !== 'lifestyle') {
+    res.status(400).json({ error: 'invalid_mode', message: 'mode doit être "talking-head" ou "lifestyle".' });
+    return;
+  }
+  if (!body.avatarUrl || !body.avatarUrl.trim()) {
+    res.status(400).json({ error: 'avatarUrl is required' });
+    return;
+  }
+  // Validation stricte de l'avatar : doit être une URL http(s) — les
+  // vendeurs ne peuvent envoyer que des URLs de notre bibliothèque
+  // ou des uploads validés (pas de chemins locaux arbitraires).
+  const avatarUrl = body.avatarUrl.trim();
+  if (!validator.isURL(avatarUrl, { protocols: ['http', 'https'], require_protocol: true })) {
+    res.status(400).json({ error: 'invalid_avatar_url', message: 'URL avatar invalide.' });
+    return;
+  }
+  // Validation payload spécifique au mode.
+  const script = (body.script || '').trim();
+  const scenePrompt = (body.scenePrompt || '').trim();
+  if (body.mode === 'talking-head') {
+    if (!script) {
+      res.status(400).json({ error: 'script_required', message: 'Le script est obligatoire pour talking-head.' });
+      return;
+    }
+    if (script.length > 300) {
+      res.status(400).json({ error: 'script_too_long', message: 'Script max 300 caractères.' });
+      return;
+    }
+  } else {
+    if (!scenePrompt) {
+      res.status(400).json({ error: 'scenePrompt_required', message: 'Le prompt de scène est obligatoire pour lifestyle.' });
+      return;
+    }
+    if (scenePrompt.length > 300) {
+      res.status(400).json({ error: 'scenePrompt_too_long', message: 'Prompt max 300 caractères.' });
+      return;
+    }
+  }
+
+  const product = await Product.findOne({ _id: body.productId, storeId: store._id }).lean();
+  if (!product) {
+    res.status(404).json({ error: 'Product not found in this store' });
+    return;
+  }
+
+  const kind = body.mode === 'talking-head' ? 'video_ugc_talking' : 'video_ugc_lifestyle';
+  const charge = await chargeOrFail(req, res, kind);
+  if (!charge) return;
+
+  const job = await jobService.createJob({
+    storeId: (store._id as { toString(): string }).toString(),
+    ownerId: req.user!._id.toString(),
+    // On reste sur kind='video' côté job pour réutiliser l'historique
+    // AiGeneration + la Timeline live (mêmes 4 steps). Le mode UGC est
+    // stocké dans input pour debug/analytics.
+    kind: 'video',
+    input: {
+      productId: body.productId,
+      ugcMode: body.mode,
+      avatarUrl,
+      duration: body.duration,
+      language: body.language,
+      chargeAmount: charge.amount,
+    },
+  });
+
+  void jobService.runUgcVideoPipeline(job._id.toString(), {
+    storeName: store.name,
+    product: {
+      name: product.name,
+      description: product.description,
+      images: product.images,
+      price: product.price,
+      category: product.tags?.[0],
+    },
+    language: body.language || store.settings?.language,
+    country: body.country || store.settings?.country,
+    avatarUrl,
+    mode: body.mode,
+    script: body.mode === 'talking-head' ? script : undefined,
+    scenePrompt: body.mode === 'lifestyle' ? scenePrompt : undefined,
+    duration: body.duration,
+    voice: body.voice,
+  });
+
+  res.status(202).json({ jobId: job._id.toString(), charge });
+}
+
+/**
+ * Génère 3 suggestions de prompts contextualisées au produit — gratuit
+ * (0 token débité), pensé pour débloquer les vendeurs coincés devant la
+ * textarea vide dans le Studio (poster / landing / video).
+ *
+ * Le kind cible change le ton :
+ *  - `poster`  → prompts visuel produit statique
+ *  - `landing` → prompts orientés hero visual / ambiance page produit
+ *  - `video`   → prompts cinématiques (mouvement, angle caméra)
+ *
+ * Retourne toujours 3 items, chaîne courte (~10 mots). Fallback local si
+ * le LLM échoue — la fonctionnalité doit rester utile même en cas de
+ * fal-ai down.
+ */
+export async function suggestPrompt(req: AuthRequest, res: Response): Promise<void> {
+  const store = req.store!;
+  const body = req.body as { productId?: string; kind?: 'poster' | 'landing' | 'video' };
+  if (!body.productId) {
+    res.status(400).json({ error: 'productId is required' });
+    return;
+  }
+  const kind = body.kind === 'landing' || body.kind === 'video' ? body.kind : 'poster';
+  const product = await Product.findOne({ _id: body.productId, storeId: store._id }).lean();
+  if (!product) {
+    res.status(404).json({ error: 'Product not found in this store' });
+    return;
+  }
+
+  const desc = (product.description || '').slice(0, 300);
+  const category = product.tags?.[0] || 'produit';
+  const brief =
+    kind === 'video'
+      ? `Suggest 3 short cinematic video prompts (max 15 words each) for an AI image-to-video generator, showcasing the product "${product.name}"${category ? ` (${category})` : ''}. Focus on camera angle, subtle motion, lighting, mood. NO people, NO text overlay.`
+      : kind === 'landing'
+      ? `Suggest 3 short hero-visual prompts (max 15 words each) for an AI landing page image generator, showcasing the product "${product.name}"${category ? ` (${category})` : ''}. Focus on ambiance, lifestyle context, mood.`
+      : `Suggest 3 short poster prompts (max 15 words each) for an AI poster generator, showcasing the product "${product.name}"${category ? ` (${category})` : ''}. Focus on composition, color palette, mood.`;
+
+  const fallback: string[] =
+    kind === 'video'
+      ? [
+          `Rotation lente 360° sur ${product.name}, lumière studio douce, fond neutre`,
+          `Dolly-in cinématique sur ${product.name}, ambiance premium, contre-jour chaud`,
+          `Plan macro sur les détails de ${product.name}, focus doux, mood éditorial`,
+        ]
+      : kind === 'landing'
+      ? [
+          `${product.name} en scène lifestyle, lumière naturelle, ambiance minimaliste`,
+          `${product.name} en héro visuel, palette pastel, contexte urbain moderne`,
+          `${product.name} en gros plan éditorial, texture premium, fond dégradé`,
+        ]
+      : [
+          `Composition centrée sur ${product.name}, palette chaude, style éditorial`,
+          `${product.name} en flat-lay géométrique, palette contrastée, mood pop`,
+          `Vue 3/4 de ${product.name}, dégradé pastel, style poster minimaliste`,
+        ];
+
+  const prompt = `${brief}
+
+Product name: ${product.name}
+${desc ? `Description: ${desc}` : ''}
+
+Output EXACTLY 3 lines, one prompt per line, no numbering, no quotes, no preamble. Each prompt in French (the seller's language).`;
+
+  let suggestions = fallback;
+  try {
+    const raw = (await runLLM(prompt)).trim();
+    const parsed = raw
+      .split(/\n+/)
+      .map((line) => line.replace(/^["'\-\d.\s)]+|["'\s]+$/g, '').trim())
+      .filter((line) => line.length > 5 && line.length < 200)
+      .slice(0, 3);
+    if (parsed.length === 3) suggestions = parsed;
+  } catch (err) {
+    logger.warn({ err: (err as Error).message }, '[suggest-prompt] LLM failed, using fallback');
+  }
+
+  res.json({ suggestions, kind });
 }

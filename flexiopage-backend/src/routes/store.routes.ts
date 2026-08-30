@@ -87,6 +87,13 @@ router.post('/:storeId/pages/generate-from-url/async', pageController.generateFr
 router.post('/:storeId/pages/generate-poster', aiGenerationLimiter, pageController.generatePosterPage);
 router.post('/:storeId/pages/generate-landing-image', aiGenerationLimiter, pageController.generateLandingImagePage);
 router.post('/:storeId/pages/generate-video', aiGenerationLimiter, pageController.generateVideoPage);
+// UGC vidéo avec personnage (talking-head Hedra OU lifestyle Kling) —
+// même rate-limit, tarif majoré selon le mode choisi côté controller.
+router.post('/:storeId/pages/generate-ugc-video', aiGenerationLimiter, pageController.generateUgcVideoPage);
+// Suggestions de prompts IA — gratuit (0 token), retourne 3 propositions
+// courtes basées sur le produit. Consommé par les 3 tabs du Studio pour
+// débloquer les vendeurs qui bloquent devant la textarea vide.
+router.post('/:storeId/ai/suggest-prompt', pageController.suggestPrompt);
 // Scrape l'image principale d'une page web (og:image + fallbacks) —
 // utilisé par le Studio Vidéo pour animer une image issue d'un lien produit.
 router.post('/:storeId/ai/scrape-image', pageController.scrapeImageForVideo);

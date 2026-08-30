@@ -403,6 +403,33 @@ export async function persistRemoteImage(
  * Retourne l'URL permanente. Si l'URL entrante est déjà stable
  * (data:, chemin local, ou base API interne), retournée telle quelle.
  */
+/**
+ * Persiste un buffer MP4 (ex: sortie ffmpeg d'un mux vidéo + voix) dans le
+ * même stockage que `persistRemoteVideo` pour garantir un domaine cohérent
+ * côté frontend. Contrairement à `uploadFile`, on court-circuite `sharp`
+ * (qui casserait sur un binaire vidéo). Priorité R2 > S3 > local, comme
+ * pour les vidéos IA.
+ */
+export async function persistVideoBuffer(
+  buffer: Buffer,
+  folder = 'ai-videos',
+  mimeType = 'video/mp4',
+  ext = '.mp4',
+): Promise<string> {
+  const filename = `${Date.now()}-${Math.random().toString(36).slice(2, 10)}${ext}`;
+  const key = `${folder}/${filename}`;
+  if (isR2Configured() && config.r2PublicBaseUrl) {
+    const result = await uploadR2(key, buffer, mimeType);
+    return result.url;
+  }
+  if (config.driver === 's3' && config.s3Bucket) {
+    const result = await uploadS3(key, buffer, mimeType);
+    return result.url;
+  }
+  const result = await uploadLocal(key, buffer, mimeType);
+  return result.url;
+}
+
 export async function persistRemoteVideo(
   remoteUrl: string,
   folder = 'ai-videos',
