@@ -405,6 +405,16 @@ export interface VideoResult {
   durationSeconds: number;
   prompt: string;
   modelId: string;
+  /** True si un voice-over IA a été demandé ET intégré avec succès. */
+  hasVoiceover?: boolean;
+  /** Mode UGC si la vidéo vient de generateUgcVideo (talking-head / lifestyle). */
+  mode?: 'talking-head' | 'lifestyle';
+  /** URL de l'avatar utilisé — présent uniquement pour les vidéos UGC. */
+  avatarUrl?: string;
+  /** Script de voix-off UGC (talking-head uniquement). */
+  script?: string;
+  /** Prompt de scène UGC (lifestyle uniquement). */
+  scenePrompt?: string;
 }
 
 /**
