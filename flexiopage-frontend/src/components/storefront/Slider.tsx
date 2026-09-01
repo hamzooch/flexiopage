@@ -158,6 +158,7 @@ export function StorefrontSlider({ config, primary = '#0ea5e9', primaryFg = '#ff
                   ? 'hidden md:block object-cover'
                   : 'object-contain sm:object-cover'
               }
+              unoptimized={mediaUrl(s.image)?.includes('cloudinary') ?? false}
             />
             {s.imageMobile?.trim() && (
               <Image
@@ -169,6 +170,7 @@ export function StorefrontSlider({ config, primary = '#0ea5e9', primaryFg = '#ff
                 placeholder="blur"
                 blurDataURL={IMAGE_BLUR_DATA_URL}
                 className="block md:hidden object-cover"
+                unoptimized={mediaUrl(s.imageMobile)?.includes('cloudinary') ?? false}
               />
             )}
             <div className={cn('absolute inset-0', overlay)} />

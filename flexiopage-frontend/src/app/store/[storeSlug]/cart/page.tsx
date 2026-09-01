@@ -161,6 +161,7 @@ export default function CartPage() {
                         placeholder="blur"
                         blurDataURL={IMAGE_BLUR_DATA_URL}
                         className="object-cover"
+                        unoptimized={mediaUrl(it.image)?.includes('cloudinary') ?? false}
                       />
                     ) : (
                       <div className="grid h-full place-items-center text-[10px] text-muted-foreground">

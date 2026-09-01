@@ -325,6 +325,7 @@ export default function CartCheckoutPage() {
                         placeholder="blur"
                         blurDataURL={IMAGE_BLUR_DATA_URL}
                         className="object-cover"
+                        unoptimized={mediaUrl(it.image)?.includes('cloudinary') ?? false}
                       />
                     )}
                     <span className="absolute -right-1 -top-1 grid h-4 min-w-4 place-items-center rounded-full bg-foreground px-1 text-[9px] font-bold text-background">

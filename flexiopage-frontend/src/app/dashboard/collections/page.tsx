@@ -237,6 +237,7 @@ function CollectionCard({
               fill
               sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 33vw"
               className="object-cover transition-transform duration-500 group-hover:scale-105"
+              unoptimized={mediaUrl(c.image)?.includes('cloudinary') ?? false}
             />
           ) : (
             <div className="grid h-full w-full place-items-center">

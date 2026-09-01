@@ -388,6 +388,7 @@ export default function CheckoutPage() {
                       placeholder="blur"
                       blurDataURL={IMAGE_BLUR_DATA_URL}
                       className="h-16 w-16 shrink-0 rounded-xl border border-border/60 object-cover"
+                      unoptimized={mediaUrl(product.images[0])?.includes('cloudinary') ?? false}
                     />
                   ) : (
                     <div className="grid h-16 w-16 shrink-0 place-items-center rounded-xl bg-muted text-2xl">

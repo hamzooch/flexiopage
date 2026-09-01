@@ -316,6 +316,7 @@ function ProductCard({
               placeholder="blur"
               blurDataURL={IMAGE_BLUR_DATA_URL}
               className="object-cover transition-transform duration-700 group-hover:scale-105"
+              unoptimized={coverUrl?.includes('cloudinary') ?? false}
             />
           ) : (
             <div className="grid h-full w-full place-items-center text-white/20">

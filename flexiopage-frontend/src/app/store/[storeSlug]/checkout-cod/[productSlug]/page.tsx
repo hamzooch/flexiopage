@@ -456,6 +456,7 @@ export default function CodCheckoutPage() {
                         placeholder="blur"
                         blurDataURL={IMAGE_BLUR_DATA_URL}
                         className="h-20 w-20 shrink-0 border object-cover"
+                        unoptimized={mediaUrl(product.images[0])?.includes('cloudinary') ?? false}
                         style={{ borderColor: theme.border, borderRadius: radius }}
                       />
                     ) : (

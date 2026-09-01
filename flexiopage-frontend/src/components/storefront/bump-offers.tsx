@@ -93,6 +93,7 @@ export function BumpOffers({ offers, selectedIds, onToggle, currency, theme, rad
                     placeholder="blur"
                     blurDataURL={IMAGE_BLUR_DATA_URL}
                     className="object-cover"
+                    unoptimized={mediaUrl(o.image)?.includes('cloudinary') ?? false}
                   />
                 </div>
               )}

@@ -88,6 +88,7 @@ export function HeroMedia({
                 ? 'hidden md:block object-cover'
                 : 'object-contain sm:object-cover'
             }
+            unoptimized={mediaUrl(imageUrl)?.includes('cloudinary') ?? false}
           />
         )}
         {/* Image mobile spécifique (portrait/carré) */}
@@ -101,6 +102,7 @@ export function HeroMedia({
             placeholder="blur"
             blurDataURL={IMAGE_BLUR_DATA_URL}
             className="block md:hidden object-cover"
+            unoptimized={mediaUrl(imageUrlMobile!)?.includes('cloudinary') ?? false}
           />
         )}
         <div className="absolute inset-0" style={{ background: overlayLayer }} aria-hidden />
@@ -202,6 +204,7 @@ export function HeroMedia({
           blurDataURL={IMAGE_BLUR_DATA_URL}
           // Mobile: contain → image entière visible. Desktop: cover → fond plein.
           className="object-contain sm:object-cover"
+          unoptimized={mediaUrl(imageUrl)?.includes('cloudinary') ?? false}
         />
         <div className="absolute inset-0" style={{ background: overlayLayer }} aria-hidden />
       </>
