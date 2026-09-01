@@ -164,6 +164,7 @@ export function ProductGallery({
                   placeholder="blur"
                   blurDataURL={IMAGE_BLUR_DATA_URL}
                   className="object-cover"
+                  unoptimized={mediaUrl(img)?.includes('cloudinary') ?? false}
                 />
               ) : (
                 <div className="grid h-full place-items-center" style={{ color: theme.muted }}>
@@ -242,6 +243,7 @@ export function ProductGallery({
               placeholder="blur"
               blurDataURL={IMAGE_BLUR_DATA_URL}
               className="object-cover transition-transform duration-300 group-hover:scale-[1.02]"
+              unoptimized={mediaUrl(activeImage)?.includes('cloudinary') ?? false}
             />
           ) : (
             <div className="grid h-full place-items-center" style={{ color: theme.muted }}>
@@ -311,6 +313,7 @@ export function ProductGallery({
                     placeholder="blur"
                     blurDataURL={IMAGE_BLUR_DATA_URL}
                     className="object-cover"
+                    unoptimized={mediaUrl(img)?.includes('cloudinary') ?? false}
                   />
                 </button>
               );
@@ -369,6 +372,7 @@ export function ProductGallery({
               sizes="90vw"
               className="object-contain"
               priority
+              unoptimized={mediaUrl(activeImage)?.includes('cloudinary') ?? false}
             />
           </div>
 
