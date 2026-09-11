@@ -1028,6 +1028,63 @@ function IdentityEditor({ block, store, setStore, markDirty }: EditorCtx) {
     <div className="flex flex-1 flex-col">
       <EditorHeader title={block.label} hint={block.hint} />
       <div className="space-y-5 p-5">
+        <label
+          className={`flex cursor-pointer items-center justify-between gap-4 rounded-xl border p-4 transition-colors ${
+            store.isPublished
+              ? 'border-emerald-300 bg-emerald-50 hover:bg-emerald-100/70'
+              : 'border-amber-300 bg-amber-50 hover:bg-amber-100/70'
+          }`}
+        >
+          <div className="flex items-center gap-3">
+            <div
+              className={`grid h-10 w-10 shrink-0 place-items-center rounded-lg text-white ${
+                store.isPublished ? 'bg-emerald-500' : 'bg-amber-500'
+              }`}
+            >
+              {store.isPublished ? <Eye className="h-5 w-5" /> : <EyeOff className="h-5 w-5" />}
+            </div>
+            <div>
+              <div
+                className={`text-sm font-semibold ${
+                  store.isPublished ? 'text-emerald-900' : 'text-amber-900'
+                }`}
+              >
+                {store.isPublished ? 'Boutique en ligne' : 'Boutique en brouillon'}
+              </div>
+              <div
+                className={`text-xs ${
+                  store.isPublished ? 'text-emerald-700' : 'text-amber-700'
+                }`}
+              >
+                {store.isPublished
+                  ? 'Visible par tes clients sur ton domaine.'
+                  : 'Non visible par les clients — active pour publier.'}
+              </div>
+            </div>
+          </div>
+          <div className="relative shrink-0">
+            <input
+              type="checkbox"
+              checked={!!store.isPublished}
+              onChange={(e) => {
+                setStore((s) => (s ? { ...s, isPublished: e.target.checked } : s));
+                markDirty('isPublished');
+              }}
+              className="peer sr-only"
+              aria-label="Publier la boutique"
+            />
+            <div
+              className={`h-7 w-12 rounded-full transition-colors ${
+                store.isPublished ? 'bg-emerald-500' : 'bg-amber-400'
+              }`}
+            />
+            <div
+              className={`pointer-events-none absolute top-1 h-5 w-5 rounded-full bg-white shadow-md transition-all ${
+                store.isPublished ? 'left-6' : 'left-1'
+              }`}
+            />
+          </div>
+        </label>
         <Field
           label="Nom de la boutique"
           hint="Affiché en haut du storefront et dans les emails."
@@ -1052,27 +1109,6 @@ function IdentityEditor({ block, store, setStore, markDirty }: EditorCtx) {
             className="min-h-[80px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
           />
         </Field>
-        <Field label="Statut" hint="Une boutique en brouillon n'est pas accessible publiquement.">
-          <label className="flex items-center gap-2.5 rounded-lg border border-border/60 bg-muted/30 px-3 py-2.5">
-            <input
-              type="checkbox"
-              checked={!!store.isPublished}
-              onChange={(e) => {
-                setStore((s) => (s ? { ...s, isPublished: e.target.checked } : s));
-                markDirty('isPublished');
-              }}
-              className="h-4 w-4 rounded border-input"
-            />
-            <span className="text-sm">
-              {store.isPublished ? (
-                <span className="inline-flex items-center gap-1.5 text-emerald-700"><Eye className="h-3.5 w-3.5" /> Boutique en ligne</span>
-              ) : (
-                <span className="inline-flex items-center gap-1.5 text-amber-700"><Eye className="h-3.5 w-3.5" /> Boutique en brouillon</span>
-              )}
-            </span>
-          </label>
-        </Field>
-
         <Field label="Pays cible" hint="Alimente la génération AI et pré-remplit devise/langue.">
           <select
             value={country}

@@ -399,13 +399,19 @@ function Header() {
                 {t('landing.nav.login')}
               </Button>
             </Link>
-            <Link href="/register">
+            <Link href="/register" className="relative">
+              <motion.span
+                aria-hidden
+                className="pointer-events-none absolute -inset-1 rounded-lg bg-gradient-to-r from-amber-400 to-orange-500 blur-md"
+                animate={{ opacity: [0.25, 0.6, 0.25] }}
+                transition={{ duration: 2.4, repeat: Infinity, ease: 'easeInOut' }}
+              />
               <Button
-                size="sm"
-                className="gap-1.5 bg-gradient-to-r from-amber-500 to-orange-600 shadow-md shadow-orange-500/20 transition-all hover:from-amber-600 hover:to-orange-700 hover:shadow-orange-500/40"
+                className="relative gap-2 bg-gradient-to-r from-amber-500 to-orange-600 font-semibold shadow-lg shadow-orange-500/40 transition-all hover:scale-[1.03] hover:from-amber-600 hover:to-orange-700 hover:shadow-orange-500/60"
               >
+                <Sparkles className="h-4 w-4" />
                 {t('landing.nav.createStore')}
-                <DirArrow className="h-3.5 w-3.5" />
+                <DirArrow className="h-4 w-4" />
               </Button>
             </Link>
           </div>
