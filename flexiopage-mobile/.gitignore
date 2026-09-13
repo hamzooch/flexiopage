@@ -25,3 +25,8 @@ npm-debug.*
 # (config client, non secret) peut rester versionné.
 *firebase-adminsdk*.json
 service-account*.json
+
+# Store submit secrets (Google Play service account, Apple App Store key)
+secrets/
+*.p8
+AuthKey_*.p8
