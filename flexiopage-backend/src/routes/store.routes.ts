@@ -108,6 +108,7 @@ router.delete('/:storeId/pages/:pageId', pageController.deletePage);
 router.get('/:storeId/orders', orderController.listOrders);
 // Doit être défini AVANT /orders/:orderId pour ne pas être capté par le param.
 router.get('/:storeId/orders/todo', orderController.listOrdersTodo);
+router.get('/:storeId/orders/new-count', orderController.countNewOrders);
 router.post('/:storeId/orders', orderController.createOrder);
 router.get('/:storeId/orders/:orderId', orderController.getOrder);
 router.patch('/:storeId/orders/:orderId/payment', orderController.updateOrderPaymentStatus);

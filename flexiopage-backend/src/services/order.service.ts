@@ -296,6 +296,15 @@ export async function getOrdersByStore(
   return { orders, total };
 }
 
+/** Commandes réelles créées après `since` — hors paniers abandonnés auto. */
+export async function countNewOrders(storeId: string, since: Date): Promise<number> {
+  return Order.countDocuments({
+    storeId,
+    createdAt: { $gt: since },
+    paymentStatus: { $ne: 'abandoned' },
+  });
+}
+
 export async function getOrderById(orderId: string, storeId: string): Promise<IOrder | null> {
   return Order.findOne({ _id: orderId, storeId })
     .populate('customerId')

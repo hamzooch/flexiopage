@@ -108,6 +108,19 @@ export async function listOrdersTodo(req: AuthRequest, res: Response): Promise<v
   });
 }
 
+/** GET /stores/:storeId/orders/new-count?since=<ISO> */
+export async function countNewOrders(req: AuthRequest, res: Response): Promise<void> {
+  const store = req.store!;
+  const sinceRaw = typeof req.query.since === 'string' ? req.query.since : '';
+  const since = sinceRaw ? new Date(sinceRaw) : null;
+  if (!since || Number.isNaN(since.getTime())) {
+    res.status(400).json({ error: 'since (ISO date) is required' });
+    return;
+  }
+  const count = await orderService.countNewOrders(store._id.toString(), since);
+  res.json({ count });
+}
+
 export async function listOrders(req: AuthRequest, res: Response): Promise<void> {
   const store = req.store!;
   const limit = Math.min(parseInt(req.query.limit as string, 10) || 50, 100);

@@ -1911,6 +1911,9 @@ export const storesApi = {
     },
   ) =>
     api.get<{ orders: unknown[]; total: number; limit: number; skip: number }>(`/stores/${storeId}/orders`, { params }),
+  /** Nouvelles commandes depuis `since` (ISO) — badge sidebar. */
+  countNewOrders: (storeId: string, since: string) =>
+    api.get<{ count: number }>(`/stores/${storeId}/orders/new-count`, { params: { since } }),
   /**
    * Todo list agent de confirmation : callbacks du jour (avec overdue) +
    * no_answer des 24h. Utilisé par le widget dashboard home pour orienter

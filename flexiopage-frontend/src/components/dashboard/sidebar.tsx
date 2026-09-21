@@ -44,6 +44,7 @@ import { useStoreStore } from '@/stores/store-store';
 import { BrandLogo } from '@/components/brand-logo';
 import { useT, type TKey } from '@/lib/i18n';
 import { useInstalledApps } from '@/lib/installed-apps';
+import { markOrdersSeen, useNewOrdersCount } from '@/hooks/use-new-orders-count';
 
 interface NavItem {
   href: string;
@@ -150,9 +151,8 @@ export function Sidebar({ mobileOpen = false, onMobileClose }: Props) {
   const user = liveUser ?? (mounted ? readPersistedUser() : null);
   const currentStoreId = useStoreStore((s) => s.currentStoreId);
   const { t } = useT();
-  // Apps installées pour la boutique active — affichées comme sous-items
-  // sous l'entrée principale "Applications" (logos en mini gradient).
   const installedApps = useInstalledApps(currentStoreId);
+  const newOrdersCount = useNewOrdersCount(currentStoreId);
 
   // On gate l'affichage de la carte vendeur sur la PRÉSENCE de `user` plutôt
   // que sur un flag d'hydratation persist : ce dernier pouvait rester bloqué
@@ -322,7 +322,12 @@ export function Sidebar({ mobileOpen = false, onMobileClose }: Props) {
                     >
                       <Link
                         href={item.href}
-                        onClick={onMobileClose}
+                        onClick={() => {
+                          if (item.href === '/dashboard/orders' && currentStoreId) {
+                            markOrdersSeen(currentStoreId);
+                          }
+                          onMobileClose?.();
+                        }}
                         className={cn(
                           'group relative flex items-center gap-3 rounded-xl px-3 py-2.5 text-[15px] font-medium transition-all duration-200',
                           isActive
@@ -343,6 +348,14 @@ export function Sidebar({ mobileOpen = false, onMobileClose }: Props) {
                           )}
                         />
                         <span className="truncate">{t(item.labelKey)}</span>
+                        {item.href === '/dashboard/orders' && newOrdersCount > 0 && (
+                          <span
+                            className="ms-auto min-w-[18px] rounded-full bg-primary px-1.5 py-0.5 text-center text-[10px] font-bold leading-none text-white"
+                            aria-label={`${newOrdersCount} nouvelle${newOrdersCount > 1 ? 's' : ''} commande${newOrdersCount > 1 ? 's' : ''}`}
+                          >
+                            {newOrdersCount > 99 ? '99+' : newOrdersCount}
+                          </span>
+                        )}
                         {showInstalled && (
                           <span className="ms-auto rounded-full bg-emerald-500/15 px-1.5 py-0.5 text-[9px] font-semibold text-emerald-300">
                             {installedApps.length}
