@@ -21,6 +21,7 @@ import { ThemePreviewGrid } from '@/components/dashboard/theme-preview-card';
 import { useAuthStore } from '@/stores/auth-store';
 import { isStaff } from '@/lib/is-staff';
 import { cn } from '@/lib/utils';
+import { timezoneForCountry, STORE_TIMEZONES, timezoneSelectGroups } from '@/lib/store-timezone';
 
 type StoreType = 'physical' | 'digital';
 
@@ -198,6 +199,7 @@ export function CreateStoreWizard({ onCreated, triggerLabel = 'Créer une boutiq
   const [newLanguage, setNewLanguage] = useState('');
   const [newLanguageTouched, setNewLanguageTouched] = useState(false);
   const [newCurrency, setNewCurrency] = useState('USD');
+  const [newTimezone, setNewTimezone] = useState('UTC');
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState('');
 
@@ -211,6 +213,7 @@ export function CreateStoreWizard({ onCreated, triggerLabel = 'Créer une boutiq
     setNewLanguage('');
     setNewLanguageTouched(false);
     setNewCurrency('USD');
+    setNewTimezone('UTC');
     setError('');
   }
 
@@ -240,6 +243,7 @@ export function CreateStoreWizard({ onCreated, triggerLabel = 'Créer une boutiq
         country: newCountry || undefined,
         language: newLanguage || undefined,
         currency: newCurrency || undefined,
+        timezone: newTimezone || undefined,
       });
       const newStore = (res.data as { store?: { _id?: string; slug?: string } }).store;
       const newId = newStore?._id;
@@ -449,6 +453,7 @@ export function CreateStoreWizard({ onCreated, triggerLabel = 'Créer une boutiq
                       const match = STORE_COUNTRIES.find((c) => c.code === v);
                       if (match) {
                         setNewCurrency(match.currency);
+                        setNewTimezone(timezoneForCountry(v));
                         if (match.arab && !newLanguageTouched && newLanguage !== 'ar') {
                           setNewLanguage('ar');
                         }
@@ -501,6 +506,26 @@ export function CreateStoreWizard({ onCreated, triggerLabel = 'Créer une boutiq
                       </option>
                     ))}
                   </select>
+                </div>
+                <div className="space-y-1.5 sm:col-span-2">
+                  <Label htmlFor="store-tz" className="text-xs">Fuseau horaire du dashboard</Label>
+                  <select
+                    id="store-tz"
+                    value={newTimezone}
+                    onChange={(e) => setNewTimezone(e.target.value)}
+                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                  >
+                    {timezoneSelectGroups().map((group) => (
+                      <optgroup key={group} label={group}>
+                        {STORE_TIMEZONES.filter((z) => z.group === group).map((z) => (
+                          <option key={z.id} value={z.id}>{z.label}</option>
+                        ))}
+                      </optgroup>
+                    ))}
+                  </select>
+                  <p className="text-[11px] text-muted-foreground">
+                    « Aujourd&apos;hui » sur le dashboard suit ce fuseau, pas UTC.
+                  </p>
                 </div>
               </div>
               {newCountry && STORE_COUNTRIES.find((c) => c.code === newCountry)?.arab && newLanguage === 'ar' && (

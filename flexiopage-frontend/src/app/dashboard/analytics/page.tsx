@@ -20,7 +20,7 @@ import {
 } from 'lucide-react';
 import { storesApi } from '@/lib/api';
 import { useScopedStoreId } from '@/lib/use-scoped-store';
-import { formatCurrency, cn } from '@/lib/utils';
+import { formatCurrency, cn, formatYmdLabel } from '@/lib/utils';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { KpiCard } from '@/components/charts/KpiCard';
 import { RangeSwitcher } from '@/components/charts/RangeSwitcher';
@@ -38,9 +38,15 @@ interface StoreType {
 }
 
 function toCsv(data: StoreAnalyticsRich): string {
-  const header = ['date', 'revenue', 'orders', 'paid'].join(',');
-  const rows = data.timeseries.map((p) => [p.date, p.revenue, p.orders, p.paid].join(','));
+  const header = ['date', 'sales', 'revenue', 'orders', 'paid'].join(',');
+  const rows = data.timeseries.map((p) => [p.date, p.sales, p.revenue, p.orders, p.paid].join(','));
   return [header, ...rows].join('\n');
+}
+
+function windowLabel(data: StoreAnalyticsRich): string {
+  const from = data.window.fromYmd || data.window.from;
+  const to = data.window.toYmd || data.window.to;
+  return `${formatYmdLabel(from.slice(0, 10), { day: '2-digit', month: 'short' })} → ${formatYmdLabel(to.slice(0, 10), { day: '2-digit', month: 'short', year: 'numeric' })}`;
 }
 
 function downloadCsv(filename: string, content: string) {
@@ -81,12 +87,14 @@ export default function DashboardAnalyticsPage() {
       setLoading(false);
       return;
     }
+    let cancelled = false;
     setLoading(true);
     storesApi
       .getAnalyticsRich(selectedStoreId, range)
-      .then((res) => setData(res.data))
-      .catch(() => setData(null))
-      .finally(() => setLoading(false));
+      .then((res) => { if (!cancelled) setData(res.data); })
+      .catch(() => { if (!cancelled) setData(null); })
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
   }, [selectedStoreId, range]);
 
   const refresh = async () => {
@@ -215,7 +223,7 @@ export default function DashboardAnalyticsPage() {
               delta={data.kpis.averageOrderValue.deltaPct}
               icon={TrendingUp}
               accent="emerald"
-              hint="par commande payée"
+              hint="toutes commandes"
             />
             <KpiCard
               label="Clients uniques"
@@ -252,7 +260,7 @@ export default function DashboardAnalyticsPage() {
               value={String(data.kpis.pendingOrders.value)}
               icon={Clock}
               accent="amber"
-              hint="à confirmer"
+              hint="toutes périodes"
             />
             <KpiCard
               label="Vues de page"
@@ -284,11 +292,9 @@ export default function DashboardAnalyticsPage() {
           <Card>
             <CardHeader className="flex flex-row items-start justify-between gap-3 pb-2">
               <div className="min-w-0">
-                <CardTitle className="text-sm sm:text-base">Revenu &amp; commandes</CardTitle>
+                <CardTitle className="text-sm sm:text-base">Ventes &amp; encaissé</CardTitle>
                 <p className="mt-0.5 truncate text-[11px] text-muted-foreground sm:text-xs">
-                  {monthly ? 'Mensuel' : 'Quotidien'} ·{' '}
-                  {new Date(data.window.from).toLocaleDateString('fr-FR', { day: '2-digit', month: 'short' })} →{' '}
-                  {new Date(data.window.to).toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', year: 'numeric' })}
+                  {monthly ? 'Mensuel' : 'Quotidien'} · {windowLabel(data)}
                 </p>
               </div>
               <Legend />
@@ -303,7 +309,7 @@ export default function DashboardAnalyticsPage() {
             <Card className="lg:col-span-2">
               <CardHeader className="pb-2">
                 <CardTitle className="text-sm sm:text-base">Top produits</CardTitle>
-                <p className="text-[11px] text-muted-foreground sm:text-xs">Classés par revenu sur la période</p>
+                <p className="text-[11px] text-muted-foreground sm:text-xs">Classés par ventes sur la période</p>
               </CardHeader>
               <CardContent>
                 <TopProductsList products={data.topProducts} currency={currency} />
@@ -387,7 +393,7 @@ export default function DashboardAnalyticsPage() {
             <Card>
               <CardHeader className="pb-2">
                 <CardTitle className="text-sm sm:text-base">Commandes récentes</CardTitle>
-                <p className="text-[11px] text-muted-foreground sm:text-xs">8 dernières commandes</p>
+                <p className="text-[11px] text-muted-foreground sm:text-xs">Sur la période sélectionnée</p>
               </CardHeader>
               <CardContent>
                 <RecentOrdersPanel orders={data.recentOrders} />
@@ -418,10 +424,10 @@ function Legend() {
   return (
     <div className="hidden items-center gap-4 text-xs text-muted-foreground sm:flex">
       <span className="inline-flex items-center gap-1.5">
-        <span className="h-2 w-2 rounded-full bg-pink-500" /> Revenu
+        <span className="h-2 w-2 rounded-full bg-pink-500" /> Ventes
       </span>
       <span className="inline-flex items-center gap-1.5">
-        <span className="h-2 w-2 rounded-full bg-violet-500" /> Commandes payées
+        <span className="h-2 w-2 rounded-full bg-emerald-500" /> Encaissé
       </span>
     </div>
   );

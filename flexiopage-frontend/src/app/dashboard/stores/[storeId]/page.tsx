@@ -124,6 +124,7 @@ import {
   SETTINGS_LANGUAGES,
   directionOf,
 } from '@/components/dashboard/store-editor';
+import { timezoneForCountry, STORE_TIMEZONES, timezoneSelectGroups } from '@/lib/store-timezone';
 import { ThemePaletteEditor } from '@/components/dashboard/theme-palette-editor';
 import { ThemeFontEditor } from '@/components/dashboard/theme-font-editor';
 import { ThemePreviewGrid } from '@/components/dashboard/theme-preview-card';
@@ -1017,6 +1018,7 @@ function IdentityEditor({ block, store, setStore, markDirty }: EditorCtx) {
   const country = store.settings?.country || '';
   const language = store.settings?.language || '';
   const currency = store.settings?.currency || 'USD';
+  const timezone = store.settings?.timezone || 'UTC';
 
   function patchSettings(patch: Record<string, unknown>) {
     const nextSettings = { ...(store.settings || {}), ...patch };
@@ -1109,16 +1111,15 @@ function IdentityEditor({ block, store, setStore, markDirty }: EditorCtx) {
             className="min-h-[80px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
           />
         </Field>
-        <Field label="Pays cible" hint="Alimente la génération AI et pré-remplit devise/langue.">
+        <Field label="Pays cible" hint="Alimente la génération AI et pré-remplit devise, langue et fuseau.">
           <select
             value={country}
             onChange={(e) => {
               const v = e.target.value;
               const match = SETTINGS_COUNTRIES.find((c) => c.code === v);
-              // Cascade : sélectionner un pays auto-remplit devise, et bascule
-              // en arabe si c'est un pays du monde arabe (préservé de /info).
               const patch: Record<string, unknown> = { country: v || undefined };
               if (match?.currency) patch.currency = match.currency;
+              if (v) patch.timezone = timezoneForCountry(v);
               if (match?.arab && language !== 'ar') {
                 patch.language = 'ar';
                 patch.direction = 'rtl';
@@ -1173,6 +1174,25 @@ function IdentityEditor({ block, store, setStore, markDirty }: EditorCtx) {
           >
             {SETTINGS_CURRENCIES.map((c) => (
               <option key={c} value={c}>{c}</option>
+            ))}
+          </select>
+        </Field>
+
+        <Field label="Fuseau horaire" hint="Le dashboard (Aujourd’hui, graphes) suit ce fuseau, pas UTC.">
+          <select
+            value={timezone}
+            onChange={(e) => patchSettings({ timezone: e.target.value || 'UTC' })}
+            className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+          >
+            {!STORE_TIMEZONES.some((z) => z.id === timezone) && (
+              <option value={timezone}>{timezone}</option>
+            )}
+            {timezoneSelectGroups().map((group) => (
+              <optgroup key={group} label={group}>
+                {STORE_TIMEZONES.filter((z) => z.group === group).map((z) => (
+                  <option key={z.id} value={z.id}>{z.label}</option>
+                ))}
+              </optgroup>
             ))}
           </select>
         </Field>

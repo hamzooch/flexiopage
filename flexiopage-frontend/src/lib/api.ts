@@ -1536,6 +1536,7 @@ export const storesApi = {
     currency?: string;
     language?: string;
     country?: string;
+    timezone?: string;
   }) => api.post<{ store: unknown }>('/stores', data),
   get: (storeId: string) => api.get<{ store: unknown }>(`/stores/${storeId}`),
   update: (storeId: string, data: Record<string, unknown>) =>

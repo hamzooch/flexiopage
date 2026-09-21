@@ -58,6 +58,7 @@ import { useAuthStore } from '@/stores/auth-store';
 import { useStoreStore } from '@/stores/store-store';
 import { storesApi } from '@/lib/api';
 import { formatCurrency, cn, mediaUrl } from '@/lib/utils';
+import { timezoneLabel } from '@/lib/store-timezone';
 import type { StoreAnalyticsRich, RangeKey } from '@/types/analytics';
 import { Button } from '@/components/ui/button';
 import { PageHeader } from '@/components/dashboard/page-header';
@@ -70,7 +71,7 @@ interface StoreType {
   slug: string;
   isPublished?: boolean;
   storeType?: 'physical' | 'digital';
-  settings?: { currency?: string };
+  settings?: { currency?: string; timezone?: string };
   goals?: { monthlyRevenue?: number };
 }
 
@@ -132,6 +133,7 @@ export default function DashboardOverviewPage() {
   const [loadingStores, setLoadingStores] = useState(true);
   const [range, setRange] = useState<RangeKey>('today');
   const [analytics, setAnalytics] = useState<StoreAnalyticsRich | null>(null);
+  const [analyticsError, setAnalyticsError] = useState<string | null>(null);
   const [loadingAnalytics, setLoadingAnalytics] = useState(false);
   const [abandoned, setAbandoned] = useState<number>(0);
   const [lowStock, setLowStock] = useState<ProductLite[]>([]);
@@ -166,9 +168,10 @@ export default function DashboardOverviewPage() {
   const currency = analytics?.currency || activeStore?.settings?.currency || 'USD';
 
   // ── Load analytics, abandoned carts, products in parallel ────────
-  const loadActiveStoreData = useCallback(async () => {
+  const loadActiveStoreData = useCallback(async (signal?: { cancelled: boolean }) => {
     if (!activeStoreId) {
       setAnalytics(null);
+      setAnalyticsError(null);
       setAbandoned(0);
       setLowStock([]);
       return;
@@ -186,13 +189,17 @@ export default function DashboardOverviewPage() {
         storesApi.listAbandonedCarts(activeStoreId).catch(() => ({ data: { carts: [] } })),
         storesApi.listProducts(activeStoreId).catch(() => ({ data: { products: [] } })),
       ]);
-      if (analyticsRes) setAnalytics(analyticsRes.data as StoreAnalyticsRich);
+      if (signal?.cancelled) return;
+      if (analyticsRes) {
+        setAnalytics(analyticsRes.data as StoreAnalyticsRich);
+        setAnalyticsError(null);
+      } else {
+        setAnalytics(null);
+        setAnalyticsError('Impossible de charger les stats. Vérifie ta connexion puis réessaie.');
+      }
       const carts = (cartsRes.data as { carts: AbandonedCart[] }).carts || [];
       setAbandoned(carts.filter((c) => !c.recovered).length);
       const products = (productsRes.data as { products: ProductLite[] }).products || [];
-      // "Low stock" = published + tracking inventory + stock ≤ 5 + no backorder.
-      // Threshold 5 is conservative — the seller can ignore the alert by
-      // disabling trackInventory or by lifting the stock count.
       setLowStock(
         products.filter(
           (p) =>
@@ -203,11 +210,15 @@ export default function DashboardOverviewPage() {
         )
       );
     } finally {
-      setLoadingAnalytics(false);
+      if (!signal?.cancelled) setLoadingAnalytics(false);
     }
   }, [activeStoreId, range, customFrom, customTo]);
 
-  useEffect(() => { void loadActiveStoreData(); }, [loadActiveStoreData, refreshKey]);
+  useEffect(() => {
+    const signal = { cancelled: false };
+    void loadActiveStoreData(signal);
+    return () => { signal.cancelled = true; };
+  }, [loadActiveStoreData, refreshKey]);
 
   // ── Live visitors — Shopify-style. Poll every 30s while the tab is visible.
   // The endpoint is cheap (one distinct() over a tiny indexed window) so this
@@ -385,7 +396,7 @@ export default function DashboardOverviewPage() {
               className="flex-1 rounded-lg border border-border/60 bg-card px-3 py-2 text-sm font-semibold text-foreground shadow-sm focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
               aria-label="Période affichée"
             >
-              {(['today', 'yesterday', '7d', '30d', '90d', '12m', 'all'] as const).map((r) => (
+              {(['today', 'yesterday', '7d', '30d', 'all'] as const).map((r) => (
                 <option key={r} value={r}>{RANGE_LABELS[r]}</option>
               ))}
               {range === 'custom' && (
@@ -408,6 +419,16 @@ export default function DashboardOverviewPage() {
             {rangePopover}
           </div>
           <div className="flex items-center gap-2">
+            {activeStore && (
+              <Link
+                href={`/dashboard/stores/${activeStore.slug || activeStore._id}?block=identity`}
+                className="inline-flex items-center gap-1.5 rounded-full border border-border/60 bg-card px-2.5 py-1 text-[11px] font-semibold text-muted-foreground hover:border-primary/30 hover:text-foreground"
+                title="Fuseau utilisé pour Aujourd’hui et les graphes"
+              >
+                <Globe2 className="h-3 w-3" />
+                {timezoneLabel(analytics?.window.timezone || activeStore.settings?.timezone)}
+              </Link>
+            )}
             {liveVisitors > 0 && (
               <span
                 className="inline-flex items-center gap-1.5 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2.5 py-1 text-xs font-semibold text-emerald-700"
@@ -436,6 +457,22 @@ export default function DashboardOverviewPage() {
               <RefreshCw className={cn('h-3.5 w-3.5', loadingAnalytics && 'animate-spin')} />
             </button>
           </div>
+        </div>
+      )}
+
+      {activeStore && analyticsError && (
+        <div
+          role="alert"
+          className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-rose-500/30 bg-rose-500/10 px-4 py-3 text-sm text-rose-800"
+        >
+          <span>{analyticsError}</span>
+          <button
+            type="button"
+            onClick={() => setRefreshKey((n) => n + 1)}
+            className="rounded-md border border-rose-500/30 bg-card px-2.5 py-1 text-xs font-semibold text-rose-800 hover:bg-rose-500/10"
+          >
+            Réessayer
+          </button>
         </div>
       )}
 
@@ -534,7 +571,8 @@ export default function DashboardOverviewPage() {
             confirmationRate={k?.codConfirmationRate.value ?? 0}
             deliveryRate={k?.codDeliveryRate.value ?? 0}
             created={analytics.funnel.created}
-            paid={analytics.funnel.paid}
+            confirmed={analytics.funnel.confirmed}
+            delivered={analytics.funnel.delivered}
             fulfilled={analytics.funnel.fulfilled}
           />
         </section>
@@ -890,7 +928,7 @@ function ActionPanel({
           label="Commandes à expédier"
           count={pendingOrders}
           href={`/dashboard/orders?storeId=${storeId}&status=pending`}
-          hint={pendingOrders ? 'Confirme + envoie chez le coursier' : 'Aucune commande en attente'}
+          hint={pendingOrders ? 'Toutes périodes — confirme + envoie chez le coursier' : 'Aucune commande en attente'}
         />
         <ActionRow
           icon={ShoppingBag}
@@ -898,7 +936,7 @@ function ActionPanel({
           label="Paniers abandonnés"
           count={abandonedCount}
           href={`/dashboard/stores/${storeId}?block=abandoned`}
-          hint={abandonedCount ? 'Relance par WhatsApp' : 'Aucun lead à relancer'}
+          hint={abandonedCount ? 'Toutes périodes — relance par WhatsApp' : 'Aucun lead à relancer'}
         />
         <ActionRow
           icon={Package}
@@ -988,7 +1026,7 @@ function RevenueChart({
     <div className="overflow-hidden rounded-2xl border border-border/60 bg-card">
       <div className="flex items-center justify-between border-b border-border/60 px-4 py-3">
         <div>
-          <h3 className="text-sm font-bold">Revenu sur la période</h3>
+          <h3 className="text-sm font-bold">Ventes sur la période</h3>
           <p className="text-[10px] text-muted-foreground">
             {loading ? 'Chargement…' : `${formatCurrency(totalRev, currency)} · ${totalOrders} commande${totalOrders > 1 ? 's' : ''}`}
           </p>
@@ -1042,7 +1080,7 @@ function TopProductsCard({
       <div className="flex items-center justify-between border-b border-border/60 px-4 py-3">
         <div>
           <h3 className="text-sm font-bold">Top produits</h3>
-          <p className="text-[10px] text-muted-foreground">Les meilleures ventes sur la période</p>
+          <p className="text-[10px] text-muted-foreground">Les meilleures ventes — toutes commandes de la période</p>
         </div>
         <Link href={`/dashboard/products?storeId=${storeId}`}>
           <Button variant="ghost" size="sm" className="gap-1 rounded-lg text-xs">
@@ -1065,7 +1103,7 @@ function TopProductsCard({
         </ul>
       ) : items.length === 0 ? (
         <div className="p-6 text-center text-xs text-muted-foreground">
-          Aucune vente pour le moment.
+          Aucune vente sur cette période.
         </div>
       ) : (
         <ul className="divide-y divide-border/60">
@@ -1134,7 +1172,7 @@ function RecentOrdersCard({
       <div className="flex items-center justify-between border-b border-border/60 px-4 py-3">
         <div>
           <h3 className="text-sm font-bold">Commandes récentes</h3>
-          <p className="text-[10px] text-muted-foreground">Les 5 dernières — clique pour gérer</p>
+          <p className="text-[10px] text-muted-foreground">Les dernières de la période — clique pour gérer</p>
         </div>
         <Link href={`/dashboard/orders?storeId=${storeId}`}>
           <Button variant="ghost" size="sm" className="gap-1 rounded-lg text-xs">
@@ -1157,7 +1195,7 @@ function RecentOrdersCard({
         </ul>
       ) : items.length === 0 ? (
         <div className="p-6 text-center text-xs text-muted-foreground">
-          Pas encore de commande. Lance ta première vente !
+          Aucune commande sur cette période.
         </div>
       ) : (
         <ul className="divide-y divide-border/60">
@@ -1334,7 +1372,7 @@ function MonthlyGoalCard({
         </div>
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-1.5">
-            <h3 className="text-sm font-bold">Objectif du mois</h3>
+            <h3 className="text-sm font-bold">Objectif du mois en cours</h3>
             <button
               type="button"
               onClick={() => setEditing(true)}
@@ -1430,16 +1468,18 @@ function GoalInput({
 // ─────────────────────────────────────────────────────────────────────
 
 function CodFunnelCard({
-  confirmationRate, deliveryRate, created, paid, fulfilled,
+  confirmationRate, deliveryRate, created, confirmed, delivered, fulfilled,
 }: {
   confirmationRate: number;
   deliveryRate: number;
   created: number;
-  paid: number;
+  confirmed: number;
+  delivered: number;
   fulfilled: number;
 }) {
   const confirmationTone = confirmationRate >= 50 ? 'emerald' : confirmationRate >= 30 ? 'amber' : 'rose';
   const deliveryTone = deliveryRate >= 70 ? 'emerald' : deliveryRate >= 50 ? 'amber' : 'rose';
+  const deliveredCount = delivered || fulfilled;
 
   return (
     <div className="overflow-hidden rounded-2xl border border-border/60 bg-card p-4">
@@ -1456,7 +1496,7 @@ function CodFunnelCard({
           icon={PhoneCall}
           label="Taux de confirmation"
           value={`${confirmationRate.toFixed(0)}%`}
-          hint={`${paid + fulfilled >= created ? created : paid + fulfilled} confirmées / ${created} créées`}
+          hint={`${confirmed} confirmées / ${created} créées`}
           tone={confirmationTone}
           benchmark="≥ 50% = OK"
         />
@@ -1464,7 +1504,7 @@ function CodFunnelCard({
           icon={PackageCheck}
           label="Taux de livraison"
           value={`${deliveryRate.toFixed(0)}%`}
-          hint={`${fulfilled} livrées / ${paid + fulfilled >= created ? created : paid + fulfilled} confirmées`}
+          hint={`${deliveredCount} livrées / ${confirmed} confirmées`}
           tone={deliveryTone}
           benchmark="≥ 70% = OK"
         />

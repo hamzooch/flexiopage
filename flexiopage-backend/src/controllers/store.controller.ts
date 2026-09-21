@@ -3,6 +3,7 @@ import validator from 'validator';
 import { AuthRequest } from '../middleware/auth.middleware';
 import * as storeService from '../services/store.service';
 import { getStoreAnalytics, getStoreAnalyticsRich, type RangeKey } from '../services/analytics.service';
+import { calendarDaysInclusive, isYmd } from '../utils/store-timezone';
 import { getTrackingStats, getLiveVisitors, type TrackingRange } from '../services/tracking.service';
 import { verifyAndSaveDomain, getDomainTarget, checkDomain, normalizeDomain, isValidDomain } from '../services/domain.service';
 import { testSheetsWebhook } from '../services/sheets.service';
@@ -66,7 +67,7 @@ export async function createStore(req: AuthRequest, res: Response): Promise<void
       return;
     }
   }
-  const { name, slug, description, theme, storeType, currency, language, country } = req.body as {
+  const { name, slug, description, theme, storeType, currency, language, country, timezone } = req.body as {
     name?: string;
     slug?: string;
     description?: string;
@@ -75,6 +76,7 @@ export async function createStore(req: AuthRequest, res: Response): Promise<void
     currency?: string;
     language?: string;
     country?: string;
+    timezone?: string;
   };
   if (!name?.trim()) {
     res.status(400).json({ error: 'Store name is required' });
@@ -95,6 +97,7 @@ export async function createStore(req: AuthRequest, res: Response): Promise<void
       currency: typeof currency === 'string' ? currency : undefined,
       language: typeof language === 'string' ? language : undefined,
       country: typeof country === 'string' ? country : undefined,
+      timezone: typeof timezone === 'string' ? timezone : undefined,
     });
     res.status(201).json({ store });
   } catch (err) {
@@ -213,28 +216,25 @@ export async function getStoreAnalyticsRichController(req: AuthRequest, res: Res
   const allowed: RangeKey[] = ['today', 'yesterday', '7d', '30d', '90d', '12m', 'all', 'custom'];
   const raw = String(req.query.range || '30d');
   const range = (allowed as string[]).includes(raw) ? (raw as RangeKey) : '30d';
-  let custom: { from: Date; to: Date } | undefined;
+  let custom: { from: string; to: string } | undefined;
   if (range === 'custom') {
     const fromRaw = String(req.query.from || '');
     const toRaw = String(req.query.to || '');
-    const from = new Date(fromRaw);
-    const to = new Date(toRaw);
-    if (!fromRaw || !toRaw || Number.isNaN(from.getTime()) || Number.isNaN(to.getTime())) {
+    if (!isYmd(fromRaw) || !isYmd(toRaw)) {
       res.status(400).json({ error: 'custom range requires valid from + to (YYYY-MM-DD)' });
       return;
     }
-    if (from.getTime() > to.getTime()) {
+    if (fromRaw > toRaw) {
       res.status(400).json({ error: '`from` must be on or before `to`' });
       return;
     }
-    // Cap the window at 366 days so a seller can't accidentally request a
+    // Cap the window at 366 calendar days so a seller can't accidentally request a
     // multi-year scan that hammers Mongo. 366 covers any 12-month picker.
-    const days = (to.getTime() - from.getTime()) / (24 * 60 * 60 * 1000);
-    if (days > 366) {
+    if (calendarDaysInclusive(fromRaw, toRaw) > 366) {
       res.status(400).json({ error: 'custom range too wide (max 366 days)' });
       return;
     }
-    custom = { from, to };
+    custom = { from: fromRaw, to: toRaw };
   }
   const analytics = await getStoreAnalyticsRich(store._id.toString(), range, custom);
   res.json(analytics);

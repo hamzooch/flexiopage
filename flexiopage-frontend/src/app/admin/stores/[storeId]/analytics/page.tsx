@@ -26,7 +26,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { adminApi, extractApiError, type AdminDeliveryDiag } from '@/lib/api';
 import { useAuthStore } from '@/stores/auth-store';
-import { formatCurrency, storeAbsoluteUrl } from '@/lib/utils';
+import { formatCurrency, storeAbsoluteUrl, formatYmdLabel } from '@/lib/utils';
 import { Percent, Save, Loader2, Truck, XCircle, AlertTriangle, Sparkles, Copy, Check, Zap } from 'lucide-react';
 import { storesApi } from '@/lib/api';
 import { KpiCard } from '@/components/charts/KpiCard';
@@ -281,11 +281,11 @@ export default function AdminStoreDrilldownPage() {
       {/* Revenue chart */}
       <Card>
         <CardHeader className="pb-2">
-          <CardTitle className="flex items-center gap-2 text-sm sm:text-base"><Activity className="h-4 w-4 shrink-0" /> Revenu &amp; commandes</CardTitle>
+          <CardTitle className="flex items-center gap-2 text-sm sm:text-base"><Activity className="h-4 w-4 shrink-0" /> Ventes &amp; encaissé</CardTitle>
           <p className="truncate text-[11px] text-muted-foreground sm:text-xs">
             {monthly ? 'Mensuel' : 'Quotidien'} ·{' '}
-            {new Date(analytics.window.from).toLocaleDateString('fr-FR', { day: '2-digit', month: 'short' })} →{' '}
-            {new Date(analytics.window.to).toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', year: 'numeric' })}
+            {formatYmdLabel((analytics.window.fromYmd || analytics.window.from).slice(0, 10), { day: '2-digit', month: 'short' })} →{' '}
+            {formatYmdLabel((analytics.window.toYmd || analytics.window.to).slice(0, 10), { day: '2-digit', month: 'short', year: 'numeric' })}
           </p>
         </CardHeader>
         <CardContent className="px-2 sm:px-6">

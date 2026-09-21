@@ -41,6 +41,20 @@ export function formatDate(date: string | Date): string {
   }).format(new Date(date));
 }
 
+/** Format a calendar YYYY-MM-DD (or YYYY-MM) without UTC midnight shift. */
+export function formatYmdLabel(ymd: string, opts?: Intl.DateTimeFormatOptions): string {
+  const m = /^(\d{4})-(\d{2})(?:-(\d{2}))?$/.exec(ymd);
+  if (!m) return ymd;
+  const year = Number(m[1]);
+  const month = Number(m[2]);
+  const day = Number(m[3] || '1');
+  return new Date(year, month - 1, day).toLocaleDateString('fr-FR', opts || {
+    day: m[3] ? 'numeric' : undefined,
+    month: 'short',
+    year: 'numeric',
+  });
+}
+
 /**
  * Motion the seller picks for the "-XX%" discount pill shown on cards,
  * product galleries, bumps and cross-sells. `pulse` preserves the historic

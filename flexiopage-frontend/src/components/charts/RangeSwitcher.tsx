@@ -10,6 +10,7 @@ const RANGES: Array<{ id: RangeKey; label: string; short: string }> = [
   { id: '30d', label: '30 jours', short: '30j' },
   { id: '90d', label: '90 jours', short: '90j' },
   { id: '12m', label: '12 mois', short: '12m' },
+  { id: 'all', label: 'Tous les temps', short: 'Tout' },
 ];
 
 interface Props {

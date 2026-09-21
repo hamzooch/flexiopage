@@ -15,7 +15,7 @@ export interface KpiValue {
 export interface StoreAnalyticsRich {
   range: RangeKey;
   currency: string;
-  window: { from: string; to: string };
+  window: { from: string; to: string; timezone?: string; fromYmd?: string; toYmd?: string };
   kpis: {
     /** Sum of ALL orders' total in the window (any payment status). */
     sales: KpiValue;

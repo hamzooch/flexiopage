@@ -3,6 +3,7 @@ import { LandingPage } from '../models/LandingPage.model';
 import { Product } from '../models/Product.model';
 import mongoose from 'mongoose';
 import { slugify } from '../lib/slugify';
+import { timezoneForCountry, resolveStoreTimeZone } from '../utils/store-timezone';
 
 /**
  * Standard info pages seeded into every new store. Each becomes a
@@ -222,6 +223,7 @@ export interface CreateStoreInput {
   currency?: string;
   language?: string;
   country?: string;
+  timezone?: string;
 }
 
 const RTL_LANGS = new Set(['ar', 'fa', 'he', 'ur']);
@@ -255,7 +257,7 @@ export async function createStore(input: CreateStoreInput): Promise<IStore> {
     theme: input.theme || undefined,
     settings: {
       currency: input.currency?.trim().toUpperCase() || 'USD',
-      timezone: 'UTC',
+      timezone: resolveStoreTimeZone(input.timezone || timezoneForCountry(input.country)),
       maintenanceMode: false,
       language: lang,
       country: input.country?.trim().toUpperCase() || undefined,

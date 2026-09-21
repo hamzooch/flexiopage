@@ -332,6 +332,7 @@ export interface StoreType {
   theme?: Record<string, unknown>;
   settings?: {
     currency?: string;
+    timezone?: string;
     language?: string;
     country?: string;
     direction?: 'ltr' | 'rtl';

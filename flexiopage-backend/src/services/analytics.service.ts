@@ -6,13 +6,18 @@
  *   - StoreAnalytics       — legacy 4-KPI shape kept for backward compatibility
  *   - StoreAnalyticsRich   — full payload (KPIs + timeseries + top products + breakdowns)
  *
- * Callers that want the rich payload pass `?range=7d|30d|90d|12m` to the controller.
+ * Callers that want the rich payload pass
+ * `?range=today|yesterday|7d|30d|90d|12m|all|custom` to the controller.
  */
 import mongoose from 'mongoose';
 import { Order } from '../models/Order.model';
 import { Product } from '../models/Product.model';
 import { Store } from '../models/Store.model';
 import { StoreEvent } from '../models/StoreEvent.model';
+import { fillTimeseries, monthlyGoalWindow, resolveRange, type CustomRange, type RangeKey, type RangeWindow } from './analytics-range';
+import { resolveStoreTimeZone, utcToZonedYmd, calendarDaysInclusive } from '../utils/store-timezone';
+
+export type { CustomRange, RangeKey };
 
 export interface StoreAnalytics {
   totalOrders: number;
@@ -43,94 +48,10 @@ export interface StoreAnalytics {
   productViewsThisMonth?: number;
 }
 
-export type RangeKey = 'today' | 'yesterday' | '7d' | '30d' | '90d' | '12m' | 'all' | 'custom';
-
-export interface CustomRange {
-  /** Inclusive start date — interpreted as local midnight. */
-  from: Date;
-  /** Inclusive end date — interpreted as local end-of-day. */
-  to: Date;
-}
-
-interface RangeWindow {
-  from: Date;
-  to: Date;
-  /** previous window of equal length, for delta comparison */
-  prevFrom: Date;
-  prevTo: Date;
-  /** bucket size used when building the revenue timeseries */
-  bucket: 'day' | 'month';
-  /** number of buckets in [from, to] */
-  buckets: number;
-}
-
-function resolveRange(range: RangeKey, now: Date = new Date(), custom?: CustomRange): RangeWindow {
-  const to = new Date(now);
-  to.setHours(23, 59, 59, 999);
-  if (range === '12m') {
-    const from = new Date(to);
-    from.setMonth(from.getMonth() - 11);
-    from.setDate(1);
-    from.setHours(0, 0, 0, 0);
-    const prevTo = new Date(from.getTime() - 1);
-    const prevFrom = new Date(prevTo);
-    prevFrom.setMonth(prevFrom.getMonth() - 11);
-    prevFrom.setDate(1);
-    prevFrom.setHours(0, 0, 0, 0);
-    return { from, to, prevFrom, prevTo, bucket: 'month', buckets: 12 };
-  }
-  if (range === 'custom' && custom) {
-    // Custom window picked by the seller. We snap to local-midnight / EOD so
-    // the seller's intent ("from the 5th to the 12th") includes both endpoints
-    // fully. The previous-window delta is computed as an equal-length window
-    // ending right before `from` — same convention as the preset ranges.
-    const cFrom = new Date(custom.from);
-    cFrom.setHours(0, 0, 0, 0);
-    const cTo = new Date(custom.to);
-    cTo.setHours(23, 59, 59, 999);
-    const days = Math.max(1, Math.round((cTo.getTime() - cFrom.getTime()) / (24 * 60 * 60 * 1000)));
-    const prevTo = new Date(cFrom.getTime() - 1);
-    const prevFrom = new Date(prevTo);
-    prevFrom.setDate(prevFrom.getDate() - (days - 1));
-    prevFrom.setHours(0, 0, 0, 0);
-    // Switch to monthly buckets for long windows so the sparkline stays
-    // readable; daily buckets work fine up to ~2 months.
-    const bucket: 'day' | 'month' = days > 62 ? 'month' : 'day';
-    const buckets = bucket === 'day'
-      ? days
-      : (cTo.getFullYear() - cFrom.getFullYear()) * 12 + (cTo.getMonth() - cFrom.getMonth()) + 1;
-    return { from: cFrom, to: cTo, prevFrom, prevTo, bucket, buckets };
-  }
-  // 'yesterday' : fenêtre de 1 jour = la journée d'hier (00:00 → 23:59 locale).
-  // Window précédente = avant-hier, pour un delta J-1 vs J-2 cohérent.
-  if (range === 'yesterday') {
-    const yEnd = new Date(now);
-    yEnd.setDate(yEnd.getDate() - 1);
-    yEnd.setHours(23, 59, 59, 999);
-    const yStart = new Date(yEnd);
-    yStart.setHours(0, 0, 0, 0);
-    const prevTo = new Date(yStart.getTime() - 1);
-    const prevFrom = new Date(prevTo);
-    prevFrom.setHours(0, 0, 0, 0);
-    return { from: yStart, to: yEnd, prevFrom, prevTo, bucket: 'day', buckets: 1 };
-  }
-  // `today` is a 1-day window starting at local midnight; the previous
-  // window is yesterday so the delta KPI is meaningful day-over-day.
-  const days = range === 'today' ? 1 : range === '7d' ? 7 : range === '90d' ? 90 : 30;
-  const from = new Date(to);
-  from.setDate(from.getDate() - (days - 1));
-  from.setHours(0, 0, 0, 0);
-  const prevTo = new Date(from.getTime() - 1);
-  const prevFrom = new Date(prevTo);
-  prevFrom.setDate(prevFrom.getDate() - (days - 1));
-  prevFrom.setHours(0, 0, 0, 0);
-  return { from, to, prevFrom, prevTo, bucket: 'day', buckets: days };
-}
-
 export interface StoreAnalyticsRich {
   range: RangeKey;
   currency: string;
-  window: { from: string; to: string };
+  window: { from: string; to: string; timezone: string; fromYmd: string; toYmd: string };
   /** Headline KPIs over [from, to], each with a delta vs the previous window. */
   kpis: {
     /**
@@ -189,7 +110,7 @@ export interface StoreAnalyticsRich {
   };
   /** Revenue (paid) + sales (all orders) + orders bucketed by day (or month for 12m). */
   timeseries: Array<{ date: string; revenue: number; sales: number; orders: number; paid: number }>;
-  /** Top products by paid revenue in window. */
+  /** Top products by sales (all orders in window, any payment status). */
   topProducts: Array<{
     productId: string;
     name: string;
@@ -289,24 +210,22 @@ function pctDelta(curr: number, prev: number): number | null {
  * livraison — sinon la jauge sous-évalue la vraie activité du mois.
  * Retourne `undefined` quand aucun objectif n'est défini.
  */
-async function computeMonthlyGoal(storeObjectId: mongoose.Types.ObjectId) {
-  const store = await Store.findById(storeObjectId).select('goals').lean();
-  const target = store?.goals?.monthlyRevenue;
+async function computeMonthlyGoal(
+  storeObjectId: mongoose.Types.ObjectId,
+  timeZone: string,
+  target: number,
+) {
   if (!target || target <= 0) return undefined;
 
   const now = new Date();
-  const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-  const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0);
-
+  const month = monthlyGoalWindow(now, timeZone);
   const agg = await Order.aggregate([
-    { $match: { storeId: storeObjectId, createdAt: { $gte: startOfMonth }, paymentStatus: { $ne: 'abandoned' } } },
+    { $match: { storeId: storeObjectId, createdAt: { $gte: month.from }, paymentStatus: { $ne: 'abandoned' } } },
     { $group: { _id: null, sales: { $sum: '$total' } } },
   ]);
   const current = agg[0]?.sales || 0;
 
-  // Jours restants inclut aujourd'hui — donne au seller une échéance qui
-  // reste "1 jour restant" jusqu'à la fin de la journée du dernier jour.
-  const daysLeft = Math.max(1, Math.ceil((endOfMonth.getTime() - now.getTime() + 24 * 3600 * 1000) / (24 * 3600 * 1000)));
+  const daysLeft = Math.max(1, calendarDaysInclusive(month.todayYmd, month.lastYmd));
 
   return {
     target,
@@ -314,20 +233,6 @@ async function computeMonthlyGoal(storeObjectId: mongoose.Types.ObjectId) {
     progressPct: (current / target) * 100,
     daysLeft,
   };
-}
-
-function emptyBucket(from: Date, to: Date, bucket: 'day' | 'month'): Map<string, { revenue: number; sales: number; orders: number; paid: number }> {
-  const out = new Map<string, { revenue: number; sales: number; orders: number; paid: number }>();
-  const cursor = new Date(from);
-  while (cursor <= to) {
-    const key = bucket === 'day'
-      ? cursor.toISOString().slice(0, 10)
-      : `${cursor.getFullYear()}-${String(cursor.getMonth() + 1).padStart(2, '0')}`;
-    out.set(key, { revenue: 0, sales: 0, orders: 0, paid: 0 });
-    if (bucket === 'day') cursor.setDate(cursor.getDate() + 1);
-    else cursor.setMonth(cursor.getMonth() + 1);
-  }
-  return out;
 }
 
 /** Aggregate order stats for a store. Legacy 4-KPI shape kept for old callers. */
@@ -397,20 +302,25 @@ export async function getStoreAnalyticsRich(
   custom?: CustomRange
 ): Promise<StoreAnalyticsRich> {
   const storeObjectId = new mongoose.Types.ObjectId(storeId);
+  const storeDoc = await Store.findById(storeObjectId).select('settings.currency settings.timezone goals').lean();
+  const timeZone = resolveStoreTimeZone(storeDoc?.settings?.timezone);
+  const storeCurrency: string = storeDoc?.settings?.currency || 'USD';
+
   let w: RangeWindow;
   if (range === 'all') {
-    // « Tous les temps » : de la 1re commande de la boutique à aujourd'hui.
-    // On réutilise la logique 'custom' (buckets mensuels pour les longues
-    // fenêtres). Sans commande, on retombe sur la fenêtre du jour (vide).
+    // « Tous les temps » : de la 1re commande de la boutique à aujourd'hui,
+    // borné sur le calendrier de la boutique (pas UTC process).
     const firstOrder = await Order.findOne({ storeId: storeObjectId })
       .sort({ createdAt: 1 })
       .select('createdAt')
       .lean();
     const now = new Date();
-    const from = firstOrder?.createdAt ? new Date(firstOrder.createdAt) : now;
-    w = resolveRange('custom', now, { from, to: now });
+    const fromYmd = firstOrder?.createdAt
+      ? utcToZonedYmd(new Date(firstOrder.createdAt), timeZone)
+      : utcToZonedYmd(now, timeZone);
+    w = resolveRange('custom', now, { from: fromYmd, to: utcToZonedYmd(now, timeZone) }, timeZone);
   } else {
-    w = resolveRange(range, new Date(), range === 'custom' ? custom : undefined);
+    w = resolveRange(range, new Date(), range === 'custom' ? custom : undefined, timeZone);
   }
 
   // Analytics never include cart-abandoned orders — they'd inflate the order
@@ -421,12 +331,9 @@ export async function getStoreAnalyticsRich(
   const baseMatch = { storeId: storeObjectId, paymentStatus: { $ne: 'abandoned' } };
   const inWindow = { ...baseMatch, createdAt: { $gte: w.from, $lte: w.to } };
   const inPrev = { ...baseMatch, createdAt: { $gte: w.prevFrom, $lte: w.prevTo } };
-
-  // Currency is anchored to the store's settings — the seller owns this choice
-  // even when there are no orders yet, and order-level currency may drift if
-  // the seller updates the store currency later.
-  const storeDoc = await Store.findById(storeObjectId).select('settings.currency').lean();
-  const storeCurrency: string = storeDoc?.settings?.currency || 'USD';
+  const dateBucket = w.bucket === 'day'
+    ? { $dateToString: { date: '$createdAt', format: '%Y-%m-%d', timezone: timeZone } }
+    : { $dateToString: { date: '$createdAt', format: '%Y-%m', timezone: timeZone } };
 
   const [
     totals,
@@ -518,9 +425,7 @@ export async function getStoreAnalyticsRich(
       { $match: inWindow },
       {
         $group: {
-          _id: w.bucket === 'day'
-            ? { $dateToString: { date: '$createdAt', format: '%Y-%m-%d' } }
-            : { $dateToString: { date: '$createdAt', format: '%Y-%m' } },
+          _id: dateBucket,
           orders: { $sum: 1 },
           paid: { $sum: { $cond: [{ $eq: ['$paymentStatus', 'paid'] }, 1, 0] } },
           // `revenue` = encaissé (payé). `sales` = valeur de TOUTES les commandes
@@ -530,9 +435,9 @@ export async function getStoreAnalyticsRich(
         },
       },
     ]),
-    // Top products — only paid orders count.
+    // Top products — all orders in the window (COD pending counts as a sale).
     Order.aggregate([
-      { $match: { ...inWindow, paymentStatus: 'paid' } },
+      { $match: inWindow },
       { $unwind: '$items' },
       {
         $group: {
@@ -557,8 +462,8 @@ export async function getStoreAnalyticsRich(
       },
       { $sort: { revenue: -1 } },
     ]),
-    // Recent 8 orders (any status) for the side panel.
-    Order.find(baseMatch)
+    // Recent orders in the selected window (not all-time).
+    Order.find(inWindow)
       .sort({ createdAt: -1 })
       .limit(8)
       .select('orderNumber email customerName total currency paymentStatus fulfillmentStatus createdAt')
@@ -591,14 +496,12 @@ export async function getStoreAnalyticsRich(
       { $group: { _id: '$source', visitors: { $sum: 1 } } },
       { $sort: { visitors: -1 } },
     ]),
-    // Ventes par heure du jour (0..23), toutes commandes de la fenêtre.
-    // Timezone: on utilise UTC — suffisant pour l'analyse relative (les
-    // heures fortes restent stables), et évite d'exposer la TZ du seller.
+    // Ventes par heure du jour (0..23) dans la timezone boutique.
     Order.aggregate<{ _id: number; orders: number; sales: number }>([
       { $match: inWindow },
       {
         $group: {
-          _id: { $hour: '$createdAt' },
+          _id: { $hour: { date: '$createdAt', timezone: timeZone } },
           orders: { $sum: 1 },
           sales: { $sum: '$total' },
         },
@@ -666,12 +569,13 @@ export async function getStoreAnalyticsRich(
   // seller changed their store currency after past orders were placed.
   const currency: string = storeCurrency;
 
-  // Build the dense timeseries — fill empty buckets with zeroes.
-  const seriesMap = emptyBucket(w.from, w.to, w.bucket);
-  for (const row of seriesRaw as Array<{ _id: string; orders: number; paid: number; revenue: number; sales: number }>) {
-    if (seriesMap.has(row._id)) seriesMap.set(row._id, { revenue: row.revenue, sales: row.sales, orders: row.orders, paid: row.paid });
-  }
-  const timeseries = Array.from(seriesMap.entries()).map(([date, v]) => ({ date, ...v }));
+  const timeseries = fillTimeseries(
+    w.from,
+    w.to,
+    w.bucket,
+    timeZone,
+    seriesRaw as Array<{ _id: string; orders: number; paid: number; revenue: number; sales: number }>,
+  );
 
   // Resolve product images for top products.
   const topIds = (topProductsRaw as Array<{ _id: mongoose.Types.ObjectId; name: string; unitsSold: number; revenue: number }>).map((r) => r._id);
@@ -734,8 +638,8 @@ export async function getStoreAnalyticsRich(
   const prevCodConfirmationRate = p.orders === 0 ? 0 : (p.codConfirmed / p.orders) * 100;
   const codDeliveryRate = a.codConfirmed === 0 ? 0 : (a.codDelivered / a.codConfirmed) * 100;
   const prevCodDeliveryRate = p.codConfirmed === 0 ? 0 : (p.codDelivered / p.codConfirmed) * 100;
-  const aov = a.paid === 0 ? 0 : a.revenue / a.paid;
-  const prevAov = p.paid === 0 ? 0 : p.revenue / p.paid;
+  const aov = a.orders === 0 ? 0 : a.sales / a.orders;
+  const prevAov = p.orders === 0 ? 0 : p.sales / p.orders;
   // Taux de conversion visites → commandes (1ʳᵉ marche du tunnel). On garde
   // pageViews comme dénominateur, cohérent avec le KPI "Visiteurs" et le
   // FunnelStrip déjà affichés côté front.
@@ -745,7 +649,7 @@ export async function getStoreAnalyticsRich(
   return {
     range,
     currency,
-    window: { from: w.from.toISOString(), to: w.to.toISOString() },
+    window: { from: w.from.toISOString(), to: w.to.toISOString(), timezone: timeZone, fromYmd: w.fromYmd, toYmd: w.toYmd },
     kpis: {
       // Sum of `total` across ALL orders in the window, regardless of paymentStatus.
       // Most useful for COD-heavy markets where revenue (paid-only) lags.
@@ -765,7 +669,7 @@ export async function getStoreAnalyticsRich(
       codDeliveryRate: { value: codDeliveryRate, previous: prevCodDeliveryRate, deltaPct: pctDelta(codDeliveryRate, prevCodDeliveryRate) },
     },
     totals: { totalRevenue: t.revenue, totalSales: t.sales, totalOrders: t.orders, totalCustomers: t.customers },
-    monthlyGoal: await computeMonthlyGoal(storeObjectId),
+    monthlyGoal: await computeMonthlyGoal(storeObjectId, timeZone, storeDoc?.goals?.monthlyRevenue || 0),
     timeseries,
     topProducts,
     paymentBreakdown: (paymentBreakdownRaw as Array<{ _id: string; orders: number; revenue: number }>).map((r) => ({

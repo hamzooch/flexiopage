@@ -46,7 +46,7 @@ export function RecentOrdersPanel({ orders }: Props) {
   if (orders.length === 0) {
     return (
       <div className="grid h-full min-h-[200px] place-items-center text-sm text-muted-foreground">
-        Aucune commande récente.
+        Aucune commande sur cette période.
       </div>
     );
   }

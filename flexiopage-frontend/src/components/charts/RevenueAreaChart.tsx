@@ -1,12 +1,13 @@
 'use client';
 
 import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
-import { formatCurrency } from '@/lib/utils';
+import { formatCurrency, formatYmdLabel } from '@/lib/utils';
 import { useIsMobile } from '@/lib/use-is-mobile';
 
 interface DataPoint {
   date: string;
   revenue: number;
+  sales?: number;
   orders: number;
   paid: number;
 }
@@ -21,24 +22,25 @@ interface Props {
 function formatTickDate(value: string, monthly: boolean): string {
   if (!value) return '';
   if (monthly) {
-    const [, m] = value.split('-');
-    const idx = Number(m) - 1;
-    return ['Jan', 'Fév', 'Mar', 'Avr', 'Mai', 'Juin', 'Juil', 'Aoû', 'Sep', 'Oct', 'Nov', 'Déc'][idx] || value;
+    return formatYmdLabel(value, { month: 'short' });
   }
-  const d = new Date(value);
-  if (Number.isNaN(d.getTime())) return value;
-  return d.toLocaleDateString('fr-FR', { day: '2-digit', month: 'short' });
+  return formatYmdLabel(value, { day: '2-digit', month: 'short' });
 }
 
 export function RevenueAreaChart({ data, currency, monthly = false }: Props) {
   const isMobile = useIsMobile();
+  const useSales = data.some((d) => typeof d.sales === 'number');
   return (
     <ResponsiveContainer width="100%" height={isMobile ? 220 : 320}>
       <AreaChart data={data} margin={{ top: 10, right: 6, left: 0, bottom: 0 }}>
         <defs>
-          <linearGradient id="rev-grad" x1="0" y1="0" x2="0" y2="1">
+          <linearGradient id="sales-grad" x1="0" y1="0" x2="0" y2="1">
             <stop offset="0%" stopColor="#ec4899" stopOpacity={0.35} />
             <stop offset="100%" stopColor="#ec4899" stopOpacity={0} />
+          </linearGradient>
+          <linearGradient id="rev-grad" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="#10b981" stopOpacity={0.25} />
+            <stop offset="100%" stopColor="#10b981" stopOpacity={0} />
           </linearGradient>
           <linearGradient id="ord-grad" x1="0" y1="0" x2="0" y2="1">
             <stop offset="0%" stopColor="#7c3aed" stopOpacity={0.25} />
@@ -67,7 +69,7 @@ export function RevenueAreaChart({ data, currency, monthly = false }: Props) {
           }}
           width={isMobile ? 36 : 48}
         />
-        <YAxis yAxisId="ord" orientation="right" hide />
+        {!useSales && <YAxis yAxisId="ord" orientation="right" hide />}
         <Tooltip
           contentStyle={{
             background: 'hsl(var(--card))',
@@ -78,28 +80,23 @@ export function RevenueAreaChart({ data, currency, monthly = false }: Props) {
           }}
           labelFormatter={(value) => formatTickDate(String(value), monthly)}
           formatter={(value, name) => {
-            if (name === 'revenue') return [formatCurrency(Number(value), currency), 'Revenu'];
+            if (name === 'sales') return [formatCurrency(Number(value), currency), 'Ventes'];
+            if (name === 'revenue') return [formatCurrency(Number(value), currency), useSales ? 'Encaissé' : 'Revenu'];
             if (name === 'paid') return [Number(value), 'Commandes payées'];
-            if (name === 'orders') return [Number(value), 'Commandes'];
             return [String(value), String(name)];
           }}
         />
-        <Area
-          yAxisId="rev"
-          type="monotone"
-          dataKey="revenue"
-          stroke="#ec4899"
-          strokeWidth={2}
-          fill="url(#rev-grad)"
-        />
-        <Area
-          yAxisId="ord"
-          type="monotone"
-          dataKey="paid"
-          stroke="#7c3aed"
-          strokeWidth={2}
-          fill="url(#ord-grad)"
-        />
+        {useSales ? (
+          <>
+            <Area yAxisId="rev" type="monotone" dataKey="sales" stroke="#ec4899" strokeWidth={2} fill="url(#sales-grad)" />
+            <Area yAxisId="rev" type="monotone" dataKey="revenue" stroke="#10b981" strokeWidth={2} fill="url(#rev-grad)" />
+          </>
+        ) : (
+          <>
+            <Area yAxisId="rev" type="monotone" dataKey="revenue" stroke="#ec4899" strokeWidth={2} fill="url(#sales-grad)" />
+            <Area yAxisId="ord" type="monotone" dataKey="paid" stroke="#7c3aed" strokeWidth={2} fill="url(#ord-grad)" />
+          </>
+        )}
       </AreaChart>
     </ResponsiveContainer>
   );
