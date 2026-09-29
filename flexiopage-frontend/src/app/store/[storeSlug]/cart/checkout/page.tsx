@@ -221,7 +221,7 @@ export default function CartCheckoutPage() {
   const phonePrefix = COUNTRIES.find((c) => c.code === country)?.phonePrefix || '';
 
   return (
-    <div className="mx-auto max-w-5xl px-4 py-6 sm:py-12">
+    <div className="mx-auto max-w-5xl xs:px-2 px-4 xs:py-3 py-6 sm:py-12">
       <Link
         href={`/${storeSlug}/cart`}
         className="inline-flex items-center gap-1.5 text-xs font-medium text-muted-foreground hover:text-foreground"
@@ -236,10 +236,10 @@ export default function CartCheckoutPage() {
         {co.reassurance || 'Paiement à la livraison · pas de prépaiement'}
       </p>
 
-      <div className="mt-6 grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(300px,380px)]">
+      <div className="mt-6 grid xs:gap-3 gap-6 xs:grid-cols-1 lg:grid-cols-[minmax(0,1fr)_minmax(300px,380px)]">
         {/* LEFT — form */}
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <section className="space-y-4 rounded-2xl border border-border/60 bg-card p-4 sm:p-6">
+        <form onSubmit={handleSubmit} className="xs:space-y-3 space-y-4">
+          <section className="space-y-4 rounded-2xl border border-border/60 bg-card xs:p-3 p-4 sm:p-6">
             <h2 className="text-sm font-bold uppercase tracking-wider text-muted-foreground">
               Tes coordonnées
             </h2>
@@ -250,7 +250,7 @@ export default function CartCheckoutPage() {
             <Field label="Email (optionnel)" value={email} onChange={setEmail} type="email" placeholder="ton@email.com" />
           </section>
 
-          <section className="space-y-4 rounded-2xl border border-border/60 bg-card p-4 sm:p-6">
+          <section className="space-y-4 rounded-2xl border border-border/60 bg-card xs:p-3 p-4 sm:p-6">
             <h2 className="text-sm font-bold uppercase tracking-wider text-muted-foreground">
               Adresse de livraison
             </h2>
@@ -289,7 +289,7 @@ export default function CartCheckoutPage() {
           <button
             type="submit"
             disabled={submitting}
-            className="inline-flex h-14 w-full items-center justify-center gap-2 rounded-full bg-gradient-to-r from-primary to-fuchsia-600 px-6 text-base font-bold text-white shadow-lg shadow-primary/25 transition-transform hover:scale-[1.005] disabled:opacity-60"
+            className="inline-flex xs:h-12 h-14 w-full items-center justify-center gap-2 rounded-full bg-gradient-to-r from-primary to-fuchsia-600 px-6 xs:text-sm text-base font-bold text-white shadow-lg shadow-primary/25 transition-transform hover:scale-[1.005] disabled:opacity-60"
           >
             {submitting ? (
               <Loader2 className="h-5 w-5 animate-spin" />
@@ -306,7 +306,7 @@ export default function CartCheckoutPage() {
         </form>
 
         {/* RIGHT — order summary (sticky on desktop) */}
-        <aside className="lg:sticky lg:top-24 lg:self-start">
+        <aside className="xs:order-first lg:order-last xs:static lg:sticky lg:top-24 lg:self-start">
           <div className="space-y-4 rounded-2xl border border-border/60 bg-card p-5 shadow-sm">
             <h2 className="text-sm font-bold uppercase tracking-wider text-muted-foreground">
               Ta commande ({items.length} article{items.length > 1 ? 's' : ''})
@@ -335,7 +335,7 @@ export default function CartCheckoutPage() {
                   <div className="min-w-0 flex-1">
                     <div className="truncate text-xs font-semibold">{it.name}</div>
                     {it.variantName && (
-                      <div className="text-[10px] text-muted-foreground">{it.variantName}</div>
+                      <div className="text-[10px] text-muted-foreground truncate">{it.variantName}</div>
                     )}
                   </div>
                   <div className="shrink-0 text-xs font-bold tabular-nums">

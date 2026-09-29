@@ -107,7 +107,7 @@ export default function CartPage() {
   const itemCount = items.reduce((s, i) => s + i.quantity, 0);
 
   return (
-    <div className="mx-auto max-w-5xl px-4 py-8 sm:py-14">
+    <div className="mx-auto max-w-5xl xs:px-2 px-4 xs:py-4 py-8 sm:py-14">
       <header className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <div className="inline-flex items-center gap-1.5 rounded-full bg-primary/10 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wider text-primary">
@@ -138,19 +138,19 @@ export default function CartPage() {
       {items.length === 0 ? (
         <EmptyState storeSlug={storeSlug} overrides={cp} />
       ) : (
-        <div className="mt-8 grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(280px,360px)]">
+        <div className="mt-8 grid xs:gap-3 gap-6 xs:grid-cols-1 lg:grid-cols-[minmax(0,1fr)_minmax(280px,360px)]">
           {/* LEFT — items list */}
-          <ul className="space-y-3">
+          <ul className="xs:space-y-2 space-y-3">
             {items.map((it) => {
               const lineTotal = it.price * it.quantity;
               return (
                 <li
                   key={`${it.id}::${it.variantName || ''}`}
-                  className="flex items-start gap-3 rounded-2xl border border-border/60 bg-card p-3 sm:p-4"
+                  className="flex items-start xs:gap-2 gap-3 rounded-2xl border border-border/60 bg-card xs:p-2 p-3 sm:p-4"
                 >
                   <Link
                     href={`/${storeSlug}/product/${it.slug}`}
-                    className="block aspect-square w-20 shrink-0 overflow-hidden rounded-lg bg-muted sm:w-24"
+                    className="block aspect-square xs:w-16 w-20 shrink-0 overflow-hidden rounded-lg bg-muted sm:w-24"
                   >
                     {it.image ? (
                       <Image
@@ -230,7 +230,7 @@ export default function CartPage() {
           </ul>
 
           {/* RIGHT — summary */}
-          <aside className="lg:sticky lg:top-24 lg:self-start">
+          <aside className="xs:order-first lg:order-last xs:static lg:sticky lg:top-24 lg:self-start">
             <div className="space-y-4 rounded-2xl border border-border/60 bg-card p-5 shadow-sm">
               <h2 className="text-sm font-bold uppercase tracking-wider text-muted-foreground">
                 Récapitulatif
@@ -253,14 +253,14 @@ export default function CartPage() {
               </div>
               <Link
                 href={`/${storeSlug}/cart/checkout`}
-                className="inline-flex h-12 w-full items-center justify-center gap-2 rounded-md bg-gradient-to-r from-primary to-fuchsia-600 px-4 text-sm font-bold text-white shadow-md transition-transform hover:scale-[1.01]"
+                className="inline-flex xs:h-11 h-12 w-full items-center justify-center gap-2 rounded-md bg-gradient-to-r from-primary to-fuchsia-600 px-4 xs:text-xs sm:text-sm text-sm font-bold text-white shadow-md transition-transform hover:scale-[1.01]"
               >
                 {cp.checkoutCtaLabel || 'Passer commande'}
                 <ArrowRight className="h-4 w-4" />
               </Link>
               <Link
                 href={`/${storeSlug}`}
-                className="inline-flex h-10 w-full items-center justify-center gap-1.5 rounded-md border border-border/60 text-sm font-medium text-muted-foreground hover:bg-muted"
+                className="inline-flex xs:h-9 h-10 w-full items-center justify-center gap-1.5 rounded-md border border-border/60 xs:text-xs text-sm font-medium text-muted-foreground hover:bg-muted"
               >
                 <ArrowLeft className="h-3.5 w-3.5" />
                 Continuer mes achats

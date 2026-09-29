@@ -288,10 +288,10 @@ export default function CodCheckoutPage() {
           }
         />
 
-        <main className="mx-auto max-w-5xl px-3 py-6 sm:px-6 sm:py-12">
-          <div className="grid gap-6 lg:grid-cols-[1fr_400px] lg:gap-8">
+        <main className="mx-auto max-w-5xl xs:px-2 px-3 xs:py-3 py-6 sm:px-6 sm:py-12">
+          <div className="grid xs:gap-3 gap-6 xs:grid-cols-1 lg:grid-cols-[1fr_400px] lg:gap-8">
             {/* ── Left: form ────────────────────────────────────────── */}
-            <form onSubmit={handleSubmit} className="space-y-5 sm:space-y-6">
+            <form onSubmit={handleSubmit} className="xs:space-y-3 space-y-5 sm:space-y-6">
               <div>
                 <h1 className="text-xl font-bold tracking-tight sm:text-3xl" style={{ fontFamily: theme.fontHeading }}>
                   Paiement à la livraison
@@ -303,7 +303,7 @@ export default function CodCheckoutPage() {
 
               {/* Identity */}
               <section
-                className="space-y-4 border p-5"
+                className="space-y-4 border xs:p-3 p-5"
                 style={{ backgroundColor: store.settings?.codForm?.backgroundColor || theme.surface, borderColor: theme.border, borderRadius: radius }}
               >
                 <div>
@@ -327,7 +327,7 @@ export default function CodCheckoutPage() {
 
               {/* Shipping */}
               <section
-                className="space-y-4 border p-5"
+                className="space-y-4 border xs:p-3 p-5"
                 style={{ backgroundColor: store.settings?.codForm?.backgroundColor || theme.surface, borderColor: theme.border, borderRadius: radius }}
               >
                 <div>
@@ -391,7 +391,7 @@ export default function CodCheckoutPage() {
                     <button
                       type="submit"
                       disabled={submitting}
-                      className={`relative inline-flex h-14 w-full items-center justify-center gap-2 overflow-hidden px-7 text-base font-bold transition-all hover:scale-[1.01] disabled:opacity-60 ${animClass}`}
+                      className={`relative inline-flex xs:h-12 h-14 w-full items-center justify-center gap-2 overflow-hidden px-7 xs:text-sm text-base font-bold transition-all hover:scale-[1.01] disabled:opacity-60 ${animClass}`}
                       style={{ background: btnBg, color: btnFg, borderRadius: btnRadius }}
                     >
                       {submitting ? (
@@ -436,7 +436,7 @@ export default function CodCheckoutPage() {
             </form>
 
             {/* ── Right: order summary ──────────────────────────────── */}
-            <aside className="lg:sticky lg:top-24 lg:self-start">
+            <aside className="xs:order-first lg:order-last xs:static lg:sticky lg:top-24 lg:self-start">
               <div
                 className="overflow-hidden border"
                 style={{ backgroundColor: store.settings?.codForm?.backgroundColor || theme.surface, borderColor: theme.border, borderRadius: radius }}
@@ -444,8 +444,8 @@ export default function CodCheckoutPage() {
                 <div className="px-5 py-3 text-xs font-semibold uppercase tracking-wider opacity-60" style={{ backgroundColor: theme.surfaceMuted }}>
                   Récapitulatif
                 </div>
-                <div className="p-5">
-                  <div className="flex items-start gap-3">
+                <div className="xs:p-3 p-5">
+                  <div className="flex xs:gap-2 items-start gap-3">
                     {product.images?.[0] ? (
                       /* eslint-disable-next-line @next/next/no-img-element */
                       <Image
@@ -455,15 +455,15 @@ export default function CodCheckoutPage() {
                         height={80}
                         placeholder="blur"
                         blurDataURL={IMAGE_BLUR_DATA_URL}
-                        className="h-20 w-20 shrink-0 border object-cover"
+                        className="xs:h-16 xs:w-16 h-20 w-20 shrink-0 border object-cover"
                         unoptimized={mediaUrl(product.images[0])?.includes('cloudinary') ?? false}
                         style={{ borderColor: theme.border, borderRadius: radius }}
                       />
                     ) : (
-                      <div className="grid h-20 w-20 shrink-0 place-items-center text-2xl" style={{ backgroundColor: theme.surfaceMuted, borderRadius: radius }}>📦</div>
+                      <div className="grid xs:h-16 xs:w-16 h-20 w-20 shrink-0 place-items-center xs:text-xl text-2xl" style={{ backgroundColor: theme.surfaceMuted, borderRadius: radius }}>📦</div>
                     )}
                     <div className="min-w-0 flex-1">
-                      <h3 className="truncate text-sm font-semibold">{product.name}</h3>
+                      <h3 className="truncate text-xs xs:text-sm sm:text-sm font-semibold">{product.name}</h3>
                       {product.sku && <p className="mt-0.5 text-[10px] uppercase tracking-wider opacity-60">SKU · {product.sku}</p>}
                       <div className="mt-2 flex items-center gap-2">
                         <span className="text-xs opacity-70">Qté</span>
