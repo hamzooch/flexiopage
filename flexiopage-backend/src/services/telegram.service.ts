@@ -50,18 +50,41 @@ async function tg(method: string, payload: Record<string, unknown>): Promise<{ o
   }
 }
 
-/** Envoie un message (HTML) avec bouton inline optionnel. */
-export async function sendMessage(chatId: string, text: string, buttonUrl?: string): Promise<void> {
+/** Envoie un message (HTML) avec bouton inline optionnel. Renvoie `ok`. */
+export async function sendMessage(chatId: string, text: string, buttonUrl?: string): Promise<boolean> {
   const reply_markup = buttonUrl
     ? { inline_keyboard: [[{ text: '👁 Ouvrir dans FlexioPage', url: buttonUrl }]] }
     : undefined;
-  await tg('sendMessage', {
+  const res = await tg('sendMessage', {
     chat_id: chatId,
     text,
     parse_mode: 'HTML',
     disable_web_page_preview: true,
     reply_markup,
   });
+  return !!res?.ok;
+}
+
+/**
+ * Envoi d'un message de test au vendeur courant. Utilisé par le bouton
+ * "Envoyer une notif de test" du dashboard pour qu'il vérifie que la
+ * liaison est fonctionnelle sans attendre une vraie commande. Renvoie
+ * un statut explicite pour que l'UI puisse remonter un message clair.
+ */
+export async function sendTestMessage(
+  userId: mongoose.Types.ObjectId | string,
+): Promise<{ ok: boolean; reason?: 'not_configured' | 'not_linked' | 'disabled' | 'send_failed' }> {
+  if (!isTelegramConfigured()) return { ok: false, reason: 'not_configured' };
+  const user = await User.findById(userId).select('telegram').lean();
+  const tgInfo = user?.telegram;
+  if (!tgInfo?.chatId) return { ok: false, reason: 'not_linked' };
+  if (tgInfo.enabled === false) return { ok: false, reason: 'disabled' };
+  const text =
+    '<b>✅ Test réussi !</b>\n' +
+    'Si tu lis ce message, les notifications FlexioPage arriveront bien ici.\n\n' +
+    '<i>Tape /aide pour voir les commandes dispo.</i>';
+  const ok = await sendMessage(tgInfo.chatId, text, `${FRONTEND_BASE}/dashboard`);
+  return ok ? { ok: true } : { ok: false, reason: 'send_failed' };
 }
 
 /**

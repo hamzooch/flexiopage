@@ -209,17 +209,18 @@ export const APP_DETAILS: Record<AppId, AppDetail> = {
   },
   'telegram-bot': {
     longDescription:
-      "Un bot Telegram gratuit qui te ping en temps réel à chaque nouvelle commande, message ou alerte. Idéal si tu passes ta journée sur Telegram et que tu veux tout suivre depuis un seul endroit.",
+      "Reçois en temps réel sur Telegram chaque nouvelle commande, chaque mise à jour de livraison et chaque alerte importante de ta boutique. Idéal si tu passes ta journée sur Telegram et veux tout suivre depuis un seul endroit.",
     features: [
       'Notification instantanée sur chaque commande créée',
-      "Alertes SAV et messages clients centralisés",
-      'Compatible groupe Telegram (partage avec ton équipe)',
+      'Mises à jour des statuts de livraison',
+      'Alertes de solde et retraits',
       'Gratuit et illimité — pas de quota SMS/WhatsApp à surveiller',
     ],
     howItWorks: [
-      'Crée un bot Telegram via @BotFather (2 minutes)',
-      'Colle le token dans FlexioPage',
-      'Reçois toutes tes notifications au fil de la journée',
+      'Clique "Lier mon Telegram" ci-dessous',
+      'Ouvre le lien ou scanne le QR code avec Telegram',
+      'Appuie sur « Démarrer » dans la conversation du bot',
+      'Reviens ici : tu es connecté, les notifs arrivent toutes seules',
     ],
     configPath: () => `/dashboard/apps/telegram-bot`,
   },
