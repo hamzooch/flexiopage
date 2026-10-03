@@ -94,6 +94,11 @@ services:
       STOREFRONT_IPS: ${STOREFRONT_IPS:-}
       FLEXIOPAGE_WEBHOOK_SECRET: ${FLEXIOPAGE_WEBHOOK_SECRET:-}
       MOGADELIVERY_WEBHOOK_URL: ${MOGADELIVERY_WEBHOOK_URL:-}
+      # ── Google OAuth (Sign in with Google) ──
+      # Vérifie côté serveur les ID tokens renvoyés par le front via /api/auth/google.
+      # DOIT matcher NEXT_PUBLIC_GOOGLE_CLIENT_ID du bloc frontend (même project
+      # Google Cloud). Vide = endpoint renvoie 400 "google_not_configured".
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
       # ── Messenger Bot ──
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
       # Si OPENROUTER_API_KEY est défini, le service bascule sur OpenRouter
@@ -136,6 +141,8 @@ services:
       args:
         NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL}
         NEXT_PUBLIC_STOREFRONT_DOMAIN: ${NEXT_PUBLIC_STOREFRONT_DOMAIN}
+        # Vide = bouton "Sign in with Google" caché côté UI.
+        NEXT_PUBLIC_GOOGLE_CLIENT_ID: ${NEXT_PUBLIC_GOOGLE_CLIENT_ID:-}
     restart: unless-stopped
     ports:
       - "127.0.0.1:3000:3000"
