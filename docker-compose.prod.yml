@@ -72,9 +72,14 @@ services:
       context: ./flexiopage-backend
       dockerfile: Dockerfile
     restart: unless-stopped
-    # Bind only to localhost — Caddy is the public entry point.
-    ports:
-      - "127.0.0.1:5000:5000"
+    # Pas de ports: — le nombre d'instances est contrôlé par --scale backend=N
+    # dans deploy.sh. Un host port fixe créerait un conflit à partir de la 2e
+    # replica. Caddy accède au backend via le DNS Docker interne (backend:5000),
+    # Docker round-robine automatiquement sur toutes les replicas en vie.
+    # Si tu as besoin de curl le backend depuis le VPS directement :
+    #   docker compose -f docker-compose.prod.yml exec backend curl http://localhost:5000/health
+    # Pour forcer une seule instance (debug), lance :
+    #   docker compose -f docker-compose.prod.yml up -d --scale backend=1
     # Passe tout le .env au container en une fois. Sécurise contre l'oubli
     # d'un `VAR: ${VAR}` dans `environment:` — depuis 2026-07-13 (fix Moneroo)
     # où MONEROO_API_KEY était dans le .env mais absente du container faute
@@ -176,6 +181,16 @@ services:
       - backend_uploads:/app/uploads
     networks:
       - flexiopage
+    # Healthcheck : si une replica se vautre (crash boucle, OOM, Mongo
+    # injoignable), Docker la restart et Caddy stoppe d'y envoyer du trafic
+    # dès qu'elle n'est plus "healthy". Sans ça, un backend zombie peut
+    # recevoir des requêtes et renvoyer 5xx avant d'être nettoyé.
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:5000/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
 
   frontend:
     build:

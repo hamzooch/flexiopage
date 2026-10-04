@@ -19,7 +19,14 @@ echo "▶ Pulling latest code from GitHub…"
 git pull --ff-only
 
 echo "▶ Building and starting containers…"
-docker compose -f docker-compose.prod.yml --env-file .env up -d --build
+# BACKEND_SCALE : nombre d'instances backend derrière Caddy. 2 par défaut
+# (utilise ~2 cœurs CPU, 1 instance reste dispo pendant qu'une autre
+# redémarre). Monte à 3-4 si ton VPS a 4+ cœurs. Multi-instance repose
+# sur le leader election Redis — un seul backend exécute les schedulers,
+# les autres sont no-op sur ces jobs.
+BACKEND_SCALE="${BACKEND_SCALE:-2}"
+docker compose -f docker-compose.prod.yml --env-file .env up -d --build \
+  --scale backend="$BACKEND_SCALE"
 
 echo "▶ Pruning dangling images…"
 docker image prune -f

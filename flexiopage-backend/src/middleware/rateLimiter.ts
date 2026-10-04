@@ -1,8 +1,41 @@
 import type { Request, Response } from 'express';
-import rateLimit from 'express-rate-limit';
+import rateLimit, { type Store } from 'express-rate-limit';
+import { RedisStore } from 'rate-limit-redis';
+import { getRedis } from '../lib/redis';
+import { logger } from '../lib/logger';
 import { record as recordSecurityEvent } from '../services/security-monitor.service';
 
 const isDev = process.env.NODE_ENV !== 'production';
+
+/**
+ * Store partagé Redis pour tous les rate-limiters du backend. Sans ça, chaque
+ * worker Node en multi-instance aurait son propre compteur in-memory → la
+ * limite réelle devient `limit × N workers` au lieu du cap voulu. Avec Redis,
+ * le compteur est unique peu importe le nombre d'instances.
+ *
+ * Dégradation gracieuse : si Redis absent (REDIS_URL non défini) ou down au
+ * boot, on retombe sur le store mémoire par défaut. Préserve le comportement
+ * single-instance qu'on a toujours eu.
+ *
+ * Factory : chaque limiter doit avoir son propre Store (sinon ils partageraient
+ * les mêmes buckets). Le `prefix` les isole par usage.
+ */
+function makeStore(prefix: string): Store | undefined {
+  const r = getRedis();
+  if (!r) {
+    if (!isDev) logger.warn({ prefix }, '[rate-limit] no Redis → using memory store (not shared between instances)');
+    return undefined;
+  }
+  return new RedisStore({
+    // `call` signature imposée par rate-limit-redis v4 — on wrappe la commande
+    // Redis dans sendCommand (ioredis). Le cast en any est nécessaire car les
+    // types RedisReply attendus par rate-limit-redis ne matchent pas ceux
+    // d'ioredis.call() ; les deux retournent le même payload à l'exécution.
+    sendCommand: (command: string, ...args: string[]) =>
+      r.call(command, ...args) as unknown as Promise<string>,
+    prefix: `rl:${prefix}:`,
+  });
+}
 
 /** Called by express-rate-limit each time a client is 429'd. */
 function onLimitReached(req: Request, _res: Response): void {
@@ -44,6 +77,7 @@ export const rateLimiter = rateLimit({
   message: { error: 'Too many requests, please try again later' },
   standardHeaders: true,
   legacyHeaders: false,
+  store: makeStore('global'),
   // Don't count high-frequency polling endpoints against the limit.
   skip: isPollingRequest,
   handler: (req, res, _next, options) => {
@@ -71,6 +105,7 @@ export const rateLimiter = rateLimit({
 export const aiGenerationLimiter = rateLimit({
   windowMs: 3_000,
   max: 1,
+  store: makeStore('ai-gen'),
   keyGenerator: (req) => {
     const user = (req as unknown as { user?: { _id?: { toString(): string } } }).user;
     const userKey = user?._id?.toString() || req.ip || 'anon';
@@ -92,6 +127,7 @@ export const aiGenerationLimiter = rateLimit({
 export const authRateLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 20,
+  store: makeStore('auth'),
   message: { error: 'Too many login attempts' },
   standardHeaders: true,
   legacyHeaders: false,

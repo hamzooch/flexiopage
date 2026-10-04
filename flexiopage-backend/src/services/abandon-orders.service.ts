@@ -18,6 +18,7 @@
  * doesn't have to fire at exactly minute N+15 to be useful.
  */
 import { logger } from '../lib/logger';
+import { leaderElection } from '../lib/leader-election';
 import { Order } from '../models/Order.model';
 
 /** How long a pending order can sit before it's considered abandoned. */
@@ -57,11 +58,16 @@ export function startAbandonOrdersJob(): void {
   if (sweepTimer) return;
   // First sweep 30 s after boot so we don't hammer Mongo during warm-up.
   setTimeout(() => {
+    // Gated par leader election : sans ce check, N instances relanceraient
+    // le même sweep → mails abandon dupliqués par client (symptôme classique
+    // en multi-instance). En single-instance, cette instance est toujours leader.
+    if (!leaderElection.isLeader()) return;
     void sweepAbandonedOrders().catch((err) =>
       logger.error({ err }, '[abandon] initial sweep failed'),
     );
   }, 30_000);
   sweepTimer = setInterval(() => {
+    if (!leaderElection.isLeader()) return;
     void sweepAbandonedOrders().catch((err) =>
       logger.error({ err }, '[abandon] sweep cycle crashed'),
     );
@@ -69,6 +75,6 @@ export function startAbandonOrdersJob(): void {
   sweepTimer.unref?.();
   logger.info(
     { graceWindowMs: GRACE_WINDOW_MS, sweepIntervalMs: SWEEP_INTERVAL_MS },
-    '[abandon] cart-abandonment sweeper started',
+    '[abandon] cart-abandonment sweeper started (leader-gated)',
   );
 }

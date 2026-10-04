@@ -9,6 +9,7 @@
  * Même pattern que security-monitor / abandon-orders : setInterval + unref.
  */
 import { logger } from '../lib/logger';
+import { leaderElection } from '../lib/leader-election';
 import { Announcement } from '../models/Announcement.model';
 import { sendAnnouncement } from './announcement.service';
 
@@ -43,11 +44,16 @@ export function startAnnouncementScheduler(): void {
   if (checkTimer) return;
   // Première passe 45 s après démarrage — laisse Mongo warm-up.
   setTimeout(() => {
+    // Gated par leader : sans ça, N instances enverraient le même broadcast
+    // N fois à chaque client. Le flag `sending` interne protège d'une double
+    // exécution dans un même process mais pas entre process.
+    if (!leaderElection.isLeader()) return;
     void sweep().catch((err) => logger.error({ err }, '[announcement-scheduler] initial sweep failed'));
   }, 45_000);
   checkTimer = setInterval(() => {
+    if (!leaderElection.isLeader()) return;
     void sweep().catch((err) => logger.error({ err }, '[announcement-scheduler] cycle crashed'));
   }, CHECK_INTERVAL_MS);
   checkTimer.unref?.();
-  logger.info({ intervalMs: CHECK_INTERVAL_MS }, '[announcement-scheduler] started');
+  logger.info({ intervalMs: CHECK_INTERVAL_MS }, '[announcement-scheduler] started (leader-gated)');
 }

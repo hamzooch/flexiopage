@@ -10,6 +10,8 @@ import cors from 'cors';
 import cookieParser from 'cookie-parser';
 import helmet from 'helmet';
 import { connectDB, disconnectDB } from './config/database';
+import { leaderElection } from './lib/leader-election';
+import { disconnectRedis } from './lib/redis';
 import { errorHandler } from './middleware/errorHandler';
 import { notFound } from './middleware/notFound';
 import { logger, httpLogger } from './lib/logger';
@@ -268,11 +270,14 @@ async function start() {
 
   // Configure le webhook du bot Telegram vendeur (no-op si non configuré / URL locale).
   void setupTelegramWebhook();
-  // Security monitor — flushes in-memory attack buckets to DB + fires alerts.
+  // Leader election via Redis — garantit qu'une seule instance exécute les
+  // schedulers en multi-instance. En single-instance ou sans Redis, cette
+  // instance devient leader par défaut (comportement actuel préservé).
+  void leaderElection.start();
+  // Les 3 schedulers sont no-op sur les instances non-leader (voir leur
+  // implémentation). On les lance tous — ils savent se taire.
   startSecurityMonitor();
-  // Cart-abandonment sweeper — flips stale `pending` orders → `abandoned`.
   startAbandonOrdersJob();
-  // Announcement scheduler — fires scheduled seller-broadcast emails.
   startAnnouncementScheduler();
 
   // ── Graceful shutdown ──────────────────────────────────────────────
@@ -314,11 +319,25 @@ async function start() {
       logger.error({ err }, 'error closing HTTP server');
     }
 
+    // Libérer le lock leader AVANT de couper Redis — sinon la bascule vers
+    // un autre leader prend ttl (30 s) au lieu d'être instantanée.
+    try {
+      await leaderElection.stop();
+    } catch (err) {
+      logger.warn({ err }, 'error releasing leader lock');
+    }
+
     try {
       await disconnectDB();
       logger.info('MongoDB connection closed');
     } catch (err) {
       logger.error({ err }, 'error closing MongoDB connection');
+    }
+
+    try {
+      await disconnectRedis();
+    } catch (err) {
+      logger.warn({ err }, 'error closing Redis');
     }
 
     logger.info('shutdown complete');

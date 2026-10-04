@@ -20,6 +20,7 @@
  *                               (default 200 — tuned for real attacks, not blips)
  */
 import { logger } from '../lib/logger';
+import { leaderElection } from '../lib/leader-election';
 import { SecurityEvent, type SecurityEventType } from '../models/SecurityEvent.model';
 import { sendEmail } from './email.service';
 import { sendMessage as sendTelegramMessage } from './telegram.service';
@@ -218,11 +219,18 @@ let flushTimer: NodeJS.Timeout | null = null;
 export function startSecurityMonitor(): void {
   if (flushTimer) return;
   flushTimer = setInterval(() => {
+    // Multi-instance : seul le leader flush/alerte, sinon on aurait N
+    // écritures Mongo et N alertes Telegram/email identiques.
+    // Les buckets in-memory restent globaux au process — chaque instance
+    // accumule ses propres hits, mais seul le leader les persiste. OK en
+    // single-instance (toujours leader). Pour un vrai scaling, il faudrait
+    // bouger les buckets dans Redis (prochaine itération).
+    if (!leaderElection.isLeader()) return;
     void flush().catch((err) => logger.error({ err }, '[security] flush cycle crashed'));
   }, FLUSH_INTERVAL_MS);
   // Don't hold the event loop open on graceful shutdown.
   flushTimer.unref?.();
-  logger.info({ intervalMs: FLUSH_INTERVAL_MS }, '[security] monitor started');
+  logger.info({ intervalMs: FLUSH_INTERVAL_MS }, '[security] monitor started (leader-gated)');
 }
 
 /** Test helper — force an immediate flush (used by admin manual refresh). */
