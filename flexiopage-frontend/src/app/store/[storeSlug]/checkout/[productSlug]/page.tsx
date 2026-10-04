@@ -207,6 +207,38 @@ export default function CheckoutPage() {
       />
 
       <main className="mx-auto max-w-5xl px-3 py-6 sm:px-6 sm:py-12">
+        {/* ─── Récap compact mobile ──────────────────────────────
+            Sans ce bloc, sur mobile le client remplissait 10+ champs sans jamais voir
+            ce qu'il achète ni le prix (le récap complet est en bas du grid, après le
+            formulaire). On remet le visuel + prix immédiatement visibles, format
+            compact pour pas prendre tout l'écran. */}
+        <div className="mb-5 flex items-center gap-3 rounded-2xl border border-border/60 bg-card p-3 lg:hidden">
+          {product.images?.[0] ? (
+            <Image
+              src={mediaUrl(product.images[0]) || product.images[0]}
+              alt=""
+              width={56}
+              height={56}
+              placeholder="blur"
+              blurDataURL={IMAGE_BLUR_DATA_URL}
+              className="h-14 w-14 shrink-0 rounded-xl border border-border/60 object-cover"
+              unoptimized={mediaUrl(product.images[0])?.includes('cloudinary') ?? false}
+            />
+          ) : (
+            <div className="grid h-14 w-14 shrink-0 place-items-center rounded-xl bg-muted">
+              <Package className="h-6 w-6 text-muted-foreground" />
+            </div>
+          )}
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-sm font-semibold">{product.name}</p>
+            <p className="text-xs text-emerald-600">Livraison instantanée</p>
+          </div>
+          <div className="shrink-0 text-right">
+            <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Total</p>
+            <p className="text-base font-bold">{fmtPrice(product.price, currency)}</p>
+          </div>
+        </div>
+
         <div className="grid gap-6 lg:grid-cols-[1fr_420px] lg:gap-8">
           {/* ─── Formulaire ─────────────────────────────────────── */}
           <form onSubmit={handleSubmit} className="space-y-6">
@@ -275,7 +307,7 @@ export default function CheckoutPage() {
                     placeholder="+225 07 00 00 00 00"
                     className="mt-1.5 flex h-12 w-full rounded-xl border border-input bg-background px-4 text-sm focus:border-primary/40 focus:outline-none focus:ring-4 focus:ring-primary/10"
                   />
-                  <p className="mt-1.5 text-[11px] text-muted-foreground">
+                  <p className="mt-1.5 text-xs text-muted-foreground">
                     Format international avec indicatif pays. Sert aussi pour le paiement Mobile Money.
                   </p>
                 </div>
@@ -325,11 +357,11 @@ export default function CheckoutPage() {
                         {c.emoji}
                       </div>
                       <div className="min-w-0 flex-1">
-                        <div className="flex items-center gap-1.5">
+                        <div className="flex flex-wrap items-center gap-1.5">
                           <span className="text-sm font-semibold">{c.label}</span>
-                          {c.badge && <span className="rounded-full bg-muted px-1.5 py-0.5 text-[9px] font-medium text-muted-foreground">{c.badge}</span>}
+                          {c.badge && <span className="rounded-full bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">{c.badge}</span>}
                         </div>
-                        <div className="truncate text-[10px] uppercase tracking-wider text-muted-foreground">{c.countries}</div>
+                        <div className="truncate text-[11px] uppercase tracking-wider text-muted-foreground">{c.countries}</div>
                       </div>
                       {channel === c.id && (
                         <CheckCircle2 className="h-4 w-4 shrink-0 text-primary" />
@@ -349,7 +381,7 @@ export default function CheckoutPage() {
             <button
               type="submit"
               disabled={submitting}
-              className="inline-flex h-13 w-full items-center justify-center gap-2 rounded-2xl gradient-brand py-4 text-base font-bold text-white shadow-xl shadow-primary/30 transition-all hover:scale-[1.01] disabled:opacity-60"
+              className="inline-flex min-h-14 w-full items-center justify-center gap-2 rounded-2xl gradient-brand px-4 py-4 text-base font-bold text-white shadow-xl shadow-primary/30 transition-all hover:scale-[1.01] disabled:opacity-60"
             >
               {submitting ? (
                 <>
@@ -364,15 +396,18 @@ export default function CheckoutPage() {
               )}
             </button>
 
-            <div className="flex flex-wrap items-center justify-center gap-4 text-[11px] text-muted-foreground">
-              <span className="inline-flex items-center gap-1"><ShieldCheck className="h-3 w-3" /> Paiement sécurisé</span>
-              <span className="inline-flex items-center gap-1"><Zap className="h-3 w-3" /> Accès immédiat</span>
-              <span className="inline-flex items-center gap-1"><CreditCard className="h-3 w-3" /> Garantie 14 jours</span>
+            <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-2 text-xs text-muted-foreground">
+              <span className="inline-flex items-center gap-1"><ShieldCheck className="h-3.5 w-3.5" /> Paiement sécurisé</span>
+              <span className="inline-flex items-center gap-1"><Zap className="h-3.5 w-3.5" /> Accès immédiat</span>
+              <span className="inline-flex items-center gap-1"><CreditCard className="h-3.5 w-3.5" /> Garantie 14 jours</span>
             </div>
           </form>
 
-          {/* ─── Récapitulatif ───────────────────────────────────── */}
-          <aside className="lg:sticky lg:top-24 lg:self-start">
+          {/* ─── Récapitulatif complet (desktop uniquement) ──────
+              Sur mobile ce bloc est remplacé par le récap compact en haut
+              de page (voir plus haut, lg:hidden). hidden lg:block l'enlève
+              aussi du flow du grid côté mobile. */}
+          <aside className="hidden lg:sticky lg:top-24 lg:block lg:self-start">
             <div className="overflow-hidden rounded-2xl border border-border/60 bg-card">
               <div className="bg-muted/30 px-5 py-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                 Récapitulatif
