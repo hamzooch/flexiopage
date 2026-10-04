@@ -167,8 +167,6 @@ services:
       # sur les webhooks entrants (header X-Webhook-Signature). Sans cette
       # valeur, l'endpoint /webhook/wasender accepte n'importe quel POST.
       WASENDER_WEBHOOK_SECRET: ${WASENDER_WEBHOOK_SECRET:-}
-      # Optional — when set, the bot uses BullMQ instead of in-process processing
-      REDIS_URL: ${REDIS_URL:-}
     depends_on:
       mongodb:
         condition: service_healthy
