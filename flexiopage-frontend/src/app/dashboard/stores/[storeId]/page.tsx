@@ -342,7 +342,13 @@ export default function StoreEditPage() {
 
   // Preview state
   const [previewPage, setPreviewPage] = useState<string>('home');
-  const [previewDevice, setPreviewDevice] = useState<'mobile' | 'tablet' | 'desktop'>('desktop');
+  // Défaut = mobile : 70-85% des visiteurs d'un storefront arrivent de
+  // Facebook/WhatsApp/Instagram sur mobile. Le vendeur doit voir d'abord
+  // la vue qui domine ses visiteurs réels, pas la vue desktop. Avant ce
+  // changement, le défaut était 'desktop' et beaucoup de vendeurs ne
+  // réalisaient pas qu'ils pouvaient switcher — ils validaient leur
+  // boutique sur l'aperçu desktop et le mobile prenait des surprises.
+  const [previewDevice, setPreviewDevice] = useState<'mobile' | 'tablet' | 'desktop'>('mobile');
   const [previewBust, setPreviewBust] = useState(0);
 
   // Fetch store + sample slugs
@@ -4896,11 +4902,16 @@ function PreviewPane({
                 title={`${d.label} · ${d.width}px`}
                 aria-pressed={active}
                 className={cn(
-                  'grid h-7 w-7 place-items-center rounded-md transition-all',
+                  // Boutons plus grands + libellé visible sur md+ : avant,
+                  // avec des icônes h-3.5 dans des boutons h-7 non labellés,
+                  // la plupart des vendeurs ne voyaient pas qu'ils pouvaient
+                  // switcher — ils restaient sur l'aperçu desktop par défaut.
+                  'inline-flex h-8 items-center gap-1.5 rounded-md px-2 text-xs font-medium transition-all',
                   active ? 'bg-card text-primary shadow-sm' : 'text-muted-foreground hover:text-foreground',
                 )}
               >
-                <Icon className="h-3.5 w-3.5" />
+                <Icon className="h-4 w-4" />
+                <span className="hidden md:inline">{d.label}</span>
               </button>
             );
           })}
@@ -4908,9 +4919,9 @@ function PreviewPane({
             type="button"
             onClick={onReload}
             title="Recharger"
-            className="ml-0.5 grid h-7 w-7 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-card hover:text-foreground"
+            className="ml-0.5 grid h-8 w-8 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-card hover:text-foreground"
           >
-            <RotateCw className="h-3.5 w-3.5" />
+            <RotateCw className="h-4 w-4" />
           </button>
         </div>
       </div>
@@ -4958,9 +4969,9 @@ function ViewportPreview({
   previewBust: number;
 }) {
   const dims = {
-    mobile:  { width: 375,  height: 720 },
-    tablet:  { width: 768,  height: 1024 },
-    desktop: { width: 1280, height: 800 },
+    mobile:  { width: 375,  height: 720,  label: 'iPhone · 375px' },
+    tablet:  { width: 768,  height: 1024, label: 'Tablette · 768px' },
+    desktop: { width: 1280, height: 800,  label: 'Desktop · 1280px' },
   }[device];
 
   const wrapRef = useRef<HTMLDivElement | null>(null);
@@ -5005,31 +5016,38 @@ function ViewportPreview({
     : 9999;
 
   return (
-    <div
-      ref={wrapRef}
-      className="mx-auto overflow-hidden rounded-2xl border border-border/60 bg-card shadow-xl"
-      style={{
-        maxWidth: maxFrameWidth,
-        width: '100%',
-        height: dims.height * scale,
-        transition: 'height 0.2s ease, max-width 0.2s ease',
-      }}
-    >
-      <iframe
-        // Le `device` n'est PLUS dans la key : changer de device modifie
-        // juste width/height/transform de l'iframe (CSS), pas son `src`.
-        // Avant, chaque switch mobile↔tablet↔desktop unmount + remount
-        // l'iframe → rechargement complet de la storefront, jank visible.
-        key={`${src}-${previewBust}`}
-        src={src}
-        title="Aperçu de la boutique"
-        className="origin-top-left border-0 bg-background"
+    <div className="mx-auto flex flex-col items-center gap-2" style={{ maxWidth: maxFrameWidth }}>
+      {/* Badge "viewport actuel" — rend explicite la taille simulée pour
+          que le vendeur sache quelle expérience il regarde (sans ça, un
+          vendeur habitué peut se demander si c'est son dashboard rétréci
+          ou une vraie simulation mobile). */}
+      <span className="rounded-full border border-border/60 bg-card px-2.5 py-0.5 text-[11px] font-medium text-muted-foreground">
+        {dims.label}
+      </span>
+      <div
+        ref={wrapRef}
+        className="w-full overflow-hidden rounded-2xl border border-border/60 bg-card shadow-xl"
         style={{
-          width: dims.width,
-          height: dims.height,
-          transform: `scale(${scale})`,
+          height: dims.height * scale,
+          transition: 'height 0.2s ease',
         }}
-      />
+      >
+        <iframe
+          // Le `device` n'est PLUS dans la key : changer de device modifie
+          // juste width/height/transform de l'iframe (CSS), pas son `src`.
+          // Avant, chaque switch mobile↔tablet↔desktop unmount + remount
+          // l'iframe → rechargement complet de la storefront, jank visible.
+          key={`${src}-${previewBust}`}
+          src={src}
+          title="Aperçu de la boutique"
+          className="origin-top-left border-0 bg-background"
+          style={{
+            width: dims.width,
+            height: dims.height,
+            transform: `scale(${scale})`,
+          }}
+        />
+      </div>
     </div>
   );
 }
