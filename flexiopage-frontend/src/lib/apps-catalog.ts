@@ -58,7 +58,7 @@ export const APPS: AppDef[] = [
     category: 'Automation',
     icon: Bot,
     accent: 'from-blue-500 to-indigo-600',
-    available: true,
+    available: false,
   },
   {
     id: 'whatsapp-bot',
@@ -94,7 +94,7 @@ export const APPS: AppDef[] = [
     category: 'Notifications',
     icon: Bell,
     accent: 'from-emerald-500 to-teal-600',
-    available: true,
+    available: false,
   },
   {
     id: 'botstore',
@@ -103,7 +103,7 @@ export const APPS: AppDef[] = [
     category: 'Automation',
     icon: Bot,
     accent: 'from-indigo-500 to-fuchsia-600',
-    available: true,
+    available: false,
   },
   {
     id: 'google-sheets',
