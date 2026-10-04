@@ -10,12 +10,48 @@ services:
   mongodb:
     image: mongo:7
     restart: unless-stopped
+    # --replSet rs0 : passe Mongo en mode replica set 1-node (nécessaire aux
+    # transactions multi-documents et aux change streams). Le healthcheck plus
+    # bas appelle rs.initiate() au tout premier boot ; les démarrages suivants
+    # trouvent le set déjà initialisé et deviennent no-op.
+    command: ["mongod", "--replSet", "rs0", "--bind_ip_all"]
     ports:
       - "27017:27017"
     volumes:
       - mongodb_data:/data/db
     environment:
       MONGO_INITDB_DATABASE: flexiopage
+    healthcheck:
+      test: >
+        mongosh --quiet --eval "
+          try { rs.status().ok ? 0 : rs.initiate({_id:'rs0', members:[{_id:0, host:'mongodb:27017'}]}); }
+          catch (e) {
+            if (e.codeName === 'NotYetInitialized') {
+              rs.initiate({_id:'rs0', members:[{_id:0, host:'mongodb:27017'}]});
+            } else { throw e; }
+          }
+        "
+      interval: 10s
+      timeout: 10s
+      retries: 10
+      start_period: 20s
+
+  # Redis — rate-limit partagé, locks pour leader election des schedulers,
+  # BullMQ pour les jobs messenger-bot/whatsapp-bot. Pas d'auth : accessible
+  # uniquement depuis le réseau Docker interne (pas exposé publiquement).
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--save", "60", "1", "--loglevel", "warning"]
+    ports:
+      - "127.0.0.1:6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
 
   backend:
     build:
@@ -32,13 +68,19 @@ services:
     environment:
       NODE_ENV: production
       PORT: 5000
-      MONGODB_URI: mongodb://mongodb:27017/flexiopage
+      # ?replicaSet=rs0 : indispensable pour que le driver sache qu'on est
+      # en replica set (sinon pas de transactions / change streams côté Node).
+      MONGODB_URI: mongodb://mongodb:27017/flexiopage?replicaSet=rs0
       JWT_SECRET: ${JWT_SECRET:-change-me-in-production}
       FRONTEND_URL: ${FRONTEND_URL:-http://localhost:3000}
       STORAGE_DRIVER: local
       UPLOAD_PATH: /app/uploads
+      REDIS_URL: redis://redis:6379
     depends_on:
-      - mongodb
+      mongodb:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
     volumes:
       - backend_uploads:/app/uploads
 
@@ -59,3 +101,4 @@ services:
 volumes:
   mongodb_data:
   backend_uploads:
+  redis_data:

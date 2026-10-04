@@ -9,7 +9,7 @@ import mongoSanitize from 'express-mongo-sanitize';
 import cors from 'cors';
 import cookieParser from 'cookie-parser';
 import helmet from 'helmet';
-import { connectDB } from './config/database';
+import { connectDB, disconnectDB } from './config/database';
 import { errorHandler } from './middleware/errorHandler';
 import { notFound } from './middleware/notFound';
 import { logger, httpLogger } from './lib/logger';
@@ -246,9 +246,26 @@ app.use(errorHandler);
 
 async function start() {
   await connectDB();
-  app.listen(PORT, () => {
+  const server = app.listen(PORT, () => {
     logger.info({ port: PORT }, `FlexioPage API running on http://localhost:${PORT}`);
   });
+
+  // Timeouts HTTP explicites.
+  //
+  //   requestTimeout     : coupe une requête qui n'a pas été entièrement traitée
+  //                        en 30 s (évite qu'une query Mongo lente ou un fetch
+  //                        externe pendu ne squatte une socket indéfiniment).
+  //   headersTimeout     : attente max entre le début de la requête et la fin
+  //                        des headers — barrière anti slow-loris.
+  //   keepAliveTimeout   : Node ferme la connexion keep-alive après 65 s
+  //                        d'inactivité. DOIT être > keepAlive côté reverse-
+  //                        proxy (Caddy = 60 s par défaut) sinon Caddy
+  //                        réutilise une socket que Node vient de fermer et
+  //                        renvoie des 502 aléatoires au client.
+  server.requestTimeout = 30_000;
+  server.headersTimeout = 20_000;
+  server.keepAliveTimeout = 65_000;
+
   // Configure le webhook du bot Telegram vendeur (no-op si non configuré / URL locale).
   void setupTelegramWebhook();
   // Security monitor — flushes in-memory attack buckets to DB + fires alerts.
@@ -257,6 +274,59 @@ async function start() {
   startAbandonOrdersJob();
   // Announcement scheduler — fires scheduled seller-broadcast emails.
   startAnnouncementScheduler();
+
+  // ── Graceful shutdown ──────────────────────────────────────────────
+  //
+  // Docker envoie SIGTERM au container, puis SIGKILL après ~10 s. On a donc
+  // une fenêtre pour finir proprement les requêtes en cours. Avant ce fix,
+  // le process mourait net → 502 côté Caddy à chaque deploy, et pire,
+  // une transaction Mongo pouvait rester half-committed.
+  //
+  // Séquence : stop accept new conns → attend requêtes en cours (max 10 s) →
+  //            ferme pool Mongo → exit.
+  //
+  // On installe les deux signaux (SIGTERM pour Docker/systemd, SIGINT pour
+  // Ctrl+C en dev). Un deuxième signal force l'exit immédiat (si on est
+  // vraiment bloqué, un deuxième Ctrl+C doit tuer).
+  let shuttingDown = false;
+  const shutdown = async (signal: string): Promise<void> => {
+    if (shuttingDown) {
+      logger.warn({ signal }, 'second shutdown signal — forcing exit');
+      process.exit(1);
+    }
+    shuttingDown = true;
+    logger.info({ signal }, 'graceful shutdown initiated');
+
+    // Timeout de sécurité : si quelque chose coince (ex. un setInterval
+    // qui empêche le process de mourir), on force l'exit après 15 s.
+    const forceKill = setTimeout(() => {
+      logger.error('graceful shutdown timed out after 15 s — forcing exit');
+      process.exit(1);
+    }, 15_000);
+    forceKill.unref();
+
+    try {
+      await new Promise<void>((resolve, reject) => {
+        server.close((err) => (err ? reject(err) : resolve()));
+      });
+      logger.info('HTTP server closed');
+    } catch (err) {
+      logger.error({ err }, 'error closing HTTP server');
+    }
+
+    try {
+      await disconnectDB();
+      logger.info('MongoDB connection closed');
+    } catch (err) {
+      logger.error({ err }, 'error closing MongoDB connection');
+    }
+
+    logger.info('shutdown complete');
+    process.exit(0);
+  };
+
+  process.on('SIGTERM', () => void shutdown('SIGTERM'));
+  process.on('SIGINT', () => void shutdown('SIGINT'));
 }
 
 start().catch((err) => {
