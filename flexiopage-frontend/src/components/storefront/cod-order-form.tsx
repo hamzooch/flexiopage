@@ -22,7 +22,7 @@ import type { CouponValidationResponse } from '@/types/coupon';
 import { getAvailableMethods, type StoreType } from '@/lib/payment-methods';
 import { PaymentMethodSelector, methodKey } from '@/components/storefront/payment-method-selector';
 import { VariantSwatches } from '@/components/storefront/variant-swatches';
-import { BumpOffers, type BumpOffer } from '@/components/storefront/bump-offers';
+import { BumpOffers, bumpUnitPrice, type BumpOffer } from '@/components/storefront/bump-offers';
 import { DeliveryEta } from '@/components/storefront/delivery-eta';
 
 const API_BASE = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5001').replace(/\/$/, '');
@@ -347,7 +347,10 @@ export function CodOrderForm({
   const upsellsTotal = useMemo(() => {
     if (!upsells || upsells.length === 0 || selectedUpsellIds.length === 0) return 0;
     const byId = new Map(upsells.map((u) => [u._id, u]));
-    return selectedUpsellIds.reduce((sum, id) => sum + (byId.get(id)?.price ?? 0), 0);
+    return selectedUpsellIds.reduce((sum, id) => {
+      const offer = byId.get(id);
+      return sum + (offer ? bumpUnitPrice(offer) : 0);
+    }, 0);
   }, [upsells, selectedUpsellIds]);
 
   // Server-side flat shipping fee applied once per COD order. Display-only —
@@ -355,17 +358,19 @@ export function CodOrderForm({
   // authoritative total, so a tampered client never charges the wrong amount.
   const shippingFee = Math.max(0, Number(config?.shippingFee) || 0);
   const productsTotal = bundleTotal(effectivePrice, bundle, quantity);
+  // Coupon base matches the server: main line (bundle price) + accepted bumps.
+  const couponBase = productsTotal + upsellsTotal;
   // Recompute the applied discount when the subtotal moves (qty / bundle tier
-  // change) — coupon stays applied but the absolute amount follows the cart.
+  // / upsell change) — coupon stays applied but the absolute amount follows.
   // Percent coupons rescale automatically; fixed ones cap at the new subtotal.
   const liveDiscount = useMemo(() => {
     if (!couponApplied) return 0;
     if (couponApplied.type === 'percent') {
-      return Math.round(productsTotal * (couponApplied.value / 100) * 100) / 100;
+      return Math.round(couponBase * (couponApplied.value / 100) * 100) / 100;
     }
-    return Math.min(couponApplied.value, productsTotal);
-  }, [couponApplied, productsTotal]);
-  const total = Math.max(0, productsTotal - liveDiscount + shippingFee + upsellsTotal);
+    return Math.min(couponApplied.value, couponBase);
+  }, [couponApplied, couponBase]);
+  const total = Math.max(0, couponBase - liveDiscount + shippingFee);
 
   // Re-validate the coupon when the subtotal changes — the server may flip
   // it to invalid if minPurchase is no longer met. We don't block the buyer
@@ -380,8 +385,11 @@ export function CodOrderForm({
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             code: couponApplied.code,
-            subtotal: productsTotal,
-            productIds: productId ? [productId] : undefined,
+            subtotal: couponBase,
+            productIds: [
+              ...(productId ? [productId] : []),
+              ...selectedUpsellIds,
+            ],
           }),
         });
         const data = (await res.json()) as CouponValidationResponse;
@@ -406,7 +414,7 @@ export function CodOrderForm({
     // We only depend on subtotal here — re-running on couponApplied changes
     // would loop because we setState inside.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [productsTotal]);
+  }, [couponBase]);
 
   async function applyCoupon() {
     const code = couponInput.trim().toUpperCase();
@@ -419,8 +427,11 @@ export function CodOrderForm({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           code,
-          subtotal: productsTotal,
-          productIds: productId ? [productId] : undefined,
+          subtotal: couponBase,
+          productIds: [
+            ...(productId ? [productId] : []),
+            ...selectedUpsellIds,
+          ],
         }),
       });
       const data = (await res.json()) as CouponValidationResponse;

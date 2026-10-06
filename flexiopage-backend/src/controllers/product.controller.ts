@@ -13,6 +13,30 @@ import { validateLogisticsSku } from '../lib/logistics';
 
 const MAX_IMPORT_IMAGES = 8;
 
+/** Keep only same-shape upsell / cross-sell rows. Unknown ids are dropped. */
+function sanitizeRelatedOffers(raw: unknown): productService.RelatedOfferInput[] {
+  if (!Array.isArray(raw)) return [];
+  const out: productService.RelatedOfferInput[] = [];
+  raw.forEach((item, index) => {
+    if (!item || typeof item !== 'object') return;
+    const o = item as Record<string, unknown>;
+    const productId = String(o.productId || '');
+    if (!/^[0-9a-fA-F]{24}$/.test(productId)) return;
+    const discount = Number(o.discountPct);
+    const order = Number(o.order);
+    const label = typeof o.label === 'string' ? o.label.trim().slice(0, 140) : '';
+    out.push({
+      productId,
+      ...(label ? { label } : {}),
+      ...(Number.isFinite(discount) && discount >= 1 && discount <= 99
+        ? { discountPct: Math.round(discount) }
+        : {}),
+      order: Number.isFinite(order) ? order : index,
+    });
+  });
+  return out;
+}
+
 /**
  * Dé-escape les champs texte du body. Le sanitizeMiddleware global applique
  * `validator.escape` qui transforme `/`, `&`, `<`, `>`, `"`, `'` en entities
@@ -355,6 +379,8 @@ export async function updateProduct(req: AuthRequest, res: Response): Promise<vo
     seoDescription: unescapeText(body.seoDescription),
     pageSettings: body.pageSettings,
     bundle: body.bundle,
+    upsells: body.upsells !== undefined ? sanitizeRelatedOffers(body.upsells) : undefined,
+    crossSells: body.crossSells !== undefined ? sanitizeRelatedOffers(body.crossSells) : undefined,
     suppliers: body.suppliers,
     isTestCandidate: body.isTestCandidate,
     testStatus: body.testStatus,

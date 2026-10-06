@@ -520,10 +520,9 @@ router.get('/stores/:storeSlug/products/:productSlug', async (req: Request, res:
         const d = byId.get(String(o.productId));
         if (!d) return null;
         const priced = applyMarketPricing(d, market.country, market.currency);
-        // Discount metadata is displayed to make the bump feel like an
-        // exclusive deal, but the server charges the target product's
-        // regular price (identical pattern to crossSells). Sellers who
-        // want a real discount lower the target product's price.
+        // discountPct is applied to this line only when the buyer accepts
+        // the bump at checkout. The catalog price stays here so the
+        // storefront can show the original amount struck through.
         return {
           _id: String(d._id),
           name: d.name,
@@ -1307,6 +1306,8 @@ router.post('/checkout/cod', async (req: Request, res: Response): Promise<void> 
     productDoc: { _id: unknown; trackInventory: boolean; allowBackorder: boolean; stock: number };
   };
   const resolved: ResolvedItem[] = [];
+  // parent product id → upsell target id → discount percent
+  const upsellDiscountByTarget = new Map<string, number>();
   for (const it of body.items) {
     if (!it.productSlug) {
       res.status(400).json({ error: 'items[].productSlug required' });
@@ -1375,6 +1376,15 @@ router.post('/checkout/cod', async (req: Request, res: Response): Promise<void> 
     // client's price is never trusted. Variant price replaces product.price
     // before bundle resolution.
     const pricing = resolveBundlePricing(effectiveBasePrice, product.bundle, qty);
+    const parentId = product._id.toString();
+    for (const offer of product.upsells || []) {
+      const targetId = String(offer.productId || '');
+      const pct = Number(offer.discountPct);
+      if (!targetId || targetId === parentId) continue;
+      if (!Number.isFinite(pct) || pct < 1 || pct > 99) continue;
+      const prev = upsellDiscountByTarget.get(targetId) || 0;
+      if (pct > prev) upsellDiscountByTarget.set(targetId, pct);
+    }
     resolved.push({
       productId: product._id.toString(),
       variantId: variant ? String((variant as { _id?: unknown })._id || variant.name) : it.variantId,
@@ -1389,6 +1399,19 @@ router.post('/checkout/cod', async (req: Request, res: Response): Promise<void> 
         stock: product.stock,
       },
     });
+  }
+
+  // Apply the upsell discount only when the parent product is also in
+  // the order. Buying the suggested product alone keeps its catalog price.
+  const orderedIds = new Set(resolved.map((r) => r.productId));
+  if (resolved.length > 1) {
+    for (const line of resolved) {
+      const pct = upsellDiscountByTarget.get(line.productId);
+      if (!pct) continue;
+      const offeredByAnotherLine = resolved.some((other) => other.productId !== line.productId && orderedIds.has(other.productId));
+      if (!offeredByAnotherLine) continue;
+      line.price = Math.round(line.price * (1 - pct / 100) * 100) / 100;
+    }
   }
 
   const subtotal = resolved.reduce((s, it) => s + it.price * it.quantity, 0);

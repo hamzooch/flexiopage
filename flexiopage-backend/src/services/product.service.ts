@@ -14,6 +14,14 @@ import mongoose from 'mongoose';
 import validator from 'validator';
 import { slugify } from '../lib/slugify';
 
+/** Upsell / cross-sell row as accepted from the dashboard. */
+export interface RelatedOfferInput {
+  productId: string;
+  label?: string;
+  discountPct?: number;
+  order?: number;
+}
+
 // Le `sanitizeMiddleware` global applique `validator.escape` sur toutes les
 // strings du body à l'entrée (& → &amp;, / → &#x2F;, etc.). Les produits
 // créés avant qu'on dé-escape à l'écriture ont donc leur nom / description
@@ -73,6 +81,8 @@ export interface CreateProductInput {
   seoDescription?: string;
   pageSettings?: IProductPageSettings;
   bundle?: IProductBundle;
+  upsells?: RelatedOfferInput[];
+  crossSells?: RelatedOfferInput[];
   suppliers?: IProductSupplier[];
   isTestCandidate?: boolean;
   testStatus?: ProductTestStatus;

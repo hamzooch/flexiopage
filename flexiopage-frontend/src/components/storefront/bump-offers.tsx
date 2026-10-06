@@ -26,6 +26,15 @@ export interface BumpOffer {
   discountPct?: number;
 }
 
+/** Price charged when the buyer accepts the bump, after the seller's percent. */
+export function bumpUnitPrice(offer: Pick<BumpOffer, 'price' | 'discountPct'>): number {
+  const pct = offer.discountPct;
+  if (typeof pct === 'number' && pct > 0 && pct < 100) {
+    return Math.round(offer.price * (1 - pct / 100) * 100) / 100;
+  }
+  return offer.price;
+}
+
 interface Props {
   offers: BumpOffer[];
   selectedIds: string[];
@@ -55,6 +64,8 @@ export function BumpOffers({ offers, selectedIds, onToggle, currency, theme, rad
       <div className="space-y-2">
         {offers.map((o) => {
           const selected = selectedIds.includes(o._id);
+          const unitPrice = bumpUnitPrice(o);
+          const hasBumpDiscount = unitPrice < o.price;
           const hasDiscount = !!o.compareAtPrice && o.compareAtPrice > o.price;
           return (
             <button
@@ -119,9 +130,14 @@ export function BumpOffers({ offers, selectedIds, onToggle, currency, theme, rad
 
               <div className="shrink-0 text-right">
                 <div className="text-sm font-extrabold" style={{ color: theme.primary }}>
-                  +{formatCurrency(o.price, currency)}
+                  +{formatCurrency(unitPrice, currency)}
                 </div>
-                {hasDiscount && (
+                {hasBumpDiscount && (
+                  <div className="text-[10px] line-through" style={{ color: theme.muted }}>
+                    {formatCurrency(o.price, currency)}
+                  </div>
+                )}
+                {!hasBumpDiscount && hasDiscount && (
                   <div className="text-[10px] line-through" style={{ color: theme.muted }}>
                     {formatCurrency(o.compareAtPrice!, currency)}
                   </div>
