@@ -54,10 +54,23 @@ import {
   Globe2,
   Clock,
 } from 'lucide-react';
+import {
+  Area,
+  CartesianGrid,
+  Cell,
+  ComposedChart,
+  Line,
+  Pie,
+  PieChart,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from 'recharts';
 import { useAuthStore } from '@/stores/auth-store';
 import { useStoreStore } from '@/stores/store-store';
 import { storesApi } from '@/lib/api';
-import { formatCurrency, cn, mediaUrl } from '@/lib/utils';
+import { formatCurrency, cn, mediaUrl, formatYmdLabel } from '@/lib/utils';
 import { timezoneLabel } from '@/lib/store-timezone';
 import type { StoreAnalyticsRich, RangeKey } from '@/types/analytics';
 import { Button } from '@/components/ui/button';
@@ -594,6 +607,8 @@ export default function DashboardOverviewPage() {
           {/* Sparkline */}
           <RevenueChart
             timeseries={analytics?.timeseries || []}
+            previousTimeseries={analytics?.previousTimeseries || []}
+            range={range}
             currency={currency}
             loading={loadingAnalytics && !analytics}
           />
@@ -1000,63 +1015,177 @@ function ActionRow({
 // ─────────────────────────────────────────────────────────────────────
 
 function RevenueChart({
-  timeseries, currency, loading,
+  timeseries, previousTimeseries, range, currency, loading,
 }: {
   timeseries: Array<{ date: string; revenue: number; sales: number; orders: number; paid: number }>;
+  previousTimeseries: Array<{ date: string; revenue: number; sales: number; orders: number; paid: number }>;
+  range: RangeKey;
   currency: string;
   loading?: boolean;
 }) {
+  // Toggle entre Ventes (valeur en devise) et Commandes (nb).
+  const [metric, setMetric] = useState<'sales' | 'orders'>('sales');
+
   // On trace `sales` (valeur de TOUTES les commandes), pas `revenue` (payé) :
-  // en COD le payé reste ~0 jusqu'à livraison → la courbe paraissait vide et
-  // ne bougeait pas. `sales` est aligné sur le KPI « Revenu total ».
-  const data = timeseries.length > 0 ? timeseries : [];
-  const totalOrders = data.reduce((a, d) => a + d.orders, 0);
-  const maxRev = Math.max(1, ...data.map((d) => d.sales));
-  const totalRev = data.reduce((a, d) => a + d.sales, 0);
-  const w = 480, h = 100;
-  const stepX = data.length > 1 ? w / (data.length - 1) : w;
-  const pts = data.map((d, i) => ({
-    x: i * stepX,
-    y: h - (d.sales / maxRev) * (h - 8) - 4,
+  // en COD le payé reste ~0 jusqu'à livraison → la courbe paraissait vide.
+  const totalOrders = timeseries.reduce((a, d) => a + d.orders, 0);
+  const totalSales = timeseries.reduce((a, d) => a + d.sales, 0);
+  const prevTotalSales = previousTimeseries.reduce((a, d) => a + d.sales, 0);
+  const prevTotalOrders = previousTimeseries.reduce((a, d) => a + d.orders, 0);
+
+  // Zip index-à-index : à chaque bucket de la fenêtre actuelle on associe le
+  // bucket de la fenêtre précédente à la même position (pour l'overlay pointillé).
+  const data = timeseries.map((d, i) => ({
+    date: d.date,
+    prevDate: previousTimeseries[i]?.date,
+    current: metric === 'sales' ? d.sales : d.orders,
+    previous: metric === 'sales' ? previousTimeseries[i]?.sales ?? 0 : previousTimeseries[i]?.orders ?? 0,
   }));
-  const linePath = pts.map((p, i) => `${i === 0 ? 'M' : 'L'} ${p.x.toFixed(1)} ${p.y.toFixed(1)}`).join(' ');
-  const areaPath = `${linePath} L ${w.toFixed(1)} ${h} L 0 ${h} Z`;
+
+  const monthly = range === '12m';
+  const currentTotal = metric === 'sales' ? totalSales : totalOrders;
+  const previousTotal = metric === 'sales' ? prevTotalSales : prevTotalOrders;
+  const deltaPct = previousTotal === 0
+    ? (currentTotal > 0 ? null : 0)
+    : ((currentTotal - previousTotal) / previousTotal) * 100;
+  const isUp = deltaPct !== null && deltaPct >= 0;
+
+  const formatValue = (v: number) =>
+    metric === 'sales' ? formatCurrency(v, currency) : `${v} cmd`;
+
+  const formatYAxis = (v: number) => {
+    if (metric === 'orders') return String(v);
+    if (v >= 1_000_000) return `${(v / 1_000_000).toFixed(1)}M`;
+    if (v >= 1_000) return `${Math.round(v / 1_000)}k`;
+    return String(v);
+  };
+
+  const formatTick = (v: string) =>
+    formatYmdLabel(v, monthly ? { month: 'short' } : { day: '2-digit', month: 'short' });
 
   return (
     <div className="overflow-hidden rounded-2xl border border-border/60 bg-card">
-      <div className="flex items-center justify-between border-b border-border/60 px-4 py-3">
-        <div>
-          <h3 className="text-sm font-bold">Ventes sur la période</h3>
-          <p className="text-[10px] text-muted-foreground">
-            {loading ? 'Chargement…' : `${formatCurrency(totalRev, currency)} · ${totalOrders} commande${totalOrders > 1 ? 's' : ''}`}
+      <div className="flex items-center justify-between gap-3 border-b border-border/60 px-4 py-3">
+        <div className="min-w-0">
+          <div className="flex items-baseline gap-2">
+            <h3 className="text-sm font-bold">
+              {metric === 'sales' ? 'Ventes sur la période' : 'Commandes sur la période'}
+            </h3>
+            {!loading && deltaPct !== null && previousTotal > 0 && (
+              <span
+                className={cn(
+                  'inline-flex items-center gap-0.5 rounded-md px-1.5 py-0.5 text-[10px] font-semibold',
+                  isUp ? 'bg-emerald-500/10 text-emerald-600' : 'bg-rose-500/10 text-rose-600',
+                )}
+                title="vs période précédente"
+              >
+                {isUp ? <TrendingUp className="h-3 w-3" /> : <TrendingDown className="h-3 w-3" />}
+                {Math.abs(deltaPct).toFixed(1)}%
+              </span>
+            )}
+          </div>
+          <p className="mt-0.5 text-[10px] text-muted-foreground">
+            {loading
+              ? 'Chargement…'
+              : metric === 'sales'
+                ? `${formatCurrency(currentTotal, currency)} · ${totalOrders} commande${totalOrders > 1 ? 's' : ''}`
+                : `${currentTotal} commande${currentTotal > 1 ? 's' : ''} · ${formatCurrency(totalSales, currency)}`}
           </p>
         </div>
-        <Link href="/dashboard/analytics">
-          <Button variant="ghost" size="sm" className="gap-1 rounded-lg text-xs">
-            Analytics détaillés
-            <ArrowRight className="h-3 w-3" />
-          </Button>
-        </Link>
+        <div className="flex items-center gap-1.5">
+          <div className="hidden rounded-lg border border-border/60 bg-muted/30 p-0.5 sm:flex">
+            <button
+              type="button"
+              onClick={() => setMetric('sales')}
+              className={cn(
+                'rounded-md px-2 py-1 text-[10px] font-semibold transition',
+                metric === 'sales' ? 'bg-card shadow-sm' : 'text-muted-foreground hover:text-foreground',
+              )}
+            >
+              Ventes
+            </button>
+            <button
+              type="button"
+              onClick={() => setMetric('orders')}
+              className={cn(
+                'rounded-md px-2 py-1 text-[10px] font-semibold transition',
+                metric === 'orders' ? 'bg-card shadow-sm' : 'text-muted-foreground hover:text-foreground',
+              )}
+            >
+              Commandes
+            </button>
+          </div>
+          <Link href="/dashboard/analytics">
+            <Button variant="ghost" size="sm" className="gap-1 rounded-lg text-xs">
+              <span className="hidden sm:inline">Analytics</span>
+              <ArrowRight className="h-3 w-3" />
+            </Button>
+          </Link>
+        </div>
       </div>
-      <div className="bg-gradient-to-br from-primary/[0.02] to-transparent p-4">
-        {data.length === 0 || totalOrders === 0 ? (
-          <div className="grid h-[100px] place-items-center text-xs text-muted-foreground">
+      <div className="p-3">
+        {data.length === 0 || (currentTotal === 0 && previousTotal === 0) ? (
+          <div className="grid h-[180px] place-items-center text-xs text-muted-foreground">
             Aucune commande sur cette période.
           </div>
         ) : (
-          <svg viewBox={`0 0 ${w} ${h}`} className="h-[100px] w-full" preserveAspectRatio="none">
-            <defs>
-              <linearGradient id="revenueGradient" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%" stopColor="currentColor" stopOpacity="0.25" className="text-primary" />
-                <stop offset="100%" stopColor="currentColor" stopOpacity="0" className="text-primary" />
-              </linearGradient>
-            </defs>
-            <path d={areaPath} fill="url(#revenueGradient)" />
-            <path d={linePath} fill="none" stroke="currentColor" strokeWidth={2} strokeLinejoin="round" strokeLinecap="round" className="text-primary" />
-            {pts.map((p, i) => (
-              <circle key={i} cx={p.x} cy={p.y} r={2.5} fill="currentColor" className="text-primary" />
-            ))}
-          </svg>
+          <ResponsiveContainer width="100%" height={180}>
+            <ComposedChart data={data} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
+              <defs>
+                <linearGradient id="revChartGrad" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor="hsl(var(--primary))" stopOpacity={0.32} />
+                  <stop offset="100%" stopColor="hsl(var(--primary))" stopOpacity={0} />
+                </linearGradient>
+              </defs>
+              <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" vertical={false} />
+              <XAxis
+                dataKey="date"
+                tick={{ fontSize: 10, fill: 'hsl(var(--muted-foreground))' }}
+                tickLine={false}
+                axisLine={false}
+                tickFormatter={formatTick}
+                minTickGap={24}
+              />
+              <YAxis
+                tick={{ fontSize: 10, fill: 'hsl(var(--muted-foreground))' }}
+                tickLine={false}
+                axisLine={false}
+                tickFormatter={formatYAxis}
+                width={40}
+              />
+              <Tooltip
+                contentStyle={{
+                  background: 'hsl(var(--card))',
+                  border: '1px solid hsl(var(--border))',
+                  borderRadius: 10,
+                  fontSize: 11,
+                  boxShadow: '0 8px 24px rgba(0,0,0,.08)',
+                }}
+                labelFormatter={(v) => formatTick(String(v))}
+                formatter={(value, name) => {
+                  const label = name === 'current' ? 'Actuel' : 'Période précédente';
+                  return [formatValue(Number(value)), label];
+                }}
+              />
+              {/* Overlay période précédente en pointillés — le signature move Shopify. */}
+              <Line
+                type="monotone"
+                dataKey="previous"
+                stroke="hsl(var(--muted-foreground))"
+                strokeWidth={1.5}
+                strokeDasharray="4 3"
+                dot={false}
+                isAnimationActive={false}
+              />
+              <Area
+                type="monotone"
+                dataKey="current"
+                stroke="hsl(var(--primary))"
+                strokeWidth={2}
+                fill="url(#revChartGrad)"
+              />
+            </ComposedChart>
+          </ResponsiveContainer>
         )}
       </div>
     </div>
@@ -1691,6 +1820,8 @@ function providerLabel(raw: string): string {
   return map[key] || key.charAt(0).toUpperCase() + key.slice(1);
 }
 
+const PAYMENT_COLORS = ['#ec4899', '#7c3aed', '#f59e0b', '#10b981', '#3b82f6', '#ef4444', '#64748b'];
+
 function PaymentBreakdownCard({
   items, currency,
 }: {
@@ -1699,6 +1830,7 @@ function PaymentBreakdownCard({
 }) {
   const totalRev = items.reduce((a, x) => a + x.revenue, 0);
   const totalOrd = items.reduce((a, x) => a + x.orders, 0);
+  const chartData = items.map((d) => ({ ...d, label: providerLabel(d.provider) }));
 
   return (
     <div className="overflow-hidden rounded-2xl border border-border/60 bg-card">
@@ -1715,37 +1847,70 @@ function PaymentBreakdownCard({
           </div>
         </div>
       </div>
-      {items.length === 0 ? (
+      {items.length === 0 || totalRev === 0 ? (
         <div className="p-6 text-center text-xs text-muted-foreground">
           Aucun paiement encaissé pour l&apos;instant.
         </div>
       ) : (
-        <ul className="divide-y divide-border/60">
-          {items.map((row) => {
-            const pct = totalRev > 0 ? (row.revenue / totalRev) * 100 : 0;
-            return (
-              <li key={row.provider} className="px-4 py-3">
-                <div className="flex items-baseline justify-between gap-2">
-                  <span className="truncate text-xs font-semibold">{providerLabel(row.provider)}</span>
-                  <span className="text-xs font-bold tabular-nums">
-                    {formatCurrency(row.revenue, currency)}
+        <div className="flex flex-col gap-4 p-4 sm:flex-row sm:items-center">
+          <div className="relative mx-auto h-[160px] w-[160px] shrink-0 sm:mx-0">
+            <ResponsiveContainer width="100%" height="100%">
+              <PieChart>
+                <Pie
+                  data={chartData}
+                  dataKey="revenue"
+                  nameKey="label"
+                  cx="50%"
+                  cy="50%"
+                  innerRadius={44}
+                  outerRadius={70}
+                  paddingAngle={2}
+                  stroke="hsl(var(--card))"
+                  strokeWidth={2}
+                >
+                  {chartData.map((_, i) => (
+                    <Cell key={i} fill={PAYMENT_COLORS[i % PAYMENT_COLORS.length]} />
+                  ))}
+                </Pie>
+                <Tooltip
+                  contentStyle={{
+                    background: 'hsl(var(--card))',
+                    border: '1px solid hsl(var(--border))',
+                    borderRadius: 10,
+                    fontSize: 11,
+                  }}
+                  formatter={(value, _n, item) => {
+                    const v = Number(value);
+                    const pct = totalRev > 0 ? ((v / totalRev) * 100).toFixed(1) : '0';
+                    return [`${formatCurrency(v, currency)} (${pct}%)`, item.payload?.label || ''];
+                  }}
+                />
+              </PieChart>
+            </ResponsiveContainer>
+            <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center text-center">
+              <div className="text-[9px] font-semibold uppercase tracking-wider text-muted-foreground">Total</div>
+              <div className="px-2 text-[11px] font-bold sm:text-xs">{formatCurrency(totalRev, currency)}</div>
+            </div>
+          </div>
+          <ul className="min-w-0 flex-1 space-y-1.5">
+            {chartData.map((d, i) => {
+              const pct = totalRev > 0 ? (d.revenue / totalRev) * 100 : 0;
+              return (
+                <li key={d.provider} className="flex items-center gap-2 text-[11px]">
+                  <span
+                    className="h-2.5 w-2.5 shrink-0 rounded-full"
+                    style={{ background: PAYMENT_COLORS[i % PAYMENT_COLORS.length] }}
+                  />
+                  <span className="min-w-0 flex-1 truncate font-medium">{d.label}</span>
+                  <span className="shrink-0 tabular-nums text-muted-foreground">{pct.toFixed(0)}%</span>
+                  <span className="w-20 shrink-0 text-right font-semibold tabular-nums">
+                    {formatCurrency(d.revenue, currency)}
                   </span>
-                </div>
-                <div className="mt-1 flex items-center gap-2">
-                  <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-muted">
-                    <div
-                      className="h-full bg-gradient-to-r from-primary to-fuchsia-600"
-                      style={{ width: `${pct.toFixed(1)}%` }}
-                    />
-                  </div>
-                  <span className="w-16 shrink-0 text-right text-[10px] tabular-nums text-muted-foreground">
-                    {row.orders} · {pct.toFixed(0)}%
-                  </span>
-                </div>
-              </li>
-            );
-          })}
-        </ul>
+                </li>
+              );
+            })}
+          </ul>
+        </div>
       )}
     </div>
   );
@@ -1770,22 +1935,30 @@ const SOURCE_LABEL_FR: Record<string, string> = {
   unknown: 'Non identifié',
 };
 
-const SOURCE_ACCENT: Record<string, string> = {
-  facebook:  'from-blue-500 to-indigo-600',
-  instagram: 'from-pink-500 to-rose-600',
-  tiktok:    'from-zinc-800 to-zinc-950',
-  google:    'from-red-500 to-orange-600',
-  youtube:   'from-red-600 to-rose-700',
-  twitter:   'from-sky-500 to-blue-600',
-  snapchat:  'from-yellow-400 to-amber-500',
-  whatsapp:  'from-emerald-500 to-green-600',
-  direct:    'from-slate-500 to-slate-700',
-  other:     'from-violet-500 to-purple-600',
-  unknown:   'from-muted-foreground to-muted-foreground',
+// Couleur solide par source — utilisée aussi bien pour le donut Recharts que
+// pour la légende (les pastilles à gauche des labels). Les valeurs suivent
+// les couleurs brand des plateformes pour un repérage instantané.
+const SOURCE_COLOR: Record<string, string> = {
+  facebook:  '#1877f2',
+  instagram: '#e1306c',
+  tiktok:    '#0f172a',
+  google:    '#ea4335',
+  youtube:   '#ff0000',
+  twitter:   '#1d9bf0',
+  snapchat:  '#facc15',
+  whatsapp:  '#25d366',
+  direct:    '#64748b',
+  other:     '#8b5cf6',
+  unknown:   '#94a3b8',
 };
 
 function TrafficSourcesCard({ items }: { items: StoreAnalyticsRich['trafficSources'] }) {
   const total = items.reduce((a, r) => a + r.visitors, 0);
+  const chartData = items.map((r) => ({
+    ...r,
+    label: SOURCE_LABEL_FR[r.source] || r.source,
+    color: SOURCE_COLOR[r.source] || SOURCE_COLOR.other,
+  }));
 
   return (
     <div className="overflow-hidden rounded-2xl border border-border/60 bg-card">
@@ -1802,38 +1975,66 @@ function TrafficSourcesCard({ items }: { items: StoreAnalyticsRich['trafficSourc
           </div>
         </div>
       </div>
-      {items.length === 0 ? (
+      {items.length === 0 || total === 0 ? (
         <div className="p-6 text-center text-xs text-muted-foreground">
           Ajoute <code className="rounded bg-muted px-1 py-0.5 text-[10px]">?utm_source=facebook</code> à tes liens pub
           pour voir tes visiteurs classés ici.
         </div>
       ) : (
-        <ul className="divide-y divide-border/60">
-          {items.map((row) => {
-            const pct = total > 0 ? (row.visitors / total) * 100 : 0;
-            const label = SOURCE_LABEL_FR[row.source] || row.source;
-            const accent = SOURCE_ACCENT[row.source] || SOURCE_ACCENT.other;
-            return (
-              <li key={row.source} className="flex items-center gap-3 px-4 py-2.5">
-                <span className={cn('h-6 w-6 shrink-0 rounded-md bg-gradient-to-br', accent)} aria-hidden />
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-baseline justify-between gap-2">
-                    <span className="truncate text-xs font-semibold">{label}</span>
-                    <span className="text-xs font-bold tabular-nums">{row.visitors}</span>
-                  </div>
-                  <div className="mt-1 flex items-center gap-2">
-                    <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-muted">
-                      <div className={cn('h-full bg-gradient-to-r', accent)} style={{ width: `${pct.toFixed(1)}%` }} />
-                    </div>
-                    <span className="w-8 shrink-0 text-right text-[10px] tabular-nums text-muted-foreground">
-                      {pct.toFixed(0)}%
-                    </span>
-                  </div>
-                </div>
-              </li>
-            );
-          })}
-        </ul>
+        <div className="flex flex-col gap-4 p-4 sm:flex-row sm:items-center">
+          <div className="relative mx-auto h-[160px] w-[160px] shrink-0 sm:mx-0">
+            <ResponsiveContainer width="100%" height="100%">
+              <PieChart>
+                <Pie
+                  data={chartData}
+                  dataKey="visitors"
+                  nameKey="label"
+                  cx="50%"
+                  cy="50%"
+                  innerRadius={44}
+                  outerRadius={70}
+                  paddingAngle={2}
+                  stroke="hsl(var(--card))"
+                  strokeWidth={2}
+                >
+                  {chartData.map((d) => (
+                    <Cell key={d.source} fill={d.color} />
+                  ))}
+                </Pie>
+                <Tooltip
+                  contentStyle={{
+                    background: 'hsl(var(--card))',
+                    border: '1px solid hsl(var(--border))',
+                    borderRadius: 10,
+                    fontSize: 11,
+                  }}
+                  formatter={(value, _n, item) => {
+                    const v = Number(value);
+                    const pct = total > 0 ? ((v / total) * 100).toFixed(1) : '0';
+                    return [`${v} visiteur${v > 1 ? 's' : ''} (${pct}%)`, item.payload?.label || ''];
+                  }}
+                />
+              </PieChart>
+            </ResponsiveContainer>
+            <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center text-center">
+              <div className="text-[9px] font-semibold uppercase tracking-wider text-muted-foreground">Visiteurs</div>
+              <div className="px-2 text-[11px] font-bold sm:text-xs tabular-nums">{total}</div>
+            </div>
+          </div>
+          <ul className="min-w-0 flex-1 space-y-1.5">
+            {chartData.map((d) => {
+              const pct = total > 0 ? (d.visitors / total) * 100 : 0;
+              return (
+                <li key={d.source} className="flex items-center gap-2 text-[11px]">
+                  <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ background: d.color }} />
+                  <span className="min-w-0 flex-1 truncate font-medium">{d.label}</span>
+                  <span className="shrink-0 tabular-nums text-muted-foreground">{pct.toFixed(0)}%</span>
+                  <span className="w-10 shrink-0 text-right font-semibold tabular-nums">{d.visitors}</span>
+                </li>
+              );
+            })}
+          </ul>
+        </div>
       )}
     </div>
   );

@@ -53,6 +53,12 @@ export interface StoreAnalyticsRich {
     daysLeft: number;
   };
   timeseries: Array<{ date: string; revenue: number; sales: number; orders: number; paid: number }>;
+  /**
+   * Même shape que `timeseries` mais sur la fenêtre PRÉCÉDENTE (utile pour la
+   * courbe pointillée « période précédente » en overlay Shopify-style). Longueur
+   * identique à `timeseries` — les index correspondent au même jour relatif.
+   */
+  previousTimeseries: Array<{ date: string; revenue: number; sales: number; orders: number; paid: number }>;
   topProducts: Array<{
     productId: string;
     name: string;

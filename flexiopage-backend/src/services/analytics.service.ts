@@ -110,6 +110,13 @@ export interface StoreAnalyticsRich {
   };
   /** Revenue (paid) + sales (all orders) + orders bucketed by day (or month for 12m). */
   timeseries: Array<{ date: string; revenue: number; sales: number; orders: number; paid: number }>;
+  /**
+   * Même shape que `timeseries` mais sur la fenêtre PRÉCÉDENTE (utile pour
+   * afficher une courbe pointillée « période précédente » en overlay Shopify-style).
+   * La longueur est identique à `timeseries` — chaque index correspond au même
+   * jour relatif dans les deux fenêtres.
+   */
+  previousTimeseries: Array<{ date: string; revenue: number; sales: number; orders: number; paid: number }>;
   /** Top products by sales (all orders in window, any payment status). */
   topProducts: Array<{
     productId: string;
@@ -341,6 +348,7 @@ export async function getStoreAnalyticsRich(
     prevAgg,
     pendingNow,
     seriesRaw,
+    prevSeriesRaw,
     topProductsRaw,
     paymentBreakdownRaw,
     recentRaw,
@@ -430,6 +438,20 @@ export async function getStoreAnalyticsRich(
           paid: { $sum: { $cond: [{ $eq: ['$paymentStatus', 'paid'] }, 1, 0] } },
           // `revenue` = encaissé (payé). `sales` = valeur de TOUTES les commandes
           // (tout statut) — c'est la courbe utile en COD, alignée sur le KPI.
+          revenue: { $sum: { $cond: [{ $eq: ['$paymentStatus', 'paid'] }, '$total', 0] } },
+          sales: { $sum: '$total' },
+        },
+      },
+    ]),
+    // Timeseries de la période précédente — sert à afficher une courbe pointillée
+    // en overlay (style Shopify). Même bucketing pour aligner index-à-index côté client.
+    Order.aggregate([
+      { $match: inPrev },
+      {
+        $group: {
+          _id: dateBucket,
+          orders: { $sum: 1 },
+          paid: { $sum: { $cond: [{ $eq: ['$paymentStatus', 'paid'] }, 1, 0] } },
           revenue: { $sum: { $cond: [{ $eq: ['$paymentStatus', 'paid'] }, '$total', 0] } },
           sales: { $sum: '$total' },
         },
@@ -576,6 +598,13 @@ export async function getStoreAnalyticsRich(
     timeZone,
     seriesRaw as Array<{ _id: string; orders: number; paid: number; revenue: number; sales: number }>,
   );
+  const previousTimeseries = fillTimeseries(
+    w.prevFrom,
+    w.prevTo,
+    w.bucket,
+    timeZone,
+    prevSeriesRaw as Array<{ _id: string; orders: number; paid: number; revenue: number; sales: number }>,
+  );
 
   // Resolve product images for top products.
   const topIds = (topProductsRaw as Array<{ _id: mongoose.Types.ObjectId; name: string; unitsSold: number; revenue: number }>).map((r) => r._id);
@@ -671,6 +700,7 @@ export async function getStoreAnalyticsRich(
     totals: { totalRevenue: t.revenue, totalSales: t.sales, totalOrders: t.orders, totalCustomers: t.customers },
     monthlyGoal: await computeMonthlyGoal(storeObjectId, timeZone, storeDoc?.goals?.monthlyRevenue || 0),
     timeseries,
+    previousTimeseries,
     topProducts,
     paymentBreakdown: (paymentBreakdownRaw as Array<{ _id: string; orders: number; revenue: number }>).map((r) => ({
       provider: r._id || 'unknown',
