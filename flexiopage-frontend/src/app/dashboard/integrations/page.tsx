@@ -1,21 +1,21 @@
 'use client';
 
 /**
- * Integrations page — store-level connections.
+ * Intégrations boutique — domaine, pixels, livraison.
  *
- *   1. Domaine personnalisé — DNS verification (CNAME / A)
- *   2. Pixels marketing — Facebook Pixel, GA4, TikTok Pixel, custom <head>
- *   3. Livraison — split in two sub-tabs:
- *        a. Société de livraison (last-mile carrier: MogaDelivery, Yalidine…)
- *        b. Société de logistique (3PL fulfillment: ShipBob, Cubyn…)
- *
- * Workflow apps (Google Sheets, Mailchimp, Slack) live under
- * /dashboard/apps — this page is for store-level platform plumbing.
+ * Le DNS affiché ici suit exactement `domain.service` (CNAME vers
+ * STOREFRONT_HOST, A vers STOREFRONT_IPS, ou nameservers FlexioPage).
+ * La livraison n'écrit que des prestataires réellement branchés :
+ * Best Delivery sur `integrations.delivery`, MogaDelivery via l'onboarding
+ * plateforme (secret partagé, pas de HMAC par boutique). « Manuel » désactive
+ * le dispatch — il ne doit jamais retomber sur le provider MogaDelivery.
  */
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import Link from 'next/link';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
-import { storesApi } from '@/lib/api';
+import type { ComponentType, ReactNode } from 'react';
+import { extractApiError, storesApi } from '@/lib/api';
 import { useStoreStore } from '@/stores/store-store';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -28,9 +28,9 @@ import {
   CheckCircle2,
   AlertCircle,
   Copy,
+  Check,
   Loader2,
   Save,
-  Sparkles,
   Facebook,
   BarChart3,
   PlayCircle,
@@ -39,13 +39,15 @@ import {
   Warehouse,
   RefreshCw,
   Plug,
-  KeyRound,
-  Lock,
+  Pause,
+  Play,
   Info,
+  Power,
 } from 'lucide-react';
 
 type TabId = 'domain' | 'pixels' | 'shipping';
 type ShippingTab = 'carrier' | 'logistics';
+type DomainMethod = 'cname' | 'a' | 'nameservers';
 
 interface PickupAddress {
   contactName?: string;
@@ -58,13 +60,11 @@ interface PickupAddress {
 }
 
 interface DeliveryConfig {
-  provider?: 'mogadelivery' | 'bestdelivery' | 'firstdelivery' | 'dropex' | 'adex' | 'manual' | 'other';
+  provider?: string;
   enabled?: boolean;
   apiKey?: string;
   baseUrl?: string;
-  /** MogaDelivery : secret HMAC (posé via la page livraison de la boutique). */
   webhookSecret?: string;
-  /** Best Delivery (SOAP) : identifiants du compte expéditeur. */
   login?: string;
   pwd?: string;
   autoDispatch?: boolean;
@@ -72,7 +72,7 @@ interface DeliveryConfig {
 }
 
 interface LogisticsConfig {
-  provider?: 'mogadelivery' | 'shipbob' | 'cubyn' | 'amazon-mcf' | 'sendcloud' | 'easyship' | 'manual' | 'other';
+  provider?: string;
   enabled?: boolean;
   apiKey?: string;
   baseUrl?: string;
@@ -81,87 +81,191 @@ interface LogisticsConfig {
   autoForward?: boolean;
 }
 
+interface MarketingConfig {
+  facebookPixelId?: string;
+  facebookConversionsApiToken?: string;
+  googleAnalyticsId?: string;
+  tiktokPixelId?: string;
+  snapchatPixelId?: string;
+  googleAdsConversionId?: string;
+  googleAdsConversionLabel?: string;
+  customHeadCode?: string;
+}
+
+interface MarketDelivery {
+  country?: string;
+  delivery?: { provider?: string; enabled?: boolean; storeIdMD?: string };
+}
+
 interface StoreDoc {
   _id: string;
   name: string;
   slug: string;
   subdomain: string;
+  storeType?: 'physical' | 'digital';
   customDomain?: string;
   customDomainVerified?: boolean;
-  customDomainVerifiedAt?: string;
-  customDomainTarget?: string;
-  settings?: { currency?: string };
+  settings?: { currency?: string; country?: string };
+  markets?: MarketDelivery[];
   integrations?: {
     delivery?: DeliveryConfig;
     logistics?: LogisticsConfig;
-    marketing?: {
-      facebookPixelId?: string;
-      facebookConversionsApiToken?: string;
-      googleAnalyticsId?: string;
-      tiktokPixelId?: string;
-      snapchatPixelId?: string;
-      googleAdsConversionId?: string;
-      googleAdsConversionLabel?: string;
-      customHeadCode?: string;
-    };
+    marketing?: MarketingConfig;
+    googleSheets?: { enabled?: boolean; webhookUrl?: string };
   };
 }
 
-const TABS: { id: TabId; label: string; icon: React.ComponentType<{ className?: string }> }[] = [
+interface DomainTarget {
+  host: string;
+  ips: string[];
+  nameservers?: string[];
+}
+
+interface DomainCheck {
+  verified: boolean;
+  cname?: string[];
+  aRecords?: string[];
+  nameservers?: string[];
+  reason?: string;
+  expectedTarget?: string;
+}
+
+const TABS: { id: TabId; label: string; icon: ComponentType<{ className?: string }> }[] = [
   { id: 'domain', label: 'Domaine', icon: Globe },
-  { id: 'pixels', label: 'Pixels marketing', icon: BarChart3 },
+  { id: 'pixels', label: 'Pixels', icon: BarChart3 },
   { id: 'shipping', label: 'Livraison', icon: Truck },
 ];
+
+const CARRIER_PROVIDERS = [
+  { id: 'bestdelivery', label: 'Best Delivery', description: 'Transporteur Tunisie. Login et mot de passe du compte expéditeur.', comingSoon: false },
+  { id: 'firstdelivery', label: 'First Delivery', description: 'Transporteur Tunisie', comingSoon: true },
+  { id: 'dropex', label: 'Dropex', description: 'Transporteur Tunisie', comingSoon: true },
+  { id: 'adex', label: 'Adex', description: 'Transporteur Tunisie', comingSoon: true },
+  { id: 'manual', label: 'Manuel', description: 'Tu expédies toi-même. Aucune commande n’est envoyée automatiquement.', comingSoon: false },
+] as const;
+
+const LOGISTICS_PROVIDERS = [
+  { id: 'mogadelivery', label: 'MogaDelivery', description: 'Stockage et dispatch Afrique. Les produits sont matchés par SKU.', logoUrl: '/integrations/mogadelivery.png', comingSoon: false },
+  { id: 'shipbob', label: 'ShipBob', description: '3PL global — pas encore branché.', comingSoon: true },
+  { id: 'manual', label: 'Aucune logistique', description: 'Pas de prestataire 3PL. La livraison last-mile reste dans l’autre onglet.', comingSoon: false },
+] as const;
+
+function normalizeDomain(d: string): string {
+  return d.trim().toLowerCase().replace(/^https?:\/\//, '').replace(/\/.*$/, '').replace(/\.$/, '');
+}
+
+function isValidDomain(d: string): boolean {
+  return /^[a-z0-9.-]+\.[a-z]{2,}$/.test(d);
+}
+
+/** example.com → apex. shop.example.com → sous-domaine. */
+function isApex(domain: string): boolean {
+  return normalizeDomain(domain).split('.').filter(Boolean).length <= 2;
+}
+
+/** Hôte à saisir chez le registrar. `@` pour l’apex, sinon le préfixe. */
+function dnsHost(domain: string): string {
+  const parts = normalizeDomain(domain).split('.').filter(Boolean);
+  if (parts.length <= 2) return '@';
+  return parts.slice(0, -2).join('.');
+}
+
+function isMogaLive(store: StoreDoc): boolean {
+  const delivery = store.integrations?.delivery;
+  if (delivery?.provider === 'mogadelivery' && delivery.enabled) return true;
+  const logistics = store.integrations?.logistics;
+  if (logistics?.provider === 'mogadelivery' && logistics.enabled) return true;
+  return false;
+}
+
+function mogaOnboarded(store: StoreDoc): boolean {
+  if (isMogaLive(store)) return true;
+  return (store.markets || []).some(
+    (m) => m.delivery?.provider === 'mogadelivery' && !!m.delivery.storeIdMD,
+  );
+}
+
+function bestLive(store: StoreDoc): boolean {
+  const delivery = store.integrations?.delivery;
+  return delivery?.provider === 'bestdelivery' && !!delivery.enabled;
+}
+
+function pixelCount(store: StoreDoc): number {
+  const m = store.integrations?.marketing || {};
+  return [
+    m.facebookPixelId,
+    m.googleAnalyticsId,
+    m.tiktokPixelId,
+    m.snapchatPixelId,
+    m.googleAdsConversionId,
+    m.customHeadCode,
+  ].filter((v) => !!v?.trim()).length;
+}
+
+function shippingStatus(store: StoreDoc): { label: string; tone: 'ok' | 'warn' | 'muted' } {
+  if (store.storeType === 'digital') return { label: 'Boutique digitale', tone: 'muted' };
+  if (bestLive(store) && isMogaLive(store)) return { label: 'Best Delivery prioritaire', tone: 'warn' };
+  if (bestLive(store)) return { label: 'Best Delivery actif', tone: 'ok' };
+  if (isMogaLive(store)) return { label: 'MogaDelivery actif', tone: 'ok' };
+  if (mogaOnboarded(store)) return { label: 'Moga enregistré, dispatch off', tone: 'warn' };
+  return { label: 'Non connectée', tone: 'muted' };
+}
+
+async function saveIntegrations(
+  store: StoreDoc,
+  patch: Partial<NonNullable<StoreDoc['integrations']>>,
+): Promise<void> {
+  await storesApi.update(store._id, {
+    integrations: { ...(store.integrations || {}), ...patch },
+  });
+}
 
 export default function IntegrationsPage() {
   const { currentStoreId, setCurrentStore } = useStoreStore();
   const searchParams = useSearchParams();
   const router = useRouter();
   const pathname = usePathname();
-  const initialTab: TabId = (() => {
-    const t = searchParams.get('tab');
-    return t === 'shipping' || t === 'pixels' || t === 'domain' ? t : 'domain';
-  })();
   const [stores, setStores] = useState<StoreDoc[]>([]);
   const [loading, setLoading] = useState(true);
-  const [tab, setTab] = useState<TabId>(initialTab);
-  const [savingTab, setSavingTab] = useState<TabId | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
-  // Sync l'onglet courant à l'URL pour que refresh / partage de lien
-  // garde le contexte. Wrap dans useEffect pour ne pas spam le router à
-  // chaque render et pour préserver `storeId` + `sub` (sous-onglet livraison).
-  useEffect(() => {
-    const next = new URLSearchParams(searchParams?.toString() || '');
-    if (next.get('tab') === tab) return; // pas de churn
-    next.set('tab', tab);
+  const tabParam = searchParams.get('tab');
+  const tab: TabId = tabParam === 'pixels' || tabParam === 'shipping' ? tabParam : 'domain';
+
+  const patchQuery = useCallback((patch: Record<string, string>) => {
+    const next = new URLSearchParams(searchParams.toString());
+    for (const [key, value] of Object.entries(patch)) next.set(key, value);
     router.replace(`${pathname}?${next.toString()}`, { scroll: false });
-  }, [tab, router, pathname, searchParams]);
+  }, [pathname, router, searchParams]);
 
-  // Allow ?storeId=… to override the currently selected store (used by the
-  // onboarding checklist links that pass the store id explicitly).
   useEffect(() => {
     const sid = searchParams.get('storeId');
     if (sid && sid !== currentStoreId) setCurrentStore(sid);
   }, [searchParams, currentStoreId, setCurrentStore]);
 
-  const activeStore = useMemo(
-    () => stores.find((s) => s._id === currentStoreId) || stores[0] || null,
-    [stores, currentStoreId]
-  );
-
-  const refreshStores = useCallback(async () => {
-    setLoading(true);
+  const refreshStores = useCallback(async (silent = false) => {
+    if (!silent) setLoading(true);
+    setLoadError(null);
     try {
       const res = await storesApi.list();
       const list = (res.data.stores as StoreDoc[]) || [];
       setStores(list);
-      if (!currentStoreId && list[0]) setCurrentStore(list[0]._id);
+      if (!useStoreStore.getState().currentStoreId && list[0]) setCurrentStore(list[0]._id);
+    } catch (err) {
+      setLoadError(extractApiError(err, 'Impossible de charger les boutiques.'));
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
-  }, [currentStoreId, setCurrentStore]);
+  }, [setCurrentStore]);
 
-  useEffect(() => { void refreshStores(); }, [refreshStores]);
+  useEffect(() => { void refreshStores(false); }, [refreshStores]);
+
+  const onSaved = useCallback(() => refreshStores(true), [refreshStores]);
+
+  const activeStore = useMemo(
+    () => stores.find((s) => s._id === currentStoreId) || stores[0] || null,
+    [stores, currentStoreId],
+  );
 
   if (loading) {
     return (
@@ -171,24 +275,51 @@ export default function IntegrationsPage() {
     );
   }
 
+  if (loadError) {
+    return (
+      <div className="rounded-2xl border border-destructive/30 bg-destructive/5 p-6 text-sm text-destructive">
+        {loadError}
+      </div>
+    );
+  }
+
   if (!activeStore) {
     return (
       <div className="rounded-2xl border border-dashed border-border/70 bg-card p-10 text-center">
         <p className="text-sm text-muted-foreground">
-          Tu n'as pas encore de boutique. Crée-en une depuis le dashboard avant de configurer les intégrations.
+          Tu n’as pas encore de boutique. Crée-en une depuis le tableau de bord avant de configurer les intégrations.
         </p>
       </div>
     );
   }
 
+  const domainTone = activeStore.customDomainVerified
+    ? 'ok'
+    : activeStore.customDomain
+      ? 'warn'
+      : 'muted';
+  const domainLabel = activeStore.customDomainVerified
+    ? activeStore.customDomain || 'Vérifié'
+    : activeStore.customDomain
+      ? 'DNS en attente'
+      : 'Non configuré';
+  const pixels = pixelCount(activeStore);
+  const ship = shippingStatus(activeStore);
+
   return (
-    <div className="space-y-8">
+    <div className="space-y-6">
       <PageHeader
         icon={Plug}
         title={`Intégrations · ${activeStore.name}`}
-        description={<>Domaine, pixels marketing, livraison. Apps productivité dans <a href="/dashboard/apps" className="font-medium text-primary hover:underline">Applications →</a></>}
+        description={
+          <>
+            Domaine, pixels et livraison de cette boutique. Les apps productivité sont dans{' '}
+            <Link href="/dashboard/apps" className="font-medium text-primary hover:underline">Applications</Link>.
+          </>
+        }
         actions={stores.length > 1 ? (
           <select
+            aria-label="Boutique"
             className="h-9 rounded-xl border border-border bg-background px-3 text-sm"
             value={activeStore._id}
             onChange={(e) => setCurrentStore(e.target.value)}
@@ -200,129 +331,128 @@ export default function IntegrationsPage() {
         ) : undefined}
       />
 
-      <nav role="tablist" className="inline-flex rounded-2xl border border-border/60 bg-card p-1 shadow-sm overflow-x-auto">
-        {TABS.map((t) => {
-          const isActive = tab === t.id;
+      <div role="tablist" aria-label="Intégrations" className="grid gap-3 sm:grid-cols-3">
+        {TABS.map((item) => {
+          const active = tab === item.id;
+          const detail = item.id === 'domain'
+            ? domainLabel
+            : item.id === 'pixels'
+              ? pixels === 0 ? 'Aucun pixel' : `${pixels} actif${pixels > 1 ? 's' : ''}`
+              : ship.label;
+          const tone = item.id === 'domain' ? domainTone : item.id === 'pixels' ? (pixels ? 'ok' : 'muted') : ship.tone;
           return (
             <button
-              key={t.id}
+              key={item.id}
+              type="button"
               role="tab"
-              aria-selected={isActive}
-              onClick={() => setTab(t.id)}
+              aria-selected={active}
+              onClick={() => patchQuery({ tab: item.id })}
               className={cn(
-                'inline-flex items-center gap-2 rounded-xl px-3.5 py-2 text-sm font-medium transition-all whitespace-nowrap sm:px-4',
-                isActive
-                  ? 'gradient-brand text-white shadow-md shadow-primary/30'
-                  : 'text-muted-foreground hover:text-foreground'
+                'flex min-h-11 items-start gap-3 rounded-2xl border p-4 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+                active ? 'border-primary/40 bg-primary/5' : 'border-border/60 bg-card hover:bg-muted/40',
               )}
             >
-              <t.icon className="h-4 w-4" />
-              <span>{t.label}</span>
+              <span className={cn(
+                'grid h-10 w-10 shrink-0 place-items-center rounded-xl',
+                active ? 'gradient-brand text-white' : 'bg-muted text-muted-foreground',
+              )}>
+                <item.icon className="h-4 w-4" />
+              </span>
+              <span className="min-w-0">
+                <span className="block text-sm font-semibold">{item.label}</span>
+                <span className={cn(
+                  'mt-0.5 flex items-center gap-1.5 text-xs',
+                  tone === 'ok' && 'text-emerald-700',
+                  tone === 'warn' && 'text-amber-700',
+                  tone === 'muted' && 'text-muted-foreground',
+                )}>
+                  <span className={cn(
+                    'h-1.5 w-1.5 rounded-full',
+                    tone === 'ok' && 'bg-emerald-500',
+                    tone === 'warn' && 'bg-amber-500',
+                    tone === 'muted' && 'bg-muted-foreground/40',
+                  )} />
+                  <span className="truncate">{detail}</span>
+                </span>
+              </span>
             </button>
           );
         })}
-      </nav>
+      </div>
 
       {tab === 'domain' && (
-        <DomainPanel
-          store={activeStore}
-          onSaved={refreshStores}
-          saving={savingTab === 'domain'}
-          setSaving={(b) => setSavingTab(b ? 'domain' : null)}
-        />
+        <DomainPanel key={activeStore._id} store={activeStore} onSaved={onSaved} />
       )}
       {tab === 'pixels' && (
-        <PixelsPanel
-          store={activeStore}
-          onSaved={refreshStores}
-          saving={savingTab === 'pixels'}
-          setSaving={(b) => setSavingTab(b ? 'pixels' : null)}
-        />
+        <PixelsPanel key={activeStore._id} store={activeStore} onSaved={onSaved} />
       )}
       {tab === 'shipping' && (
         <ShippingPanel
+          key={activeStore._id}
           store={activeStore}
-          onSaved={refreshStores}
-          saving={savingTab === 'shipping'}
-          setSaving={(b) => setSavingTab(b ? 'shipping' : null)}
+          onSaved={onSaved}
+          onSubChange={(sub) => patchQuery({ tab: 'shipping', sub })}
         />
       )}
     </div>
   );
 }
 
-// ─────────────────────────────────────────────────────────────────────
-// DOMAIN
-// ─────────────────────────────────────────────────────────────────────
-type DomainMethod = 'cname' | 'nameservers' | null;
-
-function DomainPanel({ store, onSaved, saving, setSaving }: PanelProps) {
+function DomainPanel({ store, onSaved }: { store: StoreDoc; onSaved: () => Promise<void> }) {
   const [domain, setDomain] = useState(store.customDomain || '');
-  const [target, setTarget] = useState<{ host: string; ips: string[]; nameservers?: string[] }>({ host: '', ips: [], nameservers: [] });
-  const [check, setCheck] = useState<null | { verified: boolean; cname?: string[]; aRecords?: string[]; reason?: string }>(null);
+  const [target, setTarget] = useState<DomainTarget>({ host: '', ips: [], nameservers: [] });
+  const [check, setCheck] = useState<DomainCheck | null>(null);
   const [checking, setChecking] = useState(false);
+  const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [justSaved, setJustSaved] = useState(false);
-  const [method, setMethod] = useState<DomainMethod>(null);
-  const [autoCheckInterval, setAutoCheckInterval] = useState<NodeJS.Timeout | null>(null);
-  const [isPollingActive, setIsPollingActive] = useState(false);
+  const [method, setMethod] = useState<DomainMethod>('cname');
+  const [methodTouched, setMethodTouched] = useState(false);
+  const [paused, setPaused] = useState(false);
 
   useEffect(() => {
-    storesApi.getDomainTarget(store._id).then((r) => setTarget(r.data)).catch(() => {});
+    let cancelled = false;
+    storesApi.getDomainTarget(store._id).then((r) => {
+      if (!cancelled) setTarget(r.data);
+    }).catch(() => {});
+    return () => { cancelled = true; };
   }, [store._id]);
 
-  // Functions to control polling
-  const stopPolling = () => {
-    if (autoCheckInterval) {
-      clearInterval(autoCheckInterval);
-      setAutoCheckInterval(null);
-      setIsPollingActive(false);
-    }
-  };
+  const savedDomain = store.customDomain || '';
+  const typed = normalizeDomain(domain);
+  const savedAndMatching = !!savedDomain && typed === savedDomain;
 
-  const startPolling = () => {
-    if (autoCheckInterval) clearInterval(autoCheckInterval);
-    setIsPollingActive(true);
+  useEffect(() => {
+    if (methodTouched || !savedDomain) return;
+    setMethod(isApex(savedDomain) && target.ips.length > 0 ? 'a' : 'cname');
+  }, [methodTouched, savedDomain, target.ips.length]);
 
-    const checkDNS = async () => {
+  useEffect(() => {
+    if (!savedAndMatching || store.customDomainVerified || paused) return;
+    let stop = false;
+    let timer = 0;
+    const tick = async () => {
+      if (stop) return;
       try {
         const res = await storesApi.verifyDomain(store._id);
+        if (stop) return;
         setCheck(res.data);
         if (res.data.verified) {
+          stop = true;
+          window.clearInterval(timer);
           await onSaved();
-          stopPolling();
         }
-      } catch (err) {
-        // Silent fail - just keep polling
+      } catch {
+        /* La propagation DNS échoue souvent : on retente au tick suivant. */
       }
     };
-
-    // Check immediately
-    checkDNS();
-
-    // Then check every 10 seconds
-    const interval = setInterval(checkDNS, 10000);
-    setAutoCheckInterval(interval);
-  };
-
-  // Auto-check DNS every 10 seconds when domain is set but not verified
-  useEffect(() => {
-    if (!domain.trim() || store.customDomainVerified) {
-      stopPolling();
-      return;
-    }
-
-    startPolling();
-
+    void tick();
+    timer = window.setInterval(() => { void tick(); }, 10_000);
     return () => {
-      // Cleanup on unmount
+      stop = true;
+      window.clearInterval(timer);
     };
-  }, [domain, store._id, store.customDomainVerified, onSaved]);
-
-  // Normalize what the user types (no protocol, no path, no trailing dot).
-  function normalize(d: string): string {
-    return d.trim().toLowerCase().replace(/^https?:\/\//, '').replace(/\/.*$/, '').replace(/\.$/, '');
-  }
+  }, [savedAndMatching, store.customDomainVerified, store._id, paused, onSaved]);
 
   async function handleSaveDomain() {
     setSaving(true);
@@ -330,49 +460,58 @@ function DomainPanel({ store, onSaved, saving, setSaving }: PanelProps) {
     setJustSaved(false);
     setCheck(null);
     try {
-      const clean = normalize(domain);
-      // Empty input → clear the domain. Non-empty → must match the basic shape;
-      // backend re-validates, this just spares a round-trip on obvious typos.
-      if (clean && !/^[a-z0-9.-]+\.[a-z]{2,}$/.test(clean)) {
+      if (typed && !isValidDomain(typed)) {
         setSaveError('Format invalide. Exemple : shop.tonsite.com');
         return;
       }
-      await storesApi.update(store._id, { customDomain: clean || null });
-      setDomain(clean);
+      await storesApi.update(store._id, { customDomain: typed || null });
+      setDomain(typed);
       setJustSaved(true);
+      setPaused(false);
       await onSaved();
-    } catch (err: unknown) {
-      const msg = (err as { response?: { data?: { message?: string; error?: string } } })?.response?.data?.message
-        || (err as { response?: { data?: { error?: string } } })?.response?.data?.error
-        || 'Échec de l\'enregistrement';
-      setSaveError(msg);
-    } finally { setSaving(false); }
+    } catch (err) {
+      setSaveError(extractApiError(err, 'Échec de l’enregistrement'));
+    } finally {
+      setSaving(false);
+    }
   }
 
   async function handleVerify() {
+    if (!savedDomain) {
+      setSaveError('Enregistre le domaine avant de vérifier le DNS.');
+      return;
+    }
     setChecking(true);
+    setSaveError(null);
     try {
       const res = await storesApi.verifyDomain(store._id);
       setCheck(res.data);
       setJustSaved(false);
       await onSaved();
-    } finally { setChecking(false); }
+    } catch (err) {
+      setSaveError(extractApiError(err, 'Vérification DNS impossible.'));
+    } finally {
+      setChecking(false);
+    }
   }
 
   const verified = !!store.customDomainVerified;
-  // Build the dev preview URL from the current origin so it follows whichever
-  // port Next is running on (3000, 3002, etc.) instead of being pinned. In
-  // prod, fall back to the canonical subdomain URL via storeAbsoluteUrl.
   const devOrigin = typeof window !== 'undefined' ? window.location.origin : '';
-  const previewUrl = store.customDomain && verified
-    ? `https://${store.customDomain}`
+  const previewUrl = savedDomain && verified
+    ? `https://${savedDomain}`
     : storeAbsoluteUrl(store.slug).startsWith('http')
       ? storeAbsoluteUrl(store.slug)
       : `${devOrigin}/${store.slug}`;
+  const dirty = typed !== savedDomain;
+  const hostLabel = savedDomain ? dnsHost(savedDomain) : '@';
+  const cnameTarget = target.host || 'stores.flexiopage.com';
 
   return (
-    <Card icon={<Globe className="h-5 w-5" />} title="Domaine personnalisé"
-      subtitle="Connecte ton propre domaine (ex. shop.tonsite.com). On vérifie le DNS pour toi.">
+    <Card
+      icon={<Globe className="h-5 w-5" />}
+      title="Domaine personnalisé"
+      subtitle="Pointe le DNS vers FlexioPage. La vérification reprend les mêmes règles que le serveur : CNAME, adresse A, ou nameservers."
+    >
       <div className="space-y-5">
         <div>
           <Label htmlFor="domain">Ton domaine</Label>
@@ -380,254 +519,160 @@ function DomainPanel({ store, onSaved, saving, setSaving }: PanelProps) {
             <Input
               id="domain"
               value={domain}
-              onChange={(e) => setDomain(e.target.value)}
+              onChange={(e) => { setDomain(e.target.value); setJustSaved(false); }}
               placeholder="shop.tonsite.com"
               className="h-11"
             />
-            <Button onClick={handleSaveDomain} disabled={saving} className="h-11 gap-2">
+            <Button onClick={handleSaveDomain} disabled={saving || !dirty} className="h-11 gap-2">
               {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
               Enregistrer
             </Button>
           </div>
           <p className="mt-2 text-xs text-muted-foreground">
-            URL actuelle : <a href={previewUrl} target="_blank" rel="noreferrer" className="font-mono text-primary hover:underline">{previewUrl}</a>
+            Adresse actuelle :{' '}
+            <a href={previewUrl} target="_blank" rel="noreferrer" className="font-mono text-primary hover:underline">{previewUrl}</a>
           </p>
-          {saveError && (
-            <p className="mt-2 text-xs font-medium text-destructive">{saveError}</p>
+          {saveError && <p className="mt-2 text-xs font-medium text-destructive">{saveError}</p>}
+          {dirty && (
+            <p className="mt-2 text-xs font-medium text-amber-700">
+              Cette saisie n’est pas encore enregistrée. Le DNS se vérifie sur le domaine sauvegardé.
+            </p>
           )}
-          {justSaved && !verified && (
-            <p className="mt-2 text-xs font-medium text-emerald-600">
-              Enregistré. Configure les enregistrements DNS ci-dessous puis clique sur « Vérifier le DNS ».
+          {justSaved && !verified && !dirty && (
+            <p className="mt-2 text-xs font-medium text-emerald-700">
+              Enregistré. Configure le DNS ci-dessous. La vérification tourne toute seule.
             </p>
           )}
         </div>
 
-        {domain.trim() && (
-          <div className="rounded-2xl border border-border/60 bg-muted/20 p-5 space-y-5">
-            <div className="flex items-center justify-between gap-2">
-              <h4 className="text-sm font-semibold">Configuration DNS</h4>
+        {savedDomain && !dirty && (
+          <div className="space-y-4 rounded-2xl border border-border/60 bg-muted/20 p-4 sm:p-5">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <h3 className="text-sm font-semibold">Configuration DNS</h3>
               {verified ? (
-                <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-500/10 px-2.5 py-1 text-xs font-bold text-emerald-700">
-                  <CheckCircle2 className="h-3.5 w-3.5" /> ✓ Actif
-                </span>
+                <StatusPill tone="ok" icon={<CheckCircle2 className="h-3.5 w-3.5" />}>Actif</StatusPill>
               ) : (
-                <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-500/10 px-2.5 py-1 text-xs font-bold text-amber-700">
-                  <AlertCircle className="h-3.5 w-3.5" /> En attente...
-                </span>
+                <StatusPill tone="warn" icon={<AlertCircle className="h-3.5 w-3.5" />}>En attente</StatusPill>
               )}
             </div>
 
             {!verified && (
               <p className="text-xs text-muted-foreground">
-                Choisis une méthode ci-dessous. Flexiopage vérifiera automatiquement toutes les 10 secondes.
+                {isApex(savedDomain)
+                  ? 'Domaine racine : l’enregistrement A est le plus fiable. Le CNAME sur @ est refusé par beaucoup de registrars.'
+                  : 'Sous-domaine : un CNAME suffit. L’enregistrement A reste possible si tu préfères une IP.'}
               </p>
             )}
 
-            {/* Method Selection - Shopify Style */}
-            <div className="grid gap-3 sm:grid-cols-2">
-              {/* CNAME Option */}
-              <button
-                type="button"
-                onClick={() => setMethod('cname')}
-                className={cn(
-                  'rounded-xl border-2 p-4 text-left transition-all',
-                  method === 'cname'
-                    ? 'border-primary bg-primary/5'
-                    : 'border-border/60 hover:border-primary/50'
-                )}
-              >
-                <div className="flex items-start justify-between">
-                  <div>
-                    <h5 className="font-semibold text-sm">CNAME (Recommandé)</h5>
-                    <p className="text-xs text-muted-foreground mt-1">Plus simple, 1 enregistrement</p>
-                  </div>
-                  {method === 'cname' && <CheckCircle2 className="h-5 w-5 text-primary shrink-0" />}
-                </div>
-              </button>
-
-              {/* Nameservers Option */}
-              <button
-                type="button"
-                onClick={() => setMethod('nameservers')}
-                className={cn(
-                  'rounded-xl border-2 p-4 text-left transition-all',
-                  method === 'nameservers'
-                    ? 'border-primary bg-primary/5'
-                    : 'border-border/60 hover:border-primary/50'
-                )}
-              >
-                <div className="flex items-start justify-between">
-                  <div>
-                    <h5 className="font-semibold text-sm">Nameservers</h5>
-                    <p className="text-xs text-muted-foreground mt-1">Contrôle total, 4 enregistrements</p>
-                  </div>
-                  {method === 'nameservers' && <CheckCircle2 className="h-5 w-5 text-primary shrink-0" />}
-                </div>
-              </button>
+            <div className="grid gap-3 sm:grid-cols-3">
+              <MethodButton
+                active={method === 'cname'}
+                title="CNAME"
+                hint={isApex(savedDomain) ? 'Souvent refusé sur @' : 'Recommandé'}
+                onClick={() => { setMethodTouched(true); setMethod('cname'); }}
+              />
+              <MethodButton
+                active={method === 'a'}
+                title="Enregistrement A"
+                hint={target.ips.length ? (isApex(savedDomain) ? 'Recommandé' : 'Alternative') : 'IP non configurée'}
+                onClick={() => { setMethodTouched(true); setMethod('a'); }}
+              />
+              <MethodButton
+                active={method === 'nameservers'}
+                title="Nameservers"
+                hint="Délégation complète"
+                onClick={() => { setMethodTouched(true); setMethod('nameservers'); }}
+              />
             </div>
 
-            {/* Instructions by Method */}
-            {method && (
-              <div className="rounded-xl border border-border/60 bg-card p-4 space-y-4">
-                {method === 'cname' ? (
-                  <CnameInstructions domain={domain} target={target} />
+            <div className="rounded-xl border border-border/60 bg-card p-4">
+              {method === 'cname' && (
+                <ol className="mb-3 list-decimal space-y-1 pl-4 text-xs text-muted-foreground">
+                  <li>Ouvre la zone DNS de <span className="font-mono text-foreground">{savedDomain}</span>.</li>
+                  <li>Supprime un ancien A ou CNAME sur le même hôte s’il pointe ailleurs.</li>
+                  <li>Ajoute l’enregistrement ci-dessous.</li>
+                </ol>
+              )}
+              {method === 'cname' && (
+                <RecordTable rows={[
+                  { label: 'Type', value: 'CNAME' },
+                  { label: 'Nom', value: hostLabel === '@' ? '@ (ou vide)' : hostLabel, copy: hostLabel === '@' ? '@' : hostLabel },
+                  { label: 'Cible', value: cnameTarget, copy: cnameTarget },
+                  { label: 'TTL', value: '3600, ou la valeur par défaut' },
+                ]} />
+              )}
+              {method === 'a' && (
+                target.ips.length > 0 ? (
+                  <div className="space-y-3">
+                    {target.ips.map((ip) => (
+                      <RecordTable key={ip} rows={[
+                        { label: 'Type', value: 'A' },
+                        { label: 'Nom', value: hostLabel === '@' ? '@ (ou vide)' : hostLabel, copy: hostLabel === '@' ? '@' : hostLabel },
+                        { label: 'Valeur', value: ip, copy: ip },
+                        { label: 'TTL', value: '3600, ou la valeur par défaut' },
+                      ]} />
+                    ))}
+                  </div>
                 ) : (
-                  <NameserversInstructions domain={domain} target={target} />
-                )}
-              </div>
-            )}
-
-            {/* Original steps - hidden but keep for fallback */}
-            <ol className="mt-3 space-y-3 text-xs hidden">
-              <li className="flex gap-3">
-                <span className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-primary/10 text-[11px] font-bold text-primary">1</span>
-                <div className="min-w-0">
-                  <p className="font-semibold text-foreground">Connecte-toi à ton fournisseur de domaine</p>
-                  <p className="mt-0.5 text-muted-foreground">
-                    Va sur le site où tu as acheté le domaine et connecte-toi à ton compte.
+                  <p className="text-xs text-muted-foreground">
+                    Ce serveur n’expose pas d’adresse IP de storefront. Utilise le CNAME vers <span className="font-mono text-foreground">{cnameTarget}</span>, ou les nameservers.
                   </p>
-                </div>
-              </li>
-              <li className="flex gap-3">
-                <span className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-primary/10 text-[11px] font-bold text-primary">2</span>
-                <div className="min-w-0">
-                  <p className="font-semibold text-foreground">Ouvre la zone DNS du domaine</p>
-                  <p className="mt-0.5 text-muted-foreground">
-                    Cherche un menu nommé <span className="font-mono text-foreground">Zone DNS</span>, <span className="font-mono text-foreground">Manage DNS</span>, <span className="font-mono text-foreground">Advanced DNS</span> ou <span className="font-mono text-foreground">DNS Records</span> selon le fournisseur.
+                )
+              )}
+              {method === 'nameservers' && (
+                <div className="space-y-3">
+                  <p className="text-xs text-muted-foreground">
+                    Chez le registrar, remplace les nameservers du domaine par ceux-ci. FlexioPage devient alors le DNS de toute la zone. La propagation prend souvent 24 à 48 h.
                   </p>
-                </div>
-              </li>
-              <li className="flex gap-3">
-                <span className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-primary/10 text-[11px] font-bold text-primary">3</span>
-                <div className="min-w-0">
-                  <p className="font-semibold text-foreground">Supprime les anciens enregistrements</p>
-                  <p className="mt-0.5 text-muted-foreground">
-                    Si tu avais déjà un <span className="font-mono">A Record</span> ou un <span className="font-mono">CNAME</span> pointant vers une ancienne IP ou domaine, <strong>supprime-le d'abord</strong>.
-                  </p>
-                </div>
-              </li>
-              <li className="flex gap-3">
-                <span className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-primary/10 text-[11px] font-bold text-primary">4</span>
-                <div className="min-w-0">
-                  <p className="font-semibold text-foreground">Ajoute l'enregistrement A ci-dessous</p>
-                  <p className="mt-0.5 text-muted-foreground">
-                    Clique sur <span className="font-mono text-foreground">Ajouter un enregistrement</span> et recopie exactement la valeur (bouton « Copier » à droite).
-                  </p>
-                  <div className="mt-2.5 space-y-2">
-                    {target.ips.length > 0 ? (
-                      <DnsRow type="A Record" host={domain} value={target.ips[0]} />
-                    ) : (
-                      <DnsRow type="A Record" host={domain} value="72.62.24.14" />
-                    )}
-                  </div>
-                  <div className="mt-2.5 rounded-lg border border-emerald-500/30 bg-emerald-500/5 p-2.5 text-[11px] text-emerald-800">
-                    <p className="font-semibold">✓ Pourquoi A Record?</p>
-                    <p className="mt-1">L'A Record est la solution la plus stable et fonctionne avec 100% des registrars. Aucun problème DNS ou SSL.</p>
-                  </div>
-                  <div className="mt-2.5 rounded-lg border border-border/50 bg-card/60 p-2.5 text-[11px] text-muted-foreground">
-                    <p className="font-semibold text-foreground">Comment remplir le formulaire ?</p>
-                    <ul className="mt-1 space-y-0.5">
-                      <li>• <span className="font-mono text-foreground">Type</span> : <span className="font-mono">A</span></li>
-                      <li>• <span className="font-mono text-foreground">Nom</span> / <span className="font-mono text-foreground">Host</span> : laisse vide ou mets <span className="font-mono">@</span> (pour le domaine racine).</li>
-                      <li>• <span className="font-mono text-foreground">Valeur</span> / <span className="font-mono text-foreground">Target</span> : <span className="font-mono">{target.ips.length > 0 ? target.ips[0] : '72.62.24.14'}</span></li>
-                      <li>• <span className="font-mono text-foreground">TTL</span> : laisse la valeur par défaut (ou <span className="font-mono">3600</span>).</li>
+                  {(target.nameservers || []).length > 0 ? (
+                    <ul className="space-y-2">
+                      {(target.nameservers || []).map((ns) => (
+                        <li key={ns} className="flex items-center justify-between gap-2 rounded-lg border border-border/60 bg-muted/30 px-3 py-2">
+                          <span className="truncate font-mono text-xs font-medium">{ns}</span>
+                          <CopyButton value={ns} />
+                        </li>
+                      ))}
                     </ul>
-                  </div>
+                  ) : (
+                    <p className="text-xs text-muted-foreground">Nameservers indisponibles pour le moment.</p>
+                  )}
                 </div>
-              </li>
-              <li className="flex gap-3">
-                <span className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-primary/10 text-[11px] font-bold text-primary">5</span>
-                <div className="min-w-0">
-                  <p className="font-semibold text-foreground">Enregistre puis attends la propagation</p>
-                  <p className="mt-0.5 text-muted-foreground">
-                    Sauvegarde la zone DNS chez ton fournisseur. La propagation prend généralement <span className="font-medium text-foreground">5 à 15 minutes</span> (rarement plus).
-                  </p>
-                </div>
-              </li>
-              <li className="flex gap-3">
-                <span className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-primary/10 text-[11px] font-bold text-primary">6</span>
-                <div className="min-w-0">
-                  <p className="font-semibold text-foreground">Reviens ici et clique sur « Vérifier le DNS »</p>
-                  <p className="mt-0.5 text-muted-foreground">
-                    Une fois le badge vert « Vérifié » affiché, ton domaine est actif et ta boutique sera accessible via <span className="font-mono text-foreground">https://{domain}</span>.
-                  </p>
-                </div>
-              </li>
-            </ol>
-
-            <div className="mt-5 space-y-3">
-              <div className="flex flex-wrap items-center gap-2">
-                <Button variant="outline" size="sm" onClick={handleVerify} disabled={checking} className="gap-1.5">
-                  {checking ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
-                  Vérifier le DNS
-                </Button>
-
-                {/* Polling controls */}
-                {domain.trim() && !store.customDomainVerified && (
-                  <div className="flex items-center gap-2">
-                    {isPollingActive ? (
-                      <>
-                        <span className="text-xs text-muted-foreground flex items-center gap-1">
-                          <span className="inline-block h-2 w-2 rounded-full bg-blue-500 animate-pulse"></span>
-                          Vérification auto (chaque 10s)
-                        </span>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={stopPolling}
-                          className="gap-1.5 text-xs text-amber-600 hover:bg-amber-50"
-                        >
-                          ⏸️ Arrêter
-                        </Button>
-                      </>
-                    ) : (
-                      <>
-                        <span className="text-xs text-muted-foreground">Vérification arrêtée</span>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={startPolling}
-                          className="gap-1.5 text-xs text-green-600 hover:bg-green-50"
-                        >
-                          ▶️ Relancer
-                        </Button>
-                      </>
-                    )}
-                  </div>
-                )}
-
-                {check && !check.verified && (
-                  <div className="w-full">
-                    {check.reason === 'dns_conflict_cname_and_a' ? (
-                      <div className="space-y-2">
-                        <div className="rounded-lg border border-amber-200 bg-amber-50 p-3">
-                          <p className="font-semibold text-amber-900">⚠️ Conflit DNS détecté</p>
-                          <div className="mt-2 space-y-1 text-sm text-amber-800">
-                            <p>Tu as à la fois:</p>
-                            <ul className="list-inside list-disc space-y-1 ml-2">
-                              <li>✓ CNAME: <span className="font-mono text-xs">{check.cname?.join(', ')}</span> (correct)</li>
-                              <li>✗ A record: <span className="font-mono text-xs">{check.aRecords?.join(', ')}</span> (ancien, doit être supprimé)</li>
-                            </ul>
-                            <p className="mt-3">
-                              <strong>Action requise:</strong> Supprime l'A record ancienne chez ton registraire (Namecheap, OVH, GoDaddy, etc) et garde SEULEMENT le CNAME vers stores.flexiopage.com.
-                            </p>
-                          </div>
-                        </div>
-                      </div>
-                    ) : check.reason === 'dns_not_matching' ? (
-                      <div className="text-sm">
-                        DNS détecté : {[...(check.cname || []), ...(check.aRecords || [])].join(', ') || '—'} — la propagation n'est peut-être pas terminée, réessaie dans quelques minutes.
-                      </div>
-                    ) : (
-                      <div className="text-xs text-destructive">{check.reason}</div>
-                    )}
-                  </div>
-                )}
-                {check && check.verified && (
-                  <span className="text-xs text-emerald-600 font-medium">✓ DNS correct</span>
-                )}
-              </div>
+              )}
+              {method === 'cname' && isApex(savedDomain) && (
+                <p className="mt-3 text-xs text-amber-800">
+                  Beaucoup de registrars refusent un CNAME sur le domaine racine. Si l’ajout est bloqué, passe à l’enregistrement A.
+                </p>
+              )}
             </div>
+
+            <div className="flex flex-wrap items-center gap-2">
+              <Button variant="outline" size="sm" onClick={handleVerify} disabled={checking} className="gap-1.5">
+                {checking ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
+                Vérifier le DNS
+              </Button>
+              {!verified && (
+                paused ? (
+                  <Button variant="ghost" size="sm" onClick={() => setPaused(false)} className="gap-1.5 text-xs">
+                    <Play className="h-3.5 w-3.5" /> Relancer la vérification auto
+                  </Button>
+                ) : (
+                  <>
+                    <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
+                      <span className="h-2 w-2 animate-pulse rounded-full bg-primary" />
+                      Vérification toutes les 10 s
+                    </span>
+                    <Button variant="ghost" size="sm" onClick={() => setPaused(true)} className="gap-1.5 text-xs">
+                      <Pause className="h-3.5 w-3.5" /> Pause
+                    </Button>
+                  </>
+                )
+              )}
+            </div>
+
+            {check && !check.verified && <DnsFailure check={check} expected={cnameTarget} />}
+            {check?.verified && (
+              <p className="text-xs font-medium text-emerald-700">DNS correct. La boutique répond sur https://{savedDomain}.</p>
+            )}
           </div>
         )}
       </div>
@@ -635,157 +680,39 @@ function DomainPanel({ store, onSaved, saving, setSaving }: PanelProps) {
   );
 }
 
-function DnsRow({ type, host, value }: { type: string; host: string; value: string }) {
+function DnsFailure({ check, expected }: { check: DomainCheck; expected: string }) {
+  const seen = [...(check.cname || []), ...(check.aRecords || [])].filter(Boolean);
+  if (check.reason === 'dns_conflict_cname_and_a') {
+    return (
+      <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-3 text-xs text-amber-900">
+        <p className="font-semibold">Conflit DNS</p>
+        <p className="mt-1">
+          Un CNAME est présent mais il ne pointe pas vers <span className="font-mono">{expected}</span>, et un enregistrement A est aussi là.
+          Garde un seul enregistrement qui pointe vers FlexioPage.
+        </p>
+        {check.cname && check.cname.length > 0 && (
+          <p className="mt-1 font-mono">CNAME actuel : {check.cname.join(', ')}</p>
+        )}
+        {check.aRecords && check.aRecords.length > 0 && (
+          <p className="font-mono">A actuel : {check.aRecords.join(', ')}</p>
+        )}
+      </div>
+    );
+  }
+  if (check.reason === 'no_domain_set') {
+    return <p className="text-xs text-destructive">Aucun domaine enregistré sur la boutique.</p>;
+  }
+  if (check.reason === 'invalid_domain') {
+    return <p className="text-xs text-destructive">Le domaine enregistré n’a pas un format valide.</p>;
+  }
   return (
-    <div className="grid grid-cols-[80px_1fr] gap-2 text-xs sm:grid-cols-[80px_1fr_auto]">
-      <span className="rounded-md bg-card px-2 py-1 font-semibold">{type}</span>
-      <span className="rounded-md bg-card px-2 py-1 font-mono text-muted-foreground truncate">
-        {host} → <span className="text-foreground">{value}</span>
-      </span>
-      <button
-        type="button"
-        onClick={() => navigator.clipboard.writeText(value)}
-        className="hidden sm:inline-flex items-center gap-1 rounded-md bg-card px-2 py-1 hover:bg-muted text-muted-foreground"
-        aria-label="Copier"
-      >
-        <Copy className="h-3 w-3" /> Copier
-      </button>
-    </div>
+    <p className="text-xs text-muted-foreground">
+      DNS détecté : {seen.join(', ') || 'aucun enregistrement'}. Attendu : {expected}. La propagation prend en général 5 à 15 minutes.
+    </p>
   );
 }
 
-// ─────────────────────────────────────────────────────────────────────
-// CNAME Instructions (Shopify Style)
-// ─────────────────────────────────────────────────────────────────────
-function CnameInstructions({ domain, target }: { domain: string; target: { host: string; ips: string[] } }) {
-  const [copied, setCopied] = useState<string | null>(null);
-
-  const handleCopy = async (text: string, key: string) => {
-    try {
-      await navigator.clipboard.writeText(text);
-      setCopied(key);
-      setTimeout(() => setCopied(null), 2000);
-    } catch (err) {
-      console.error('Copy failed:', err);
-    }
-  };
-
-  return (
-    <div className="space-y-3">
-      <h5 className="font-semibold text-sm">Chez ton registrar (OVH, GoDaddy, etc.):</h5>
-
-      <ol className="space-y-2 text-xs">
-        <li className="flex gap-2">
-          <span className="shrink-0 font-bold text-primary">1.</span>
-          <span>Va dans la zone DNS de <span className="font-mono text-foreground">{domain}</span></span>
-        </li>
-        <li className="flex gap-2">
-          <span className="shrink-0 font-bold text-primary">2.</span>
-          <span>Ajoute un enregistrement <span className="font-mono bg-muted px-1 rounded">CNAME</span></span>
-        </li>
-        <li className="flex gap-2">
-          <span className="shrink-0 font-bold text-primary">3.</span>
-          <span>Remplis avec:</span>
-        </li>
-      </ol>
-
-      <div className="space-y-2 mt-3">
-        <div className="rounded-lg border border-border/60 bg-muted/30 p-3 font-mono text-xs space-y-1.5">
-          <div><span className="text-muted-foreground">Type:</span> <span className="font-bold">CNAME</span></div>
-          <div><span className="text-muted-foreground">Name/Host:</span> <span className="font-bold">@</span> <span className="text-muted-foreground">(ou laisse vide)</span></div>
-          <div className="flex items-center justify-between gap-2">
-            <div className="flex-1">
-              <span className="text-muted-foreground">Value/Target:</span> <span className="font-bold break-all">stores.flexiopage.com.</span>
-            </div>
-            <button
-              type="button"
-              onClick={() => handleCopy('stores.flexiopage.com.', 'cname')}
-              className="inline-flex items-center gap-1 rounded px-2 py-1 hover:bg-muted text-muted-foreground hover:text-foreground transition-colors text-xs shrink-0"
-            >
-              <Copy className="h-3 w-3" />
-              {copied === 'cname' ? 'Copié!' : 'Copier'}
-            </button>
-          </div>
-          <div><span className="text-muted-foreground">TTL:</span> <span className="font-bold">3600</span> <span className="text-muted-foreground">(ou défaut)</span></div>
-        </div>
-      </div>
-
-      <p className="text-xs text-muted-foreground mt-3">
-        ⏱️ La propagation prend généralement <strong>5-15 minutes</strong>. Flexiopage vérifiera automatiquement.
-      </p>
-    </div>
-  );
-}
-
-// ─────────────────────────────────────────────────────────────────────
-// Nameservers Instructions (Shopify Style)
-// ─────────────────────────────────────────────────────────────────────
-function NameserversInstructions({ domain, target }: { domain: string; target: { host: string; ips: string[]; nameservers?: string[] } }) {
-  const [copied, setCopied] = useState<string | null>(null);
-
-  const handleCopy = async (text: string, key: string) => {
-    try {
-      await navigator.clipboard.writeText(text);
-      setCopied(key);
-      setTimeout(() => setCopied(null), 2000);
-    } catch (err) {
-      console.error('Copy failed:', err);
-    }
-  };
-
-  const ns = target.nameservers || [
-    'ns1.flexiopage.com',
-    'ns2.flexiopage.com',
-    'ns3.flexiopage.com',
-    'ns4.flexiopage.com',
-  ];
-
-  return (
-    <div className="space-y-3">
-      <h5 className="font-semibold text-sm">Chez ton registrar (OVH, GoDaddy, etc.):</h5>
-
-      <ol className="space-y-2 text-xs">
-        <li className="flex gap-2">
-          <span className="shrink-0 font-bold text-primary">1.</span>
-          <span>Va dans les <strong>Nameservers</strong> ou <strong>DNS Settings</strong> de <span className="font-mono text-foreground">{domain}</span></span>
-        </li>
-        <li className="flex gap-2">
-          <span className="shrink-0 font-bold text-primary">2.</span>
-          <span>Remplace les 4 nameservers existants par ceux-ci:</span>
-        </li>
-      </ol>
-
-      <div className="space-y-2 mt-3">
-        {ns.map((nameserver, idx) => (
-          <div key={idx} className="flex items-center justify-between gap-2 rounded-lg border border-border/60 bg-muted/30 p-3">
-            <span className="font-mono text-xs font-bold break-all flex-1">{nameserver}</span>
-            <button
-              type="button"
-              onClick={() => handleCopy(nameserver, `ns-${idx}`)}
-              className="inline-flex items-center gap-1 rounded px-2 py-1 hover:bg-muted text-muted-foreground hover:text-foreground transition-colors text-xs shrink-0"
-            >
-              <Copy className="h-3 w-3" />
-              {copied === `ns-${idx}` ? 'Copié!' : 'Copier'}
-            </button>
-          </div>
-        ))}
-      </div>
-
-      <div className="rounded-lg border border-amber-500/30 bg-amber-500/5 p-3 text-xs text-amber-800">
-        <strong>⚠️ Important:</strong> Flexiopage gérera TOUS les DNS de ton domaine. La propagation peut prendre <strong>24-48h</strong> (plus long que CNAME).
-      </div>
-
-      <p className="text-xs text-muted-foreground mt-3">
-        ✓ Une fois complété, Flexiopage gérera automatiquement email, sous-domaines, et tout le reste.
-      </p>
-    </div>
-  );
-}
-
-// ─────────────────────────────────────────────────────────────────────
-// PIXELS
-// ─────────────────────────────────────────────────────────────────────
-function PixelsPanel({ store, onSaved, saving, setSaving }: PanelProps) {
+function PixelsPanel({ store, onSaved }: { store: StoreDoc; onSaved: () => Promise<void> }) {
   const m = store.integrations?.marketing || {};
   const [fb, setFb] = useState(m.facebookPixelId || '');
   const [fbToken, setFbToken] = useState(m.facebookConversionsApiToken || '');
@@ -795,704 +722,682 @@ function PixelsPanel({ store, onSaved, saving, setSaving }: PanelProps) {
   const [adsId, setAdsId] = useState(m.googleAdsConversionId || '');
   const [adsLbl, setAdsLbl] = useState(m.googleAdsConversionLabel || '');
   const [custom, setCustom] = useState(m.customHeadCode || '');
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [savedOk, setSavedOk] = useState(false);
+
+  const errors = validatePixels({ fb, ga, tt, snap, adsId, adsLbl });
+  const dirty =
+    fb !== (m.facebookPixelId || '') ||
+    fbToken !== (m.facebookConversionsApiToken || '') ||
+    ga !== (m.googleAnalyticsId || '') ||
+    tt !== (m.tiktokPixelId || '') ||
+    snap !== (m.snapchatPixelId || '') ||
+    adsId !== (m.googleAdsConversionId || '') ||
+    adsLbl !== (m.googleAdsConversionLabel || '') ||
+    custom !== (m.customHeadCode || '');
 
   async function handleSave() {
+    const nextErrors = validatePixels({ fb, ga, tt, snap, adsId, adsLbl });
+    const first = Object.values(nextErrors).find(Boolean);
+    if (first) {
+      setError(first);
+      setSavedOk(false);
+      return;
+    }
     setSaving(true);
+    setError(null);
+    setSavedOk(false);
     try {
-      await storesApi.update(store._id, {
-        integrations: {
-          ...store.integrations,
-          marketing: {
-            facebookPixelId: fb.trim() || undefined,
-            facebookConversionsApiToken: fbToken.trim() || undefined,
-            googleAnalyticsId: ga.trim() || undefined,
-            tiktokPixelId: tt.trim() || undefined,
-            snapchatPixelId: snap.trim() || undefined,
-            googleAdsConversionId: adsId.trim() || undefined,
-            googleAdsConversionLabel: adsLbl.trim() || undefined,
-            customHeadCode: custom.trim() || undefined,
-          },
+      await saveIntegrations(store, {
+        marketing: {
+          facebookPixelId: fb.trim() || undefined,
+          facebookConversionsApiToken: fbToken.trim() || undefined,
+          googleAnalyticsId: ga.trim() || undefined,
+          tiktokPixelId: tt.trim() || undefined,
+          snapchatPixelId: snap.trim() || undefined,
+          googleAdsConversionId: adsId.trim() || undefined,
+          googleAdsConversionLabel: adsLbl.trim() || undefined,
+          customHeadCode: custom.trim() || undefined,
         },
       });
       await onSaved();
-    } finally { setSaving(false); }
+      setSavedOk(true);
+    } catch (err) {
+      setError(extractApiError(err, 'Enregistrement des pixels impossible.'));
+    } finally {
+      setSaving(false);
+    }
   }
 
   return (
-    <Card icon={<BarChart3 className="h-5 w-5" />} title="Pixels marketing"
-      subtitle="On injecte les tags dans ta boutique et on déclenche PageView, ViewContent, InitiateCheckout, Purchase automatiquement.">
-      <div className="space-y-5">
-        <PixelRow icon={<Facebook className="h-5 w-5 text-blue-600" />}
-          label="Facebook / Meta Pixel ID"
-          help="Found in Meta Events Manager. Ex: 1234567890123456">
-          <Input value={fb} onChange={(e) => setFb(e.target.value)} placeholder="1234567890123456" className="font-mono" />
+    <Card
+      icon={<BarChart3 className="h-5 w-5" />}
+      title="Pixels marketing"
+      subtitle="Injectés sur la boutique publique. PageView, ViewContent, InitiateCheckout et Purchase partent tout seuls."
+    >
+      <div className="space-y-4">
+        <PixelRow icon={<Facebook className="h-4 w-4 text-blue-600" />} label="Meta Pixel" help="Events Manager. Uniquement des chiffres." error={errors.fb}>
+          <Input value={fb} onChange={(e) => { setFb(e.target.value); setSavedOk(false); }} placeholder="1234567890123456" className="font-mono" />
         </PixelRow>
-
-        <PixelRow icon={<Facebook className="h-5 w-5 text-blue-700" />}
-          label="Meta Conversions API token (optionnel)"
-          help="Pour le tracking server-side (anti-iOS 14.5). Onglet Conversion API → Generate Access Token.">
-          <Input value={fbToken} onChange={(e) => setFbToken(e.target.value)} placeholder="EAAG..." className="font-mono" type="password" />
+        <PixelRow icon={<Facebook className="h-4 w-4 text-blue-700" />} label="Jeton Conversions API" help="Optionnel. Tracking serveur, en plus du pixel navigateur.">
+          <Input value={fbToken} onChange={(e) => { setFbToken(e.target.value); setSavedOk(false); }} placeholder="EAAG…" className="font-mono" type="password" autoComplete="off" />
         </PixelRow>
-
-        <PixelRow icon={<BarChart3 className="h-5 w-5 text-amber-600" />}
-          label="Google Analytics 4 — Measurement ID"
-          help="Dans Admin GA4 → Data Streams. Ex: G-XXXXXXXXXX">
-          <Input value={ga} onChange={(e) => setGa(e.target.value)} placeholder="G-XXXXXXXXXX" className="font-mono" />
+        <PixelRow icon={<BarChart3 className="h-4 w-4 text-amber-600" />} label="Google Analytics 4" help="Measurement ID, du type G-XXXXXXXX." error={errors.ga}>
+          <Input value={ga} onChange={(e) => { setGa(e.target.value); setSavedOk(false); }} placeholder="G-XXXXXXXXXX" className="font-mono" />
         </PixelRow>
-
-        <PixelRow icon={<PlayCircle className="h-5 w-5 text-rose-600" />}
-          label="TikTok Pixel ID"
-          help="TikTok Ads Manager → Assets → Events. Ex: CXXXXXXXXXXXXXXXX">
-          <Input value={tt} onChange={(e) => setTt(e.target.value)} placeholder="CXXXXXXXXXXXXXXXX" className="font-mono" />
+        <PixelRow icon={<PlayCircle className="h-4 w-4 text-rose-600" />} label="TikTok Pixel" help="Ads Manager → Assets → Events." error={errors.tt}>
+          <Input value={tt} onChange={(e) => { setTt(e.target.value); setSavedOk(false); }} placeholder="CXXXXXXXXXXXXXXXX" className="font-mono" />
         </PixelRow>
-
-        <PixelRow icon={<Ghost className="h-5 w-5 text-yellow-500" />}
-          label="Snapchat Pixel ID"
-          help="Snapchat Ads Manager → Events Manager → ton Pixel. Format UUID (ex: 12a3b4c5-...).">
-          <Input value={snap} onChange={(e) => setSnap(e.target.value)} placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" className="font-mono" />
+        <PixelRow icon={<Ghost className="h-4 w-4 text-yellow-500" />} label="Snapchat Pixel" help="UUID affiché dans l’Events Manager Snapchat." error={errors.snap}>
+          <Input value={snap} onChange={(e) => { setSnap(e.target.value); setSavedOk(false); }} placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" className="font-mono" />
         </PixelRow>
-
-        <PixelRow icon={<Sparkles className="h-5 w-5 text-emerald-600" />}
-          label="Google Ads (optionnel)"
-          help="AW-XXXXXXXXXX + label pour le conversion tracking.">
+        <PixelRow icon={<BarChart3 className="h-4 w-4 text-emerald-600" />} label="Google Ads" help="ID de conversion et libellé, les deux ensemble." error={errors.ads}>
           <div className="grid gap-2 sm:grid-cols-2">
-            <Input value={adsId} onChange={(e) => setAdsId(e.target.value)} placeholder="AW-XXXXXXXXXX" className="font-mono" />
-            <Input value={adsLbl} onChange={(e) => setAdsLbl(e.target.value)} placeholder="conversion-label" className="font-mono" />
+            <Input value={adsId} onChange={(e) => { setAdsId(e.target.value); setSavedOk(false); }} placeholder="AW-XXXXXXXXXX" className="font-mono" aria-label="ID de conversion Google Ads" />
+            <Input value={adsLbl} onChange={(e) => { setAdsLbl(e.target.value); setSavedOk(false); }} placeholder="libellé de conversion" className="font-mono" aria-label="Libellé de conversion Google Ads" />
           </div>
         </PixelRow>
-
-        <PixelRow icon={<Sparkles className="h-5 w-5 text-fuchsia-600" />}
-          label="Code <head> personnalisé"
-          help="Pour Hotjar, Clarity, Snap Pixel, etc. Inséré tel quel dans la <head> de tes pages publiques.">
+        <PixelRow icon={<Info className="h-4 w-4 text-fuchsia-600" />} label="Code head personnalisé" help="Hotjar, Clarity, etc. Collé tel quel dans le head des pages publiques.">
           <textarea
             value={custom}
-            onChange={(e) => setCustom(e.target.value)}
-            placeholder="<script>...</script>"
+            onChange={(e) => { setCustom(e.target.value); setSavedOk(false); }}
+            placeholder="<script>…</script>"
             rows={4}
             className="w-full rounded-lg border border-border bg-background px-3 py-2 font-mono text-xs"
           />
         </PixelRow>
-
-        <Button onClick={handleSave} disabled={saving} className="w-full sm:w-auto gap-2">
-          {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-          Enregistrer les pixels
-        </Button>
+        <SaveBar
+          dirty={dirty}
+          saving={saving}
+          onSave={handleSave}
+          error={error}
+          success={savedOk ? 'Pixels enregistrés.' : null}
+          idle="Aucun changement."
+        />
       </div>
     </Card>
   );
 }
 
-function PixelRow({ icon, label, help, children }: { icon: React.ReactNode; label: string; help?: string; children: React.ReactNode }) {
-  return (
-    <div className="rounded-xl border border-border/60 bg-muted/20 p-4">
-      <div className="mb-2 flex items-center gap-2">
-        <span className="grid h-8 w-8 place-items-center rounded-lg bg-card">{icon}</span>
-        <div>
-          <Label className="text-sm font-semibold">{label}</Label>
-          {help && <p className="text-[11px] text-muted-foreground">{help}</p>}
-        </div>
-      </div>
-      {children}
-    </div>
-  );
+function validatePixels(v: { fb: string; ga: string; tt: string; snap: string; adsId: string; adsLbl: string }) {
+  const out: { fb?: string; ga?: string; tt?: string; snap?: string; ads?: string } = {};
+  if (v.fb.trim() && !/^\d{6,20}$/.test(v.fb.trim())) out.fb = 'Le Pixel Meta ne contient que des chiffres.';
+  if (v.ga.trim() && !/^G-[A-Z0-9]+$/i.test(v.ga.trim())) out.ga = 'Format attendu : G-XXXXXXXX.';
+  if (v.tt.trim() && !/^[A-Z0-9]{8,32}$/i.test(v.tt.trim())) out.tt = 'ID TikTok invalide.';
+  if (v.snap.trim() && !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v.snap.trim())) {
+    out.snap = 'Le Pixel Snapchat est un UUID.';
+  }
+  const id = v.adsId.trim();
+  const label = v.adsLbl.trim();
+  if ((id && !label) || (!id && label)) out.ads = 'Renseigne l’ID AW-… et le libellé ensemble.';
+  else if (id && !/^AW-\d+$/i.test(id)) out.ads = 'L’ID Google Ads commence par AW-.';
+  return out;
 }
 
-// ─────────────────────────────────────────────────────────────────────
-// SHIPPING — sub-tabs: carrier (livraison) + logistics (3PL)
-// ─────────────────────────────────────────────────────────────────────
-// MogaDelivery vit dans la liste 3PL ci-dessous — c'est notre partenaire
-// logistique end-to-end (stockage + dispatch + transporteurs), pas un simple
-// transporteur last-mile. On ne le propose donc plus comme « société de
-// livraison » pour ne pas brouiller le positionnement.
-const CARRIER_PROVIDERS = [
-  { id: 'bestdelivery',  label: 'Best Delivery',  description: 'Transporteur Tunisie — livraison nationale', comingSoon: false },
-  { id: 'firstdelivery', label: 'First Delivery', description: 'Transporteur Tunisie',                  comingSoon: true },
-  { id: 'dropex',        label: 'Dropex',         description: 'Transporteur Tunisie',                  comingSoon: true },
-  { id: 'adex',          label: 'Adex',           description: 'Transporteur Tunisie',                  comingSoon: true },
-  { id: 'manual',        label: 'Manuel (sans API)', description: 'Tu gères toi-même les expéditions',  comingSoon: false },
-  { id: 'other',         label: 'Autre',          description: 'Autre transporteur',                    comingSoon: false },
-] as const;
-
-const LOGISTICS_PROVIDERS = [
-  { id: 'mogadelivery', label: 'MogaDelivery', description: 'Stockage + dispatch automatique Afrique. SKU matching natif.', logoUrl: '/integrations/mogadelivery.png' },
-  { id: 'shipbob',      label: 'ShipBob',      description: '3PL global — entrepôts US, EU, AU, CA' },
-  { id: 'manual',       label: 'Manuel',       description: 'Pas de logistique externe' },
-] as const;
-
-function ShippingPanel({ store, onSaved, saving, setSaving }: PanelProps) {
-  // Sous-onglet persisté via `?sub=carrier|logistics` — comme le tab parent,
-  // on garde l'état au refresh pour ne pas renvoyer le vendeur sur Carrier
-  // alors qu'il était sur Logistique.
+function ShippingPanel({
+  store,
+  onSaved,
+  onSubChange,
+}: {
+  store: StoreDoc;
+  onSaved: () => Promise<void>;
+  onSubChange: (sub: ShippingTab) => void;
+}) {
   const searchParams = useSearchParams();
-  const router = useRouter();
-  const pathname = usePathname();
-  const initialSub: ShippingTab = searchParams?.get('sub') === 'logistics' ? 'logistics' : 'carrier';
-  const [subTab, setSubTab] = useState<ShippingTab>(initialSub);
-  useEffect(() => {
-    const next = new URLSearchParams(searchParams?.toString() || '');
-    if (next.get('sub') === subTab) return;
-    next.set('sub', subTab);
-    router.replace(`${pathname}?${next.toString()}`, { scroll: false });
-  }, [subTab, router, pathname, searchParams]);
+  const sub: ShippingTab = searchParams.get('sub') === 'logistics' ? 'logistics' : 'carrier';
+
+  if (store.storeType === 'digital') {
+    return (
+      <Card icon={<Truck className="h-5 w-5" />} title="Livraison" subtitle="Cette boutique vend des produits digitaux.">
+        <p className="text-sm text-muted-foreground">
+          Il n’y a pas d’expédition à connecter. Les pixels et le domaine restent disponibles dans les autres onglets.
+        </p>
+      </Card>
+    );
+  }
 
   return (
-    <div className="space-y-5">
-      <div className="rounded-2xl border border-border/60 bg-card p-1.5 inline-flex">
-        <button
-          type="button"
-          onClick={() => setSubTab('carrier')}
-          className={cn(
-            'inline-flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-medium transition-all',
-            subTab === 'carrier' ? 'bg-gradient-to-br from-fuchsia-500 to-indigo-600 text-white shadow-md' : 'text-muted-foreground hover:text-foreground'
-          )}
-        >
-          <Truck className="h-4 w-4" />
+    <div className="space-y-4">
+      <div role="tablist" aria-label="Type de livraison" className="inline-flex max-w-full rounded-2xl border border-border/60 bg-card p-1">
+        <SubTab active={sub === 'carrier'} icon={<Truck className="h-4 w-4" />} onClick={() => onSubChange('carrier')}>
           Société de livraison
-        </button>
-        <button
-          type="button"
-          onClick={() => setSubTab('logistics')}
-          className={cn(
-            'inline-flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-medium transition-all',
-            subTab === 'logistics' ? 'bg-gradient-to-br from-fuchsia-500 to-indigo-600 text-white shadow-md' : 'text-muted-foreground hover:text-foreground'
-          )}
-        >
-          <Warehouse className="h-4 w-4" />
+        </SubTab>
+        <SubTab active={sub === 'logistics'} icon={<Warehouse className="h-4 w-4" />} onClick={() => onSubChange('logistics')}>
           Société de logistique
-        </button>
+        </SubTab>
       </div>
-
-      {subTab === 'carrier' ? (
-        <CarrierPanel store={store} onSaved={onSaved} saving={saving} setSaving={setSaving} />
+      {bestLive(store) && isMogaLive(store) && (
+        <p className="rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-900">
+          Best Delivery est activé : il est utilisé en priorité. MogaDelivery ne reçoit une commande que si Best Delivery est désactivé.
+        </p>
+      )}
+      {sub === 'carrier' ? (
+        <CarrierPanel store={store} onSaved={onSaved} />
       ) : (
-        <LogisticsPanel store={store} onSaved={onSaved} saving={saving} setSaving={setSaving} />
+        <LogisticsPanel store={store} onSaved={onSaved} />
       )}
     </div>
   );
 }
 
-// ─────────────────────────────────────────────────────────────────────
-// Carrier (last-mile delivery company)
-// ─────────────────────────────────────────────────────────────────────
-function CarrierPanel({ store, onSaved, saving, setSaving }: PanelProps) {
+function CarrierPanel({ store, onSaved }: { store: StoreDoc; onSaved: () => Promise<void> }) {
   const d = store.integrations?.delivery || {};
-  const [provider, setProvider] = useState<string>(d.provider || 'manual');
-  const [enabled, setEnabled] = useState(!!d.enabled);
-  const [apiKey, setApiKey] = useState(d.apiKey || '');
-  const [login, setLogin] = useState(d.login || '');
-  const [pwd, setPwd] = useState(d.pwd || '');
-  const [baseUrl, setBaseUrl] = useState(d.baseUrl || '');
+  // MogaDelivery n’est pas un choix de cet onglet : on ne le fait pas passer
+  // pour « manuel », sinon Enregistrer resterait désactivé et un save
+  // effacerait Moga sans geste explicite.
+  const savedCarrier: 'bestdelivery' | 'manual' | '' = d.provider === 'bestdelivery'
+    ? 'bestdelivery'
+    : (d.provider === 'manual' || !d.provider ? 'manual' : '');
+  const [provider, setProvider] = useState<string>(savedCarrier);
+  const [enabled, setEnabled] = useState(savedCarrier === 'bestdelivery' && !!d.enabled);
+  const [login, setLogin] = useState(d.provider === 'bestdelivery' ? (d.login || '') : '');
+  const [pwd, setPwd] = useState(d.provider === 'bestdelivery' ? (d.pwd || '') : '');
+  const [baseUrl, setBaseUrl] = useState(d.provider === 'bestdelivery' ? (d.baseUrl || '') : '');
   const [autoDispatch, setAutoDispatch] = useState(d.autoDispatch ?? true);
-  const [pickup, setPickup] = useState<PickupAddress>(d.pickupAddress || {});
+  const [pickup, setPickup] = useState<PickupAddress>(d.provider === 'bestdelivery' ? (d.pickupAddress || {}) : {});
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [savedOk, setSavedOk] = useState(false);
   const confirm = useConfirm();
 
-  // Une intégration est considérée "active" dès qu'un provider non-manual est
-  // choisi OU qu'une clé API est saisie. Le bouton Déconnecter ne sort que
-  // dans ce cas — pas d'intérêt à proposer de déconnecter le défaut "manual".
-  const isConnected = (d.provider && d.provider !== 'manual') || !!d.apiKey || !!d.enabled;
+  const dirty = provider === 'bestdelivery'
+    ? savedCarrier !== 'bestdelivery' ||
+      enabled !== !!d.enabled ||
+      login !== (d.login || '') ||
+      pwd !== (d.pwd || '') ||
+      baseUrl !== (d.baseUrl || '') ||
+      autoDispatch !== (d.autoDispatch ?? true) ||
+      JSON.stringify(compactPickup(pickup) || {}) !== JSON.stringify(compactPickup(d.pickupAddress || {}) || {})
+    : provider === 'manual' && savedCarrier !== 'manual';
+
+  async function persist(nextProvider: 'bestdelivery' | 'manual') {
+    if (nextProvider === 'bestdelivery') {
+      await saveIntegrations(store, {
+        delivery: {
+          provider: 'bestdelivery',
+          enabled,
+          login: login.trim() || undefined,
+          pwd: pwd.trim() || undefined,
+          baseUrl: baseUrl.trim() || undefined,
+          autoDispatch,
+          pickupAddress: compactPickup(pickup),
+        },
+      });
+      return;
+    }
+    await saveIntegrations(store, {
+      delivery: { provider: 'manual', enabled: false, autoDispatch: false },
+    });
+  }
 
   async function handleSave() {
-    setSaving(true);
-    try {
-      await storesApi.update(store._id, {
-        integrations: {
-          ...store.integrations,
-          delivery: {
-            ...d, // préserve les champs non gérés ici (ex. webhookSecret MogaDelivery)
-            provider,
-            enabled,
-            apiKey: apiKey.trim() || undefined,
-            login: login.trim() || undefined,
-            pwd: pwd.trim() || undefined,
-            baseUrl: baseUrl.trim() || undefined,
-            autoDispatch,
-            pickupAddress: pickup,
-          },
-        },
+    if (provider !== 'bestdelivery' && provider !== 'manual') return;
+    if (provider === 'bestdelivery' && enabled && (!login.trim() || !pwd.trim())) {
+      setError('Renseigne le login et le mot de passe Best Delivery avant d’activer.');
+      setSavedOk(false);
+      return;
+    }
+    if (provider === 'manual' && d.provider === 'mogadelivery' && d.enabled) {
+      const ok = await confirm({
+        title: 'Couper MogaDelivery comme transporteur ?',
+        description: 'Les commandes ne partiront plus via le transporteur MogaDelivery. Si la logistique Moga reste activée dans l’autre onglet, elle continuera de les recevoir.',
+        confirmLabel: 'Passer en manuel',
+        tone: 'destructive',
       });
-      await onSaved();
-    } finally { setSaving(false); }
-  }
-
-  async function handleDisconnect() {
-    const ok = await confirm({
-      title: `Déconnecter ${d.provider || 'le transporteur'} ?`,
-      description: 'La clé API, l\'URL et l\'adresse de pickup seront effacées. Les commandes resteront en attente de dispatch manuel.',
-      confirmLabel: 'Déconnecter',
-      tone: 'destructive',
-    });
-    if (!ok) return;
+      if (!ok) return;
+    }
     setSaving(true);
+    setError(null);
+    setSavedOk(false);
     try {
-      await storesApi.update(store._id, {
-        integrations: {
-          ...store.integrations,
-          delivery: { provider: 'manual', enabled: false },
-        },
-      });
-      // Reset state local pour refléter la déconnexion sans attendre le refetch
-      setProvider('manual');
-      setEnabled(false);
-      setApiKey('');
-      setLogin('');
-      setPwd('');
-      setBaseUrl('');
-      setAutoDispatch(true);
-      setPickup({});
+      await persist(provider === 'bestdelivery' ? 'bestdelivery' : 'manual');
       await onSaved();
-    } finally { setSaving(false); }
-  }
-
-  return (
-    <Card icon={<Truck className="h-5 w-5" />} title="Société de livraison"
-      subtitle="Transporteur last-mile qui prend en charge le colis chez toi et le livre au client.">
-      <div className="space-y-5">
-        <div>
-          <Label>Sociétés de livraison disponibles</Label>
-          <p className="mt-0.5 text-xs text-muted-foreground">
-            Clique sur « Intégrer » pour choisir ton transporteur, puis configure-le ci-dessous.
-          </p>
-          <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-            {CARRIER_PROVIDERS.map((p) => (
-              <ProviderCard
-                key={p.id}
-                name={p.label}
-                description={p.description}
-                icon={<Truck className="h-5 w-5" />}
-                selected={provider === p.id}
-                comingSoon={p.comingSoon}
-                onSelect={() => setProvider(p.id)}
-              />
-            ))}
-          </div>
-        </div>
-
-        <ToggleRow checked={enabled} onChange={setEnabled}
-          label="Activer l'intégration"
-          sublabel="Quand désactivé, les commandes restent en attente de dispatch manuel." />
-
-        <ToggleRow checked={autoDispatch} onChange={setAutoDispatch}
-          label="Auto-dispatch des commandes"
-          sublabel="Envoie automatiquement chaque commande payée (ou COD) au transporteur." />
-
-        {provider === 'bestdelivery' ? (
-          <div className="grid gap-3 sm:grid-cols-2">
-            <div>
-              <Label>Login Best Delivery</Label>
-              <Input value={login} onChange={(e) => setLogin(e.target.value)} autoComplete="off" placeholder="login du compte expéditeur" className="mt-1.5 h-11" />
-            </div>
-            <div>
-              <Label>Mot de passe</Label>
-              <Input type="password" value={pwd} onChange={(e) => setPwd(e.target.value)} autoComplete="off" placeholder="••••••••" className="mt-1.5 h-11" />
-            </div>
-            <div className="sm:col-span-2">
-              <Label>WSDL (optionnel)</Label>
-              <Input value={baseUrl} onChange={(e) => setBaseUrl(e.target.value)} placeholder="https://api.best-delivery.net/serviceShipments.php?wsdl" className="mt-1.5 h-11 font-mono text-xs" />
-              <p className="mt-1 text-xs text-muted-foreground">Tunisie · le governorat de livraison est repris du champ « état/région » de l&apos;adresse. Laisse le WSDL vide pour la valeur par défaut.</p>
-            </div>
-          </div>
-        ) : (
-          <div className="grid gap-3 sm:grid-cols-2">
-            <div>
-              <Label>Clé API</Label>
-              <Input type="password" value={apiKey} onChange={(e) => setApiKey(e.target.value)} className="mt-1.5 h-11 font-mono" />
-            </div>
-            <div>
-              <Label>Base URL (optionnel)</Label>
-              <Input value={baseUrl} onChange={(e) => setBaseUrl(e.target.value)} placeholder="https://api.transporteur.com" className="mt-1.5 h-11 font-mono text-xs" />
-            </div>
-          </div>
-        )}
-
-        <div className="rounded-2xl border border-border/60 bg-muted/20 p-4">
-          <h4 className="mb-3 text-sm font-semibold">Adresse de pickup</h4>
-          <div className="grid gap-3 sm:grid-cols-2">
-            <Input placeholder="Nom contact" value={pickup.contactName || ''}
-              onChange={(e) => setPickup({ ...pickup, contactName: e.target.value })} />
-            <Input placeholder="Téléphone" value={pickup.contactPhone || ''}
-              onChange={(e) => setPickup({ ...pickup, contactPhone: e.target.value })} />
-            <Input placeholder="Adresse" value={pickup.line1 || ''}
-              onChange={(e) => setPickup({ ...pickup, line1: e.target.value })} />
-            <Input placeholder="Ville" value={pickup.city || ''}
-              onChange={(e) => setPickup({ ...pickup, city: e.target.value })} />
-            <Input placeholder="Wilaya / État" value={pickup.state || ''}
-              onChange={(e) => setPickup({ ...pickup, state: e.target.value })} />
-            <Input placeholder="Code postal" value={pickup.postalCode || ''}
-              onChange={(e) => setPickup({ ...pickup, postalCode: e.target.value })} />
-            <Input placeholder="Pays (TN, DZ, FR…)" value={pickup.country || ''}
-              onChange={(e) => setPickup({ ...pickup, country: e.target.value })}
-              className="sm:col-span-2" />
-          </div>
-        </div>
-
-        <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border/60 pt-4">
-          <Button onClick={handleSave} disabled={saving} className="gap-2">
-            {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-            Enregistrer
-          </Button>
-          {isConnected && (
-            <Button
-              variant="outline"
-              onClick={handleDisconnect}
-              disabled={saving}
-              className="gap-2 border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive"
-            >
-              <Plug className="h-4 w-4" />
-              Déconnecter l&apos;intégration
-            </Button>
-          )}
-        </div>
-      </div>
-    </Card>
-  );
-}
-
-// ─────────────────────────────────────────────────────────────────────
-// Logistics (3PL fulfillment company)
-// ─────────────────────────────────────────────────────────────────────
-function LogisticsPanel({ store, onSaved, saving, setSaving }: PanelProps) {
-  const l = store.integrations?.logistics || {};
-  const [provider, setProvider] = useState<string>(l.provider || 'manual');
-  const [enabled, setEnabled] = useState(!!l.enabled);
-  const [apiKey, setApiKey] = useState(l.apiKey || '');
-  const [baseUrl, setBaseUrl] = useState(l.baseUrl || '');
-  const [warehouseId, setWarehouseId] = useState(l.warehouseId || '');
-  const [webhookSecret, setWebhookSecret] = useState(l.webhookSecret || '');
-  const [autoForward, setAutoForward] = useState(l.autoForward ?? true);
-  const [copied, setCopied] = useState<string | null>(null);
-  const confirm = useConfirm();
-
-  const isMoga = provider === 'mogadelivery';
-
-  // Une intégration 3PL est considérée "active" dès qu'un provider non-manual
-  // est configuré ou qu'une clé API est saisie. Le bouton Déconnecter
-  // n'apparaît que dans ce cas (pas d'intérêt sinon).
-  const isConnected = (l.provider && l.provider !== 'manual') || !!l.apiKey || !!l.enabled;
-
-  // Detect unsaved changes so we can nudge the user to click "Enregistrer".
-  // Without this banner sellers routinely select a provider then leave the
-  // page thinking the integration is live (the card visually flips to
-  // "Intégré" but that's only local state until they save).
-  const dirty =
-    provider !== (l.provider || 'manual') ||
-    enabled !== !!l.enabled ||
-    apiKey !== (l.apiKey || '') ||
-    baseUrl !== (l.baseUrl || '') ||
-    warehouseId !== (l.warehouseId || '') ||
-    webhookSecret !== (l.webhookSecret || '') ||
-    autoForward !== (l.autoForward ?? true);
-
-  // Selecting MogaDelivery is the "intent to integrate" — auto-flip the
-  // enabled + autoForward toggles so the seller only has to fill the secret
-  // and hit Save. They can always toggle off manually if they change their
-  // mind. For other providers we don't auto-enable because they need API
-  // keys etc. that aren't optional.
-  function handleSelectProvider(id: string) {
-    setProvider(id);
-    if (id === 'mogadelivery') {
-      setEnabled(true);
-      setAutoForward(true);
+      setSavedOk(true);
+    } catch (err) {
+      setError(extractApiError(err, 'Enregistrement impossible.'));
+    } finally {
+      setSaving(false);
     }
   }
 
-  // Auto-generate a 64-hex webhook secret if the seller doesn't have one.
-  // They can still paste their own to match what MogaDelivery has on their
-  // side — this is just a one-click convenience.
-  function generateSecret() {
-    const bytes = new Uint8Array(32);
-    crypto.getRandomValues(bytes);
-    const hex = Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
-    setWebhookSecret(hex);
-  }
-
-  async function copy(value: string, key: string) {
-    try {
-      await navigator.clipboard.writeText(value);
-      setCopied(key);
-      setTimeout(() => setCopied((k) => (k === key ? null : k)), 1200);
-    } catch {}
-  }
-
-  async function handleSave() {
-    setSaving(true);
-    try {
-      await storesApi.update(store._id, {
-        integrations: {
-          ...store.integrations,
-          logistics: {
-            provider,
-            enabled,
-            apiKey: apiKey.trim() || undefined,
-            baseUrl: baseUrl.trim() || undefined,
-            webhookSecret: webhookSecret.trim() || undefined,
-            warehouseId: warehouseId.trim() || undefined,
-            autoForward,
-          },
-        },
-      });
-      await onSaved();
-    } finally { setSaving(false); }
-  }
-
   async function handleDisconnect() {
     const ok = await confirm({
-      title: `Déconnecter ${l.provider || 'le 3PL'} ?`,
-      description: 'La clé API, l\'URL, le secret webhook et le warehouse ID seront effacés. Les commandes ne seront plus forwardées au prestataire.',
+      title: 'Passer en expédition manuelle ?',
+      description: isMogaLive(store)
+        ? 'Best Delivery sera déconnecté. MogaDelivery reste actif dans Société de logistique et continuera de recevoir les commandes.'
+        : 'Les identifiants Best Delivery seront effacés. Les commandes resteront à expédier à la main.',
       confirmLabel: 'Déconnecter',
       tone: 'destructive',
     });
     if (!ok) return;
     setSaving(true);
+    setError(null);
     try {
-      await storesApi.update(store._id, {
-        integrations: {
-          ...store.integrations,
-          logistics: { provider: 'manual', enabled: false },
-        },
-      });
+      await persist('manual');
       setProvider('manual');
       setEnabled(false);
-      setApiKey('');
+      setLogin('');
+      setPwd('');
       setBaseUrl('');
-      setWebhookSecret('');
-      setWarehouseId('');
-      setAutoForward(true);
+      setPickup({});
       await onSaved();
-    } finally { setSaving(false); }
+      setSavedOk(true);
+    } catch (err) {
+      setError(extractApiError(err, 'Déconnexion impossible.'));
+    } finally {
+      setSaving(false);
+    }
   }
 
+  const unsupported = d.provider && !['bestdelivery', 'manual', 'mogadelivery'].includes(d.provider);
+
   return (
-    <Card icon={<Warehouse className="h-5 w-5" />} title="Société de logistique (3PL)"
-      subtitle="Externalise le stockage et la préparation des commandes. Le 3PL gère ton entrepôt et choisit le transporteur.">
+    <Card
+      icon={<Truck className="h-5 w-5" />}
+      title="Société de livraison"
+      subtitle="Transporteur qui récupère le colis et le livre au client. MogaDelivery se configure dans Société de logistique."
+    >
       <div className="space-y-5">
-        <div>
-          <Label>Prestataires 3PL disponibles</Label>
-          <p className="mt-0.5 text-xs text-muted-foreground">
-            Clique sur « Intégrer » pour choisir ton prestataire logistique, puis configure-le ci-dessous.
+        {d.provider === 'mogadelivery' && d.enabled && (
+          <p className="rounded-xl border border-border/60 bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
+            MogaDelivery est le transporteur actif. Choisir Best Delivery le remplace. Le mode manuel le coupe, sans couper une logistique Moga encore activée.
           </p>
-          <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-            {LOGISTICS_PROVIDERS.map((p) => (
-              <ProviderCard
-                key={p.id}
-                name={p.label}
-                description={p.description}
-                icon={<Warehouse className="h-5 w-5" />}
-                logoUrl={'logoUrl' in p ? p.logoUrl : undefined}
-                selected={provider === p.id}
-                onSelect={() => handleSelectProvider(p.id)}
-              />
-            ))}
-          </div>
+        )}
+        {unsupported && (
+          <p className="rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-900">
+            Le transporteur « {d.provider} » n’est pas branché. Tant que tu n’enregistres pas Best Delivery ou le mode manuel, aucune commande ne part.
+          </p>
+        )}
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          {CARRIER_PROVIDERS.map((p) => (
+            <ProviderCard
+              key={p.id}
+              name={p.label}
+              description={p.description}
+              icon={<Truck className="h-5 w-5" />}
+              selected={provider === p.id}
+              active={p.id === 'bestdelivery' && bestLive(store) && provider === p.id}
+              comingSoon={p.comingSoon}
+              onSelect={() => { setProvider(p.id); setSavedOk(false); }}
+            />
+          ))}
         </div>
 
-        <ToggleRow checked={enabled} onChange={setEnabled}
-          label={isMoga ? 'Activer l\'intégration MogaDelivery' : 'Activer le 3PL'}
-          sublabel={isMoga
-            ? 'Quand activé, chaque commande COD est envoyée automatiquement à MogaDelivery.'
-            : 'Les commandes seront forwardées au prestataire qui prépare et expédie.'} />
-
-        <ToggleRow checked={autoForward} onChange={setAutoForward}
-          label="Auto-forward des commandes"
-          sublabel={isMoga
-            ? 'Envoie automatiquement chaque nouvelle commande à MogaDelivery (sinon dispatch manuel depuis la page Commandes).'
-            : 'Envoie automatiquement chaque commande payée au 3PL.'} />
-
-        {isMoga ? (
-          /* ─── MogaDelivery-specific config ──────────────────────────── */
+        {provider === 'manual' ? (
+          <p className="text-sm text-muted-foreground">
+            Mode manuel : FlexioPage n’appelle aucun transporteur. Tu suis les commandes depuis la page Commandes.
+          </p>
+        ) : provider !== 'bestdelivery' ? (
+          <p className="text-sm text-muted-foreground">
+            Choisis Best Delivery ou le mode manuel. MogaDelivery se règle dans Société de logistique.
+          </p>
+        ) : (
           <>
-            <div className="rounded-2xl border border-border/60 bg-muted/20 p-4 space-y-4">
-              <div className="flex items-start gap-2.5">
-                <div className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-emerald-500/15 text-emerald-700">
-                  <Info className="h-4 w-4" />
-                </div>
-                <div>
-                  <h4 className="text-sm font-semibold">À partager avec MogaDelivery</h4>
-                  <p className="text-xs text-muted-foreground">
-                    Donne le Store ID ci-dessous + le secret HMAC du champ plus bas. MogaDelivery utilise déjà une URL globale pour nous envoyer les statuts.
-                  </p>
-                </div>
-              </div>
-
-              {/* Store ID */}
+            <ToggleRow
+              checked={enabled}
+              onChange={(v) => { setEnabled(v); setSavedOk(false); }}
+              label="Activer Best Delivery"
+              sublabel="Désactivé, les commandes ne sont pas envoyées à Best Delivery."
+            />
+            <ToggleRow
+              checked={autoDispatch}
+              onChange={(v) => { setAutoDispatch(v); setSavedOk(false); }}
+              label="Envoi automatique"
+              sublabel="Chaque commande payée ou en paiement à la livraison part chez Best Delivery."
+            />
+            <div className="grid gap-3 sm:grid-cols-2">
               <div>
-                <Label className="text-xs">Store ID (à donner à MogaDelivery)</Label>
-                <div className="mt-1.5 flex items-center gap-2">
-                  <code className="flex-1 truncate rounded-md border border-border/60 bg-card px-3 py-2 font-mono text-xs">
-                    {store._id}
-                  </code>
-                  <Button type="button" variant="outline" size="sm" onClick={() => copy(store._id, 'storeId')} className="gap-1.5">
-                    <Copy className="h-3.5 w-3.5" />
-                    {copied === 'storeId' ? 'Copié' : 'Copier'}
-                  </Button>
-                </div>
+                <Label htmlFor="bd-login">Login</Label>
+                <Input id="bd-login" value={login} onChange={(e) => { setLogin(e.target.value); setSavedOk(false); }} autoComplete="off" placeholder="Compte expéditeur" className="mt-1.5 h-11" />
+              </div>
+              <div>
+                <Label htmlFor="bd-pwd">Mot de passe</Label>
+                <Input id="bd-pwd" type="password" value={pwd} onChange={(e) => { setPwd(e.target.value); setSavedOk(false); }} autoComplete="new-password" placeholder="Mot de passe" className="mt-1.5 h-11" />
+              </div>
+              <div className="sm:col-span-2">
+                <Label htmlFor="bd-wsdl">WSDL (optionnel)</Label>
+                <Input id="bd-wsdl" value={baseUrl} onChange={(e) => { setBaseUrl(e.target.value); setSavedOk(false); }} placeholder="https://api.best-delivery.net/serviceShipments.php?wsdl" className="mt-1.5 h-11 font-mono text-xs" />
+                <p className="mt-1 text-xs text-muted-foreground">Laisse vide pour l’endpoint par défaut. Le gouvernorat vient du champ région de l’adresse.</p>
               </div>
             </div>
-
-            {/* Webhook secret — required */}
-            <div>
-              <Label className="flex items-center gap-1.5">
-                <Lock className="h-3.5 w-3.5" />
-                Clé webhook secret (HMAC-SHA256) *
-              </Label>
-              <div className="mt-1.5 flex gap-2">
-                <Input
-                  type="password"
-                  value={webhookSecret}
-                  onChange={(e) => setWebhookSecret(e.target.value)}
-                  placeholder="Ex: 9f8c7b6a5d4e3f2a1b0c..."
-                  className="h-11 flex-1 font-mono"
-                />
-                <Button type="button" variant="outline" onClick={generateSecret} className="h-11 gap-1.5">
-                  <KeyRound className="h-3.5 w-3.5" />
-                  Générer
-                </Button>
-                {webhookSecret && (
-                  <Button type="button" variant="outline" onClick={() => copy(webhookSecret, 'secret')} className="h-11 gap-1.5">
-                    <Copy className="h-3.5 w-3.5" />
-                    {copied === 'secret' ? 'Copié' : 'Copier'}
-                  </Button>
-                )}
-              </div>
-              <p className="mt-1 text-[11px] text-muted-foreground">
-                Donne <strong>la même clé</strong> à MogaDelivery (ils la collent côté admin chez eux).
-                Sert à signer/vérifier les webhooks dans les deux sens. Si vide, on retombe sur <code className="rounded bg-muted px-1">FLEXIOPAGE_WEBHOOK_SECRET</code> du serveur.
-              </p>
-            </div>
-
-            {/* Optional fields */}
-            <details className="rounded-xl border border-border/60 bg-card">
-              <summary className="cursor-pointer px-4 py-3 text-sm font-medium">
-                Options avancées (facultatives)
-              </summary>
-              <div className="space-y-3 border-t border-border/60 p-4">
-                <div>
-                  <Label className="text-xs">URL endpoint MogaDelivery (override défaut)</Label>
-                  <Input
-                    value={baseUrl}
-                    onChange={(e) => setBaseUrl(e.target.value)}
-                    placeholder="https://api.admin-mogadelivery.com/api/webhooks/flexiopage"
-                    className="mt-1.5 h-10 font-mono text-xs"
-                  />
-                  <p className="mt-1 text-[11px] text-muted-foreground">
-                    Laisse vide → utilise <code className="rounded bg-muted px-1">api.admin-mogadelivery.com/api/webhooks/flexiopage</code> (endpoint prod).
-                  </p>
-                </div>
-                <div>
-                  <Label className="text-xs">Clé API MogaDelivery (si fournie)</Label>
-                  <Input
-                    type="password"
-                    value={apiKey}
-                    onChange={(e) => setApiKey(e.target.value)}
-                    className="mt-1.5 h-10 font-mono"
-                  />
-                  <p className="mt-1 text-[11px] text-muted-foreground">
-                    Optionnel — réservé à une future API REST. La signature HMAC suffit pour les webhooks.
-                  </p>
+            <div className="rounded-2xl border border-border/60 bg-muted/20 p-4">
+              <h3 className="mb-3 text-sm font-semibold">Adresse de collecte</h3>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <PickupField label="Nom du contact" value={pickup.contactName} onChange={(v) => setPickup({ ...pickup, contactName: v })} />
+                <PickupField label="Téléphone" value={pickup.contactPhone} onChange={(v) => setPickup({ ...pickup, contactPhone: v })} />
+                <PickupField label="Adresse" value={pickup.line1} onChange={(v) => setPickup({ ...pickup, line1: v })} />
+                <PickupField label="Ville" value={pickup.city} onChange={(v) => setPickup({ ...pickup, city: v })} />
+                <PickupField label="Gouvernorat" value={pickup.state} onChange={(v) => setPickup({ ...pickup, state: v })} />
+                <PickupField label="Code postal" value={pickup.postalCode} onChange={(v) => setPickup({ ...pickup, postalCode: v })} />
+                <div className="sm:col-span-2">
+                  <PickupField label="Pays (TN)" value={pickup.country} onChange={(v) => setPickup({ ...pickup, country: v })} />
                 </div>
               </div>
-            </details>
-
-            <div className="rounded-xl border border-amber-500/30 bg-amber-500/5 p-3 text-xs text-amber-800">
-              <strong>Important pour le matching produits :</strong> chaque produit doit avoir le <strong>même SKU</strong> côté
-              FlexioPage <em>et</em> côté MogaDelivery. Le SKU se configure dans
-              {' '}<code className="rounded bg-muted px-1">Produit → Référence produit (SKU & code-barres)</code>.
             </div>
           </>
-        ) : (
-          /* ─── Generic 3PL config (ShipBob, Cubyn, etc.) ─────────────── */
-          <div className="grid gap-3 sm:grid-cols-2">
-            <div>
-              <Label>Clé API</Label>
-              <Input type="password" value={apiKey} onChange={(e) => setApiKey(e.target.value)} className="mt-1.5 h-11 font-mono" />
-            </div>
-            <div>
-              <Label>ID entrepôt / centre</Label>
-              <Input value={warehouseId} onChange={(e) => setWarehouseId(e.target.value)} placeholder="warehouse_xyz" className="mt-1.5 h-11 font-mono text-xs" />
-            </div>
-            <div className="sm:col-span-2">
-              <Label>Base URL (optionnel)</Label>
-              <Input value={baseUrl} onChange={(e) => setBaseUrl(e.target.value)} placeholder="https://api.shipbob.com" className="mt-1.5 h-11 font-mono text-xs" />
-            </div>
-          </div>
         )}
 
-        {/* Sticky save bar — shows clearly when there are unsaved changes.
-            Without this, sellers select MogaDelivery, see the card flip to
-            "Intégré", then navigate away thinking it's saved. */}
-        <div
-          className={cn(
-            'sticky bottom-3 z-10 flex flex-wrap items-center justify-between gap-3 rounded-2xl border px-4 py-3 backdrop-blur',
-            dirty
-              ? 'border-amber-500/40 bg-amber-500/10 ring-2 ring-amber-500/20'
-              : 'border-border/60 bg-card/80'
-          )}
-        >
-          <div className="flex items-center gap-2 text-sm">
-            {dirty ? (
-              <>
-                <AlertCircle className="h-4 w-4 text-amber-700" />
-                <span className="font-medium text-amber-800">
-                  Changements non enregistrés — clique sur « Enregistrer » pour activer.
-                </span>
-              </>
-            ) : enabled && provider !== 'manual' ? (
-              <>
-                <CheckCircle2 className="h-4 w-4 text-emerald-600" />
-                <span className="font-medium text-emerald-700">
-                  {isMoga ? 'MogaDelivery actif' : `${provider} actif`}
-                </span>
-              </>
-            ) : (
-              <span className="text-muted-foreground">Aucune intégration active.</span>
-            )}
-          </div>
-          <div className="flex flex-wrap items-center gap-2">
-            {isConnected && (
-              <Button
-                variant="outline"
-                onClick={handleDisconnect}
-                disabled={saving}
-                className="gap-2 border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive"
-              >
-                <Plug className="h-4 w-4" />
-                Déconnecter
-              </Button>
-            )}
-            <Button
-              onClick={handleSave}
-              disabled={saving || !dirty}
-              className={cn('gap-2', dirty && 'gradient-brand text-white shadow-lg')}
-            >
-              {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-              Enregistrer
+        <SaveBar
+          dirty={dirty}
+          saving={saving}
+          onSave={handleSave}
+          error={error}
+          success={savedOk ? 'Livraison enregistrée.' : null}
+          idle={bestLive(store) ? 'Best Delivery actif.' : 'Aucune société de livraison active.'}
+          extra={bestLive(store) ? (
+            <Button variant="outline" onClick={handleDisconnect} disabled={saving} className="gap-2 border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive">
+              <Power className="h-4 w-4" /> Déconnecter
             </Button>
-          </div>
-        </div>
+          ) : null}
+        />
       </div>
     </Card>
   );
 }
 
-// ─────────────────────────────────────────────────────────────────────
-// Shared atoms
-// ─────────────────────────────────────────────────────────────────────
-interface PanelProps {
-  store: StoreDoc;
-  onSaved: () => Promise<void>;
-  saving: boolean;
-  setSaving: (b: boolean) => void;
+function LogisticsPanel({ store, onSaved }: { store: StoreDoc; onSaved: () => Promise<void> }) {
+  const logistics = store.integrations?.logistics || {};
+  const delivery = store.integrations?.delivery;
+  const initial = logistics.provider === 'mogadelivery' || isMogaLive(store) ? 'mogadelivery' : 'manual';
+  const [provider, setProvider] = useState(initial);
+  const [enabled, setEnabled] = useState(isMogaLive(store));
+  const [autoForward, setAutoForward] = useState(
+    delivery?.provider === 'mogadelivery'
+      ? (delivery.autoDispatch ?? true)
+      : (logistics.autoForward ?? true),
+  );
+  const [baseUrl, setBaseUrl] = useState(logistics.baseUrl || delivery?.baseUrl || '');
+  const [saving, setSaving] = useState(false);
+  const [connecting, setConnecting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+  const [savedOk, setSavedOk] = useState(false);
+  const confirm = useConfirm();
+
+  const isMoga = provider === 'mogadelivery';
+  const country = (store.settings?.country || '').trim().toUpperCase();
+  const savedKind = logistics.provider === 'mogadelivery' || isMogaLive(store) ? 'mogadelivery' : 'manual';
+  const dirty =
+    (isMoga ? 'mogadelivery' : 'manual') !== savedKind ||
+    (isMoga && (
+      enabled !== isMogaLive(store) ||
+      autoForward !== (delivery?.provider === 'mogadelivery' ? (delivery.autoDispatch ?? true) : (logistics.autoForward ?? true)) ||
+      baseUrl !== (logistics.baseUrl || delivery?.baseUrl || '')
+    ));
+
+  function buildMogaPatch(nextEnabled: boolean): Partial<NonNullable<StoreDoc['integrations']>> {
+    const keepBest = delivery?.provider === 'bestdelivery';
+    return {
+      logistics: {
+        provider: 'mogadelivery',
+        enabled: nextEnabled,
+        autoForward,
+        baseUrl: baseUrl.trim() || undefined,
+        ...(logistics.webhookSecret ? { webhookSecret: logistics.webhookSecret } : {}),
+        ...(logistics.apiKey ? { apiKey: logistics.apiKey } : {}),
+      },
+      delivery: keepBest
+        ? delivery
+        : {
+            ...(delivery || {}),
+            provider: 'mogadelivery',
+            enabled: nextEnabled,
+            autoDispatch: autoForward,
+            baseUrl: baseUrl.trim() || delivery?.baseUrl || undefined,
+          },
+    };
+  }
+
+  async function handleSave() {
+    setSaving(true);
+    setError(null);
+    setNotice(null);
+    setSavedOk(false);
+    try {
+      if (!isMoga) {
+        const patch: Partial<NonNullable<StoreDoc['integrations']>> = {
+          logistics: { provider: 'manual', enabled: false, autoForward: false },
+        };
+        if (delivery?.provider === 'mogadelivery') {
+          patch.delivery = { ...delivery, provider: 'manual', enabled: false, autoDispatch: false };
+        }
+        await saveIntegrations(store, patch);
+      } else {
+        await saveIntegrations(store, buildMogaPatch(enabled));
+      }
+      await onSaved();
+      setSavedOk(true);
+    } catch (err) {
+      setError(extractApiError(err, 'Enregistrement impossible.'));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleConnect() {
+    if (country.length !== 2) {
+      setError('Indique le pays de la boutique (2 lettres) dans Identité avant de connecter MogaDelivery.');
+      return;
+    }
+    setConnecting(true);
+    setError(null);
+    setNotice(null);
+    try {
+      const res = await storesApi.connectMogaDelivery(store._id, { country });
+      const fresh = await storesApi.list();
+      const current = ((fresh.data.stores as StoreDoc[]) || []).find((s) => s._id === store._id) || store;
+      const bestStill = current.integrations?.delivery?.provider === 'bestdelivery' && current.integrations.delivery.enabled;
+      await saveIntegrations(current, {
+        logistics: {
+          ...(current.integrations?.logistics || {}),
+          provider: 'mogadelivery',
+          enabled: true,
+          autoForward: true,
+        },
+        ...(bestStill ? {} : {
+          delivery: {
+            ...(current.integrations?.delivery || {}),
+            provider: 'mogadelivery',
+            enabled: true,
+            autoDispatch: true,
+          },
+        }),
+      });
+      setEnabled(true);
+      setProvider('mogadelivery');
+      await onSaved();
+      setNotice(res.data.mode === 'auto'
+        ? 'Boutique enregistrée chez MogaDelivery. L’authentification utilise le secret plateforme.'
+        : (res.data.message || 'Demande à MogaDelivery d’enregistrer le Store ID ci-dessous. Aucune clé secrète à leur envoyer.'));
+    } catch (err) {
+      setError(extractApiError(err, 'Connexion MogaDelivery impossible.'));
+    } finally {
+      setConnecting(false);
+    }
+  }
+
+  async function handleDisconnect() {
+    const ok = await confirm({
+      title: 'Déconnecter MogaDelivery ?',
+      description: 'Les commandes ne seront plus envoyées à MogaDelivery. Le Store ID déjà communiqué reste valable pour une reconnexion.',
+      confirmLabel: 'Déconnecter',
+      tone: 'destructive',
+    });
+    if (!ok) return;
+    setSaving(true);
+    setError(null);
+    try {
+      const patch: Partial<NonNullable<StoreDoc['integrations']>> = {
+        logistics: { provider: 'manual', enabled: false, autoForward: false },
+      };
+      if (delivery?.provider === 'mogadelivery') {
+        patch.delivery = { ...delivery, provider: 'manual', enabled: false, autoDispatch: false };
+      }
+      await saveIntegrations(store, patch);
+      setProvider('manual');
+      setEnabled(false);
+      await onSaved();
+      setSavedOk(true);
+    } catch (err) {
+      setError(extractApiError(err, 'Déconnexion impossible.'));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <Card
+      icon={<Warehouse className="h-5 w-5" />}
+      title="Société de logistique"
+      subtitle="Le prestataire stocke, prépare et expédie. MogaDelivery est le seul 3PL branché aujourd’hui."
+    >
+      <div className="space-y-5">
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          {LOGISTICS_PROVIDERS.map((p) => (
+            <ProviderCard
+              key={p.id}
+              name={p.label}
+              description={p.description}
+              icon={<Warehouse className="h-5 w-5" />}
+              logoUrl={'logoUrl' in p ? p.logoUrl : undefined}
+              selected={provider === p.id}
+              active={p.id === 'mogadelivery' && isMogaLive(store) && provider === p.id}
+              comingSoon={p.comingSoon}
+              onSelect={() => {
+                setProvider(p.id);
+                setSavedOk(false);
+                if (p.id === 'mogadelivery') setEnabled(true);
+              }}
+            />
+          ))}
+        </div>
+
+        {isMoga ? (
+          <>
+            <div className="space-y-4 rounded-2xl border border-border/60 bg-muted/20 p-4">
+              <div className="flex items-start gap-2.5">
+                <span className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-primary/10 text-primary">
+                  <Info className="h-4 w-4" />
+                </span>
+                <div>
+                  <h3 className="text-sm font-semibold">Connexion MogaDelivery</h3>
+                  <p className="mt-0.5 text-xs text-muted-foreground">
+                    Le secret HMAC est celui de la plateforme. Tu n’as pas de clé à générer ni à coller. MogaDelivery identifie la boutique avec le Store ID.
+                  </p>
+                </div>
+              </div>
+              <div>
+                <Label>Store ID</Label>
+                <div className="mt-1.5 flex items-center gap-2">
+                  <code className="min-w-0 flex-1 truncate rounded-md border border-border/60 bg-card px-3 py-2 font-mono text-xs">{store._id}</code>
+                  <CopyButton value={store._id} />
+                </div>
+              </div>
+              {country.length === 2 ? (
+                <p className="text-xs text-muted-foreground">Pays utilisé pour l’onboarding : <span className="font-medium text-foreground">{country}</span></p>
+              ) : (
+                <p className="text-xs text-amber-800">
+                  Pays manquant.{' '}
+                  <Link href={`/dashboard/stores/${store._id}?block=identity`} className="font-medium underline">Renseigne-le dans Identité</Link>
+                  {' '}(code à 2 lettres) avant la connexion automatique.
+                </p>
+              )}
+              <Button type="button" onClick={handleConnect} disabled={connecting || country.length !== 2} className="gap-2">
+                {connecting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plug className="h-4 w-4" />}
+                {isMogaLive(store) ? 'Resynchroniser' : 'Connecter MogaDelivery'}
+              </Button>
+              {mogaOnboarded(store) && !isMogaLive(store) && (
+                <p className="text-xs text-amber-800">La boutique est connue de MogaDelivery, mais le dispatch est coupé. Active l’intégration puis enregistre.</p>
+              )}
+            </div>
+
+            <ToggleRow
+              checked={enabled}
+              onChange={(v) => { setEnabled(v); setSavedOk(false); }}
+              label="Activer l’envoi des commandes"
+              sublabel={bestLive(store)
+                ? 'Best Delivery reste prioritaire tant qu’il est activé. MogaDelivery prendra le relais s’il est coupé.'
+                : 'Chaque nouvelle commande part chez MogaDelivery.'}
+            />
+            <ToggleRow
+              checked={autoForward}
+              onChange={(v) => { setAutoForward(v); setSavedOk(false); }}
+              label="Envoi automatique"
+              sublabel="Décoche pour ne dispatcher qu’à la main depuis Commandes."
+            />
+            <div className="rounded-xl border border-border/60 bg-card px-3 py-2 text-xs text-muted-foreground">
+              Chaque produit doit avoir le même SKU dans FlexioPage et dans MogaDelivery. Le SKU se pose sur la fiche produit.
+            </div>
+            <details className="rounded-xl border border-border/60 bg-card">
+              <summary className="cursor-pointer px-4 py-3 text-sm font-medium">URL d’envoi (optionnel)</summary>
+              <div className="border-t border-border/60 p-4">
+                <Label htmlFor="moga-url">Endpoint MogaDelivery</Label>
+                <Input
+                  id="moga-url"
+                  value={baseUrl}
+                  onChange={(e) => { setBaseUrl(e.target.value); setSavedOk(false); }}
+                  placeholder="https://api.admin-mogadelivery.com/api/webhooks/flexiopage"
+                  className="mt-1.5 h-10 font-mono text-xs"
+                />
+                <p className="mt-1 text-xs text-muted-foreground">Laisse vide pour l’endpoint de production.</p>
+              </div>
+            </details>
+          </>
+        ) : (
+          <p className="text-sm text-muted-foreground">
+            Aucun 3PL. Les commandes suivent uniquement la société de livraison, ou restent manuelles.
+          </p>
+        )}
+
+        {notice && <p className="text-xs font-medium text-emerald-700">{notice}</p>}
+
+        <SaveBar
+          dirty={dirty}
+          saving={saving}
+          onSave={handleSave}
+          error={error}
+          success={savedOk ? 'Logistique enregistrée.' : null}
+          idle={isMogaLive(store) ? 'MogaDelivery actif.' : 'Aucune logistique active.'}
+          extra={isMogaLive(store) ? (
+            <Button variant="outline" onClick={handleDisconnect} disabled={saving} className="gap-2 border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive">
+              <Power className="h-4 w-4" /> Déconnecter
+            </Button>
+          ) : null}
+        />
+      </div>
+    </Card>
+  );
 }
 
-function Card({ icon, title, subtitle, children }: { icon: React.ReactNode; title: string; subtitle?: string; children: React.ReactNode }) {
+function compactPickup(pickup: PickupAddress): PickupAddress | undefined {
+  const out: PickupAddress = {};
+  (Object.keys(pickup) as (keyof PickupAddress)[]).forEach((key) => {
+    const value = pickup[key]?.trim();
+    if (value) out[key] = value;
+  });
+  return Object.keys(out).length ? out : undefined;
+}
+
+function PickupField({ label, value, onChange }: { label: string; value?: string; onChange: (v: string) => void }) {
   return (
-    <section className="rounded-3xl border border-border/60 bg-card p-6 sm:p-8">
-      <header className="mb-6 flex items-start gap-4">
-        <span className="grid h-11 w-11 place-items-center rounded-2xl bg-gradient-to-br from-fuchsia-500 to-indigo-600 text-white shadow-md">
+    <div>
+      <Label>{label}</Label>
+      <Input value={value || ''} onChange={(e) => onChange(e.target.value)} className="mt-1.5" />
+    </div>
+  );
+}
+
+function Card({ icon, title, subtitle, children }: { icon: ReactNode; title: string; subtitle?: string; children: ReactNode }) {
+  return (
+    <section className="rounded-2xl border border-border/60 bg-card p-5 sm:p-6">
+      <header className="mb-5 flex items-start gap-3">
+        <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl gradient-brand text-white">
           {icon}
         </span>
         <div>
-          <h2 className="text-xl font-bold tracking-tight">{title}</h2>
-          {subtitle && <p className="mt-1 text-sm text-muted-foreground max-w-2xl">{subtitle}</p>}
+          <h2 className="text-base font-semibold tracking-tight">{title}</h2>
+          {subtitle && <p className="mt-1 max-w-2xl text-sm text-muted-foreground">{subtitle}</p>}
         </div>
       </header>
       {children}
@@ -1500,142 +1405,244 @@ function Card({ icon, title, subtitle, children }: { icon: React.ReactNode; titl
   );
 }
 
-/** Tuile logo tolérante : si `logoUrl` est défini, on tente de charger l'image,
- *  et on retombe sur l'icône gradient en cas de 404 (logo absent du repo
- *  public/integrations). Évite l'image cassée affichée dans le navigateur. */
-function ProviderLogo({
-  logoUrl,
-  name,
-  fallback,
-}: {
-  logoUrl?: string;
-  name: string;
-  fallback: React.ReactNode;
-}) {
-  const [broken, setBroken] = useState(false);
-  if (logoUrl && !broken) {
-    return (
-      <span className="grid h-10 w-10 place-items-center overflow-hidden rounded-xl bg-white shadow-md ring-1 ring-border/60">
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img
-          src={logoUrl}
-          alt={name}
-          className="h-9 w-9 object-contain"
-          onError={() => setBroken(true)}
-        />
-      </span>
-    );
-  }
+function MethodButton({ active, title, hint, onClick }: { active: boolean; title: string; hint: string; onClick: () => void }) {
   return (
-    <span className="grid h-10 w-10 place-items-center rounded-xl bg-gradient-to-br from-fuchsia-500 to-indigo-600 text-white shadow-md">
-      {fallback}
+    <button
+      type="button"
+      aria-pressed={active}
+      onClick={onClick}
+      className={cn(
+        'rounded-xl border p-3 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+        active ? 'border-primary bg-primary/5' : 'border-border/60 hover:border-primary/40',
+      )}
+    >
+      <span className="flex items-start justify-between gap-2">
+        <span>
+          <span className="block text-sm font-semibold">{title}</span>
+          <span className="mt-0.5 block text-xs text-muted-foreground">{hint}</span>
+        </span>
+        {active && <CheckCircle2 className="h-4 w-4 shrink-0 text-primary" />}
+      </span>
+    </button>
+  );
+}
+
+function RecordTable({ rows }: { rows: { label: string; value: string; copy?: string }[] }) {
+  return (
+    <dl className="divide-y divide-border/60 overflow-hidden rounded-xl border border-border/60 bg-background">
+      {rows.map((row) => (
+        <div key={row.label} className="flex items-center gap-3 px-3 py-2.5">
+          <dt className="w-16 shrink-0 text-xs text-muted-foreground">{row.label}</dt>
+          <dd className="min-w-0 flex-1 truncate font-mono text-xs font-medium">{row.value}</dd>
+          {row.copy ? <CopyButton value={row.copy} /> : null}
+        </div>
+      ))}
+    </dl>
+  );
+}
+
+function CopyButton({ value }: { value: string }) {
+  const [done, setDone] = useState(false);
+  return (
+    <button
+      type="button"
+      onClick={async () => {
+        try {
+          await navigator.clipboard.writeText(value);
+          setDone(true);
+          window.setTimeout(() => setDone(false), 1500);
+        } catch { /* presse-papiers refusé */ }
+      }}
+      className="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-lg px-2 text-xs font-medium text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+    >
+      {done ? <Check className="h-3.5 w-3.5 text-emerald-600" /> : <Copy className="h-3.5 w-3.5" />}
+      {done ? 'Copié' : 'Copier'}
+    </button>
+  );
+}
+
+function StatusPill({ tone, icon, children }: { tone: 'ok' | 'warn'; icon: ReactNode; children: ReactNode }) {
+  return (
+    <span className={cn(
+      'inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold',
+      tone === 'ok' ? 'bg-emerald-500/10 text-emerald-700' : 'bg-amber-500/10 text-amber-700',
+    )}>
+      {icon}
+      {children}
     </span>
   );
 }
 
-/** A pickable provider card — "Disponible" badge + "Intégrer" button.
- * If `logoUrl` is provided, it replaces the default gradient/icon tile. The
- * image is rendered with `object-contain` on a white tile so partner logos
- * keep their own colors and proportions. */
+function SubTab({ active, onClick, icon, children }: { active: boolean; onClick: () => void; icon: ReactNode; children: ReactNode }) {
+  return (
+    <button
+      type="button"
+      role="tab"
+      aria-selected={active}
+      onClick={onClick}
+      className={cn(
+        'inline-flex min-h-11 items-center gap-2 rounded-xl px-3 py-2 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:px-4',
+        active ? 'gradient-brand text-white shadow-sm' : 'text-muted-foreground hover:text-foreground',
+      )}
+    >
+      {icon}
+      {children}
+    </button>
+  );
+}
+
+function PixelRow({ icon, label, help, error, children }: { icon: ReactNode; label: string; help?: string; error?: string; children: ReactNode }) {
+  return (
+    <div className={cn('rounded-xl border bg-muted/20 p-4', error ? 'border-destructive/50' : 'border-border/60')}>
+      <div className="mb-2 flex items-center gap-2">
+        <span className="grid h-8 w-8 place-items-center rounded-lg bg-card">{icon}</span>
+        <div>
+          <Label className="text-sm font-semibold">{label}</Label>
+          {help && <p className="text-xs text-muted-foreground">{help}</p>}
+        </div>
+      </div>
+      {children}
+      {error && <p className="mt-1.5 text-xs font-medium text-destructive">{error}</p>}
+    </div>
+  );
+}
+
 function ProviderCard({
   name,
   description,
   icon,
   logoUrl,
   selected,
+  active = false,
   comingSoon = false,
   onSelect,
 }: {
   name: string;
   description: string;
-  icon: React.ReactNode;
+  icon: ReactNode;
   logoUrl?: string;
   selected: boolean;
+  active?: boolean;
   comingSoon?: boolean;
   onSelect: () => void;
 }) {
   return (
-    <div
-      className={cn(
-        'group relative flex flex-col rounded-2xl border bg-card p-4 transition-all duration-300',
-        selected
-          ? 'border-primary ring-2 ring-primary/15'
-          : comingSoon
-          ? 'border-border/60 opacity-75'
-          : 'border-border/60 hover:-translate-y-0.5 hover:border-primary/30 hover:shadow-lg'
-      )}
-    >
+    <div className={cn(
+      'flex flex-col rounded-2xl border bg-card p-4',
+      selected ? 'border-primary ring-2 ring-primary/15' : 'border-border/60',
+      comingSoon && 'opacity-70',
+    )}>
       <div className="flex items-start justify-between gap-2">
         <ProviderLogo logoUrl={logoUrl} name={name} fallback={icon} />
-        {selected ? (
-          <span className="inline-flex items-center gap-1 rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-semibold text-primary">
-            <CheckCircle2 className="h-3 w-3" /> Sélectionné
+        {active ? (
+          <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/10 px-2 py-0.5 text-xs font-semibold text-emerald-700">
+            <CheckCircle2 className="h-3 w-3" /> Actif
+          </span>
+        ) : selected ? (
+          <span className="inline-flex items-center gap-1 rounded-full bg-primary/10 px-2 py-0.5 text-xs font-semibold text-primary">
+            Sélectionné
           </span>
         ) : comingSoon ? (
-          <span className="inline-flex items-center gap-1 rounded-full bg-amber-500/10 px-2 py-0.5 text-[10px] font-semibold text-amber-700">
-            <span className="h-1.5 w-1.5 rounded-full bg-amber-500" /> Bientôt
-          </span>
+          <span className="rounded-full bg-amber-500/10 px-2 py-0.5 text-xs font-semibold text-amber-700">Bientôt</span>
         ) : (
-          <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/10 px-2 py-0.5 text-[10px] font-semibold text-emerald-700">
-            <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" /> Disponible
-          </span>
+          <span className="rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground">Disponible</span>
         )}
       </div>
-      <h4 className="mt-3 text-sm font-semibold tracking-tight">{name}</h4>
-      <p className="mt-0.5 line-clamp-2 text-xs text-muted-foreground">{description}</p>
+      <h3 className="mt-3 text-sm font-semibold">{name}</h3>
+      <p className="mt-0.5 line-clamp-3 text-xs text-muted-foreground">{description}</p>
       <Button
+        type="button"
         size="sm"
         variant={selected || comingSoon ? 'outline' : 'default'}
-        onClick={selected || comingSoon ? undefined : onSelect}
-        disabled={selected || comingSoon}
-        aria-disabled={selected || comingSoon}
-        className={cn(
-          'mt-3 w-full gap-1.5',
-          selected
-            ? 'cursor-default border-emerald-500/40 text-emerald-700 opacity-100 disabled:opacity-100'
-            : comingSoon
-            ? 'cursor-default text-muted-foreground'
-            : 'gradient-brand text-white',
-        )}
+        onClick={comingSoon || selected ? undefined : onSelect}
+        disabled={comingSoon || selected}
+        className={cn('mt-3 w-full', !selected && !comingSoon && 'gradient-brand text-white')}
       >
-        {selected ? (
-          <>
-            <CheckCircle2 className="h-3.5 w-3.5" /> Intégré
-          </>
-        ) : comingSoon ? (
-          'Bientôt disponible'
-        ) : (
-          <>
-            <Plug className="h-3.5 w-3.5" /> Intégrer
-          </>
-        )}
+        {comingSoon ? 'Bientôt disponible' : selected ? (active ? 'Actif' : 'Sélectionné') : 'Choisir'}
       </Button>
     </div>
   );
 }
 
+function ProviderLogo({ logoUrl, name, fallback }: { logoUrl?: string; name: string; fallback: ReactNode }) {
+  const [broken, setBroken] = useState(false);
+  if (logoUrl && !broken) {
+    return (
+      <span className="grid h-10 w-10 place-items-center overflow-hidden rounded-xl bg-white ring-1 ring-border/60">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src={logoUrl} alt={name} className="h-9 w-9 object-contain" onError={() => setBroken(true)} />
+      </span>
+    );
+  }
+  return (
+    <span className="grid h-10 w-10 place-items-center rounded-xl gradient-brand text-white">
+      {fallback}
+    </span>
+  );
+}
+
 function ToggleRow({ checked, onChange, label, sublabel }: { checked: boolean; onChange: (b: boolean) => void; label: string; sublabel?: string }) {
   return (
-    <label className="flex cursor-pointer items-center justify-between gap-4 rounded-xl border border-border/60 bg-muted/20 p-4 hover:bg-muted/30">
+    <div className="flex items-center justify-between gap-4 rounded-xl border border-border/60 bg-muted/20 p-4">
       <div className="min-w-0">
         <div className="text-sm font-medium">{label}</div>
-        {sublabel && <div className="mt-0.5 text-xs text-muted-foreground">{sublabel}</div>}
+        {sublabel && <p className="mt-0.5 text-xs text-muted-foreground">{sublabel}</p>}
       </div>
       <button
         type="button"
         role="switch"
         aria-checked={checked}
+        aria-label={label}
         onClick={() => onChange(!checked)}
         className={cn(
-          'relative inline-flex h-6 w-11 shrink-0 rounded-full transition-colors',
-          checked ? 'bg-primary' : 'bg-muted-foreground/30'
+          'relative inline-flex h-6 w-11 shrink-0 rounded-full transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2',
+          checked ? 'bg-primary' : 'bg-muted-foreground/30',
         )}
       >
         <span className={cn(
-          'absolute top-0.5 h-5 w-5 rounded-full bg-white shadow-md transition-transform',
-          checked ? 'translate-x-[22px]' : 'translate-x-0.5'
+          'absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform',
+          checked ? 'translate-x-[22px]' : 'translate-x-0.5',
         )} />
       </button>
-    </label>
+    </div>
+  );
+}
+
+function SaveBar({
+  dirty,
+  saving,
+  onSave,
+  error,
+  success,
+  idle,
+  extra,
+}: {
+  dirty: boolean;
+  saving: boolean;
+  onSave: () => void;
+  error: string | null;
+  success: string | null;
+  idle: string;
+  extra?: ReactNode;
+}) {
+  return (
+    <div className={cn(
+      'flex flex-wrap items-center justify-between gap-3 rounded-2xl border px-4 py-3',
+      error ? 'border-destructive/40 bg-destructive/5' : dirty ? 'border-amber-500/40 bg-amber-500/10' : 'border-border/60 bg-muted/20',
+    )}>
+      <p className={cn(
+        'text-sm',
+        error ? 'text-destructive' : dirty ? 'font-medium text-amber-800' : 'text-muted-foreground',
+      )}>
+        {error || (dirty ? 'Changements non enregistrés.' : success || idle)}
+      </p>
+      <div className="flex flex-wrap items-center gap-2">
+        {extra}
+        <Button onClick={onSave} disabled={saving || !dirty} className={cn('gap-2', dirty && 'gradient-brand text-white')}>
+          {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+          Enregistrer
+        </Button>
+      </div>
+    </div>
   );
 }

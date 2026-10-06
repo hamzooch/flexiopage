@@ -1450,10 +1450,10 @@ function OrderCard({
                     {(() => {
                       const err = (o.delivery.error || '').toLowerCase();
                       if (err.includes('unknown store') || err.includes('store not found') || err.includes('404')) {
-                        return 'Ta boutique n\'est pas encore enregistrée côté MogaDelivery. Donne-leur ton Store ID + secret HMAC pour l\'onboarding (visible dans Intégrations → Société de logistique).';
+                        return 'Ta boutique n\'est pas encore enregistrée côté MogaDelivery. Connecte-la depuis Intégrations → Livraison → Société de logistique, ou transmets-leur le Store ID affiché là-bas.';
                       }
                       if (err.includes('signature') || err.includes('hmac') || err.includes('401')) {
-                        return 'La clé secrète HMAC ne correspond pas entre FlexioPage et MogaDelivery. Régénère-la et donne-leur la même.';
+                        return 'MogaDelivery a refusé la signature. La connexion se fait dans Intégrations → Livraison : le secret est celui de la plateforme, pas une clé à coller boutique par boutique.';
                       }
                       if (err.includes('duplicate') || err.includes('e11000')) {
                         return 'Bug connu côté MogaDelivery (E11000). Contacte-les pour qu\'ils corrigent leur upsert sur la collection `stores`.';
