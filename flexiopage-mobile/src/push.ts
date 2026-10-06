@@ -61,24 +61,32 @@ export interface PushTokenResult {
 
 /** Demande la permission puis renvoie l'ExpoPushToken + le statut détaillé. */
 export async function getExpoPushToken(): Promise<PushTokenResult> {
-  if (!Device.isDevice) return { token: null, status: 'emulator' }; // pas de push sur émulateur
+  if (!Device.isDevice) {
+    console.log('[push] emulator — skip'); // eslint-disable-line no-console
+    return { token: null, status: 'emulator' };
+  }
   const current = await Notifications.getPermissionsAsync();
   let status = current.status;
+  console.log('[push] current permission =', status); // eslint-disable-line no-console
   if (status !== 'granted') {
     const asked = await Notifications.requestPermissionsAsync();
     status = asked.status;
+    console.log('[push] after request =', status); // eslint-disable-line no-console
   }
   if (status !== 'granted') return { token: null, status: 'denied' };
 
   const projectId =
     (Constants.expoConfig?.extra as { eas?: { projectId?: string } } | undefined)?.eas?.projectId;
+  console.log('[push] projectId =', projectId || '(none)'); // eslint-disable-line no-console
   try {
     const token = await Notifications.getExpoPushTokenAsync(projectId ? { projectId } : undefined);
+    console.log('[push] got token =', token.data ? token.data.slice(0, 24) + '…' : '(empty)'); // eslint-disable-line no-console
     return token.data
       ? { token: token.data, status: 'granted' }
       : { token: null, status: 'error' };
-  } catch {
+  } catch (e) {
     // Typiquement : google-services.json/FCM mal configuré au build.
+    console.log('[push] getExpoPushTokenAsync failed:', String(e)); // eslint-disable-line no-console
     return { token: null, status: 'error' };
   }
 }
