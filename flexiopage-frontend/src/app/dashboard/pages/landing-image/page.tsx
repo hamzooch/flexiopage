@@ -1,8 +1,8 @@
 'use client';
 
 /**
- * Legacy route — Landing AI was merged into the unified Studio IA page
- * (/dashboard/studio) which now hosts both poster + landing tabs.
+ * Legacy route — Landing AI was merged into the unified Studio IA creator
+ * (/dashboard/studio/creator) which hosts poster + landing + video tabs.
  * This file just forwards the user, preserving the storeId query param.
  */
 
@@ -17,7 +17,7 @@ export default function LandingImageLegacyRedirect() {
   useEffect(() => {
     const params = new URLSearchParams(searchParams.toString());
     params.set('tab', 'landing');
-    router.replace(`/dashboard/studio?${params.toString()}`);
+    router.replace(`/dashboard/studio/creator?${params.toString()}`);
   }, [router, searchParams]);
 
   return (
