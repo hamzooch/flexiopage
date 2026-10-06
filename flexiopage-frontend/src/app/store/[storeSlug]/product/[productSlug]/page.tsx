@@ -302,7 +302,7 @@ export default async function PublicProductPage({ params }: Props) {
       <div
         dir={direction}
         lang={language}
-        className="min-h-screen"
+        className="min-h-screen min-w-0 overflow-x-clip"
         style={{
           ...tokensToCssVars(theme),
           // Apply the palette's page background when set — wins over the theme bg
@@ -324,8 +324,8 @@ export default async function PublicProductPage({ params }: Props) {
 
         {/* Main split — tight padding on mobile so the gallery + form fit in
             one screen scroll, generous on desktop where the layout has room. */}
-        <main className="mx-auto max-w-6xl px-3 py-4 sm:px-6 sm:py-14">
-          <div className="grid gap-4 sm:gap-10 lg:grid-cols-[1fr_1fr]">
+        <main className="mx-auto min-w-0 max-w-6xl overflow-x-clip px-3 py-4 pb-24 sm:px-6 sm:py-14 sm:pb-14">
+          <div className="grid min-w-0 gap-4 sm:gap-10 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
             {/* LEFT — gallery (client island: thumbnails swap the main image) */}
             <ProductGallery
               images={product.images || []}
@@ -350,10 +350,10 @@ export default async function PublicProductPage({ params }: Props) {
             />
 
             {/* RIGHT — sticky details */}
-            <div className="lg:sticky lg:top-24 lg:self-start space-y-4 sm:space-y-6">
-              <div>
+            <div className="min-w-0 space-y-4 sm:space-y-6 lg:sticky lg:top-24 lg:self-start">
+              <div className="min-w-0">
                 <h1
-                  className="text-xl font-bold leading-tight tracking-tight sm:text-3xl lg:text-4xl"
+                  className="break-words text-xl font-bold leading-tight tracking-tight sm:text-3xl lg:text-4xl"
                   style={{
                     fontFamily: theme.fontHeading,
                     color: store?.settings?.storefront?.productPage?.style?.titleColor || theme.foreground,
@@ -439,7 +439,7 @@ export default async function PublicProductPage({ params }: Props) {
               {isDigital ? (
                 <Link
                   href={`/${storeSlug}/checkout/${product.slug}`}
-                  className="inline-flex h-14 w-full items-center justify-center gap-2 px-7 text-base font-semibold transition-all hover:scale-[1.01]"
+                  className="inline-flex min-h-14 w-full min-w-0 max-w-full items-center justify-center gap-2 whitespace-normal px-5 py-3 text-center text-base font-semibold leading-tight transition-all hover:scale-[1.01]"
                   style={{
                     background: theme.style === 'tech'
                       ? `linear-gradient(135deg, ${theme.gradientFrom}, ${theme.gradientTo})`
@@ -762,7 +762,7 @@ function ProductDescriptionSection({
           headings/p/ul/li/img; we set the body color via inline style so
           the palette descriptionColor still applies. */}
       <div
-        className="prose-storefront text-base leading-relaxed sm:text-lg"
+        className="prose-storefront min-w-0 break-words text-base leading-relaxed sm:text-lg"
         style={{ color }}
         dangerouslySetInnerHTML={{ __html: renderMarkdown(description) }}
       />

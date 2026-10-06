@@ -92,7 +92,7 @@ export function MobileStickyCta({
     >
       <div
         className={
-          'pointer-events-auto flex items-center gap-3 border-t bg-background/95 px-3 py-2.5 shadow-[0_-6px_18px_rgba(0,0,0,0.08)] backdrop-blur ' +
+          'pointer-events-auto flex min-w-0 items-center gap-3 overflow-hidden border-t bg-background/95 px-3 py-2.5 shadow-[0_-6px_18px_rgba(0,0,0,0.08)] backdrop-blur ' +
           (visible ? '' : 'pointer-events-none')
         }
       >
@@ -117,14 +117,14 @@ export function MobileStickyCta({
         <button
           type="button"
           onClick={scrollToForm}
-          className="inline-flex h-11 shrink-0 items-center gap-1.5 rounded-full px-4 text-sm font-bold shadow-sm transition-transform active:scale-95"
+          className="inline-flex h-11 min-w-0 max-w-[48%] shrink items-center gap-1.5 rounded-full px-4 text-sm font-bold shadow-sm transition-transform active:scale-95"
           style={{
             backgroundColor: accentColor || 'var(--color-primary, #7c3aed)',
             color: accentForeground || 'var(--color-primary-fg, #ffffff)',
           }}
         >
-          <ShoppingBag className="h-4 w-4" />
-          {ctaLabel}
+          <ShoppingBag className="h-4 w-4 shrink-0" />
+          <span className="truncate">{ctaLabel}</span>
         </button>
       </div>
     </div>

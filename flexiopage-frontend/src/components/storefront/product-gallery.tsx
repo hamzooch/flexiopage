@@ -132,12 +132,12 @@ export function ProductGallery({
   }, [lightboxOpen, totalImages]);
 
   return (
-    <div className="space-y-3">
+    <div className="min-w-0 max-w-full space-y-3">
       {/* ── MOBILE: swipeable strip. Hidden on lg+. ─────────────────── */}
-      <div className="lg:hidden">
+      <div className="min-w-0 max-w-full overflow-hidden lg:hidden">
         <div
           ref={stripRef}
-          className="relative flex snap-x snap-mandatory overflow-x-auto scroll-smooth"
+          className="relative flex w-full min-w-0 max-w-full snap-x snap-mandatory overflow-x-auto scroll-smooth"
           style={{
             scrollbarWidth: 'none',
             msOverflowStyle: 'none',
@@ -147,7 +147,7 @@ export function ProductGallery({
             <div
               key={i}
               data-slide={i}
-              className="relative aspect-square w-full shrink-0 snap-start border"
+              className="relative aspect-square w-full min-w-0 max-w-full shrink-0 grow-0 basis-full snap-start overflow-hidden border"
               style={{
                 backgroundColor: theme.surfaceMuted,
                 borderColor: theme.border,
@@ -163,7 +163,7 @@ export function ProductGallery({
                   sizes="100vw"
                   placeholder="blur"
                   blurDataURL={IMAGE_BLUR_DATA_URL}
-                  className="object-cover"
+                  className="object-contain"
                   unoptimized={mediaUrl(img)?.includes('cloudinary') ?? false}
                 />
               ) : (
