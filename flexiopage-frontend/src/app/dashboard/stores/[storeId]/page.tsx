@@ -4860,13 +4860,15 @@ function PreviewPane({
   return (
     <section
       className={cn(
-        'min-w-0 flex-1 flex-col bg-muted/40 lg:flex',
+        'min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-muted/40 lg:flex',
         mobileVisible ? 'flex' : 'hidden',
       )}
     >
-      {/* Toolbar */}
-      <div className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-border/60 bg-card/80 px-4 py-2.5 backdrop-blur">
-        <div className="flex flex-wrap items-center gap-1">
+      {/* Toolbar — sur petit écran les pages défilent en horizontal pour
+          laisser la hauteur à l'iframe, au lieu de s'empiler et pousser
+          l'aperçu hors de l'écran. */}
+      <div className="flex shrink-0 flex-col gap-2 border-b border-border/60 bg-card/80 px-3 py-2 backdrop-blur sm:flex-row sm:items-center sm:justify-between sm:px-4 sm:py-2.5">
+        <div className="flex min-w-0 gap-1 overflow-x-auto">
           {previewPages.map((p) => {
             const Icon = p.icon;
             const active = previewPage === p.id;
@@ -4876,7 +4878,7 @@ function PreviewPane({
                 type="button"
                 onClick={() => setPreviewPage(p.id)}
                 className={cn(
-                  'inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-[11px] font-medium transition-colors',
+                  'inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-md px-2.5 py-1.5 text-[11px] font-medium transition-colors',
                   active ? 'bg-primary/10 text-primary' : 'text-muted-foreground hover:bg-muted hover:text-foreground',
                 )}
               >
@@ -4886,7 +4888,7 @@ function PreviewPane({
             );
           })}
         </div>
-        <div className="inline-flex items-center gap-0.5 rounded-lg border border-border/60 bg-muted/40 p-0.5">
+        <div className="inline-flex shrink-0 items-center gap-0.5 self-end rounded-lg border border-border/60 bg-muted/40 p-0.5 sm:self-auto">
           {([
             { id: 'mobile', icon: Smartphone, label: 'Mobile', width: 375 },
             { id: 'tablet', icon: Tablet, label: 'Tablette', width: 768 },
@@ -4911,7 +4913,7 @@ function PreviewPane({
                 )}
               >
                 <Icon className="h-4 w-4" />
-                <span className="hidden md:inline">{d.label}</span>
+                <span className="hidden sm:inline">{d.label}</span>
               </button>
             );
           })}
@@ -4932,7 +4934,7 @@ function PreviewPane({
           plain respecte max-width strictement et mx-auto centre.
           `overscroll-contain` : isole le scroll de l'aperçu pour ne pas
           chaîner vers le body en mobile (layout parent en 100dvh fixe). */}
-      <div className="flex-1 overflow-auto overscroll-contain touch-pan-y p-4">
+      <div className="min-h-0 min-w-0 flex-1 overflow-auto overscroll-contain touch-pan-y p-3 sm:p-4">
         {path ? (
           <ViewportPreview
             device={previewDevice}
@@ -5016,17 +5018,19 @@ function ViewportPreview({
     : 9999;
 
   return (
-    <div className="mx-auto flex flex-col items-center gap-2" style={{ maxWidth: maxFrameWidth }}>
+    <div className="mx-auto w-full min-w-0" style={{ maxWidth: maxFrameWidth }}>
       {/* Badge "viewport actuel" — rend explicite la taille simulée pour
           que le vendeur sache quelle expérience il regarde (sans ça, un
           vendeur habitué peut se demander si c'est son dashboard rétréci
           ou une vraie simulation mobile). */}
-      <span className="rounded-full border border-border/60 bg-card px-2.5 py-0.5 text-[11px] font-medium text-muted-foreground">
-        {dims.label}
-      </span>
+      <div className="mb-2 flex justify-center">
+        <span className="rounded-full border border-border/60 bg-card px-2.5 py-0.5 text-[11px] font-medium text-muted-foreground">
+          {dims.label}
+        </span>
+      </div>
       <div
         ref={wrapRef}
-        className="w-full overflow-hidden rounded-2xl border border-border/60 bg-card shadow-xl"
+        className="relative w-full min-w-0 max-w-full overflow-hidden rounded-2xl border border-border/60 bg-card shadow-xl"
         style={{
           height: dims.height * scale,
           transition: 'height 0.2s ease',
@@ -5037,10 +5041,15 @@ function ViewportPreview({
           // juste width/height/transform de l'iframe (CSS), pas son `src`.
           // Avant, chaque switch mobile↔tablet↔desktop unmount + remount
           // l'iframe → rechargement complet de la storefront, jank visible.
+          //
+          // L'iframe est en absolute : sinon sa largeur réelle (375/768/1280)
+          // devient le min-width du cadre, clientWidth == largeur device,
+          // et scale reste à 1 — l'aperçu déborde sur petit écran au lieu
+          // de se réduire dans la colonne.
           key={`${src}-${previewBust}`}
           src={src}
           title="Aperçu de la boutique"
-          className="origin-top-left border-0 bg-background"
+          className="absolute left-0 top-0 origin-top-left border-0 bg-background"
           style={{
             width: dims.width,
             height: dims.height,
