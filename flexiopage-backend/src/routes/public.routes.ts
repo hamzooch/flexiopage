@@ -248,6 +248,19 @@ router.get('/stores', async (_req: Request, res: Response): Promise<void> => {
  * brouillon — seul le minimum d'infos visuelles passe (le owner peut tout
  * voir via /api/stores/:id derrière son auth).
  */
+/** Pays vu par Cloudflare / Vercel, indépendant des markets configurés. */
+function buyerGeoCountry(req: Request): string | undefined {
+  const raw = String(req.headers['cf-ipcountry'] || req.headers['x-vercel-ip-country'] || '')
+    .trim()
+    .toUpperCase();
+  if (!/^[A-Z]{2}$/.test(raw) || raw === 'XX' || raw === 'T1') return undefined;
+  return raw;
+}
+
+function isCheckoutEmail(value: string): boolean {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
+}
+
 function draftStorePayload(store: { _id: unknown; name: string; slug: string; logo?: string; storeType?: string; ownerId: unknown }) {
   return {
     _id: String(store._id),
@@ -287,6 +300,7 @@ router.get('/store-by-slug/:slug', async (req: Request, res: Response): Promise<
   res.json({
     store: publicSafeStore(store),
     market: { country: market.country, currency: market.currency, source: market.source },
+    geoCountry: buyerGeoCountry(req),
   });
 });
 
@@ -1123,13 +1137,34 @@ router.post('/checkout/init', async (req: Request, res: Response): Promise<void>
     phone?: string;
     channel?: Channel;
   };
-  if (!body.storeSlug || !body.productSlug || !body.email) {
-    res.status(400).json({ error: 'storeSlug, productSlug, email required' });
+  if (!body.storeSlug || !body.productSlug) {
+    res.status(400).json({
+      error: 'Ce produit n’est plus disponible.',
+      code: 'invalid_checkout',
+    });
+    return;
+  }
+  const email = (body.email || '').trim();
+  const phone = (body.phone || '').trim();
+  const fields: { email?: string; phone?: string } = {};
+  if (!email) fields.email = 'Indique ton adresse email.';
+  else if (!isCheckoutEmail(email)) fields.email = 'Cette adresse email n’est pas valide.';
+  const phoneDigits = phone.replace(/\D/g, '');
+  if (!phoneDigits) fields.phone = 'Indique ton numéro WhatsApp.';
+  else if (phoneDigits.length < 8 || phoneDigits.length > 15) {
+    fields.phone = 'Ce numéro WhatsApp n’est pas valide. Vérifie l’indicatif et les chiffres.';
+  }
+  if (fields.email || fields.phone) {
+    res.status(400).json({
+      error: 'Vérifie les informations indiquées avant de continuer.',
+      code: 'invalid_form',
+      fields,
+    });
     return;
   }
   const store = await storeService.getStoreBySlug(body.storeSlug);
   if (!store) {
-    res.status(404).json({ error: 'Store not found' });
+    res.status(404).json({ error: 'Cette boutique est introuvable.', code: 'store_not_found' });
     return;
   }
   // Online payment is available to BOTH digital and physical stores.
@@ -1138,7 +1173,7 @@ router.post('/checkout/init', async (req: Request, res: Response): Promise<void>
   // this endpoint stays for the simple single-product digital path.
   const product = await productService.getProductBySlug(store._id.toString(), body.productSlug);
   if (!product || !product.isPublished) {
-    res.status(404).json({ error: 'Product not found' });
+    res.status(404).json({ error: 'Ce produit n’est plus disponible.', code: 'product_not_found' });
     return;
   }
   // Refuse the sale when a digital product has nothing to deliver (seller
@@ -1160,9 +1195,9 @@ router.post('/checkout/init', async (req: Request, res: Response): Promise<void>
   try {
     order = await orderService.createOrder({
       storeId: store._id.toString(),
-      email: body.email.trim().toLowerCase(),
+      email: email.toLowerCase(),
       customerName: body.customerName?.trim() || undefined,
-      customerPhone: body.phone?.trim() || undefined,
+      customerPhone: phone,
       items: [
         {
           productId: product._id.toString(),
@@ -1179,18 +1214,20 @@ router.post('/checkout/init', async (req: Request, res: Response): Promise<void>
       paymentMethod: body.channel === 'card' ? 'card' : 'mobile_money',
     });
   } catch (err) {
-    res.status(500).json({ error: 'Order creation failed: ' + (err as Error).message });
+    logger.error({ err }, 'checkout init: order creation failed');
+    res.status(500).json({
+      error: 'La commande n’a pas pu être créée. Réessaie dans un instant.',
+      code: 'order_create_failed',
+    });
     return;
   }
 
   // Save phone on the order for the provider call
-  if (body.phone) {
-    order.paymentPhone = body.phone.trim();
-    await order.save();
-  }
+  order.paymentPhone = phone;
+  await order.save();
 
   try {
-    const init = await initOrderPayment(order, { phone: body.phone, channel: body.channel });
+    const init = await initOrderPayment(order, { phone, channel: body.channel });
     order.paymentReference = init.reference;
     order.paymentProvider = init.provider;
     await order.save();
@@ -1202,7 +1239,11 @@ router.post('/checkout/init', async (req: Request, res: Response): Promise<void>
       mockMode: isMockMode(),
     });
   } catch (err) {
-    res.status(502).json({ error: 'Payment init failed: ' + (err as Error).message });
+    logger.error({ err }, 'checkout init: payment init failed');
+    res.status(502).json({
+      error: 'Le paiement n’a pas pu démarrer. Réessaie dans un instant.',
+      code: 'payment_init_failed',
+    });
   }
 });
 

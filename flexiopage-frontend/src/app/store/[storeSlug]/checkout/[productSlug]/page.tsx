@@ -10,14 +10,20 @@
  * which polls for paid status and then jumps to /d/[downloadToken].
  */
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
 import { useParams, useRouter } from 'next/navigation';
 import { IMAGE_BLUR_DATA_URL } from '@/lib/image-placeholder';
-import { Loader2, ShieldCheck, Zap, ArrowLeft, CreditCard, CheckCircle2, MessageCircle, Mail, User, Package } from 'lucide-react';
+import { Loader2, ShieldCheck, Zap, ArrowLeft, CreditCard, CheckCircle2, MessageCircle, Mail, User, Package, AlertCircle } from 'lucide-react';
 import { cn, mediaUrl } from '@/lib/utils';
 import { StoreNavbar, type NavbarConfig } from '@/components/storefront/StoreNavbar';
+import {
+  PhoneCountryField,
+  defaultPhoneCountry,
+  joinPhone,
+  phoneCountryByCode,
+} from '@/components/storefront/phone-country-field';
 import { STORE_THEME_TEMPLATES } from '@/data/store-themes';
 
 const API_BASE = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000').replace(/\/$/, '');
@@ -82,6 +88,44 @@ function isValidEmail(v: string): boolean {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v.trim());
 }
 
+type FieldErrors = { email?: string; phone?: string };
+type FormAlert = { title: string; message: string };
+
+function friendlyCheckoutError(status: number, data: { error?: string; code?: string }): FormAlert {
+  if (data.code === 'product_missing_content') {
+    return {
+      title: 'Produit indisponible',
+      message: data.error || 'Ce produit n’est pas encore disponible au téléchargement.',
+    };
+  }
+  if (data.code === 'invalid_form') {
+    return {
+      title: 'Informations à corriger',
+      message: data.error || 'Vérifie les champs indiqués.',
+    };
+  }
+  if (status === 404) {
+    return {
+      title: 'Produit introuvable',
+      message: data.error || 'Ce produit n’est plus disponible.',
+    };
+  }
+  if (data.code === 'payment_init_failed' || data.code === 'order_create_failed' || status >= 500) {
+    return {
+      title: 'Paiement momentanément indisponible',
+      message: data.error || 'Le paiement n’a pas pu démarrer. Réessaie dans un instant.',
+    };
+  }
+  const raw = data.error || '';
+  if (raw && raw.length < 180 && !/failed|required|exception|error:/i.test(raw)) {
+    return { title: 'Impossible de continuer', message: raw };
+  }
+  return {
+    title: 'Impossible de continuer',
+    message: 'Vérifie tes informations et réessaie.',
+  };
+}
+
 export default function CheckoutPage() {
   const params = useParams();
   const router = useRouter();
@@ -95,9 +139,13 @@ export default function CheckoutPage() {
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
+  const [phoneCountry, setPhoneCountry] = useState('SN');
   const [channel, setChannel] = useState<Channel>('all');
   const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState('');
+  const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
+  const [formAlert, setFormAlert] = useState<FormAlert | null>(null);
+  const alertRef = useRef<HTMLDivElement>(null);
+  const countryPicked = useRef(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -116,7 +164,13 @@ export default function CheckoutPage() {
           }
           setProduct(p);
         }
-        if (sRes.ok) setStore((await sRes.json()).store);
+        if (sRes.ok) {
+          const payload = await sRes.json();
+          setStore(payload.store);
+          if (!countryPicked.current) {
+            setPhoneCountry(defaultPhoneCountry(payload.geoCountry, payload.store?.settings?.country));
+          }
+        }
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -124,13 +178,38 @@ export default function CheckoutPage() {
     return () => { cancelled = true; };
   }, [storeSlug, productSlug, router]);
 
+  function revealAlert(alert: FormAlert) {
+    setFormAlert(alert);
+    requestAnimationFrame(() => {
+      alertRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    });
+  }
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    setError('');
+    const prefix = phoneCountryByCode(phoneCountry)?.phonePrefix || '';
+    const fullPhone = joinPhone(prefix, phone);
+    const nextFields: FieldErrors = {};
+    if (!email.trim()) nextFields.email = 'Indique ton adresse email.';
+    else if (!isValidEmail(email)) nextFields.email = 'Cette adresse email n’est pas valide.';
+    const digits = fullPhone.replace(/\D/g, '');
+    if (!phone.trim()) nextFields.phone = 'Indique ton numéro WhatsApp.';
+    else if (digits.length < 8 || digits.length > 15) {
+      nextFields.phone = 'Ce numéro est incomplet. Vérifie l’indicatif et les chiffres.';
+    }
+    if (nextFields.email || nextFields.phone) {
+      setFieldErrors(nextFields);
+      revealAlert({
+        title: 'Informations à corriger',
+        message: nextFields.email && nextFields.phone
+          ? 'L’email et le numéro WhatsApp doivent être remplis correctement.'
+          : (nextFields.email || nextFields.phone) as string,
+      });
+      return;
+    }
 
-    if (!isValidEmail(email)) { setError('Adresse email invalide.'); return; }
-    if (!phone.trim()) { setError('Numéro WhatsApp obligatoire.'); return; }
-
+    setFieldErrors({});
+    setFormAlert(null);
     setSubmitting(true);
     try {
       const res = await fetch(`${API_BASE}/api/public/checkout/init`, {
@@ -142,20 +221,37 @@ export default function CheckoutPage() {
           quantity: 1,
           email: email.trim(),
           customerName: name.trim() || undefined,
-          phone: phone.trim(),
-          whatsapp: phone.trim(),
+          phone: fullPhone,
+          whatsapp: fullPhone,
           channel,
         }),
       });
-      const data = await res.json();
+      let data: { error?: string; code?: string; fields?: FieldErrors; checkoutUrl?: string } = {};
+      try {
+        data = await res.json();
+      } catch {
+        data = {};
+      }
       if (!res.ok) {
-        setError(data.error || "Erreur lors de l'initialisation du paiement");
+        if (data.fields) setFieldErrors(data.fields);
+        revealAlert(friendlyCheckoutError(res.status, data));
+        setSubmitting(false);
+        return;
+      }
+      if (!data.checkoutUrl) {
+        revealAlert({
+          title: 'Paiement momentanément indisponible',
+          message: 'Le paiement n’a pas pu démarrer. Réessaie dans un instant.',
+        });
         setSubmitting(false);
         return;
       }
       window.location.href = data.checkoutUrl;
     } catch {
-      setError('Impossible de joindre le serveur. Réessaie.');
+      revealAlert({
+        title: 'Connexion impossible',
+        message: 'Impossible de joindre le serveur. Vérifie ta connexion et réessaie.',
+      });
       setSubmitting(false);
     }
   }
@@ -241,7 +337,7 @@ export default function CheckoutPage() {
 
         <div className="grid gap-6 lg:grid-cols-[1fr_420px] lg:gap-8">
           {/* ─── Formulaire ─────────────────────────────────────── */}
-          <form onSubmit={handleSubmit} className="space-y-6">
+          <form onSubmit={handleSubmit} noValidate className="space-y-6">
             <div>
               <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">
                 {store.settings?.checkoutPage?.title || 'Finaliser ton achat'}
@@ -283,33 +379,63 @@ export default function CheckoutPage() {
                   <input
                     id="email"
                     type="email"
-                    required
                     autoComplete="email"
                     value={email}
-                    onChange={(e) => setEmail(e.target.value)}
+                    aria-invalid={fieldErrors.email ? true : undefined}
+                    aria-describedby={fieldErrors.email ? 'email-error' : undefined}
+                    onChange={(e) => {
+                      setEmail(e.target.value);
+                      if (fieldErrors.email) setFieldErrors((current) => ({ ...current, email: undefined }));
+                      if (formAlert) setFormAlert(null);
+                    }}
                     placeholder="ton@email.com"
-                    className="mt-1.5 flex h-12 w-full rounded-xl border border-input bg-background px-4 text-sm focus:border-primary/40 focus:outline-none focus:ring-4 focus:ring-primary/10"
+                    className={cn(
+                      'mt-1.5 flex h-12 w-full rounded-xl border bg-background px-4 text-sm focus:outline-none focus:ring-4',
+                      fieldErrors.email
+                        ? 'border-rose-400 focus:border-rose-400 focus:ring-rose-100 dark:focus:ring-rose-950'
+                        : 'border-input focus:border-primary/40 focus:ring-primary/10',
+                    )}
                   />
+                  {fieldErrors.email && (
+                    <p id="email-error" className="mt-1.5 text-xs font-medium text-rose-600">
+                      {fieldErrors.email}
+                    </p>
+                  )}
                 </div>
 
                 <div>
                   <label htmlFor="phone" className="flex items-center gap-1.5 text-xs font-semibold">
                     <MessageCircle className="h-3.5 w-3.5" /> Numéro WhatsApp *
                   </label>
-                  <input
-                    id="phone"
-                    type="tel"
-                    required
-                    autoComplete="tel"
-                    inputMode="tel"
-                    value={phone}
-                    onChange={(e) => setPhone(e.target.value)}
-                    placeholder="+225 07 00 00 00 00"
-                    className="mt-1.5 flex h-12 w-full rounded-xl border border-input bg-background px-4 text-sm focus:border-primary/40 focus:outline-none focus:ring-4 focus:ring-primary/10"
-                  />
-                  <p className="mt-1.5 text-xs text-muted-foreground">
-                    Format international avec indicatif pays. Sert aussi pour le paiement Mobile Money.
-                  </p>
+                  <div className="mt-1.5">
+                    <PhoneCountryField
+                      id="phone"
+                      value={phone}
+                      country={phoneCountry}
+                      error={fieldErrors.phone}
+                      describedBy={fieldErrors.phone ? 'phone-error' : 'phone-hint'}
+                      onChange={(next) => {
+                        setPhone(next);
+                        if (fieldErrors.phone) setFieldErrors((current) => ({ ...current, phone: undefined }));
+                        if (formAlert) setFormAlert(null);
+                      }}
+                      onCountryChange={(code) => {
+                        countryPicked.current = true;
+                        setPhoneCountry(code);
+                        if (fieldErrors.phone) setFieldErrors((current) => ({ ...current, phone: undefined }));
+                        if (formAlert) setFormAlert(null);
+                      }}
+                    />
+                  </div>
+                  {fieldErrors.phone ? (
+                    <p id="phone-error" className="mt-1.5 text-xs font-medium text-rose-600">
+                      {fieldErrors.phone}
+                    </p>
+                  ) : (
+                    <p id="phone-hint" className="mt-1.5 text-xs text-muted-foreground">
+                      Choisis ton pays, puis saisis ton numéro. Il sert aussi au paiement Mobile Money.
+                    </p>
+                  )}
                 </div>
               </div>
             </div>
@@ -372,9 +498,17 @@ export default function CheckoutPage() {
               </div>
             </div>
 
-            {error && (
-              <div className="rounded-xl border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">
-                {error}
+            {formAlert && (
+              <div
+                ref={alertRef}
+                role="alert"
+                className="flex items-start gap-3 rounded-2xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-950 dark:border-rose-900/60 dark:bg-rose-950/40 dark:text-rose-50"
+              >
+                <AlertCircle className="mt-0.5 h-5 w-5 shrink-0 text-rose-600" />
+                <div>
+                  <p className="font-semibold">{formAlert.title}</p>
+                  <p className="mt-0.5 text-rose-800 dark:text-rose-100/90">{formAlert.message}</p>
+                </div>
               </div>
             )}
 
