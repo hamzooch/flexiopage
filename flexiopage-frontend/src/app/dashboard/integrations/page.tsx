@@ -23,6 +23,7 @@ import { Label } from '@/components/ui/label';
 import { useConfirm } from '@/components/ui/confirm-dialog';
 import { cn, storeAbsoluteUrl } from '@/lib/utils';
 import { PageHeader } from '@/components/dashboard/page-header';
+import { BrandLogo } from '@/components/dashboard/brand-logo';
 import {
   Globe,
   CheckCircle2,
@@ -31,10 +32,7 @@ import {
   Check,
   Loader2,
   Save,
-  Facebook,
   BarChart3,
-  PlayCircle,
-  Ghost,
   Truck,
   Warehouse,
   RefreshCw,
@@ -137,17 +135,17 @@ const TABS: { id: TabId; label: string; icon: ComponentType<{ className?: string
 ];
 
 const CARRIER_PROVIDERS = [
-  { id: 'bestdelivery', label: 'Best Delivery', description: 'Transporteur Tunisie. Login et mot de passe du compte expéditeur.', comingSoon: false },
-  { id: 'firstdelivery', label: 'First Delivery', description: 'Transporteur Tunisie', comingSoon: true },
-  { id: 'dropex', label: 'Dropex', description: 'Transporteur Tunisie', comingSoon: true },
-  { id: 'adex', label: 'Adex', description: 'Transporteur Tunisie', comingSoon: true },
-  { id: 'manual', label: 'Manuel', description: 'Tu expédies toi-même. Aucune commande n’est envoyée automatiquement.', comingSoon: false },
+  { id: 'bestdelivery', label: 'Best Delivery', description: 'Transporteur Tunisie. Login et mot de passe du compte expéditeur.', logoUrl: '/brands/best-delivery.png', comingSoon: false },
+  { id: 'firstdelivery', label: 'First Delivery', description: 'Transporteur Tunisie', logoUrl: '/brands/first-delivery.png', comingSoon: true },
+  { id: 'dropex', label: 'Dropex', description: 'Transporteur Tunisie', logoUrl: '/brands/droppex.svg', comingSoon: true },
+  { id: 'adex', label: 'Adex', description: 'Transporteur Tunisie', logoUrl: '/brands/adex-logo.png', comingSoon: true },
+  { id: 'manual', label: 'Manuel', description: 'Tu expédies toi-même. Aucune commande n’est envoyée automatiquement.', logoUrl: undefined, comingSoon: false },
 ] as const;
 
 const LOGISTICS_PROVIDERS = [
   { id: 'mogadelivery', label: 'MogaDelivery', description: 'Stockage et dispatch Afrique. Les produits sont matchés par SKU.', logoUrl: '/integrations/mogadelivery.png', comingSoon: false },
-  { id: 'shipbob', label: 'ShipBob', description: '3PL global — pas encore branché.', comingSoon: true },
-  { id: 'manual', label: 'Aucune logistique', description: 'Pas de prestataire 3PL. La livraison last-mile reste dans l’autre onglet.', comingSoon: false },
+  { id: 'shipbob', label: 'ShipBob', description: '3PL global — pas encore branché.', logoUrl: '/brands/shipbob.svg', comingSoon: true },
+  { id: 'manual', label: 'Aucune logistique', description: 'Pas de prestataire 3PL. La livraison last-mile reste dans l’autre onglet.', logoUrl: undefined, comingSoon: false },
 ] as const;
 
 function normalizeDomain(d: string): string {
@@ -777,22 +775,22 @@ function PixelsPanel({ store, onSaved }: { store: StoreDoc; onSaved: () => Promi
       subtitle="Injectés sur la boutique publique. PageView, ViewContent, InitiateCheckout et Purchase partent tout seuls."
     >
       <div className="space-y-4">
-        <PixelRow icon={<Facebook className="h-4 w-4 text-blue-600" />} label="Meta Pixel" help="Events Manager. Uniquement des chiffres." error={errors.fb}>
+        <PixelRow logoUrl="/brands/meta-icon.svg" label="Meta Pixel" help="Events Manager. Uniquement des chiffres." error={errors.fb}>
           <Input value={fb} onChange={(e) => { setFb(e.target.value); setSavedOk(false); }} placeholder="1234567890123456" className="font-mono" />
         </PixelRow>
-        <PixelRow icon={<Facebook className="h-4 w-4 text-blue-700" />} label="Jeton Conversions API" help="Optionnel. Tracking serveur, en plus du pixel navigateur.">
+        <PixelRow logoUrl="/brands/meta-icon.svg" label="Jeton Conversions API" help="Optionnel. Tracking serveur, en plus du pixel navigateur.">
           <Input value={fbToken} onChange={(e) => { setFbToken(e.target.value); setSavedOk(false); }} placeholder="EAAG…" className="font-mono" type="password" autoComplete="off" />
         </PixelRow>
-        <PixelRow icon={<BarChart3 className="h-4 w-4 text-amber-600" />} label="Google Analytics 4" help="Measurement ID, du type G-XXXXXXXX." error={errors.ga}>
+        <PixelRow logoUrl="/brands/google-analytics.svg" label="Google Analytics 4" help="Measurement ID, du type G-XXXXXXXX." error={errors.ga}>
           <Input value={ga} onChange={(e) => { setGa(e.target.value); setSavedOk(false); }} placeholder="G-XXXXXXXXXX" className="font-mono" />
         </PixelRow>
-        <PixelRow icon={<PlayCircle className="h-4 w-4 text-rose-600" />} label="TikTok Pixel" help="Ads Manager → Assets → Events." error={errors.tt}>
+        <PixelRow logoUrl="/brands/tiktok.svg" label="TikTok Pixel" help="Ads Manager → Assets → Events." error={errors.tt}>
           <Input value={tt} onChange={(e) => { setTt(e.target.value); setSavedOk(false); }} placeholder="CXXXXXXXXXXXXXXXX" className="font-mono" />
         </PixelRow>
-        <PixelRow icon={<Ghost className="h-4 w-4 text-yellow-500" />} label="Snapchat Pixel" help="UUID affiché dans l’Events Manager Snapchat." error={errors.snap}>
+        <PixelRow logoUrl="/brands/snapchat.svg" logoBg="#FFFC00" label="Snapchat Pixel" help="UUID affiché dans l’Events Manager Snapchat." error={errors.snap}>
           <Input value={snap} onChange={(e) => { setSnap(e.target.value); setSavedOk(false); }} placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" className="font-mono" />
         </PixelRow>
-        <PixelRow icon={<BarChart3 className="h-4 w-4 text-emerald-600" />} label="Google Ads" help="ID de conversion et libellé, les deux ensemble." error={errors.ads}>
+        <PixelRow logoUrl="/brands/google-ads.svg" label="Google Ads" help="ID de conversion et libellé, les deux ensemble." error={errors.ads}>
           <div className="grid gap-2 sm:grid-cols-2">
             <Input value={adsId} onChange={(e) => { setAdsId(e.target.value); setSavedOk(false); }} placeholder="AW-XXXXXXXXXX" className="font-mono" aria-label="ID de conversion Google Ads" />
             <Input value={adsLbl} onChange={(e) => { setAdsLbl(e.target.value); setSavedOk(false); }} placeholder="libellé de conversion" className="font-mono" aria-label="Libellé de conversion Google Ads" />
@@ -1016,6 +1014,7 @@ function CarrierPanel({ store, onSaved }: { store: StoreDoc; onSaved: () => Prom
               name={p.label}
               description={p.description}
               icon={<Truck className="h-5 w-5" />}
+              logoUrl={p.logoUrl}
               selected={provider === p.id}
               active={p.id === 'bestdelivery' && bestLive(store) && provider === p.id}
               comingSoon={p.comingSoon}
@@ -1491,11 +1490,15 @@ function SubTab({ active, onClick, icon, children }: { active: boolean; onClick:
   );
 }
 
-function PixelRow({ icon, label, help, error, children }: { icon: ReactNode; label: string; help?: string; error?: string; children: ReactNode }) {
+function PixelRow({ icon, logoUrl, logoBg, label, help, error, children }: { icon?: ReactNode; logoUrl?: string; logoBg?: string; label: string; help?: string; error?: string; children: ReactNode }) {
   return (
     <div className={cn('rounded-xl border bg-muted/20 p-4', error ? 'border-destructive/50' : 'border-border/60')}>
       <div className="mb-2 flex items-center gap-2">
-        <span className="grid h-8 w-8 place-items-center rounded-lg bg-card">{icon}</span>
+        {logoUrl ? (
+          <BrandLogo src={logoUrl} bg={logoBg} className="h-8 w-8 rounded-lg" />
+        ) : (
+          <span className="grid h-8 w-8 place-items-center rounded-lg bg-card">{icon}</span>
+        )}
         <div>
           <Label className="text-sm font-semibold">{label}</Label>
           {help && <p className="text-xs text-muted-foreground">{help}</p>}
@@ -1568,9 +1571,9 @@ function ProviderLogo({ logoUrl, name, fallback }: { logoUrl?: string; name: str
   const [broken, setBroken] = useState(false);
   if (logoUrl && !broken) {
     return (
-      <span className="grid h-10 w-10 place-items-center overflow-hidden rounded-xl bg-white ring-1 ring-border/60">
+      <span className="grid h-12 w-16 place-items-center overflow-hidden rounded-xl bg-white ring-1 ring-border/60">
         {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src={logoUrl} alt={name} className="h-9 w-9 object-contain" onError={() => setBroken(true)} />
+        <img src={logoUrl} alt={name} className="max-h-9 max-w-[3.4rem] object-contain" onError={() => setBroken(true)} />
       </span>
     );
   }

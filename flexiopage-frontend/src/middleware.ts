@@ -57,6 +57,7 @@ const RESERVED_TOP_LEVEL = new Set([
   'manifest.webmanifest',
   // public/* folders that resolve directly
   'brand',
+  'brands',
   'uploads',
   'integrations',
   'avatars',   // bibliothèque UGC (public/avatars/manifest.json)

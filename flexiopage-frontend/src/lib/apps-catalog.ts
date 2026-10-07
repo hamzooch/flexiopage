@@ -44,6 +44,10 @@ export interface AppDef {
   description: string;
   category: AppCategory;
   icon: LucideIcon;
+  /** Logo réel de la marque, servi depuis /public/brands. */
+  logo: string;
+  /** Fond du cadre quand le logo est jaune ou trop clair sur blanc. */
+  logoBg?: string;
   /** Classe Tailwind `from-… to-…` — utilisée pour tous les gradients de l'app. */
   accent: string;
   /** false = "Bientôt disponible" — carte non cliquable et fiche marquée en attente. */
@@ -57,6 +61,7 @@ export const APPS: AppDef[] = [
     description: 'Chatbot IA qui répond en darija/français et crée les commandes COD depuis ta page Facebook.',
     category: 'Automation',
     icon: Bot,
+    logo: '/brands/messenger.svg',
     accent: 'from-blue-500 to-indigo-600',
     available: false,
   },
@@ -66,6 +71,7 @@ export const APPS: AppDef[] = [
     description: 'Même assistant IA, sur WhatsApp : répond aux clients et crée les commandes COD automatiquement.',
     category: 'Automation',
     icon: MessageSquare,
+    logo: '/brands/whatsapp.svg',
     accent: 'from-green-500 to-emerald-600',
     available: true,
   },
@@ -75,6 +81,7 @@ export const APPS: AppDef[] = [
     description: 'Notifications de commandes, messages et alertes directement sur Telegram. Gratuit!',
     category: 'Notifications',
     icon: MessageSquare,
+    logo: '/brands/telegram.svg',
     accent: 'from-sky-500 to-blue-600',
     available: true,
   },
@@ -84,6 +91,7 @@ export const APPS: AppDef[] = [
     description: 'Preuve sociale : petite notif qui affiche les achats récents à chaque visiteur de ta boutique.',
     category: 'Marketing',
     icon: ShoppingBag,
+    logo: '/brands/sales-popup.svg',
     accent: 'from-pink-500 to-rose-600',
     available: true,
   },
@@ -93,6 +101,7 @@ export const APPS: AppDef[] = [
     description: 'Envoie auto un WhatsApp au client à la création, confirmation et dispatch de sa commande. Utilise la session du chatbot.',
     category: 'Notifications',
     icon: Bell,
+    logo: '/brands/whatsapp.svg',
     accent: 'from-emerald-500 to-teal-600',
     available: false,
   },
@@ -102,6 +111,7 @@ export const APPS: AppDef[] = [
     description: 'Chatbot IA en direct sur ta boutique : répond aux visiteurs à partir de tes produits, avec fallback WhatsApp intégré.',
     category: 'Automation',
     icon: Bot,
+    logo: '/brands/botstore.svg',
     accent: 'from-indigo-500 to-fuchsia-600',
     available: false,
   },
@@ -111,6 +121,7 @@ export const APPS: AppDef[] = [
     description: 'Pousse chaque commande vers une feuille de calcul Google.',
     category: 'Productivity',
     icon: FileSpreadsheet,
+    logo: '/brands/google-sheets.svg',
     accent: 'from-emerald-500 to-green-600',
     available: true,
   },
@@ -120,6 +131,8 @@ export const APPS: AppDef[] = [
     description: "Synchronise tes clients vers ta liste d'emails.",
     category: 'Marketing',
     icon: Mail,
+    logo: '/brands/mailchimp.svg',
+    logoBg: '#241C15',
     accent: 'from-amber-500 to-orange-600',
     available: false,
   },
@@ -129,6 +142,7 @@ export const APPS: AppDef[] = [
     description: 'Reçois une notif Slack à chaque nouvelle commande.',
     category: 'Notifications',
     icon: MessageSquare,
+    logo: '/brands/slack.svg',
     accent: 'from-violet-500 to-purple-600',
     available: false,
   },
@@ -138,6 +152,7 @@ export const APPS: AppDef[] = [
     description: 'Notifications dans ton serveur Discord.',
     category: 'Notifications',
     icon: Bell,
+    logo: '/brands/discord.svg',
     accent: 'from-indigo-500 to-blue-600',
     available: false,
   },
@@ -147,6 +162,7 @@ export const APPS: AppDef[] = [
     description: 'Connecte ta boutique à 5 000+ apps via webhook.',
     category: 'Automation',
     icon: Zap,
+    logo: '/brands/zapier.svg',
     accent: 'from-orange-500 to-red-600',
     available: false,
   },

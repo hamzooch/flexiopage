@@ -18,6 +18,8 @@ export interface InstalledApp {
   /** Lien direct vers la page de gestion (toujours suffixé du storeId). */
   href: string;
   icon: React.ComponentType<{ className?: string }>;
+  logo: string;
+  logoBg?: string;
   /** Classes tailwind pour le gradient — sert au "logo" visuel. */
   accent: string;
 }
@@ -27,18 +29,21 @@ const META: Record<InstalledAppId, Omit<InstalledApp, 'href'>> = {
     id: 'messenger-bot',
     name: 'Messenger Bot',
     icon: Bot,
+    logo: '/brands/messenger.svg',
     accent: 'from-blue-500 to-indigo-600',
   },
   'whatsapp-bot': {
     id: 'whatsapp-bot',
     name: 'WhatsApp Bot',
     icon: MessageSquare,
+    logo: '/brands/whatsapp.svg',
     accent: 'from-green-500 to-emerald-600',
   },
   'google-sheets': {
     id: 'google-sheets',
     name: 'Google Sheets',
     icon: FileSpreadsheet,
+    logo: '/brands/google-sheets.svg',
     accent: 'from-emerald-500 to-green-600',
   },
 };

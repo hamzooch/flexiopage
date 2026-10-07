@@ -38,6 +38,7 @@ import {
   Banknote,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { BrandLogo as AppBrandLogo } from '@/components/dashboard/brand-logo';
 import { lockBodyScroll } from '@/lib/scroll-lock';
 import { useAuthStore, readPersistedUser, type TeamRole } from '@/stores/auth-store';
 import { useStoreStore } from '@/stores/store-store';
@@ -365,7 +366,6 @@ export function Sidebar({ mobileOpen = false, onMobileClose }: Props) {
                       {showInstalled && (
                         <ul className="ms-3 mt-0.5 space-y-0.5 border-s border-sidebar-border ps-2.5">
                           {installedApps.map((app) => {
-                            const SubIcon = app.icon;
                             const subActive = pathname === app.href.split('?')[0];
                             return (
                               <li key={app.id}>
@@ -379,12 +379,7 @@ export function Sidebar({ mobileOpen = false, onMobileClose }: Props) {
                                       : 'text-sidebar-foreground hover:translate-x-0.5 hover:bg-sidebar-muted/60 hover:text-sidebar-strong'
                                   )}
                                 >
-                                  <span className={cn(
-                                    'grid h-5 w-5 shrink-0 place-items-center rounded-md bg-gradient-to-br text-white shadow-sm',
-                                    app.accent,
-                                  )}>
-                                    <SubIcon className="h-3 w-3" />
-                                  </span>
+                                  <AppBrandLogo src={app.logo} bg={app.logoBg} className="h-5 w-5 rounded-md" imgClassName="h-[82%] w-[82%]" />
                                   <span className="truncate">{app.name}</span>
                                 </Link>
                               </li>

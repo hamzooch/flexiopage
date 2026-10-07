@@ -22,6 +22,7 @@ import { useStoreStore } from '@/stores/store-store';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { APPS, APP_DETAILS, type AppId } from '@/lib/apps-catalog';
+import { BrandLogo } from '@/components/dashboard/brand-logo';
 import {
   ArrowLeft,
   Check,
@@ -147,7 +148,6 @@ export default function AppBrowsePage() {
     );
   }
 
-  const Icon = app.icon;
   const canInstall = app.available && !!detail.configPath;
   const installLabel = detail.installLabel || (connected ? "Gérer l'application" : "Installer l'application");
 
@@ -199,14 +199,7 @@ export default function AppBrowsePage() {
           aria-hidden
         />
         <div className="relative flex flex-col gap-5 sm:flex-row sm:items-start">
-          <div
-            className={cn(
-              'grid h-16 w-16 shrink-0 place-items-center rounded-2xl bg-gradient-to-br text-white shadow-lg sm:h-20 sm:w-20',
-              app.accent,
-            )}
-          >
-            <Icon className="h-8 w-8 sm:h-10 sm:w-10" />
-          </div>
+          <BrandLogo src={app.logo} bg={app.logoBg} className="h-16 w-16 rounded-2xl shadow-lg sm:h-20 sm:w-20" />
           <div className="flex-1 space-y-2">
             <div className="flex flex-wrap items-center gap-2">
               <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">{app.name}</h1>

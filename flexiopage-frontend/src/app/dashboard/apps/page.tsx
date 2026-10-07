@@ -20,10 +20,10 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { cn } from '@/lib/utils';
 import { PageHeader } from '@/components/dashboard/page-header';
+import { BrandLogo } from '@/components/dashboard/brand-logo';
 import { APPS, type AppDef, type AppId } from '@/lib/apps-catalog';
 import {
   AppWindow,
-  FileSpreadsheet,
   Loader2,
   Save,
   Sparkles,
@@ -32,7 +32,6 @@ import {
   AlertTriangle,
   ArrowLeft,
   Plug,
-  ShoppingBag,
   Plus,
   Trash2,
 } from 'lucide-react';
@@ -267,19 +266,13 @@ export default function AppsPage() {
 // Installed app shortcut — carte compacte pour la section "Mes apps installées"
 // ─────────────────────────────────────────────────────────────────────
 function InstalledAppShortcut({ app, onOpen }: { app: AppDef; onOpen: () => void }) {
-  const Icon = app.icon;
   return (
     <button
       type="button"
       onClick={onOpen}
       className="group flex items-center gap-3 rounded-2xl border border-border/60 bg-card p-3 text-left transition-all hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-md"
     >
-      <div className={cn(
-        'grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-gradient-to-br text-white shadow-sm transition-transform group-hover:scale-110',
-        app.accent,
-      )}>
-        <Icon className="h-5 w-5" />
-      </div>
+      <BrandLogo src={app.logo} bg={app.logoBg} className="h-10 w-10 rounded-xl transition-transform group-hover:scale-110" />
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-1.5">
           <span className="truncate text-sm font-semibold">{app.name}</span>
@@ -295,7 +288,6 @@ function InstalledAppShortcut({ app, onOpen }: { app: AppDef; onOpen: () => void
 // App card
 // ─────────────────────────────────────────────────────────────────────
 function AppCard({ app, connected, onOpen }: { app: AppDef; connected: boolean; onOpen: () => void }) {
-  const Icon = app.icon;
   return (
     <div className="group relative overflow-hidden rounded-2xl border border-border/60 bg-card p-5 transition-all duration-300 hover:-translate-y-1 hover:border-primary/30 hover:shadow-xl">
       <div
@@ -306,14 +298,7 @@ function AppCard({ app, connected, onOpen }: { app: AppDef; connected: boolean; 
         aria-hidden
       />
       <div className="relative flex items-start justify-between gap-3">
-        <div
-          className={cn(
-            'grid h-12 w-12 place-items-center rounded-2xl bg-gradient-to-br text-white shadow-md transition-transform duration-300 group-hover:scale-110',
-            app.accent
-          )}
-        >
-          <Icon className="h-5 w-5" />
-        </div>
+        <BrandLogo src={app.logo} bg={app.logoBg} className="h-12 w-12 rounded-2xl shadow-md transition-transform duration-300 group-hover:scale-110" />
         {connected ? (
           <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/10 px-2 py-0.5 text-[10px] font-semibold text-emerald-700">
             <Check className="h-3 w-3" strokeWidth={3} />
@@ -433,9 +418,7 @@ function GoogleSheetsApp({ store, onSaved }: { store: StoreDoc; onSaved: () => P
     <div className="space-y-6">
       <header className="rounded-3xl border border-border/60 bg-card p-6">
         <div className="flex items-start gap-4">
-          <div className="grid h-12 w-12 place-items-center rounded-2xl bg-gradient-to-br from-emerald-500 to-green-600 text-white shadow-md">
-            <FileSpreadsheet className="h-6 w-6" />
-          </div>
+          <BrandLogo src="/brands/google-sheets.svg" className="h-12 w-12 rounded-2xl shadow-md" />
           <div className="flex-1">
             <h1 className="text-2xl font-bold tracking-tight">Google Sheets</h1>
             <p className="text-sm text-muted-foreground">
@@ -605,9 +588,7 @@ function SalesPopupApp({ store, onSaved }: { store: StoreDoc; onSaved: () => Pro
     <div className="space-y-6">
       <header className="rounded-3xl border border-border/60 bg-card p-6">
         <div className="flex items-start gap-4">
-          <div className="grid h-12 w-12 place-items-center rounded-2xl bg-gradient-to-br from-pink-500 to-rose-600 text-white shadow-md">
-            <ShoppingBag className="h-6 w-6" />
-          </div>
+          <BrandLogo src="/brands/sales-popup.svg" className="h-12 w-12 rounded-2xl shadow-md" />
           <div className="flex-1">
             <h1 className="text-2xl font-bold tracking-tight">Sales Popup</h1>
             <p className="text-sm text-muted-foreground">
@@ -835,12 +816,9 @@ function SalesPopupApp({ store, onSaved }: { store: StoreDoc; onSaved: () => Pro
 // Coming soon placeholder
 // ─────────────────────────────────────────────────────────────────────
 function ComingSoonApp({ app }: { app: AppDef }) {
-  const Icon = app.icon;
   return (
     <div className="rounded-3xl border border-border/60 bg-card p-8 text-center">
-      <div className={cn('mx-auto grid h-16 w-16 place-items-center rounded-3xl bg-gradient-to-br text-white shadow-xl', app.accent)}>
-        <Icon className="h-7 w-7" />
-      </div>
+      <BrandLogo src={app.logo} bg={app.logoBg} className="mx-auto h-16 w-16 rounded-3xl shadow-xl" />
       <h2 className="mt-5 text-2xl font-bold tracking-tight">{app.name}</h2>
       <p className="mt-2 text-sm text-muted-foreground max-w-lg mx-auto">{app.description}</p>
       <div className="mt-6 inline-flex items-center gap-1.5 rounded-full bg-amber-500/10 px-3 py-1 text-xs font-semibold text-amber-700">
