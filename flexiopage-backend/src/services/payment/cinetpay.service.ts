@@ -43,6 +43,7 @@ import {
 } from 'cinetpay-js';
 import type { IOrder, PaymentProvider } from '../../models/Order.model';
 import { logPayment } from '../../models/PaymentLog.model';
+import { e164Phone } from '../../utils/phone';
 import type {
   InitPaymentArgs,
   InitPaymentResult,
@@ -168,7 +169,7 @@ export class CinetPayProvider implements PaymentProviderImpl {
       clientEmail: args.vendorEmail,
       clientFirstName: first,
       clientLastName: last,
-      clientPhoneNumber: args.vendorPhone,
+      clientPhoneNumber: e164Phone(args.vendorPhone),
       successUrl: args.successUrl.slice(0, 120),
       failedUrl: args.cancelUrl.slice(0, 120),
       notifyUrl: notifyUrl.slice(0, 120),
@@ -226,7 +227,7 @@ export class CinetPayProvider implements PaymentProviderImpl {
       clientEmail: args.order.email,
       clientFirstName: first,
       clientLastName: last,
-      clientPhoneNumber: args.phone || args.order.paymentPhone || undefined,
+      clientPhoneNumber: e164Phone(args.phone || args.order.paymentPhone),
       successUrl: successUrl.slice(0, 120),
       failedUrl: failedUrl.slice(0, 120),
       notifyUrl: notifyUrl.slice(0, 120),

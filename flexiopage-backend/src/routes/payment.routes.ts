@@ -32,6 +32,7 @@ import {
 import type { Channel } from '../services/payment/types';
 import { finalizePaidOrder } from '../services/order-finalize.service';
 import mongoose from 'mongoose';
+import { formatBuyerPhone } from '../utils/phone';
 
 const router = Router();
 
@@ -147,8 +148,8 @@ router.post('/initiate', async (req: Request, res: Response): Promise<void> => {
       storeId: store._id.toString(),
       email: body.email.trim().toLowerCase(),
       customerName: body.customerName?.trim() || undefined,
-      customerPhone: body.phone?.trim() || undefined,
-      customerWhatsapp: body.whatsapp?.trim() || body.phone?.trim() || undefined,
+      customerPhone: formatBuyerPhone(body.phone) || body.phone?.trim() || undefined,
+      customerWhatsapp: formatBuyerPhone(body.whatsapp) || formatBuyerPhone(body.phone) || body.phone?.trim() || undefined,
       shippingAddress: storeType === 'physical' ? body.shippingAddress : undefined,
       items: [{ productId: product._id.toString(), name: product.name, quantity, price: product.price }],
       subtotal,
@@ -163,14 +164,15 @@ router.post('/initiate', async (req: Request, res: Response): Promise<void> => {
     return;
   }
 
-  if (body.phone) {
-    order.paymentPhone = body.phone.trim();
+  const paymentPhone = formatBuyerPhone(body.phone);
+  if (paymentPhone) {
+    order.paymentPhone = paymentPhone;
     await order.save();
   }
 
   try {
     const init = await initOrderPaymentWith(order, body.gateway, {
-      phone: body.phone,
+      phone: paymentPhone || body.phone,
       channel: methodToChannel(body.method),
     });
     order.paymentReference = init.reference;

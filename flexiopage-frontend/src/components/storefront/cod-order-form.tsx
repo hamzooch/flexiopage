@@ -24,6 +24,7 @@ import { PaymentMethodSelector, methodKey } from '@/components/storefront/paymen
 import { VariantSwatches } from '@/components/storefront/variant-swatches';
 import { BumpOffers, bumpUnitPrice, type BumpOffer } from '@/components/storefront/bump-offers';
 import { DeliveryEta } from '@/components/storefront/delivery-eta';
+import { joinPhone } from '@/components/storefront/phone-country-field';
 
 const API_BASE = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5001').replace(/\/$/, '');
 
@@ -88,24 +89,6 @@ interface Props {
    *  produit pour rester cohérente avec le grand prix affiché au-dessus.
    *  Fallback silencieux sur `theme.primary` si non fourni. */
   priceColor?: string;
-}
-
-/**
- * Concatène le préfixe international du pays (`+225`) avec le numéro local
- * saisi par le client. Le client ne tape que ses chiffres locaux (espaces/
- * tirets tolérés) ; on renvoie une chaîne prête pour le backend et
- * WhatsApp/notifs (ex: `+225 70 000 00 00`).
- *
- * Si le client copie-colle par erreur un numéro déjà avec préfixe, on ne
- * double PAS le prefix (idempotent).
- */
-function joinPhone(prefix: string, localPhone: string): string {
-  const cleaned = localPhone.trim();
-  if (!cleaned) return '';
-  const startsWithPlus = cleaned.startsWith('+');
-  const startsWithPrefixDigits = prefix && cleaned.replace(/\s/g, '').startsWith(prefix.replace(/\s/g, ''));
-  if (startsWithPlus || startsWithPrefixDigits) return cleaned;
-  return `${prefix} ${cleaned}`.trim();
 }
 
 /** Total price for a quantity, honoring the bundle tiers when one matches. */

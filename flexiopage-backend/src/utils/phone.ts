@@ -35,6 +35,102 @@ export function normalizePhone(raw?: string | null): string | undefined {
   return d || undefined;
 }
 
+interface DialRule {
+  dial: string;
+  /** Longueur du numéro national, sans le 0 de composition. */
+  nsn: readonly [number, number];
+}
+
+/** Indicatifs les plus longs d'abord, pour ne pas confondre 221 et un préfixe plus court. */
+const DIAL_RULES: DialRule[] = [
+  { dial: '221', nsn: [9, 9] },
+  { dial: '225', nsn: [10, 10] },
+  { dial: '223', nsn: [8, 8] },
+  { dial: '226', nsn: [8, 8] },
+  { dial: '229', nsn: [8, 10] },
+  { dial: '228', nsn: [8, 8] },
+  { dial: '224', nsn: [9, 9] },
+  { dial: '227', nsn: [8, 8] },
+  { dial: '220', nsn: [7, 7] },
+  { dial: '233', nsn: [9, 9] },
+  { dial: '234', nsn: [10, 10] },
+  { dial: '237', nsn: [9, 9] },
+  { dial: '212', nsn: [9, 9] },
+  { dial: '216', nsn: [8, 8] },
+  { dial: '213', nsn: [9, 9] },
+  { dial: '218', nsn: [9, 10] },
+  { dial: '351', nsn: [9, 9] },
+  { dial: '39', nsn: [8, 11] },
+  { dial: '34', nsn: [9, 9] },
+  { dial: '33', nsn: [9, 9] },
+  { dial: '32', nsn: [8, 9] },
+  { dial: '49', nsn: [10, 11] },
+  { dial: '31', nsn: [9, 9] },
+  { dial: '41', nsn: [9, 9] },
+];
+
+function inNsn(len: number, nsn: readonly [number, number]): boolean {
+  return len >= nsn[0] && len <= nsn[1];
+}
+
+/** Ramène la partie nationale à la longueur attendue, selon le pays. */
+function nationalDigits(rule: DialRule, national: string): string | undefined {
+  if (inNsn(national.length, rule.nsn)) return national;
+  if (national.startsWith('0')) {
+    const stripped = national.slice(1);
+    if (inNsn(stripped.length, rule.nsn)) return stripped;
+  }
+  // Côte d'Ivoire : 07 / 05 / 01 font partie des 10 chiffres. Un 0 oublié se remet.
+  if (rule.dial === '225' && national.length === 9 && /^[157]/.test(national)) {
+    return `0${national}`;
+  }
+  return undefined;
+}
+
+function matchDial(digits: string): string | undefined {
+  for (const rule of DIAL_RULES) {
+    if (!digits.startsWith(rule.dial)) continue;
+    const national = nationalDigits(rule, digits.slice(rule.dial.length));
+    if (!national) continue;
+    const full = rule.dial + national;
+    if (full.length >= 8 && full.length <= 15) return `+${full}`;
+  }
+  return undefined;
+}
+
+/**
+ * Numéro acheteur en `+` et chiffres, sans espace.
+ * Accepte les espaces, tirets, un `00`, un indicatif déjà collé, un 0 national
+ * en trop (France, Maroc, Sénégal) et le 0 obligatoire de Côte d'Ivoire.
+ * `dialHint` est l'indicatif choisi dans le formulaire (`+225`) quand le
+ * client n'a saisi que la partie locale.
+ */
+export function formatBuyerPhone(raw?: string | null, dialHint?: string | null): string | undefined {
+  const digits = phoneDigits(raw);
+  if (!digits) return undefined;
+
+  const fromFull = matchDial(digits);
+  if (fromFull) return fromFull;
+
+  const hint = (dialHint || '').replace(/\D/g, '');
+  const rule = DIAL_RULES.find((item) => item.dial === hint);
+  if (rule) {
+    const national = nationalDigits(rule, digits);
+    if (national) {
+      const full = rule.dial + national;
+      if (full.length >= 8 && full.length <= 15) return `+${full}`;
+    }
+  }
+
+  if (digits.length >= 8 && digits.length <= 15) return `+${digits}`;
+  return undefined;
+}
+
+/** Format CinetPay : `+` puis 8 à 15 chiffres, aucun espace. */
+export function e164Phone(raw?: string | null): string | undefined {
+  return formatBuyerPhone(raw);
+}
+
 /**
  * Clé d'agrégation d'un client : les derniers `KEY_DIGITS` chiffres du numéro.
  * Deux commandes du même abonné saisies « avec » ou « sans » indicatif pays

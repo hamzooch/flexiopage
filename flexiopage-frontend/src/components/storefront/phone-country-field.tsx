@@ -74,14 +74,97 @@ export function defaultPhoneCountry(geoCountry?: string | null, storeCountry?: s
   );
 }
 
-/** Indicatif + numéro local. Un collage déjà international n’est pas doublé. */
+interface DialRule {
+  dial: string;
+  nsn: readonly [number, number];
+}
+
+const DIAL_RULES: DialRule[] = [
+  { dial: '221', nsn: [9, 9] },
+  { dial: '225', nsn: [10, 10] },
+  { dial: '223', nsn: [8, 8] },
+  { dial: '226', nsn: [8, 8] },
+  { dial: '229', nsn: [8, 10] },
+  { dial: '228', nsn: [8, 8] },
+  { dial: '224', nsn: [9, 9] },
+  { dial: '227', nsn: [8, 8] },
+  { dial: '220', nsn: [7, 7] },
+  { dial: '233', nsn: [9, 9] },
+  { dial: '234', nsn: [10, 10] },
+  { dial: '237', nsn: [9, 9] },
+  { dial: '212', nsn: [9, 9] },
+  { dial: '216', nsn: [8, 8] },
+  { dial: '213', nsn: [9, 9] },
+  { dial: '218', nsn: [9, 10] },
+  { dial: '351', nsn: [9, 9] },
+  { dial: '39', nsn: [8, 11] },
+  { dial: '34', nsn: [9, 9] },
+  { dial: '33', nsn: [9, 9] },
+  { dial: '32', nsn: [8, 9] },
+  { dial: '49', nsn: [10, 11] },
+  { dial: '31', nsn: [9, 9] },
+  { dial: '41', nsn: [9, 9] },
+];
+
+function inNsn(len: number, nsn: readonly [number, number]): boolean {
+  return len >= nsn[0] && len <= nsn[1];
+}
+
+function nationalDigits(rule: DialRule, national: string): string | undefined {
+  if (inNsn(national.length, rule.nsn)) return national;
+  if (national.startsWith('0')) {
+    const stripped = national.slice(1);
+    if (inNsn(stripped.length, rule.nsn)) return stripped;
+  }
+  if (rule.dial === '225' && national.length === 9 && /^[157]/.test(national)) {
+    return `0${national}`;
+  }
+  return undefined;
+}
+
+function matchDial(digits: string): string | undefined {
+  for (const rule of DIAL_RULES) {
+    if (!digits.startsWith(rule.dial)) continue;
+    const national = nationalDigits(rule, digits.slice(rule.dial.length));
+    if (!national) continue;
+    const full = rule.dial + national;
+    if (full.length >= 8 && full.length <= 15) return `+${full}`;
+  }
+  return undefined;
+}
+
+/**
+ * `+` et chiffres seulement. Espaces, tirets, `00`, indicatif déjà collé,
+ * 0 national en trop, et 0 de Côte d'Ivoire sont corrigés tout seuls.
+ */
+export function formatBuyerPhone(raw?: string | null, dialHint?: string | null): string | undefined {
+  if (!raw) return undefined;
+  let digits = String(raw).replace(/\D+/g, '');
+  if (digits.startsWith('00')) digits = digits.slice(2);
+  if (!digits) return undefined;
+
+  const fromFull = matchDial(digits);
+  if (fromFull) return fromFull;
+
+  const hint = (dialHint || '').replace(/\D/g, '');
+  const rule = DIAL_RULES.find((item) => item.dial === hint);
+  if (rule) {
+    const national = nationalDigits(rule, digits);
+    if (national) {
+      const full = rule.dial + national;
+      if (full.length >= 8 && full.length <= 15) return `+${full}`;
+    }
+  }
+
+  if (digits.length >= 8 && digits.length <= 15) return `+${digits}`;
+  return undefined;
+}
+
+/** Indicatif choisi + numéro local, ramené au format international. */
 export function joinPhone(prefix: string, localPhone: string): string {
   const cleaned = localPhone.trim();
   if (!cleaned) return '';
-  const compact = cleaned.replace(/\s/g, '');
-  const prefixCompact = prefix.replace(/\s/g, '');
-  if (cleaned.startsWith('+') || (prefixCompact && compact.startsWith(prefixCompact))) return cleaned;
-  return `${prefix} ${cleaned}`.trim();
+  return formatBuyerPhone(cleaned, prefix) || '';
 }
 
 function flagEmoji(code: string): string {

@@ -10,6 +10,7 @@ import * as storeService from '../services/store.service';
 import * as productService from '../services/product.service';
 import * as pageService from '../services/page.service';
 import * as orderService from '../services/order.service';
+import { formatBuyerPhone } from '../utils/phone';
 import * as storageService from '../services/storage.service';
 import * as collectionService from '../services/collection.service';
 import * as couponService from '../services/coupon.service';
@@ -1145,15 +1146,11 @@ router.post('/checkout/init', async (req: Request, res: Response): Promise<void>
     return;
   }
   const email = (body.email || '').trim();
-  const phone = (body.phone || '').trim();
+  const phone = formatBuyerPhone(body.phone) || '';
   const fields: { email?: string; phone?: string } = {};
   if (!email) fields.email = 'Indique ton adresse email.';
   else if (!isCheckoutEmail(email)) fields.email = 'Cette adresse email n’est pas valide.';
-  const phoneDigits = phone.replace(/\D/g, '');
-  if (!phoneDigits) fields.phone = 'Indique ton numéro WhatsApp.';
-  else if (phoneDigits.length < 8 || phoneDigits.length > 15) {
-    fields.phone = 'Ce numéro WhatsApp n’est pas valide. Vérifie l’indicatif et les chiffres.';
-  }
+  if (!phone) fields.phone = 'Ce numéro WhatsApp n’est pas valide. Vérifie l’indicatif et les chiffres.';
   if (fields.email || fields.phone) {
     res.status(400).json({
       error: 'Vérifie les informations indiquées avant de continuer.',
@@ -1497,8 +1494,8 @@ router.post('/checkout/cod', async (req: Request, res: Response): Promise<void> 
       storeId: store._id.toString(),
       email: body.email.trim().toLowerCase(),
       customerName: body.customerName.trim(),
-      customerPhone: body.customerPhone.trim(),
-      customerWhatsapp: body.customerWhatsapp?.trim() || body.customerPhone.trim(),
+      customerPhone: formatBuyerPhone(body.customerPhone) || body.customerPhone.trim(),
+      customerWhatsapp: formatBuyerPhone(body.customerWhatsapp) || formatBuyerPhone(body.customerPhone) || body.customerPhone.trim(),
       shippingAddress: {
         line1: ship.line1!.trim(),
         line2: ship.line2?.trim(),

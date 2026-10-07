@@ -192,11 +192,8 @@ export default function CheckoutPage() {
     const nextFields: FieldErrors = {};
     if (!email.trim()) nextFields.email = 'Indique ton adresse email.';
     else if (!isValidEmail(email)) nextFields.email = 'Cette adresse email n’est pas valide.';
-    const digits = fullPhone.replace(/\D/g, '');
     if (!phone.trim()) nextFields.phone = 'Indique ton numéro WhatsApp.';
-    else if (digits.length < 8 || digits.length > 15) {
-      nextFields.phone = 'Ce numéro est incomplet. Vérifie l’indicatif et les chiffres.';
-    }
+    else if (!fullPhone) nextFields.phone = 'Ce numéro est incomplet. Vérifie l’indicatif et les chiffres.';
     if (nextFields.email || nextFields.phone) {
       setFieldErrors(nextFields);
       revealAlert({
