@@ -1215,6 +1215,8 @@ router.post('/checkout/init', async (req: Request, res: Response): Promise<void>
     });
   } catch (err) {
     logger.error({ err }, 'checkout init: order creation failed');
+    res.locals.platformErrorMessage = (err as Error).message;
+    res.locals.platformErrorStack = (err as Error).stack;
     res.status(500).json({
       error: 'La commande n’a pas pu être créée. Réessaie dans un instant.',
       code: 'order_create_failed',
@@ -1240,6 +1242,8 @@ router.post('/checkout/init', async (req: Request, res: Response): Promise<void>
     });
   } catch (err) {
     logger.error({ err }, 'checkout init: payment init failed');
+    res.locals.platformErrorMessage = (err as Error).message;
+    res.locals.platformErrorStack = (err as Error).stack;
     res.status(502).json({
       error: 'Le paiement n’a pas pu démarrer. Réessaie dans un instant.',
       code: 'payment_init_failed',

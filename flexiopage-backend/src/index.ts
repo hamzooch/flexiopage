@@ -13,6 +13,7 @@ import { connectDB, disconnectDB } from './config/database';
 import { leaderElection } from './lib/leader-election';
 import { disconnectRedis } from './lib/redis';
 import { errorHandler } from './middleware/errorHandler';
+import { platformAlertMiddleware, reportPlatformProblem } from './services/platform-alert.service';
 import { notFound } from './middleware/notFound';
 import { logger, httpLogger } from './lib/logger';
 import authRoutes from './routes/auth.routes';
@@ -49,6 +50,8 @@ app.set('trust proxy', 1);
 // Structured request logging — must come before route handlers so every
 // request gets a logger attached at req.log.
 app.use(httpLogger);
+// Email l'opérateur sur toute réponse HTTP >= 500.
+app.use(platformAlertMiddleware);
 
 // Security headers. Helmet's default Cross-Origin-Resource-Policy is
 // "same-origin", which would block the frontend (flexiopage.com) from
@@ -346,9 +349,33 @@ async function start() {
 
   process.on('SIGTERM', () => void shutdown('SIGTERM'));
   process.on('SIGINT', () => void shutdown('SIGINT'));
+
+  process.on('unhandledRejection', (reason) => {
+    const err = reason instanceof Error ? reason : new Error(String(reason));
+    logger.error({ err }, 'unhandledRejection');
+    void reportPlatformProblem({
+      source: 'unhandledRejection',
+      message: err.message,
+      stack: err.stack,
+    });
+  });
+
+  process.on('uncaughtException', (err) => {
+    logger.fatal({ err }, 'uncaughtException');
+    void reportPlatformProblem({
+      source: 'uncaughtException',
+      message: err.message,
+      stack: err.stack,
+    }).finally(() => process.exit(1));
+  });
 }
 
 start().catch((err) => {
   logger.fatal({ err }, 'Failed to start server');
-  process.exit(1);
+  const error = err instanceof Error ? err : new Error(String(err));
+  void reportPlatformProblem({
+    source: 'startup',
+    message: error.message,
+    stack: error.stack,
+  }).finally(() => process.exit(1));
 });

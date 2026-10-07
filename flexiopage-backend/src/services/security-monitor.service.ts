@@ -23,6 +23,7 @@ import { logger } from '../lib/logger';
 import { leaderElection } from '../lib/leader-election';
 import { SecurityEvent, type SecurityEventType } from '../models/SecurityEvent.model';
 import { sendEmail } from './email.service';
+import { platformAlertEmail } from './platform-alert.service';
 import { sendMessage as sendTelegramMessage } from './telegram.service';
 
 interface Bucket {
@@ -173,7 +174,7 @@ async function dispatchAlert(payload: AlertPayload): Promise<void> {
   ];
   const text = bodyLines.join('\n');
 
-  const adminEmail = process.env.ADMIN_ALERT_EMAIL;
+  const adminEmail = platformAlertEmail();
   const adminChatId = process.env.ADMIN_TELEGRAM_CHAT_ID;
 
   const tasks: Promise<unknown>[] = [];

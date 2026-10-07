@@ -35,6 +35,16 @@ export function errorHandler(
   if (statusCode >= 500) {
     // Always log the detailed message for ops, regardless of who triggered it.
     console.error(err);
+    // L'email d'alerte part au finish de la réponse. On y met le message
+    // technique, pas la phrase publique renvoyée au visiteur.
+    res.locals.platformErrorMessage = detailed;
+    res.locals.platformErrorStack = err.stack;
+    res.locals.platformErrorName = err.name;
+    res.locals.platformPublicMessage = generic;
+    const code = (err as { code?: unknown }).code;
+    if (typeof code === 'string' || typeof code === 'number') {
+      res.locals.platformErrorCode = String(code);
+    }
   }
   res.status(statusCode).json({ error: message });
 }

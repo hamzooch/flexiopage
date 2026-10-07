@@ -14,6 +14,30 @@ import pinoHttp from 'pino-http';
 
 const isDev = process.env.NODE_ENV !== 'production';
 
+/** Reçoit les erreurs passées à logger.error({ err }) pendant une requête. */
+type LoggedErrorSink = (err: unknown, text?: string) => void;
+let loggedErrorSink: LoggedErrorSink | null = null;
+
+export function setLoggedErrorSink(sink: LoggedErrorSink | null): void {
+  loggedErrorSink = sink;
+}
+
+function notifyLoggedError(args: unknown[]): void {
+  if (!loggedErrorSink) return;
+  const first = args[0];
+  const second = args[1];
+  const text = typeof second === 'string' ? second : typeof first === 'string' ? first : undefined;
+  if (first instanceof Error) {
+    loggedErrorSink(first, text);
+    return;
+  }
+  if (first && typeof first === 'object') {
+    const record = first as { err?: unknown; error?: unknown };
+    const err = record.err ?? record.error;
+    if (err) loggedErrorSink(err, text);
+  }
+}
+
 export const logger = pino({
   level: process.env.LOG_LEVEL || (isDev ? 'debug' : 'info'),
   // Pretty-print in dev only — keep prod JSON for log aggregators.
@@ -47,6 +71,12 @@ export const logger = pino({
       '*.CINETPAY_API_KEY',
     ],
     censor: '[REDACTED]',
+  },
+  hooks: {
+    logMethod(args, method, level) {
+      if (level >= 50) notifyLoggedError(args as unknown[]);
+      method.apply(this, args);
+    },
   },
 });
 
