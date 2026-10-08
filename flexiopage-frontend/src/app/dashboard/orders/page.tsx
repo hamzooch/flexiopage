@@ -42,7 +42,6 @@ import {
   Banknote,
   X,
   Store as StoreIcon,
-  TrendingUp,
   PhoneCall,
   PhoneOff,
   PhoneIncoming,
@@ -50,6 +49,9 @@ import {
   Check,
   MoreHorizontal,
   Printer,
+  Download,
+  FileSpreadsheet,
+  Sheet,
 } from 'lucide-react';
 import { PageHeader } from '@/components/dashboard/page-header';
 import { Pagination } from '@/components/ui/pagination';
@@ -168,19 +170,31 @@ const STAGE: Record<StageKey, {
   icon: React.ComponentType<{ className?: string }>;
   cls: string;     // badge (fond + texte + ring)
   stripe: string;  // barre latérale + point (couleur pleine)
+  edge: string;    // bord gauche de la carte mobile
 }> = {
-  to_confirm:      { label: 'À confirmer',     icon: PhoneCall,     cls: 'bg-slate-500/10 text-slate-700 ring-slate-500/20',     stripe: 'bg-slate-400' },
-  no_answer:       { label: 'Ne décroche pas', icon: PhoneMissed,   cls: 'bg-amber-500/10 text-amber-700 ring-amber-500/20',     stripe: 'bg-amber-500' },
-  callback:        { label: 'À rappeler',      icon: PhoneIncoming, cls: 'bg-sky-500/10 text-sky-700 ring-sky-500/20',           stripe: 'bg-sky-500' },
-  confirmed:       { label: 'Confirmée',       icon: CheckCircle2,  cls: 'bg-teal-500/10 text-teal-700 ring-teal-500/20',         stripe: 'bg-teal-500' },
-  dispatch_failed: { label: 'Échec dispatch',  icon: AlertTriangle, cls: 'bg-red-500/10 text-red-700 ring-red-500/20',           stripe: 'bg-red-500' },
-  assigned:        { label: 'Assignée',        icon: UserIcon,      cls: 'bg-blue-500/10 text-blue-700 ring-blue-500/20',         stripe: 'bg-blue-500' },
-  picked_up:       { label: 'Récupérée',       icon: Package,       cls: 'bg-violet-500/10 text-violet-700 ring-violet-500/20',   stripe: 'bg-violet-500' },
-  in_transit:      { label: 'En livraison',    icon: Truck,         cls: 'bg-indigo-500/10 text-indigo-700 ring-indigo-500/20',   stripe: 'bg-indigo-500' },
-  delivered:       { label: 'Livrée',          icon: CheckCircle2,  cls: 'bg-emerald-500/10 text-emerald-700 ring-emerald-500/20', stripe: 'bg-emerald-500' },
-  returned:        { label: 'Retournée',       icon: RotateCcw,     cls: 'bg-rose-500/10 text-rose-700 ring-rose-500/20',         stripe: 'bg-rose-500' },
-  cancelled:       { label: 'Annulée',         icon: X,             cls: 'bg-rose-500/10 text-rose-700 ring-rose-500/20',         stripe: 'bg-rose-400' },
+  to_confirm:      { label: 'À confirmer',     icon: PhoneCall,     cls: 'bg-slate-500/10 text-slate-700 ring-slate-500/20',     stripe: 'bg-slate-400',   edge: 'border-s-slate-400' },
+  no_answer:       { label: 'Ne décroche pas', icon: PhoneMissed,   cls: 'bg-amber-500/10 text-amber-700 ring-amber-500/20',     stripe: 'bg-amber-500',   edge: 'border-s-amber-500' },
+  callback:        { label: 'À rappeler',      icon: PhoneIncoming, cls: 'bg-sky-500/10 text-sky-700 ring-sky-500/20',           stripe: 'bg-sky-500',     edge: 'border-s-sky-500' },
+  confirmed:       { label: 'Confirmée',       icon: CheckCircle2,  cls: 'bg-teal-500/10 text-teal-700 ring-teal-500/20',         stripe: 'bg-teal-500',    edge: 'border-s-teal-500' },
+  dispatch_failed: { label: 'Échec dispatch',  icon: AlertTriangle, cls: 'bg-red-500/10 text-red-700 ring-red-500/20',           stripe: 'bg-red-500',     edge: 'border-s-red-500' },
+  assigned:        { label: 'Assignée',        icon: UserIcon,      cls: 'bg-blue-500/10 text-blue-700 ring-blue-500/20',         stripe: 'bg-blue-500',    edge: 'border-s-blue-500' },
+  picked_up:       { label: 'Récupérée',       icon: Package,       cls: 'bg-violet-500/10 text-violet-700 ring-violet-500/20',   stripe: 'bg-violet-500',  edge: 'border-s-violet-500' },
+  in_transit:      { label: 'En livraison',    icon: Truck,         cls: 'bg-indigo-500/10 text-indigo-700 ring-indigo-500/20',   stripe: 'bg-indigo-500',  edge: 'border-s-indigo-500' },
+  delivered:       { label: 'Livrée',          icon: CheckCircle2,  cls: 'bg-emerald-500/10 text-emerald-700 ring-emerald-500/20', stripe: 'bg-emerald-500', edge: 'border-s-emerald-500' },
+  returned:        { label: 'Retournée',       icon: RotateCcw,     cls: 'bg-rose-500/10 text-rose-700 ring-rose-500/20',         stripe: 'bg-rose-500',    edge: 'border-s-rose-500' },
+  cancelled:       { label: 'Annulée',         icon: X,             cls: 'bg-rose-500/10 text-rose-700 ring-rose-500/20',         stripe: 'bg-rose-400',    edge: 'border-s-rose-400' },
 };
+
+async function readExportError(err: unknown): Promise<string> {
+  const data = (err as { response?: { data?: unknown } })?.response?.data;
+  if (data instanceof Blob) {
+    try {
+      const parsed = JSON.parse(await data.text()) as { error?: string };
+      if (parsed.error) return parsed.error;
+    } catch { /* réponse non JSON */ }
+  }
+  return 'Export impossible pour le moment.';
+}
 
 function computeStage(o: OrderType): StageKey {
   const dk = (o.delivery?.externalStatus || '').toLowerCase();
@@ -282,6 +296,10 @@ export default function DashboardOrdersPage() {
   const [customFrom, setCustomFrom] = useState<string>('');
   const [customTo, setCustomTo] = useState<string>('');
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [exporting, setExporting] = useState<'xlsx' | 'csv' | null>(null);
+  const [exportError, setExportError] = useState<string | null>(null);
+  const [exportOpen, setExportOpen] = useState(false);
+  const exportRef = useRef<HTMLDivElement>(null);
   // Map productId → image URL, résolu depuis la liste des produits du store.
   // Les snapshots OrderItem ne contiennent pas l'image (juste name/price/qty),
   // donc on hydrate côté client pour éviter de modifier tous les orders passés.
@@ -450,6 +468,46 @@ export default function DashboardOrdersPage() {
     (dayFilter !== 'all' || customFrom || customTo ? 1 : 0) +
     (search.trim() ? 1 : 0);
 
+  useEffect(() => {
+    if (!exportOpen) return;
+    const onDoc = (e: MouseEvent) => {
+      if (exportRef.current && !exportRef.current.contains(e.target as Node)) setExportOpen(false);
+    };
+    document.addEventListener('mousedown', onDoc);
+    return () => document.removeEventListener('mousedown', onDoc);
+  }, [exportOpen]);
+
+  async function downloadOrders(format: 'xlsx' | 'csv') {
+    if (!selectedStoreId || exporting) return;
+    setExportOpen(false);
+    setExporting(format);
+    setExportError(null);
+    try {
+      const res = await storesApi.exportOrders(selectedStoreId, {
+        format,
+        search: debouncedSearch.trim() || undefined,
+        status: statusFilter !== 'all' ? statusFilter : undefined,
+        confirmation: confirmFilter !== 'all' ? confirmFilter : undefined,
+        ...computeRange(),
+      });
+      const header = String(res.headers['content-disposition'] || '');
+      const match = /filename="([^"]+)"/.exec(header);
+      const filename = match?.[1] || (format === 'csv' ? 'commandes.csv' : 'commandes.xlsx');
+      const url = URL.createObjectURL(res.data);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      setExportError(await readExportError(err));
+    } finally {
+      setExporting(null);
+    }
+  }
+
   function resetFilters() {
     setStatusFilter('all');
     setConfirmFilter('all');
@@ -462,7 +520,7 @@ export default function DashboardOrdersPage() {
   const currentStore = stores.find((s) => s._id === selectedStoreId);
 
   return (
-    <div className="space-y-5">
+    <div className="min-w-0 space-y-5 sm:space-y-6">
       {/* ── Page header — clean, sober, business-app feel ─────── */}
       <PageHeader
         icon={ShoppingCart}
@@ -492,7 +550,7 @@ export default function DashboardOrdersPage() {
       />
 
       {/* ── KPI cards — modern, denser, with trend hint ────────── */}
-      <section className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+      <section className="grid grid-cols-2 gap-2 sm:gap-3 xl:grid-cols-4">
         <KpiCard
           label="Total"
           value={stats.total}
@@ -525,9 +583,9 @@ export default function DashboardOrdersPage() {
       </section>
 
       {/* ── Filter toolbar — onglets de statut + recherche & filtres ───── */}
-      <div className="space-y-2.5 rounded-2xl border border-border/60 bg-card p-2.5 shadow-sm">
+      <div className="min-w-0 space-y-2.5 rounded-2xl border border-border/60 bg-card p-2.5 shadow-sm sm:p-3">
         {/* Onglets de statut (avec compteurs) — remplace l'ancien menu Statut */}
-        <div className="flex gap-1.5 overflow-x-auto">
+        <div className="flex min-w-0 gap-1 overflow-x-auto">
           {([
             { value: 'all',       label: 'Toutes',     count: stats.total },
             { value: 'pending',   label: 'En attente', count: stats.pending },
@@ -542,7 +600,7 @@ export default function DashboardOrdersPage() {
                 type="button"
                 onClick={() => setStatusFilter(t.value)}
                 className={cn(
-                  'inline-flex flex-none items-center gap-1.5 rounded-lg px-3 py-1.5 text-[13px] font-semibold transition-colors',
+                  'inline-flex h-10 flex-none items-center gap-1.5 rounded-lg px-3 text-sm font-semibold transition-colors',
                   active ? 'bg-primary/10 text-primary' : 'text-muted-foreground hover:bg-muted hover:text-foreground',
                 )}
               >
@@ -560,7 +618,7 @@ export default function DashboardOrdersPage() {
         {/* Recherche + filtres secondaires */}
         <div className="flex flex-wrap items-center gap-2">
           {/* Recherche */}
-          <div className="relative min-w-[220px] flex-1">
+          <div className="relative min-w-0 w-full sm:w-auto sm:min-w-[12rem] sm:flex-1">
             <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <Input
               value={search}
@@ -606,6 +664,48 @@ export default function DashboardOrdersPage() {
             ]}
           />
 
+          <div ref={exportRef} className="relative">
+            <button
+              type="button"
+              onClick={() => setExportOpen((v) => !v)}
+              disabled={!selectedStoreId || !!exporting}
+              aria-haspopup="menu"
+              aria-expanded={exportOpen}
+              className="inline-flex h-10 items-center gap-1.5 rounded-lg border border-border/60 px-3 text-sm font-medium text-foreground transition-colors hover:bg-muted/40 disabled:opacity-50"
+            >
+              {exporting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />}
+              Exporter
+            </button>
+            {exportOpen && (
+              <div role="menu" className="absolute end-0 z-30 mt-1 w-64 rounded-xl border border-border/70 bg-card p-1 shadow-lg">
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={() => void downloadOrders('xlsx')}
+                  className="flex w-full items-start gap-2.5 rounded-lg px-3 py-2.5 text-left hover:bg-muted"
+                >
+                  <FileSpreadsheet className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600" />
+                  <span>
+                    <span className="block text-sm font-semibold">Excel</span>
+                    <span className="block text-xs text-muted-foreground">Fichier .xlsx</span>
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={() => void downloadOrders('csv')}
+                  className="flex w-full items-start gap-2.5 rounded-lg px-3 py-2.5 text-left hover:bg-muted"
+                >
+                  <Sheet className="mt-0.5 h-4 w-4 shrink-0 text-emerald-700" />
+                  <span>
+                    <span className="block text-sm font-semibold">Google Sheets</span>
+                    <span className="block text-xs text-muted-foreground">Fichier .csv à importer</span>
+                  </span>
+                </button>
+              </div>
+            )}
+          </div>
+
           {/* Réinitialiser — visible seulement si un filtre est actif */}
           {activeFiltersCount > 0 && (
             <button
@@ -619,21 +719,24 @@ export default function DashboardOrdersPage() {
             </button>
           )}
         </div>
+        {exportError && (
+          <p role="alert" className="px-1 text-xs font-medium text-destructive">{exportError}</p>
+        )}
       </div>
 
       {/* ── List header — count + sorting hint ──────────────── */}
       {selectedStoreId && !loading && filteredOrders.length > 0 && (
-        <div className="flex items-center justify-between px-1">
+        <div className="flex flex-col gap-2 px-1 sm:flex-row sm:items-center sm:justify-between">
           <span className="text-xs font-medium text-muted-foreground">
             <strong className="text-foreground">{filteredOrders.length}</strong> commande{filteredOrders.length > 1 ? 's' : ''} affichée{filteredOrders.length > 1 ? 's' : ''}
           </span>
-          <div className="flex items-center gap-3">
+          <div className="flex flex-wrap items-center gap-2 sm:justify-end">
             {deliverableIds.length > 0 && (
               <a
                 href={`/bordereau?storeId=${selectedStoreId}&ids=${deliverableIds.join(',')}`}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="inline-flex items-center gap-1.5 rounded-md border border-border/70 bg-card px-2.5 py-1 text-[11px] font-semibold text-foreground hover:bg-muted"
+                className="inline-flex h-10 items-center gap-1.5 rounded-lg border border-border/70 bg-card px-3 text-xs font-semibold text-foreground hover:bg-muted"
                 title="Imprimer les bordereaux des commandes confirmées à livrer"
               >
                 <Printer className="h-3.5 w-3.5" /> Bordereaux à livrer ({deliverableIds.length})
@@ -660,25 +763,23 @@ export default function DashboardOrdersPage() {
         />
       ) : (
         <>
-          {/* Vue tableau standard type Shopify — plus dense qu'une carte,
-              scan plus rapide sur beaucoup de commandes. Overflow-x sur
-              petit écran pour ne rien tronquer. Ligne de détail dépliable
-              sous chaque row au clic. */}
-          <div className="overflow-hidden rounded-2xl border border-border/60 bg-card">
-            <div className="overflow-x-auto">
-              <table className="w-full min-w-[880px] text-sm">
-                <thead className="border-b border-border/60 bg-muted/40 text-left text-[10px] uppercase tracking-wider text-muted-foreground">
+          {/* Sous lg : chaque commande est une carte (la ligne passe en flex).
+              Dès lg : tableau. La colonne Produits n'apparaît qu'en xl, quand
+              la sidebar laisse assez de place pour ne pas couper le statut. */}
+          <div className="min-w-0 overflow-hidden rounded-2xl border border-border/60 bg-card">
+            <table className="w-full max-lg:block text-sm">
+                <thead className="hidden border-b border-border/60 bg-muted/40 text-left text-[10px] uppercase tracking-wider text-muted-foreground lg:table-header-group">
                   <tr>
-                    <th className="px-3 py-2.5 font-semibold sm:px-4">Commande</th>
-                    <th className="px-3 py-2.5 font-semibold sm:px-4">Client</th>
-                    <th className="w-[260px] px-3 py-2.5 font-semibold sm:px-4">Produits</th>
-                    <th className="px-3 py-2.5 text-right font-semibold sm:px-4">Total</th>
-                    <th className="px-3 py-2.5 font-semibold sm:px-4">Paiement</th>
-                    <th className="px-3 py-2.5 font-semibold sm:px-4">Statut</th>
-                    <th className="w-10 px-2 py-2.5" aria-label="Actions"></th>
+                    <th className="px-4 py-2.5 font-semibold">Commande</th>
+                    <th className="px-4 py-2.5 font-semibold">Client</th>
+                    <th className="hidden px-4 py-2.5 font-semibold xl:table-cell">Produits</th>
+                    <th className="px-4 py-2.5 text-right font-semibold">Total</th>
+                    <th className="px-4 py-2.5 font-semibold">Paiement</th>
+                    <th className="px-4 py-2.5 font-semibold">Statut</th>
+                    <th className="w-16 px-2 py-2.5" aria-label="Actions"></th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-border/60">
+                <tbody className="max-lg:block max-lg:w-full">
                   {filteredOrders.map((o) => (
                     <OrderCard
                       key={o._id}
@@ -692,8 +793,7 @@ export default function DashboardOrdersPage() {
                     />
                   ))}
                 </tbody>
-              </table>
-            </div>
+            </table>
           </div>
           <div className="mt-4 rounded-2xl border border-border/60 bg-card">
             <Pagination
@@ -944,25 +1044,18 @@ function KpiCard({
   const c = tintMap[tint];
   return (
     <div className={cn(
-      'group relative overflow-hidden rounded-2xl border p-4 transition-all hover:-translate-y-0.5 hover:shadow-md',
-      hero ? 'border-primary/30 bg-gradient-to-b from-primary/[0.06] to-transparent' : 'border-border/60 bg-card hover:border-primary/30',
+      'relative overflow-hidden rounded-2xl border bg-card p-3 sm:p-4',
+      hero ? 'border-primary/30' : 'border-border/60',
     )}>
-      {/* Top accent bar — subtle brand mark */}
-      <div className={cn('absolute inset-x-0 top-0 h-0.5 bg-gradient-to-r opacity-70', c.accent)} aria-hidden />
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0 flex-1">
-          <div className="text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">{label}</div>
-          <AutoFitValue className="mt-1.5 text-2xl font-bold tracking-tight">{value}</AutoFitValue>
-        </div>
-        <div className={cn('grid h-9 w-9 shrink-0 place-items-center rounded-xl', c.bg, c.text)}>
-          <Icon className="h-4 w-4" />
-        </div>
+      <div className={cn('absolute end-3 top-3 grid h-8 w-8 place-items-center rounded-lg', c.bg, c.text)}>
+        <Icon className="h-4 w-4" />
       </div>
+      <div className="min-w-0 pe-10 text-[11px] font-semibold uppercase leading-tight tracking-wide text-muted-foreground">
+        {label}
+      </div>
+      <AutoFitValue className="mt-2 text-xl font-extrabold tracking-tight sm:text-2xl">{value}</AutoFitValue>
       {hint && (
-        <div className="mt-2.5 flex items-center gap-1 text-[10px] text-muted-foreground">
-          <TrendingUp className="h-3 w-3" />
-          {hint}
-        </div>
+        <div className="mt-1.5 text-[11px] leading-tight text-muted-foreground">{hint}</div>
       )}
     </div>
   );
@@ -1077,7 +1170,7 @@ function StatusMenu({
         aria-expanded={open}
         onClick={() => setOpen((v) => !v)}
         className={cn(
-          'grid h-8 w-8 place-items-center rounded-lg transition-colors',
+          'grid h-10 w-10 place-items-center rounded-lg transition-colors',
           open ? 'bg-muted text-foreground' : 'text-muted-foreground hover:bg-muted/60 hover:text-foreground',
         )}
       >
@@ -1203,26 +1296,29 @@ function OrderCard({
 
   return (
     <>
-      {/* Row principale — cliquable pour déplier les détails. */}
+      {/* Sous lg la ligne est une carte (flex). Dès lg elle redevient une row. */}
       <tr
         onClick={onToggle}
         className={cn(
-          'cursor-pointer transition-colors',
+          'relative cursor-pointer border-b border-s-4 border-border/60 transition-colors',
+          stage.edge,
+          'flex w-full max-w-full flex-wrap items-center gap-x-3 gap-y-2.5 p-4',
+          'lg:table-row lg:w-auto lg:max-w-none lg:border-s-0 lg:border-b lg:border-border/60 lg:p-0',
           expanded ? 'bg-primary/5' : 'hover:bg-muted/30',
+          pendingConfirm && !expanded && 'border-b-0',
         )}
       >
-        {/* Commande — numéro + date, avec la barre de statut à gauche */}
-        <td className="relative px-3 py-3 sm:px-4">
-          <span className={cn('absolute inset-y-0 left-0 w-1', stage.stripe)} aria-hidden />
-          <div className="font-mono text-xs font-semibold">{o.orderNumber}</div>
-          <div className="mt-0.5 inline-flex items-center gap-1 text-[10px] text-muted-foreground">
+        <td className="relative order-1 min-w-0 flex-1 p-0 lg:table-cell lg:px-4 lg:py-3">
+          <span className={cn('absolute inset-y-0 left-0 hidden w-1 lg:block', stage.stripe)} aria-hidden />
+          <div className="font-mono text-xs font-semibold lg:ps-1">{o.orderNumber}</div>
+          <div className="mt-0.5 inline-flex items-center gap-1 whitespace-nowrap text-[11px] text-muted-foreground lg:ps-1 lg:text-[10px]">
             <Calendar className="h-3 w-3" />
             {formatDate(o.createdAt)}
           </div>
         </td>
 
         {/* Client — avatar + nom + téléphone cliquable + badge fiabilité */}
-        <td className="px-3 py-3 sm:px-4">
+        <td className="order-3 min-w-0 basis-full p-0 lg:table-cell lg:px-4 lg:py-3">
           <div className="flex items-center gap-2.5">
             <div
               className={cn(
@@ -1263,13 +1359,13 @@ function OrderCard({
                 <a
                   href={`tel:${o.customerPhone}`}
                   onClick={(e) => e.stopPropagation()}
-                  className="inline-flex items-center gap-1 text-[10px] text-muted-foreground hover:text-foreground"
+                  className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
                 >
                   <Phone className="h-2.5 w-2.5" />
                   {o.customerPhone}
                 </a>
               ) : o.shippingAddress?.city ? (
-                <span className="inline-flex items-center gap-1 text-[10px] text-muted-foreground">
+                <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
                   <MapPin className="h-2.5 w-2.5" />
                   {o.shippingAddress.city}
                 </span>
@@ -1278,8 +1374,8 @@ function OrderCard({
           </div>
         </td>
 
-        {/* Produits — thumbnail + nom du 1er + « +N » */}
-        <td className="w-[260px] max-w-[260px] px-3 py-3 sm:px-4">
+        {/* Produits — carte mobile, puis colonne du tableau à partir de xl */}
+        <td className="order-4 min-w-0 basis-full p-0 lg:hidden xl:table-cell xl:max-w-[220px] xl:px-4 xl:py-3">
           <div className="flex items-center gap-2.5">
             <div
               className="grid h-10 w-10 shrink-0 place-items-center overflow-hidden rounded-md border border-border/60 bg-muted"
@@ -1306,8 +1402,7 @@ function OrderCard({
           </div>
         </td>
 
-        {/* Total — grand + nombre d'articles en sous-titre */}
-        <td className="px-3 py-3 text-right sm:px-4">
+        <td className="order-5 p-0 text-right lg:table-cell lg:px-4 lg:py-3">
           <div className="text-sm font-bold tabular-nums">
             {formatCurrency(o.total, o.currency)}
           </div>
@@ -1316,8 +1411,7 @@ function OrderCard({
           </div>
         </td>
 
-        {/* Paiement — pastille + label + badge COD */}
-        <td className="px-3 py-3 sm:px-4">
+        <td className="order-6 p-0 lg:table-cell lg:px-4 lg:py-3">
           <span className="inline-flex items-center gap-1.5 text-xs font-medium">
             <span
               className={cn(
@@ -1342,13 +1436,14 @@ function OrderCard({
           )}
         </td>
 
-        {/* Statut — stepper compact */}
-        <td className="px-3 py-3 sm:px-4">
-          <OrderStepper order={o} />
+        <td className="order-2 shrink-0 p-0 lg:table-cell lg:px-4 lg:py-3">
+          <span className={cn('inline-flex items-center gap-1.5 whitespace-nowrap rounded-full px-2.5 py-1 text-[11px] font-semibold ring-1', stage.cls)}>
+            <stage.icon className="h-3.5 w-3.5" />
+            {stage.label}
+          </span>
         </td>
 
-        {/* Actions — menu ⋯ + chevron d'expand */}
-        <td className="w-10 px-2 py-3">
+        <td className="order-7 ms-auto w-auto p-0 lg:table-cell lg:w-16 lg:px-2 lg:py-3">
           <div className="flex items-center justify-end gap-1" onClick={(e) => e.stopPropagation()}>
             <StatusMenu order={o} storeId={storeId} onChanged={onChanged} />
             <ChevronDown
@@ -1365,24 +1460,26 @@ function OrderCard({
           en attente de confirmation, non dépliées. Colspan = 7 pour couvrir
           toute la largeur. Économise 50 clics/jour à l'agent de confirmation. */}
       {pendingConfirm && !expanded && (
-        <tr className="border-t border-border/40">
-          <td colSpan={7} className="bg-amber-500/5 px-4 py-1.5">
+        <tr className="flex w-full max-w-full border-b border-border/60 lg:table-row lg:w-auto lg:max-w-none lg:border-0">
+          <td colSpan={7} className="block w-full min-w-0 bg-amber-500/[0.07] p-0 lg:table-cell">
             <QuickConfirmBar order={o} storeId={storeId} onChanged={onChanged} />
           </td>
         </tr>
       )}
 
-      {/* Détails dépliés — row avec colspan qui prend toute la largeur. */}
       {expanded && (
-        <tr>
-          <td colSpan={7} className="bg-muted/20 p-4 sm:p-6">
+        <tr className="block w-full max-w-full lg:table-row lg:w-auto lg:max-w-none">
+          <td colSpan={7} className="block min-w-0 max-w-full bg-muted/20 p-4 sm:p-6 lg:table-cell">
+          <div className="mb-4">
+            <OrderStepper order={o} />
+          </div>
           {/* Confirmation client (appel) — promue tout en haut.
               Pour un funnel COD c'est l'action #1 que l'agent fait quand
               il ouvre une commande : confirmer / rappel / refus. Avoir les
               boutons au-dessus de tout évite de scroller. */}
           <OrderConfirmationActions order={o} storeId={storeId} onChanged={onChanged} />
 
-          <div className="mt-5 grid gap-5 lg:grid-cols-3">
+          <div className="mt-5 grid gap-5 lg:grid-cols-2 xl:grid-cols-3">
             {/* Customer */}
             <DetailSection icon={<UserIcon className="h-4 w-4" />} title="Client">
               <DetailRow label="Nom" value={o.customerName || '—'} />
@@ -1523,8 +1620,8 @@ function OrderCard({
               <Package className="h-3.5 w-3.5" />
               Articles ({o.items.length})
             </h3>
-            <div className="overflow-x-auto rounded-xl border border-border/60 bg-card">
-              <table className="w-full min-w-[420px] text-sm">
+            <div className="min-w-0 overflow-x-auto rounded-xl border border-border/60 bg-card">
+              <table className="w-full table-fixed text-sm">
                 <thead className="bg-muted/40">
                   <tr className="text-left text-[11px] uppercase tracking-wider text-muted-foreground">
                     <th className="px-4 py-2 font-semibold">Produit</th>
@@ -1540,7 +1637,7 @@ function OrderCard({
                     return (
                     <tr key={`${it.productId}-${i}`}>
                       <td className="px-4 py-2.5">
-                        <div className="flex items-center gap-3">
+                        <div className="flex w-full min-w-0 items-center gap-3">
                           <div className="grid h-11 w-11 shrink-0 place-items-center overflow-hidden rounded-md border border-border/60 bg-muted">
                             {img ? (
                               // eslint-disable-next-line @next/next/no-img-element
@@ -2144,7 +2241,7 @@ function QuickConfirmBar({
   }
 
   return (
-    <div className="border-t border-border/60 bg-gradient-to-r from-sky-500/5 via-card to-card px-4 py-2.5 sm:px-5">
+    <div className="bg-transparent px-4 py-2.5 sm:px-5">
       <div className="flex flex-wrap items-center gap-2">
         <span className="inline-flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-sky-700">
           <PhoneCall className="h-3.5 w-3.5" />
@@ -2154,7 +2251,7 @@ function QuickConfirmBar({
           type="button"
           onClick={() => apply('confirmed')}
           disabled={busy !== null}
-          className="inline-flex h-8 items-center gap-1.5 rounded-md border border-emerald-500/30 bg-emerald-500/5 px-2.5 text-xs font-semibold text-emerald-700 transition-colors hover:bg-emerald-500/15 disabled:opacity-60"
+          className="inline-flex h-10 items-center gap-1.5 rounded-lg border border-emerald-500/30 bg-card px-3 text-xs font-semibold text-emerald-700 transition-colors hover:bg-emerald-500/10 disabled:opacity-60"
         >
           {busy === 'confirmed' ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
           Confirmé
@@ -2163,7 +2260,7 @@ function QuickConfirmBar({
           type="button"
           onClick={() => apply('no_answer')}
           disabled={busy !== null}
-          className="inline-flex h-8 items-center gap-1.5 rounded-md border border-amber-500/30 bg-amber-500/5 px-2.5 text-xs font-semibold text-amber-700 transition-colors hover:bg-amber-500/15 disabled:opacity-60"
+          className="inline-flex h-10 items-center gap-1.5 rounded-lg border border-amber-500/30 bg-card px-3 text-xs font-semibold text-amber-700 transition-colors hover:bg-amber-500/10 disabled:opacity-60"
         >
           {busy === 'no_answer' ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <PhoneMissed className="h-3.5 w-3.5" />}
           Pas de réponse
@@ -2172,7 +2269,7 @@ function QuickConfirmBar({
           <a
             href={`tel:${order.customerPhone}`}
             onClick={(e) => e.stopPropagation()}
-            className="ml-auto inline-flex h-8 items-center gap-1.5 rounded-md bg-primary/10 px-2.5 text-xs font-semibold text-primary hover:bg-primary/20"
+            className="ms-auto inline-flex h-10 items-center gap-1.5 rounded-lg bg-primary/10 px-3 text-xs font-semibold text-primary hover:bg-primary/20"
           >
             <Phone className="h-3.5 w-3.5" />
             Appeler

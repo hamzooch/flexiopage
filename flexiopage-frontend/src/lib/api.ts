@@ -1922,6 +1922,19 @@ export const storesApi = {
     },
   ) =>
     api.get<{ orders: unknown[]; total: number; limit: number; skip: number }>(`/stores/${storeId}/orders`, { params }),
+  /** Fichier Excel ou CSV (Google Sheets) des commandes filtrées. */
+  exportOrders: (
+    storeId: string,
+    params: {
+      format: 'xlsx' | 'csv';
+      search?: string;
+      status?: 'all' | 'pending' | 'paid' | 'delivered' | 'cancelled';
+      confirmation?: string;
+      from?: string;
+      to?: string;
+    },
+  ) =>
+    api.get<Blob>(`/stores/${storeId}/orders/export`, { params, responseType: 'blob' }),
   /** Nouvelles commandes depuis `since` (ISO) — badge sidebar. */
   countNewOrders: (storeId: string, since: string) =>
     api.get<{ count: number }>(`/stores/${storeId}/orders/new-count`, { params: { since } }),

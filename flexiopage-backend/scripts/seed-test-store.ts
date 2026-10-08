@@ -26,6 +26,7 @@ import { connectDB } from '../src/config/database';
 import { User } from '../src/models/User.model';
 import { Store } from '../src/models/Store.model';
 import { Product } from '../src/models/Product.model';
+import { LandingPage } from '../src/models/LandingPage.model';
 import { Order } from '../src/models/Order.model';
 import { Customer } from '../src/models/Customer.model';
 
@@ -52,8 +53,11 @@ const PRODUCTS = [
     weight: 0.6,
     weightUnit: 'kg',
     images: [
-      'https://images.unsplash.com/photo-1583391733956-3750e0ff4e8b?w=1200',
-      'https://images.unsplash.com/photo-1581338834647-b0fb40704e21?w=1200',
+      'https://images.unsplash.com/photo-1583391733956-3750e0ff4e8b?auto=format&fit=crop&w=1400&q=80',
+      'https://images.unsplash.com/photo-1595777457583-95e059d581b8?auto=format&fit=crop&w=1400&q=80',
+      'https://images.unsplash.com/photo-1566174053879-31528523f8ae?auto=format&fit=crop&w=1400&q=80',
+      'https://images.unsplash.com/photo-1515372039744-b8f02a3ae446?auto=format&fit=crop&w=1400&q=80',
+      'https://images.unsplash.com/photo-1490481651871-ab68de25d43d?auto=format&fit=crop&w=1400&q=80',
     ],
     variants: [
       { name: 'S', sku: 'BS-CAFTAN-MAR-001-S', price: 45000, stock: 6 },
@@ -277,6 +281,51 @@ async function main(): Promise<void> {
     });
   }
   console.log(`✓ ${PRODUCTS.length} produits physiques créés`);
+
+  const caftan = PRODUCTS[0];
+  await LandingPage.create({
+    storeId: store._id,
+    name: 'Caftan Marrakech',
+    slug: 'caftan-marrakech',
+    kind: 'landing',
+    isPublished: true,
+    publishedAt: new Date(),
+    seoTitle: 'Caftan brodé Marrakech',
+    seoDescription: 'Caftan en soie brodée, photo principale et galerie.',
+    sections: [
+      {
+        id: 'product',
+        type: 'product',
+        order: 0,
+        props: {
+          name: caftan.name,
+          tagline: 'Soie brodée à la main, finitions dorées. Photo principale et galerie.',
+          priceBefore: caftan.compareAtPrice,
+          priceAfter: caftan.price,
+          currency: 'XOF',
+          discountPct: 25,
+          imageUrl: caftan.images[0],
+          gallery: caftan.images.slice(1),
+          highlights: ['Broderie faite main', 'Coupe ample', 'Livraison à domicile'],
+          ctaText: 'Commander',
+          trustBadges: ['Paiement à la livraison', 'Échange sous 7 jours'],
+          rating: 4.8,
+          reviewCount: 126,
+        },
+      },
+      {
+        id: 'gallery',
+        type: 'gallery',
+        order: 1,
+        props: {
+          title: 'Galerie',
+          subtitle: 'Le même caftan, sous plusieurs angles.',
+          images: [...caftan.images],
+        },
+      },
+    ],
+  });
+  console.log('✓ Page exemple /p/caftan-marrakech créée');
 
   // ─── Recap ───────────────────────────────────────────────────────────
   const apiBase = (process.env.API_PUBLIC_URL || 'http://localhost:5000').replace(/\/$/, '');

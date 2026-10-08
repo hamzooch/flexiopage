@@ -106,6 +106,7 @@ router.patch('/:storeId/pages/:pageId', pageController.updatePage);
 router.delete('/:storeId/pages/:pageId', pageController.deletePage);
 
 router.get('/:storeId/orders', orderController.listOrders);
+router.get('/:storeId/orders/export', orderController.exportOrders);
 // Doit être défini AVANT /orders/:orderId pour ne pas être capté par le param.
 router.get('/:storeId/orders/todo', orderController.listOrdersTodo);
 router.get('/:storeId/orders/new-count', orderController.countNewOrders);

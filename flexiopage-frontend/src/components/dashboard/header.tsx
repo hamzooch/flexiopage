@@ -12,7 +12,31 @@ import { cn, logoutRedirectPath } from '@/lib/utils';
 import { WalletBadges } from '@/components/dashboard/wallet-badges';
 import { NotificationsBell } from '@/components/dashboard/notifications-bell';
 import { LanguageSwitcher } from '@/components/dashboard/language-switcher';
-import { useT } from '@/lib/i18n';
+import { useT, type TKey } from '@/lib/i18n';
+
+/** Libellés du fil d'Ariane, alignés sur la sidebar (pas le segment d'URL). */
+const CRUMB_KEY: Partial<Record<string, TKey>> = {
+  orders: 'sidebar.orders',
+  products: 'sidebar.products',
+  collections: 'sidebar.collections',
+  marketplace: 'sidebar.marketplace',
+  offers: 'sidebar.offers',
+  suppliers: 'sidebar.suppliers',
+  customers: 'sidebar.customers',
+  earnings: 'sidebar.earnings',
+  wallet: 'sidebar.wallet',
+  team: 'sidebar.team',
+  support: 'sidebar.support',
+  integrations: 'sidebar.integrations',
+  apps: 'sidebar.apps',
+  tracking: 'sidebar.tracking',
+  studio: 'sidebar.aiStudio',
+  calculator: 'sidebar.profitCalculator',
+  analytics: 'sidebar.analytics',
+  stores: 'sidebar.myStores',
+  profile: 'header.profile',
+  settings: 'header.settings',
+};
 
 function prettySegment(seg: string) {
   return seg.replace(/-/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
@@ -104,7 +128,8 @@ export function Header({ onOpenMobileNav }: Props = {}) {
     // visually distinct from a slug but doesn't dominate the header.
     title = `#${lastSeg.slice(-6)}`;
   } else {
-    title = prettySegment(lastSeg);
+    const crumb = CRUMB_KEY[lastSeg];
+    title = crumb ? t(crumb) : prettySegment(lastSeg);
   }
   // Best display name we can build for this user. Falls back to the email
   // username (before @) when `name` is missing/blank — much friendlier than
@@ -140,7 +165,7 @@ export function Header({ onOpenMobileNav }: Props = {}) {
         <span className="block h-full w-1/3 gradient-brand animate-chrome-sheen" />
       </span>
 
-      {/* Title + breadcrumb */}
+      {/* Fil d'Ariane seulement. Le titre de la page (h1) vit dans le contenu. */}
       <div className="flex min-w-0 items-center gap-2">
         <button
           type="button"
@@ -150,22 +175,21 @@ export function Header({ onOpenMobileNav }: Props = {}) {
         >
           <Menu className="h-5 w-5" />
         </button>
-        <div className="min-w-0">
-          <div className="flex items-center gap-1.5 text-xs text-sidebar-foreground">
-            <span>{t('header.dashboard')}</span>
-            {segments.length > 1 && (
-              <>
-                <span className="text-sidebar-foreground/40">/</span>
-                <span className="truncate text-sidebar-foreground">{title}</span>
-              </>
-            )}
-          </div>
-          <h1 className="truncate text-lg font-semibold tracking-tight text-sidebar-strong">{title}</h1>
-        </div>
+        <nav aria-label="Fil d'Ariane" className="flex min-w-0 items-center gap-1.5 text-sm">
+          {segments.length <= 1 ? (
+            <span className="hidden truncate font-medium text-sidebar-strong sm:inline">{t('header.dashboard')}</span>
+          ) : (
+            <>
+              <span className="hidden truncate text-sidebar-foreground/70 sm:inline">{t('header.dashboard')}</span>
+              <span className="hidden text-sidebar-foreground/40 sm:inline" aria-hidden="true">/</span>
+              <span className="truncate font-medium text-sidebar-strong">{title}</span>
+            </>
+          )}
+        </nav>
       </div>
 
       {/* Search */}
-      <div className="hidden flex-1 max-w-md md:block">
+      <div className="hidden min-w-[12rem] flex-1 max-w-md xl:block">
         <div className="group relative">
           <Search className="pointer-events-none absolute start-3 top-1/2 h-4 w-4 -translate-y-1/2 text-sidebar-foreground transition-colors group-focus-within:text-primary" />
           <input
@@ -180,7 +204,7 @@ export function Header({ onOpenMobileNav }: Props = {}) {
       </div>
 
       {/* Actions */}
-      <div className="flex items-center gap-1.5">
+      <div className="flex shrink-0 items-center gap-1.5">
         {/* Store switcher — dropdown of the seller's stores. Clicking one
             scopes the whole dashboard to it (via zustand + router.refresh)
             without leaving the current page. The old behavior was to send

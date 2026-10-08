@@ -723,6 +723,14 @@ function Hero() {
   );
 }
 
+const EXAMPLE_CAFTAN = [
+  'https://images.unsplash.com/photo-1583391733956-3750e0ff4e8b?auto=format&fit=crop&w=900&q=80',
+  'https://images.unsplash.com/photo-1595777457583-95e059d581b8?auto=format&fit=crop&w=400&q=80',
+  'https://images.unsplash.com/photo-1566174053879-31528523f8ae?auto=format&fit=crop&w=400&q=80',
+  'https://images.unsplash.com/photo-1515372039744-b8f02a3ae446?auto=format&fit=crop&w=400&q=80',
+  'https://images.unsplash.com/photo-1490481651871-ab68de25d43d?auto=format&fit=crop&w=400&q=80',
+];
+
 function HeroScreenMock() {
   const { t } = useT();
   const reduceMotion = useReducedMotion();
@@ -743,6 +751,8 @@ function HeroScreenMock() {
         <div className="grid gap-4 p-4 sm:grid-cols-[1.05fr_1fr] sm:gap-8 sm:p-10">
           {/* Mock product image */}
           <div className="relative aspect-[4/5] overflow-hidden rounded-xl bg-gradient-to-br from-amber-50 via-orange-100 to-orange-200">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={EXAMPLE_CAFTAN[0]} alt="" className="absolute inset-0 h-full w-full object-cover" />
             <motion.div
               initial={{ y: -30, opacity: 0 }}
               animate={{ y: 0, opacity: 1 }}
@@ -760,14 +770,17 @@ function HeroScreenMock() {
               <Wallet className="h-2.5 w-2.5 sm:h-3 sm:w-3" /> {t('landing.heroMock.cash')}
             </motion.div>
             <div className="absolute inset-x-4 bottom-4 grid grid-cols-4 gap-1 sm:inset-x-6 sm:bottom-6 sm:gap-1.5">
-              {[0,1,2,3].map((i) => (
+              {EXAMPLE_CAFTAN.slice(1).map((src, i) => (
                 <motion.div
-                  key={i}
+                  key={src}
                   initial={{ opacity: 0, scale: 0.7 }}
                   animate={{ opacity: 1, scale: 1 }}
                   transition={{ duration: 0.35, delay: 1.6 + i * 0.08 }}
-                  className="aspect-square rounded-md bg-card/70 backdrop-blur"
-                />
+                  className="aspect-square overflow-hidden rounded-md bg-card/70 ring-1 ring-white/70 backdrop-blur"
+                >
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={src} alt="" className="h-full w-full object-cover" />
+                </motion.div>
               ))}
             </div>
           </div>

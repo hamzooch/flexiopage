@@ -1,9 +1,8 @@
 /**
- * Compact page header — replaces the oversized rounded-3xl hero banners that
- * duplicate what's already shown in the top navbar. Goal: one line on desktop,
- * tight wrap on mobile, no gradient/blur. The optional `description` and
- * `actions` slots cover the few pages that need a one-liner of context or
- * a right-aligned button row.
+ * Titre de page du tableau de bord. C'est le seul h1 : la barre du haut
+ * n'affiche qu'un fil d'Ariane. Une ligne sur desktop, retour à la ligne
+ * serré sur mobile. `description` et `actions` couvrent le contexte court
+ * et les boutons alignés à droite.
  */
 import { cn } from '@/lib/utils';
 

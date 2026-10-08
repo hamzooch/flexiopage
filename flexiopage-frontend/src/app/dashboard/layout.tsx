@@ -54,8 +54,8 @@ function DashboardLayoutContent({ children }: { children: React.ReactNode }) {
         <div className="flex min-w-0 flex-1 flex-col">
           <Header onOpenMobileNav={() => setMobileNavOpen(true)} />
           <EmailVerificationBanner />
-          <main className="flex-1 p-3 sm:p-6 lg:p-8">
-            <div className="mx-auto w-full max-w-7xl">{children}</div>
+          <main className="min-w-0 flex-1 p-3 sm:p-6 lg:p-8">
+            <div className="mx-auto w-full min-w-0 max-w-7xl">{children}</div>
           </main>
         </div>
       </div>

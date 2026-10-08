@@ -67,7 +67,7 @@ import {
   XAxis,
   YAxis,
 } from 'recharts';
-import { useAuthStore } from '@/stores/auth-store';
+import { readPersistedUser, useAuthStore } from '@/stores/auth-store';
 import { useStoreStore } from '@/stores/store-store';
 import { storesApi } from '@/lib/api';
 import { formatCurrency, cn, mediaUrl, formatYmdLabel } from '@/lib/utils';
@@ -138,7 +138,11 @@ function formatDateFR(iso: string): string {
 }
 
 export default function DashboardOverviewPage() {
-  const user = useAuthStore((s) => s.user);
+  const liveUser = useAuthStore((s) => s.user);
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
+  const user = liveUser ?? (mounted ? readPersistedUser() : null);
+  const firstName = user?.name?.trim().split(/\s+/)[0];
   const currentStoreId = useStoreStore((s) => s.currentStoreId);
   const setCurrentStore = useStoreStore((s) => s.setCurrentStore);
 
@@ -310,12 +314,12 @@ export default function DashboardOverviewPage() {
   );
 
   return (
-    <div className="space-y-6">
+    <div className="min-w-0 space-y-6">
       {/* ── Header ─────────────────────────────────────────────── */}
       <PageHeader
         title={
           <>
-            Bonjour <span className="gradient-brand-text">{user?.name?.split(' ')[0] || 'à toi'}</span> 👋
+            Bonjour <span className="gradient-brand-text">{firstName || 'à toi'}</span> 👋
           </>
         }
         description={
@@ -501,7 +505,7 @@ export default function DashboardOverviewPage() {
       {/* ── KPI cards (5 principaux) — 2 col en mobile pour lire les
             chiffres, 5 col en desktop pour tout scanner d'un coup. ── */}
       {activeStore && (
-        <section className="grid grid-cols-2 gap-2 sm:gap-3 lg:grid-cols-5">
+        <section className="grid grid-cols-2 gap-2 sm:gap-3 lg:grid-cols-3 xl:grid-cols-5">
           <KpiCard
             label="Revenu créé"
             value={<KpiMoney amount={k?.sales.value ?? 0} currency={currency} />}
@@ -858,45 +862,40 @@ function KpiCard({
   const negative = typeof deltaPct === 'number' && deltaPct < 0;
   const TrendIcon = positive ? TrendingUp : negative ? TrendingDown : Activity;
   return (
-    <div className="group relative overflow-hidden rounded-xl border border-border/60 bg-card p-2.5 transition-all hover:-translate-y-0.5 hover:shadow-md sm:rounded-2xl sm:p-4">
-      {/* Mobile: icon on top, value below — keeps the card narrow enough
-          for 4 to fit on a 375px phone. Desktop: classic side-by-side. */}
-      <div className="flex flex-col gap-1.5 sm:flex-row sm:items-start sm:justify-between sm:gap-2">
-        <div
-          className={cn(
-            'grid h-7 w-7 shrink-0 place-items-center rounded-lg bg-gradient-to-br text-white shadow-sm sm:order-2 sm:h-10 sm:w-10 sm:rounded-xl',
-            t.iconBg,
-            t.glow
-          )}
-        >
-          <Icon className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
-        </div>
-        <div className="min-w-0 sm:order-1">
-          <div className="truncate text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
-            {label}
-          </div>
-          <AutoFitValue className="mt-0.5 text-lg font-extrabold tracking-tight sm:mt-1.5 sm:text-2xl">
-            {loading ? <span className="inline-block h-5 w-14 animate-pulse rounded bg-muted sm:h-6 sm:w-20" /> : value}
-          </AutoFitValue>
-          {!loading && deltaPct !== null && (
-            <div className="mt-0.5 flex items-center gap-1 sm:mt-1 sm:gap-1.5">
-              <span
-                className={cn(
-                  'inline-flex items-center gap-0.5 rounded-full px-1 py-0.5 text-[10px] font-semibold sm:px-1.5 sm:text-[11px]',
-                  positive ? 'bg-emerald-500/10 text-emerald-700' : negative ? 'bg-rose-500/10 text-rose-700' : 'bg-muted text-muted-foreground'
-                )}
-              >
-                <TrendIcon className="h-2 w-2 sm:h-2.5 sm:w-2.5" />
-                {positive ? '+' : ''}{deltaPct.toFixed(0)}%
-              </span>
-              {/* "vs prev" only shown on tablet+ where there's room */}
-              <span className="hidden truncate text-[11px] text-muted-foreground sm:inline">
-                vs {previousValue}
-              </span>
-            </div>
-          )}
+    <div className="group relative overflow-hidden rounded-2xl border border-border/60 bg-card p-3 transition-all hover:-translate-y-0.5 hover:shadow-md sm:p-4">
+      <div
+        className={cn(
+          'absolute end-3 top-3 grid h-8 w-8 place-items-center rounded-lg bg-gradient-to-br text-white shadow-sm',
+          t.iconBg,
+          t.glow
+        )}
+      >
+        <Icon className="h-4 w-4" />
+      </div>
+      <div className="min-w-0 pe-10">
+        <div className="text-[11px] font-semibold uppercase leading-tight tracking-wide text-muted-foreground">
+          {label}
         </div>
       </div>
+      <AutoFitValue className="mt-2 text-xl font-extrabold tracking-tight sm:text-2xl">
+        {loading ? <span className="inline-block h-6 w-16 animate-pulse rounded bg-muted" /> : value}
+      </AutoFitValue>
+      {!loading && deltaPct !== null && (
+        <div className="mt-1.5 flex flex-wrap items-center gap-x-1.5 gap-y-0.5">
+          <span
+            className={cn(
+              'inline-flex items-center gap-0.5 rounded-full px-1.5 py-0.5 text-[11px] font-semibold',
+              positive ? 'bg-emerald-500/10 text-emerald-700' : negative ? 'bg-rose-500/10 text-rose-700' : 'bg-muted text-muted-foreground'
+            )}
+          >
+            <TrendIcon className="h-2.5 w-2.5" />
+            {positive ? '+' : ''}{deltaPct.toFixed(0)}%
+          </span>
+          <span className="text-[11px] text-muted-foreground">
+            vs {previousValue}
+          </span>
+        </div>
+      )}
     </div>
   );
 }
@@ -1726,7 +1725,7 @@ function QualityStrip({
   currency: string;
 }) {
   return (
-    <section className="grid grid-cols-2 gap-2 sm:grid-cols-4 sm:gap-3">
+    <section className="grid grid-cols-2 gap-2 sm:gap-3 lg:grid-cols-4">
       <MiniStat
         icon={Banknote}
         label="Revenu encaissé"
@@ -1750,7 +1749,7 @@ function QualityStrip({
       />
       <MiniStat
         icon={XCircle}
-        label="Taux de remb."
+        label="Taux de remboursement"
         value={`${refundRate.toFixed(1)}%`}
         tone={refundRate > 5 ? 'rose' : 'muted'}
         hint="Remboursées / payées"
@@ -1779,9 +1778,9 @@ function MiniStat({
   const t = MINI_TONE[tone];
   return (
     <div className={cn('rounded-xl border border-border/60 bg-card p-3 ring-1', t.ring)}>
-      <div className="flex items-center gap-1.5">
-        <Icon className={cn('h-3.5 w-3.5', t.icon)} />
-        <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+      <div className="flex items-start gap-1.5">
+        <Icon className={cn('mt-0.5 h-3.5 w-3.5 shrink-0', t.icon)} />
+        <span className="min-w-0 text-[11px] font-semibold uppercase leading-tight tracking-wide text-muted-foreground">
           {label}
         </span>
       </div>

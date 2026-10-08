@@ -159,7 +159,8 @@ function clampByte(n: number): number {
   return Math.max(0, Math.min(255, Math.round(n)));
 }
 
-function hexToRgb(hex: string): [number, number, number] {
+function hexToRgb(hex: string | undefined | null): [number, number, number] {
+  if (!hex || typeof hex !== 'string') return [0, 0, 0];
   const m = hex.replace('#', '').match(/^([0-9a-f]{6})$/i);
   if (!m) return [0, 0, 0];
   const n = parseInt(m[1], 16);
@@ -1014,11 +1015,19 @@ export function resolveStoreTheme(
   store: { theme?: Partial<ThemeTokens> } | null | undefined
 ): ThemeTokens {
   const saved = store?.theme;
-  if (saved && saved.primary && saved.background && saved.foreground) {
-    return withLayoutFallback(saved as ThemeTokens);
+  const template =
+    STORE_THEME_TEMPLATES.find((t) => t.id === saved?.templateId)?.theme
+    || STORE_THEME_TEMPLATES[0].theme;
+  // Une palette enregistrée ne contient souvent que primary / accent /
+  // background / foreground. On complète avec le thème (surface, bordure,
+  // typos) pour ne pas faire planter la vitrine sur une couleur absente.
+  if (saved && (saved.primary || saved.background || saved.foreground)) {
+    const overrides = Object.fromEntries(
+      Object.entries(saved).filter(([, value]) => value !== undefined && value !== null && value !== ''),
+    ) as Partial<ThemeTokens>;
+    return withLayoutFallback({ ...template, ...overrides });
   }
-  const found = STORE_THEME_TEMPLATES.find((t) => t.id === saved?.templateId);
-  return found?.theme || STORE_THEME_TEMPLATES[0].theme;
+  return template;
 }
 
 // Tailwind-friendly radius mapping (used by storefront)
@@ -1037,7 +1046,7 @@ export const RADIUS_PX: Record<ThemeRadius, string> = {
  * like `text-primary`, `bg-card`, `border-border` pick up the theme colors
  * on pages (cart, wishlist, checkout) that don't inject theme tokens inline.
  */
-function hexToHslTriplet(hex: string): string {
+function hexToHslTriplet(hex: string | undefined | null): string {
   const [r255, g255, b255] = hexToRgb(hex);
   const r = r255 / 255, g = g255 / 255, b = b255 / 255;
   const max = Math.max(r, g, b), min = Math.min(r, g, b);

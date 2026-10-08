@@ -6,6 +6,7 @@ import { Order, CONFIRMATION_STATUSES, CANCEL_REASON_CODES, type ConfirmationSta
 import { Product } from '../models/Product.model';
 import { logActivity } from '../services/activity-log.service';
 import { reverseMarketplaceDebitsForRefund } from '../services/seller-earnings.service';
+import { ORDER_EXPORT_MAX, ordersToCsv, ordersToXlsx } from '../services/order-export.service';
 
 const PAYMENT_STATUSES = ['pending', 'paid', 'failed', 'refunded', 'manual'] as const;
 const FULFILLMENT_STATUSES = ['unfulfilled', 'partial', 'fulfilled', 'cancelled'] as const;
@@ -136,6 +137,47 @@ export async function listOrders(req: AuthRequest, res: Response): Promise<void>
     to: str('to'),
   });
   res.json({ orders, total, limit, skip });
+}
+
+/** GET /api/stores/:storeId/orders/export?format=xlsx|csv — mêmes filtres que la liste. */
+export async function exportOrders(req: AuthRequest, res: Response): Promise<void> {
+  const store = req.store!;
+  const format = req.query.format === 'csv' ? 'csv' : 'xlsx';
+  const str = (k: string) => (typeof req.query[k] === 'string' && req.query[k] ? (req.query[k] as string) : undefined);
+  const filters = {
+    search: str('search'),
+    status: str('status') as 'pending' | 'paid' | 'delivered' | 'cancelled' | undefined,
+    confirmation: str('confirmation'),
+    from: str('from'),
+    to: str('to'),
+  };
+  const { orders, total } = await orderService.getOrdersByStore(store._id.toString(), {
+    ...filters,
+    limit: ORDER_EXPORT_MAX,
+    skip: 0,
+  });
+  if (total > ORDER_EXPORT_MAX) {
+    res.status(413).json({
+      error: `Trop de commandes pour un seul fichier (${total.toLocaleString('fr-FR')}). Affine les filtres : ${ORDER_EXPORT_MAX.toLocaleString('fr-FR')} maximum.`,
+    });
+    return;
+  }
+  const day = new Date().toISOString().slice(0, 10);
+  const slug = (store.slug || 'boutique').replace(/[^a-z0-9-]+/gi, '-').replace(/^-|-$/g, '') || 'boutique';
+  const timeZone = store.settings?.timezone || 'UTC';
+  const filename = `commandes-${slug}-${day}`;
+
+  if (format === 'csv') {
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}.csv"`);
+    res.send(ordersToCsv(orders, timeZone));
+    return;
+  }
+
+  const buffer = await ordersToXlsx(orders, timeZone);
+  res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+  res.setHeader('Content-Disposition', `attachment; filename="${filename}.xlsx"`);
+  res.send(buffer);
 }
 
 export async function getOrder(req: AuthRequest, res: Response): Promise<void> {

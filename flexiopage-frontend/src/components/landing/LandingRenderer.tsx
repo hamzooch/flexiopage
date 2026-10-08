@@ -232,9 +232,16 @@ function getIcon(name?: string): LucideIcon {
 }
 
 function fmtPrice(n: number, currency?: string): string {
-  const cur = currency || 'USD';
+  const cur = (currency || 'USD').toUpperCase();
+  const zeroDecimals = cur === 'XOF' || cur === 'XAF';
   try {
-    return new Intl.NumberFormat(undefined, { style: 'currency', currency: cur, maximumFractionDigits: 2 }).format(n);
+    // Locale fixe : le serveur et le navigateur n'ont pas le même défaut,
+    // et un format différent casse l'hydratation (45,000 vs 45 000).
+    return new Intl.NumberFormat('fr-FR', {
+      style: 'currency',
+      currency: cur,
+      maximumFractionDigits: zeroDecimals ? 0 : 2,
+    }).format(n);
   } catch {
     return `${n} ${cur}`;
   }

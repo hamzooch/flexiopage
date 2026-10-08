@@ -305,7 +305,7 @@ export default function IntegrationsPage() {
   const ship = shippingStatus(activeStore);
 
   return (
-    <div className="space-y-6">
+    <div className="min-w-0 space-y-5 sm:space-y-6">
       <PageHeader
         icon={Plug}
         title={`Intégrations · ${activeStore.name}`}
@@ -329,7 +329,7 @@ export default function IntegrationsPage() {
         ) : undefined}
       />
 
-      <div role="tablist" aria-label="Intégrations" className="grid gap-3 sm:grid-cols-3">
+      <div role="tablist" aria-label="Intégrations" className="grid grid-cols-3 gap-2 sm:gap-3">
         {TABS.map((item) => {
           const active = tab === item.id;
           const detail = item.id === 'domain'
@@ -346,26 +346,26 @@ export default function IntegrationsPage() {
               aria-selected={active}
               onClick={() => patchQuery({ tab: item.id })}
               className={cn(
-                'flex min-h-11 items-start gap-3 rounded-2xl border p-4 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+                'flex min-h-11 min-w-0 flex-col items-start gap-2 rounded-2xl border p-2.5 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring lg:flex-row lg:items-center lg:gap-3 lg:p-4',
                 active ? 'border-primary/40 bg-primary/5' : 'border-border/60 bg-card hover:bg-muted/40',
               )}
             >
               <span className={cn(
-                'grid h-10 w-10 shrink-0 place-items-center rounded-xl',
+                'grid h-8 w-8 shrink-0 place-items-center rounded-lg lg:h-10 lg:w-10 lg:rounded-xl',
                 active ? 'gradient-brand text-white' : 'bg-muted text-muted-foreground',
               )}>
                 <item.icon className="h-4 w-4" />
               </span>
-              <span className="min-w-0">
-                <span className="block text-sm font-semibold">{item.label}</span>
+              <span className="min-w-0 w-full">
+                <span className="block truncate text-sm font-semibold">{item.label}</span>
                 <span className={cn(
-                  'mt-0.5 flex items-center gap-1.5 text-xs',
+                  'mt-0.5 flex min-w-0 items-center gap-1.5 text-[11px] leading-tight lg:text-xs',
                   tone === 'ok' && 'text-emerald-700',
                   tone === 'warn' && 'text-amber-700',
                   tone === 'muted' && 'text-muted-foreground',
                 )}>
                   <span className={cn(
-                    'h-1.5 w-1.5 rounded-full',
+                    'h-1.5 w-1.5 shrink-0 rounded-full',
                     tone === 'ok' && 'bg-emerald-500',
                     tone === 'warn' && 'bg-amber-500',
                     tone === 'muted' && 'bg-muted-foreground/40',
@@ -521,12 +521,12 @@ function DomainPanel({ store, onSaved }: { store: StoreDoc; onSaved: () => Promi
               placeholder="shop.tonsite.com"
               className="h-11"
             />
-            <Button onClick={handleSaveDomain} disabled={saving || !dirty} className="h-11 gap-2">
+            <Button onClick={handleSaveDomain} disabled={saving || !dirty} className="h-11 w-full shrink-0 gap-2 sm:w-auto">
               {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
               Enregistrer
             </Button>
           </div>
-          <p className="mt-2 text-xs text-muted-foreground">
+          <p className="mt-2 break-all text-xs text-muted-foreground">
             Adresse actuelle :{' '}
             <a href={previewUrl} target="_blank" rel="noreferrer" className="font-mono text-primary hover:underline">{previewUrl}</a>
           </p>
@@ -626,7 +626,7 @@ function DomainPanel({ store, onSaved }: { store: StoreDoc; onSaved: () => Promi
                     <ul className="space-y-2">
                       {(target.nameservers || []).map((ns) => (
                         <li key={ns} className="flex items-center justify-between gap-2 rounded-lg border border-border/60 bg-muted/30 px-3 py-2">
-                          <span className="truncate font-mono text-xs font-medium">{ns}</span>
+                          <span className="min-w-0 flex-1 truncate font-mono text-xs font-medium">{ns}</span>
                           <CopyButton value={ns} />
                         </li>
                       ))}
@@ -685,14 +685,14 @@ function DnsFailure({ check, expected }: { check: DomainCheck; expected: string 
       <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-3 text-xs text-amber-900">
         <p className="font-semibold">Conflit DNS</p>
         <p className="mt-1">
-          Un CNAME est présent mais il ne pointe pas vers <span className="font-mono">{expected}</span>, et un enregistrement A est aussi là.
+          Un CNAME est présent mais il ne pointe pas vers <span className="break-all font-mono">{expected}</span>, et un enregistrement A est aussi là.
           Garde un seul enregistrement qui pointe vers FlexioPage.
         </p>
         {check.cname && check.cname.length > 0 && (
-          <p className="mt-1 font-mono">CNAME actuel : {check.cname.join(', ')}</p>
+          <p className="mt-1 break-all font-mono">CNAME actuel : {check.cname.join(', ')}</p>
         )}
         {check.aRecords && check.aRecords.length > 0 && (
-          <p className="font-mono">A actuel : {check.aRecords.join(', ')}</p>
+          <p className="break-all font-mono">A actuel : {check.aRecords.join(', ')}</p>
         )}
       </div>
     );
@@ -704,7 +704,7 @@ function DnsFailure({ check, expected }: { check: DomainCheck; expected: string 
     return <p className="text-xs text-destructive">Le domaine enregistré n’a pas un format valide.</p>;
   }
   return (
-    <p className="text-xs text-muted-foreground">
+    <p className="break-words text-xs text-muted-foreground">
       DNS détecté : {seen.join(', ') || 'aucun enregistrement'}. Attendu : {expected}. La propagation prend en général 5 à 15 minutes.
     </p>
   );
@@ -774,7 +774,7 @@ function PixelsPanel({ store, onSaved }: { store: StoreDoc; onSaved: () => Promi
       title="Pixels marketing"
       subtitle="Injectés sur la boutique publique. PageView, ViewContent, InitiateCheckout et Purchase partent tout seuls."
     >
-      <div className="space-y-4">
+      <div className="grid gap-4 lg:grid-cols-2">
         <PixelRow logoUrl="/brands/meta-icon.svg" label="Meta Pixel" help="Events Manager. Uniquement des chiffres." error={errors.fb}>
           <Input value={fb} onChange={(e) => { setFb(e.target.value); setSavedOk(false); }} placeholder="1234567890123456" className="font-mono" />
         </PixelRow>
@@ -796,7 +796,7 @@ function PixelsPanel({ store, onSaved }: { store: StoreDoc; onSaved: () => Promi
             <Input value={adsLbl} onChange={(e) => { setAdsLbl(e.target.value); setSavedOk(false); }} placeholder="libellé de conversion" className="font-mono" aria-label="Libellé de conversion Google Ads" />
           </div>
         </PixelRow>
-        <PixelRow icon={<Info className="h-4 w-4 text-fuchsia-600" />} label="Code head personnalisé" help="Hotjar, Clarity, etc. Collé tel quel dans le head des pages publiques.">
+        <PixelRow className="lg:col-span-2" icon={<Info className="h-4 w-4 text-fuchsia-600" />} label="Code head personnalisé" help="Hotjar, Clarity, etc. Collé tel quel dans le head des pages publiques.">
           <textarea
             value={custom}
             onChange={(e) => { setCustom(e.target.value); setSavedOk(false); }}
@@ -806,6 +806,7 @@ function PixelsPanel({ store, onSaved }: { store: StoreDoc; onSaved: () => Promi
           />
         </PixelRow>
         <SaveBar
+          className="lg:col-span-2"
           dirty={dirty}
           saving={saving}
           onSave={handleSave}
@@ -857,7 +858,7 @@ function ShippingPanel({
 
   return (
     <div className="space-y-4">
-      <div role="tablist" aria-label="Type de livraison" className="inline-flex max-w-full rounded-2xl border border-border/60 bg-card p-1">
+      <div role="tablist" aria-label="Type de livraison" className="grid w-full grid-cols-2 gap-1 rounded-2xl border border-border/60 bg-card p-1">
         <SubTab active={sub === 'carrier'} icon={<Truck className="h-4 w-4" />} onClick={() => onSubChange('carrier')}>
           Société de livraison
         </SubTab>
@@ -1007,7 +1008,7 @@ function CarrierPanel({ store, onSaved }: { store: StoreDoc; onSaved: () => Prom
             Le transporteur « {d.provider} » n’est pas branché. Tant que tu n’enregistres pas Best Delivery ou le mode manuel, aucune commande ne part.
           </p>
         )}
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="grid grid-cols-1 gap-3 lg:grid-cols-2 xl:grid-cols-3">
           {CARRIER_PROVIDERS.map((p) => (
             <ProviderCard
               key={p.id}
@@ -1085,7 +1086,7 @@ function CarrierPanel({ store, onSaved }: { store: StoreDoc; onSaved: () => Prom
           success={savedOk ? 'Livraison enregistrée.' : null}
           idle={bestLive(store) ? 'Best Delivery actif.' : 'Aucune société de livraison active.'}
           extra={bestLive(store) ? (
-            <Button variant="outline" onClick={handleDisconnect} disabled={saving} className="gap-2 border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive">
+            <Button variant="outline" onClick={handleDisconnect} disabled={saving} className="h-11 w-full gap-2 border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive sm:w-auto">
               <Power className="h-4 w-4" /> Déconnecter
             </Button>
           ) : null}
@@ -1252,7 +1253,7 @@ function LogisticsPanel({ store, onSaved }: { store: StoreDoc; onSaved: () => Pr
       subtitle="Le prestataire stocke, prépare et expédie. MogaDelivery est le seul 3PL branché aujourd’hui."
     >
       <div className="space-y-5">
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="grid grid-cols-1 gap-3 lg:grid-cols-2 xl:grid-cols-3">
           {LOGISTICS_PROVIDERS.map((p) => (
             <ProviderCard
               key={p.id}
@@ -1359,7 +1360,7 @@ function LogisticsPanel({ store, onSaved }: { store: StoreDoc; onSaved: () => Pr
           success={savedOk ? 'Logistique enregistrée.' : null}
           idle={isMogaLive(store) ? 'MogaDelivery actif.' : 'Aucune logistique active.'}
           extra={isMogaLive(store) ? (
-            <Button variant="outline" onClick={handleDisconnect} disabled={saving} className="gap-2 border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive">
+            <Button variant="outline" onClick={handleDisconnect} disabled={saving} className="h-11 w-full gap-2 border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive sm:w-auto">
               <Power className="h-4 w-4" /> Déconnecter
             </Button>
           ) : null}
@@ -1389,12 +1390,12 @@ function PickupField({ label, value, onChange }: { label: string; value?: string
 
 function Card({ icon, title, subtitle, children }: { icon: ReactNode; title: string; subtitle?: string; children: ReactNode }) {
   return (
-    <section className="rounded-2xl border border-border/60 bg-card p-5 sm:p-6">
+    <section className="min-w-0 rounded-2xl border border-border/60 bg-card p-4 sm:p-6">
       <header className="mb-5 flex items-start gap-3">
         <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl gradient-brand text-white">
           {icon}
         </span>
-        <div>
+        <div className="min-w-0">
           <h2 className="text-base font-semibold tracking-tight">{title}</h2>
           {subtitle && <p className="mt-1 max-w-2xl text-sm text-muted-foreground">{subtitle}</p>}
         </div>
@@ -1430,9 +1431,9 @@ function RecordTable({ rows }: { rows: { label: string; value: string; copy?: st
   return (
     <dl className="divide-y divide-border/60 overflow-hidden rounded-xl border border-border/60 bg-background">
       {rows.map((row) => (
-        <div key={row.label} className="flex items-center gap-3 px-3 py-2.5">
-          <dt className="w-16 shrink-0 text-xs text-muted-foreground">{row.label}</dt>
-          <dd className="min-w-0 flex-1 truncate font-mono text-xs font-medium">{row.value}</dd>
+        <div key={row.label} className="flex items-center gap-2 px-3 py-2.5 sm:gap-3">
+          <dt className="w-14 shrink-0 text-xs text-muted-foreground sm:w-16">{row.label}</dt>
+          <dd className="min-w-0 flex-1 break-all font-mono text-xs font-medium">{row.value}</dd>
           {row.copy ? <CopyButton value={row.copy} /> : null}
         </div>
       ))}
@@ -1452,7 +1453,7 @@ function CopyButton({ value }: { value: string }) {
           window.setTimeout(() => setDone(false), 1500);
         } catch { /* presse-papiers refusé */ }
       }}
-      className="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-lg px-2 text-xs font-medium text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      className="inline-flex h-11 shrink-0 items-center gap-1.5 rounded-lg px-2 text-xs font-medium text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
     >
       {done ? <Check className="h-3.5 w-3.5 text-emerald-600" /> : <Copy className="h-3.5 w-3.5" />}
       {done ? 'Copié' : 'Copier'}
@@ -1480,28 +1481,28 @@ function SubTab({ active, onClick, icon, children }: { active: boolean; onClick:
       aria-selected={active}
       onClick={onClick}
       className={cn(
-        'inline-flex min-h-11 items-center gap-2 rounded-xl px-3 py-2 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:px-4',
+        'inline-flex min-h-11 min-w-0 flex-col items-center justify-center gap-1 rounded-xl px-2 py-2 text-center text-xs font-medium leading-tight transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:flex-row sm:gap-2 sm:px-4 sm:text-sm',
         active ? 'gradient-brand text-white shadow-sm' : 'text-muted-foreground hover:text-foreground',
       )}
     >
-      {icon}
-      {children}
+      <span className="shrink-0">{icon}</span>
+      <span className="min-w-0">{children}</span>
     </button>
   );
 }
 
-function PixelRow({ icon, logoUrl, logoBg, label, help, error, children }: { icon?: ReactNode; logoUrl?: string; logoBg?: string; label: string; help?: string; error?: string; children: ReactNode }) {
+function PixelRow({ icon, logoUrl, logoBg, label, help, error, className, children }: { icon?: ReactNode; logoUrl?: string; logoBg?: string; label: string; help?: string; error?: string; className?: string; children: ReactNode }) {
   return (
-    <div className={cn('rounded-xl border bg-muted/20 p-4', error ? 'border-destructive/50' : 'border-border/60')}>
-      <div className="mb-2 flex items-center gap-2">
+    <div className={cn('min-w-0 rounded-xl border bg-muted/20 p-4', error ? 'border-destructive/50' : 'border-border/60', className)}>
+      <div className="mb-2 flex items-start gap-2.5">
         {logoUrl ? (
-          <BrandLogo src={logoUrl} bg={logoBg} className="h-8 w-8 rounded-lg" />
+          <BrandLogo src={logoUrl} bg={logoBg} className="h-9 w-9 rounded-lg" />
         ) : (
-          <span className="grid h-8 w-8 place-items-center rounded-lg bg-card">{icon}</span>
+          <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-card">{icon}</span>
         )}
-        <div>
+        <div className="min-w-0">
           <Label className="text-sm font-semibold">{label}</Label>
-          {help && <p className="text-xs text-muted-foreground">{help}</p>}
+          {help && <p className="text-xs leading-snug text-muted-foreground">{help}</p>}
         </div>
       </div>
       {children}
@@ -1529,37 +1530,43 @@ function ProviderCard({
   comingSoon?: boolean;
   onSelect: () => void;
 }) {
+  const badge = active ? (
+    <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-emerald-500/10 px-2 py-0.5 text-[11px] font-semibold text-emerald-700">
+      <CheckCircle2 className="h-3 w-3" /> Actif
+    </span>
+  ) : selected ? (
+    <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-primary/10 px-2 py-0.5 text-[11px] font-semibold text-primary">
+      Sélectionné
+    </span>
+  ) : comingSoon ? (
+    <span className="shrink-0 rounded-full bg-amber-500/10 px-2 py-0.5 text-[11px] font-semibold text-amber-700">Bientôt</span>
+  ) : (
+    <span className="shrink-0 rounded-full bg-muted px-2 py-0.5 text-[11px] font-medium text-muted-foreground">Disponible</span>
+  );
+
   return (
     <div className={cn(
-      'flex flex-col rounded-2xl border bg-card p-4',
+      'flex min-w-0 flex-col rounded-2xl border bg-card p-3.5 sm:p-4',
       selected ? 'border-primary ring-2 ring-primary/15' : 'border-border/60',
       comingSoon && 'opacity-70',
     )}>
-      <div className="flex items-start justify-between gap-2">
+      <div className="flex min-w-0 items-start gap-3">
         <ProviderLogo logoUrl={logoUrl} name={name} fallback={icon} />
-        {active ? (
-          <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/10 px-2 py-0.5 text-xs font-semibold text-emerald-700">
-            <CheckCircle2 className="h-3 w-3" /> Actif
-          </span>
-        ) : selected ? (
-          <span className="inline-flex items-center gap-1 rounded-full bg-primary/10 px-2 py-0.5 text-xs font-semibold text-primary">
-            Sélectionné
-          </span>
-        ) : comingSoon ? (
-          <span className="rounded-full bg-amber-500/10 px-2 py-0.5 text-xs font-semibold text-amber-700">Bientôt</span>
-        ) : (
-          <span className="rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground">Disponible</span>
-        )}
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1">
+            <h3 className="text-sm font-semibold">{name}</h3>
+            {badge}
+          </div>
+          <p className="mt-1 line-clamp-2 text-xs leading-snug text-muted-foreground">{description}</p>
+        </div>
       </div>
-      <h3 className="mt-3 text-sm font-semibold">{name}</h3>
-      <p className="mt-0.5 line-clamp-3 text-xs text-muted-foreground">{description}</p>
       <Button
         type="button"
         size="sm"
         variant={selected || comingSoon ? 'outline' : 'default'}
         onClick={comingSoon || selected ? undefined : onSelect}
         disabled={comingSoon || selected}
-        className={cn('mt-3 w-full', !selected && !comingSoon && 'gradient-brand text-white')}
+        className={cn('mt-3 h-10 w-full', !selected && !comingSoon && 'gradient-brand text-white')}
       >
         {comingSoon ? 'Bientôt disponible' : selected ? (active ? 'Actif' : 'Sélectionné') : 'Choisir'}
       </Button>
@@ -1571,14 +1578,14 @@ function ProviderLogo({ logoUrl, name, fallback }: { logoUrl?: string; name: str
   const [broken, setBroken] = useState(false);
   if (logoUrl && !broken) {
     return (
-      <span className="grid h-12 w-16 place-items-center overflow-hidden rounded-xl bg-white ring-1 ring-border/60">
+      <span className="grid h-12 w-16 shrink-0 place-items-center overflow-hidden rounded-xl bg-white ring-1 ring-border/60">
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img src={logoUrl} alt={name} className="max-h-9 max-w-[3.4rem] object-contain" onError={() => setBroken(true)} />
       </span>
     );
   }
   return (
-    <span className="grid h-10 w-10 place-items-center rounded-xl gradient-brand text-white">
+    <span className="grid h-12 w-12 shrink-0 place-items-center rounded-xl gradient-brand text-white">
       {fallback}
     </span>
   );
@@ -1586,10 +1593,10 @@ function ProviderLogo({ logoUrl, name, fallback }: { logoUrl?: string; name: str
 
 function ToggleRow({ checked, onChange, label, sublabel }: { checked: boolean; onChange: (b: boolean) => void; label: string; sublabel?: string }) {
   return (
-    <div className="flex items-center justify-between gap-4 rounded-xl border border-border/60 bg-muted/20 p-4">
+    <div className="flex items-center justify-between gap-3 rounded-xl border border-border/60 bg-muted/20 p-3 sm:gap-4 sm:p-4">
       <div className="min-w-0">
         <div className="text-sm font-medium">{label}</div>
-        {sublabel && <p className="mt-0.5 text-xs text-muted-foreground">{sublabel}</p>}
+        {sublabel && <p className="mt-0.5 text-xs leading-snug text-muted-foreground">{sublabel}</p>}
       </div>
       <button
         type="button"
@@ -1598,12 +1605,12 @@ function ToggleRow({ checked, onChange, label, sublabel }: { checked: boolean; o
         aria-label={label}
         onClick={() => onChange(!checked)}
         className={cn(
-          'relative inline-flex h-6 w-11 shrink-0 rounded-full transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2',
+          'relative inline-flex h-7 w-12 shrink-0 rounded-full transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2',
           checked ? 'bg-primary' : 'bg-muted-foreground/30',
         )}
       >
         <span className={cn(
-          'absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform',
+          'absolute top-0.5 h-6 w-6 rounded-full bg-white shadow transition-transform',
           checked ? 'translate-x-[22px]' : 'translate-x-0.5',
         )} />
       </button>
@@ -1619,6 +1626,7 @@ function SaveBar({
   success,
   idle,
   extra,
+  className,
 }: {
   dirty: boolean;
   saving: boolean;
@@ -1627,21 +1635,23 @@ function SaveBar({
   success: string | null;
   idle: string;
   extra?: ReactNode;
+  className?: string;
 }) {
   return (
     <div className={cn(
-      'flex flex-wrap items-center justify-between gap-3 rounded-2xl border px-4 py-3',
+      'flex flex-col gap-3 rounded-2xl border px-4 py-3 sm:flex-row sm:items-center sm:justify-between',
       error ? 'border-destructive/40 bg-destructive/5' : dirty ? 'border-amber-500/40 bg-amber-500/10' : 'border-border/60 bg-muted/20',
+      className,
     )}>
       <p className={cn(
-        'text-sm',
+        'min-w-0 text-sm',
         error ? 'text-destructive' : dirty ? 'font-medium text-amber-800' : 'text-muted-foreground',
       )}>
         {error || (dirty ? 'Changements non enregistrés.' : success || idle)}
       </p>
-      <div className="flex flex-wrap items-center gap-2">
+      <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-center">
         {extra}
-        <Button onClick={onSave} disabled={saving || !dirty} className={cn('gap-2', dirty && 'gradient-brand text-white')}>
+        <Button onClick={onSave} disabled={saving || !dirty} className={cn('h-11 w-full gap-2 sm:w-auto', dirty && 'gradient-brand text-white')}>
           {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
           Enregistrer
         </Button>
