@@ -13,7 +13,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { storesApi, messengerBotApi, whatsappBotApi } from '@/lib/api';
+import { storesApi, messengerBotApi, whatsappBotApi, telegramApi } from '@/lib/api';
 import { useStoreStore } from '@/stores/store-store';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -34,6 +34,8 @@ import {
   Plug,
   Plus,
   Trash2,
+  Power,
+  Bell,
 } from 'lucide-react';
 
 interface SalesPopupSettings {
@@ -85,6 +87,7 @@ export default function AppsPage() {
     messengerBot: false,
     whatsappBot: false,
   });
+  const [telegramLinked, setTelegramLinked] = useState(false);
 
   const activeStore = useMemo(
     () => stores.find((s) => s._id === currentStoreId) || stores[0] || null,
@@ -121,6 +124,12 @@ export default function AppsPage() {
       });
     })();
   }, [activeStore?._id]);
+
+  useEffect(() => {
+    void telegramApi.status()
+      .then((res) => setTelegramLinked(!!(res.data.linked || res.data.paused)))
+      .catch(() => setTelegramLinked(false));
+  }, []);
 
   if (loading) {
     return (
@@ -174,12 +183,18 @@ export default function AppsPage() {
         return !!(activeStore.settings as { clientNotifications?: { enabled?: boolean } } | undefined)?.clientNotifications?.enabled;
       case 'botstore':
         return !!activeStore.settings?.botstore?.enabled;
+      case 'workflow':
+        return !!(activeStore.settings as { workflow?: { enabled?: boolean } } | undefined)?.workflow?.enabled;
+      case 'telegram-bot':
+        return telegramLinked;
       default:
         return false;
     }
   };
 
   const installedApps = APPS.filter((a) => connected(a.id));
+  const readyApps = APPS.filter((a) => a.available);
+  const soonApps = APPS.filter((a) => !a.available);
 
   /**
    * Router les cartes selon l'état :
@@ -198,12 +213,23 @@ export default function AppsPage() {
       else if (id === 'telegram-bot') router.push(`/dashboard/apps/telegram-bot`);
       else if (id === 'whatsapp-notifications') router.push(`/dashboard/apps/whatsapp-notifications?storeId=${activeStore._id}`);
       else if (id === 'botstore') router.push(`/dashboard/apps/botstore?storeId=${activeStore._id}`);
+      else if (id === 'workflow') router.push(`/dashboard/apps/workflow?storeId=${activeStore._id}`);
       else setOpenApp(id); // google-sheets, sales-popup — configuration inline
       return;
     }
     // Pas installée : passe par la fiche descriptive avant d'installer.
     router.push(`/dashboard/apps/browse/${id}`);
   };
+
+  async function disconnectTelegram() {
+    if (!window.confirm('Déconnecter Telegram ? Les notifications sur ce compte s’arrêtent.')) return;
+    try {
+      await telegramApi.unlink();
+      setTelegramLinked(false);
+    } catch {
+      window.alert('Impossible de déconnecter Telegram.');
+    }
+  }
 
   return (
     <div className="space-y-8">
@@ -234,7 +260,7 @@ export default function AppsPage() {
               {installedApps.length}
             </span>
           </div>
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
             {installedApps.map((app) => (
               <InstalledAppShortcut key={app.id} app={app} onOpen={() => openAppHandler(app.id)} />
             ))}
@@ -242,22 +268,39 @@ export default function AppsPage() {
         </section>
       )}
 
-      {/* App grid */}
       <section>
-        {installedApps.length > 0 && (
-          <h2 className="mb-3 text-sm font-semibold">Toutes les applications</h2>
-        )}
+        <h2 className="mb-3 text-sm font-semibold">Disponibles</h2>
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-          {APPS.map((app) => (
+          {readyApps.map((app) => (
             <AppCard
               key={app.id}
               app={app}
               connected={connected(app.id)}
               onOpen={() => openAppHandler(app.id)}
+              onOpenDetail={() => router.push(`/dashboard/apps/browse/${app.id}`)}
+              onDisconnect={app.id === 'telegram-bot' && telegramLinked ? () => void disconnectTelegram() : undefined}
             />
           ))}
         </div>
       </section>
+
+      {soonApps.length > 0 && (
+        <section>
+          <h2 className="mb-1 text-sm font-semibold text-muted-foreground">Bientôt</h2>
+          <p className="mb-3 text-xs text-muted-foreground">Ces applications arrivent. La fiche décrit déjà ce qu’elles feront.</p>
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+            {soonApps.map((app) => (
+              <AppCard
+                key={app.id}
+                app={app}
+                connected={false}
+                onOpen={() => openAppHandler(app.id)}
+                onOpenDetail={() => router.push(`/dashboard/apps/browse/${app.id}`)}
+              />
+            ))}
+          </div>
+        </section>
+      )}
     </div>
   );
 }
@@ -265,18 +308,31 @@ export default function AppsPage() {
 // ─────────────────────────────────────────────────────────────────────
 // Installed app shortcut — carte compacte pour la section "Mes apps installées"
 // ─────────────────────────────────────────────────────────────────────
+function AppLogo({ app, className }: { app: AppDef; className: string }) {
+  return (
+    <span className="relative shrink-0">
+      <BrandLogo src={app.logo} bg={app.logoBg} className={className} />
+      {app.id === 'whatsapp-notifications' && (
+        <span className="absolute -bottom-1 -end-1 grid h-5 w-5 place-items-center rounded-full bg-emerald-600 text-white ring-2 ring-card">
+          <Bell className="h-3 w-3" />
+        </span>
+      )}
+    </span>
+  );
+}
+
 function InstalledAppShortcut({ app, onOpen }: { app: AppDef; onOpen: () => void }) {
   return (
     <button
       type="button"
       onClick={onOpen}
-      className="group flex items-center gap-3 rounded-2xl border border-border/60 bg-card p-3 text-left transition-all hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-md"
+      className="group flex min-w-0 items-center gap-3 rounded-2xl border border-border/60 bg-card p-3 text-left transition-all hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-md"
     >
-      <BrandLogo src={app.logo} bg={app.logoBg} className="h-10 w-10 rounded-xl transition-transform group-hover:scale-110" />
+      <AppLogo app={app} className="h-10 w-10 rounded-xl transition-transform group-hover:scale-110" />
       <div className="min-w-0 flex-1">
-        <div className="flex items-center gap-1.5">
-          <span className="truncate text-sm font-semibold">{app.name}</span>
-          <Check className="h-3 w-3 shrink-0 text-emerald-600" strokeWidth={3} />
+        <div className="flex items-start gap-1.5">
+          <span className="text-sm font-semibold leading-snug">{app.name}</span>
+          <Check className="mt-0.5 h-3 w-3 shrink-0 text-emerald-600" strokeWidth={3} />
         </div>
         <div className="text-[10px] text-muted-foreground">Gérer →</div>
       </div>
@@ -287,9 +343,22 @@ function InstalledAppShortcut({ app, onOpen }: { app: AppDef; onOpen: () => void
 // ─────────────────────────────────────────────────────────────────────
 // App card
 // ─────────────────────────────────────────────────────────────────────
-function AppCard({ app, connected, onOpen }: { app: AppDef; connected: boolean; onOpen: () => void }) {
+function AppCard({ app, connected, onOpen, onOpenDetail, onDisconnect }: { app: AppDef; connected: boolean; onOpen: () => void; onOpenDetail: () => void; onDisconnect?: () => void }) {
   return (
-    <div className="group relative overflow-hidden rounded-2xl border border-border/60 bg-card p-5 transition-all duration-300 hover:-translate-y-1 hover:border-primary/30 hover:shadow-xl">
+    <div
+      role="link"
+      tabIndex={0}
+      aria-label={`Voir ${app.name}`}
+      onClick={onOpenDetail}
+      onKeyDown={(e) => {
+        if (e.target !== e.currentTarget) return;
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          onOpenDetail();
+        }
+      }}
+      className="group relative cursor-pointer overflow-hidden rounded-2xl border border-border/60 bg-card p-5 transition-all duration-300 hover:-translate-y-1 hover:border-primary/30 hover:shadow-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+    >
       <div
         className={cn(
           'pointer-events-none absolute -right-12 -top-12 h-32 w-32 rounded-full bg-gradient-to-br opacity-15 blur-2xl transition-opacity duration-300 group-hover:opacity-30',
@@ -298,7 +367,7 @@ function AppCard({ app, connected, onOpen }: { app: AppDef; connected: boolean; 
         aria-hidden
       />
       <div className="relative flex items-start justify-between gap-3">
-        <BrandLogo src={app.logo} bg={app.logoBg} className="h-12 w-12 rounded-2xl shadow-md transition-transform duration-300 group-hover:scale-110" />
+        <AppLogo app={app} className="h-12 w-12 rounded-2xl shadow-md transition-transform duration-300 group-hover:scale-110" />
         {connected ? (
           <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/10 px-2 py-0.5 text-[10px] font-semibold text-emerald-700">
             <Check className="h-3 w-3" strokeWidth={3} />
@@ -317,7 +386,7 @@ function AppCard({ app, connected, onOpen }: { app: AppDef; connected: boolean; 
 
       <div className="relative mt-4">
         <h3 className="text-base font-semibold tracking-tight">{app.name}</h3>
-        <p className="mt-0.5 text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
+        <p className="mt-0.5 text-[11px] font-medium text-muted-foreground">
           {app.category}
         </p>
         <p className="mt-2 text-sm text-muted-foreground line-clamp-2">{app.description}</p>
@@ -325,20 +394,32 @@ function AppCard({ app, connected, onOpen }: { app: AppDef; connected: boolean; 
 
       <div className="relative mt-5">
         {connected ? (
-          <Button
-            size="sm"
-            variant="outline"
-            className="w-full gap-1.5"
-            onClick={onOpen}
-          >
-            <Check className="h-3.5 w-3.5" strokeWidth={3} />
-            Gérer l&apos;intégration
-          </Button>
+          onDisconnect ? (
+            <Button
+              size="sm"
+              variant="outline"
+              className="w-full gap-1.5"
+              onClick={(e) => { e.stopPropagation(); onDisconnect(); }}
+            >
+              <Power className="h-3.5 w-3.5" />
+              Déconnecter
+            </Button>
+          ) : (
+            <Button
+              size="sm"
+              variant="outline"
+              className="w-full gap-1.5"
+              onClick={(e) => { e.stopPropagation(); onOpen(); }}
+            >
+              <Check className="h-3.5 w-3.5" strokeWidth={3} />
+              Gérer l&apos;intégration
+            </Button>
+          )
         ) : app.available ? (
           <Button
             size="sm"
             className="w-full gap-1.5 gradient-brand text-white"
-            onClick={onOpen}
+            onClick={(e) => { e.stopPropagation(); onOpenDetail(); }}
           >
             <Plug className="h-3.5 w-3.5" />
             Intégrer
@@ -348,10 +429,9 @@ function AppCard({ app, connected, onOpen }: { app: AppDef; connected: boolean; 
             size="sm"
             variant="outline"
             className="w-full gap-1.5"
-            disabled
+            onClick={(e) => { e.stopPropagation(); onOpenDetail(); }}
           >
-            <Plug className="h-3.5 w-3.5" />
-            Bientôt disponible
+            Voir
           </Button>
         )}
       </div>

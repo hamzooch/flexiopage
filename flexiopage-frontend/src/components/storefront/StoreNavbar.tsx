@@ -315,7 +315,7 @@ export function StoreNavbar({ storeName, storeSlug, storeLogo, theme, config, de
               vit dans son propre row au centre. */}
           <div className="flex h-10 items-center justify-between gap-2 text-[10px] uppercase tracking-[0.25em]" style={{ color: hexA(effectiveFg, 0.6) }}>
             <div className="flex items-center gap-2">{mobileToggle}</div>
-            <div className="hidden md:block">— Maison —</div>
+            <div className="hidden h-px w-10 md:block" style={{ backgroundColor: theme.accent }} />
             <div className="flex items-center gap-2">
               {markets && markets.length > 1 && (
                 <MarketSwitcher markets={markets} currentCountry={currentMarketCountry} />

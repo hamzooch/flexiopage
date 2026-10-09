@@ -10,6 +10,7 @@ import * as couponController from '../controllers/coupon.controller';
 import * as subscriberController from '../controllers/subscriber.controller';
 import * as reviewController from '../controllers/review.controller';
 import * as abandonedCartController from '../controllers/abandoned-cart.controller';
+import * as workflowController from '../controllers/workflow.controller';
 import * as supplierController from '../controllers/supplier.controller';
 import * as marketplaceVendorController from '../controllers/marketplace-vendor.controller';
 import { authMiddleware } from '../middleware/auth.middleware';
@@ -158,6 +159,9 @@ router.patch('/:storeId/reviews/:reviewId', reviewController.updateReview);
 router.delete('/:storeId/reviews/:reviewId', reviewController.deleteReview);
 
 // Abandoned carts (leads captured from the COD form mid-fill).
+router.get('/:storeId/workflow', workflowController.getWorkflow);
+router.put('/:storeId/workflow', workflowController.saveWorkflow);
+
 router.get('/:storeId/abandoned-carts', abandonedCartController.listAbandonedCarts);
 router.delete('/:storeId/abandoned-carts/:cartId', abandonedCartController.deleteAbandonedCart);
 

@@ -24,7 +24,7 @@ import {
   joinPhone,
   phoneCountryByCode,
 } from '@/components/storefront/phone-country-field';
-import { STORE_THEME_TEMPLATES } from '@/data/store-themes';
+import { resolveStoreTheme } from '@/data/store-themes';
 
 const API_BASE = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000').replace(/\/$/, '');
 
@@ -275,12 +275,10 @@ export default function CheckoutPage() {
   }
 
   const currency = store.settings?.currency || 'USD';
-  const themeTokens =
-    STORE_THEME_TEMPLATES.find((t) => t.id === store.theme?.templateId)?.theme ||
-    STORE_THEME_TEMPLATES[0].theme;
+  const themeTokens = resolveStoreTheme(store);
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-fuchsia-50 via-background to-indigo-50/30 dark:from-fuchsia-950/10 dark:via-background dark:to-indigo-950/10">
+    <div className="min-h-screen" style={{ backgroundColor: themeTokens.background, color: themeTokens.foreground }}>
       <StoreNavbar
         storeName={store.name}
         storeSlug={storeSlug}

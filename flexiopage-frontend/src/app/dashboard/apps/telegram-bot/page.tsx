@@ -312,6 +312,9 @@ export default function TelegramBotPage() {
                 <h3 className="mb-2 text-sm font-semibold">Commandes dans Telegram</h3>
                 <ul className="space-y-1 text-sm text-muted-foreground">
                   <li>
+                    <code className="font-mono text-sky-700">/commandes</code> — résumé du jour
+                  </li>
+                  <li>
                     <code className="font-mono text-sky-700">/stop</code> — couper les notifications
                   </li>
                   <li>

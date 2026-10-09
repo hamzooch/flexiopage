@@ -20,6 +20,7 @@ import {
   Mail,
   Zap,
   ShoppingBag,
+  GitBranch,
 } from 'lucide-react';
 
 export type AppId =
@@ -33,9 +34,10 @@ export type AppId =
   | 'telegram-bot'
   | 'sales-popup'
   | 'whatsapp-notifications'
-  | 'botstore';
+  | 'botstore'
+  | 'workflow';
 
-export type AppCategory = 'Productivity' | 'Marketing' | 'Notifications' | 'Automation';
+export type AppCategory = 'Productivité' | 'Marketing' | 'Notifications' | 'Automatisation';
 
 export interface AppDef {
   id: AppId;
@@ -59,7 +61,7 @@ export const APPS: AppDef[] = [
     id: 'messenger-bot',
     name: 'Messenger Bot',
     description: 'Chatbot IA qui répond en darija/français et crée les commandes COD depuis ta page Facebook.',
-    category: 'Automation',
+    category: 'Automatisation',
     icon: Bot,
     logo: '/brands/messenger.svg',
     accent: 'from-blue-500 to-indigo-600',
@@ -69,7 +71,7 @@ export const APPS: AppDef[] = [
     id: 'whatsapp-bot',
     name: 'WhatsApp Bot',
     description: 'Même assistant IA, sur WhatsApp : répond aux clients et crée les commandes COD automatiquement.',
-    category: 'Automation',
+    category: 'Automatisation',
     icon: MessageSquare,
     logo: '/brands/whatsapp.svg',
     accent: 'from-green-500 to-emerald-600',
@@ -103,23 +105,33 @@ export const APPS: AppDef[] = [
     icon: Bell,
     logo: '/brands/whatsapp.svg',
     accent: 'from-emerald-500 to-teal-600',
-    available: false,
+    available: true,
+  },
+  {
+    id: 'workflow',
+    name: 'Workflow',
+    description: 'Scénarios automatiques. Le premier relance par email une commande digitale dont le paiement n\'est pas terminé.',
+    category: 'Automatisation',
+    icon: GitBranch,
+    logo: '/brands/workflow.svg',
+    accent: 'from-violet-600 to-fuchsia-600',
+    available: true,
   },
   {
     id: 'botstore',
     name: 'Botstore',
-    description: 'Chatbot IA en direct sur ta boutique : répond aux visiteurs à partir de tes produits, avec fallback WhatsApp intégré.',
-    category: 'Automation',
+    description: 'Chatbot IA de ta boutique : répond à partir de tes produits et prend la commande du client.',
+    category: 'Automatisation',
     icon: Bot,
     logo: '/brands/botstore.svg',
     accent: 'from-indigo-500 to-fuchsia-600',
-    available: false,
+    available: true,
   },
   {
     id: 'google-sheets',
     name: 'Google Sheets',
     description: 'Pousse chaque commande vers une feuille de calcul Google.',
-    category: 'Productivity',
+    category: 'Productivité',
     icon: FileSpreadsheet,
     logo: '/brands/google-sheets.svg',
     accent: 'from-emerald-500 to-green-600',
@@ -160,7 +172,7 @@ export const APPS: AppDef[] = [
     id: 'zapier',
     name: 'Zapier',
     description: 'Connecte ta boutique à 5 000+ apps via webhook.',
-    category: 'Automation',
+    category: 'Automatisation',
     icon: Zap,
     logo: '/brands/zapier.svg',
     accent: 'from-orange-500 to-red-600',
@@ -291,20 +303,38 @@ export const APP_DETAILS: Record<AppId, AppDetail> = {
     configPath: () => `/dashboard/apps?open=google-sheets`,
     installLabel: 'Configurer Google Sheets',
   },
+  workflow: {
+    longDescription:
+      'Des scénarios prêts à activer. Le premier s\'adresse aux boutiques digitales : quand un client commence un paiement et ne le termine pas, Workflow lui envoie un email avec un lien pour finaliser, puis un rappel le lendemain si rien n\'a bougé.',
+    features: [
+      'Email automatique après un paiement digital abandonné',
+      'Délai du premier envoi et rappel du lendemain réglables',
+      'Texte personnalisable : prénom, produit, montant, lien',
+      'Deux emails maximum par commande, arrêt dès que c\'est payé',
+      'Journal des envois, des échecs et des commandes récupérées',
+    ],
+    howItWorks: [
+      'Active le scénario « Finaliser la commande »',
+      'Choisis le délai et le texte de l\'email',
+      'Les commandes abandonnées après l\'activation reçoivent le message',
+    ],
+    configPath: (storeId) => `/dashboard/apps/workflow?storeId=${storeId}`,
+    installLabel: 'Configurer Workflow',
+  },
   botstore: {
     longDescription:
-      "Un chatbot IA installé directement sur la storefront de ta boutique. Le visiteur clique sur la bulle en bas de page, pose sa question (« ce produit est-il en stock ? », « livrez-vous à Rabat ? ») et le bot répond en s'appuyant sur ton catalogue et tes réglages. Fallback WhatsApp intégré quand le bot ne sait pas.",
+      "Un chatbot IA installé sur la boutique. Il répond avec le catalogue de cette boutique seulement, guide le client (produit, quantité, téléphone, adresse) et enregistre une commande paiement à la livraison. Un produit digital renvoie vers la fiche pour payer en ligne.",
     features: [
-      "Répond à partir de tes produits publiés (nom, prix, stock, description)",
-      'Personnalité et consignes 100 % personnalisables',
-      "Fallback WhatsApp : le visiteur peut passer à un humain en 1 clic",
-      "Modèle Claude Haiku 4.5 avec prompt caching — coût par réponse minimal",
-      'Alternative au bouton WhatsApp — un seul point de contact visible',
+      "Répond à partir des produits publiés de la boutique (nom, prix, stock, variantes)",
+      'Prend la commande après confirmation : nom, téléphone, ville, adresse',
+      'Prix et stock recalculés côté serveur, une commande par boutique',
+      "Fallback WhatsApp si le bot ne sait pas répondre",
+      'Ton et consignes personnalisables',
     ],
     howItWorks: [
       'Active le Botstore et personnalise le ton',
-      "Ajoute quelques consignes spécifiques (livraison, retours, promo…)",
-      "La bulle apparaît sur toutes les pages boutique. Le bot connaît déjà tes produits.",
+      'La bulle apparaît sur les pages de cette boutique',
+      'Le client choisit un produit, confirme, et la commande arrive dans Commandes',
     ],
     configPath: (storeId) => `/dashboard/apps/botstore?storeId=${storeId}`,
     prerequisites: [

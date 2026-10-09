@@ -2,7 +2,29 @@ import { Request, Response } from 'express';
 import { AuthRequest } from '../middleware/auth.middleware';
 import { User } from '../models/User.model';
 import { isTelegramConfigured, TELEGRAM_WEBHOOK_SECRET } from '../config/telegram';
-import { createLinkDeepLink, handleUpdate, sendTestMessage } from '../services/telegram.service';
+import { createLinkDeepLink, exchangeOpenKey, handleUpdate, sendTestMessage } from '../services/telegram.service';
+
+/**
+ * Le bouton Telegram ouvre /tg?k=… . On échange le jeton contre une session
+ * pour que le vendeur arrive dans le dashboard, pas sur la page de login.
+ */
+export async function openTelegramSession(req: Request, res: Response): Promise<void> {
+  const key = typeof req.body?.key === 'string' ? req.body.key : '';
+  const session = await exchangeOpenKey(key);
+  if (!session) {
+    res.status(401).json({ error: 'Lien expiré. Connecte-toi depuis FlexioPage.' });
+    return;
+  }
+  const isProd = process.env.NODE_ENV === 'production';
+  res.cookie('token', session.token, {
+    httpOnly: true,
+    maxAge: 7 * 24 * 60 * 60 * 1000,
+    sameSite: isProd ? 'strict' : 'lax',
+    secure: isProd,
+    path: '/',
+  });
+  res.json({ token: session.token, user: session.user, next: session.next });
+}
 
 /** État de la liaison Telegram du vendeur courant. */
 export async function getTelegramStatus(req: AuthRequest, res: Response): Promise<void> {

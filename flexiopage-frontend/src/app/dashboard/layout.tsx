@@ -16,8 +16,12 @@ import { isRtl, useLangStore } from '@/lib/i18n';
  * 14 obligatoire pour que le prerender statique ne bailout pas sur toutes
  * les pages du dashboard.
  */
+const SIDEBAR_KEY = 'flexiopage-sidebar';
+
 function DashboardLayoutContent({ children }: { children: React.ReactNode }) {
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
+  const [desktopOpen, setDesktopOpen] = useState(true);
+  const [sidebarReady, setSidebarReady] = useState(false);
   const lang = useLangStore((s) => s.lang);
   const searchParams = useSearchParams();
   // Mode « iframe embed » : le hub unifié affiche certaines sous-pages CRUD
@@ -32,6 +36,26 @@ function DashboardLayoutContent({ children }: { children: React.ReactNode }) {
     root.lang = lang;
     root.dir = isRtl(lang) ? 'rtl' : 'ltr';
   }, [lang]);
+
+  // Le choix « menu replié » est mémorisé. On l'applique avant d'autoriser
+  // l'animation, sinon le rail se ferme en glissant à chaque chargement.
+  useEffect(() => {
+    if (localStorage.getItem(SIDEBAR_KEY) === '0') setDesktopOpen(false);
+    const id = requestAnimationFrame(() => setSidebarReady(true));
+    return () => cancelAnimationFrame(id);
+  }, []);
+
+  function toggleNav() {
+    if (window.matchMedia('(min-width: 768px)').matches) {
+      setDesktopOpen((open) => {
+        const next = !open;
+        localStorage.setItem(SIDEBAR_KEY, next ? '1' : '0');
+        return next;
+      });
+      return;
+    }
+    setMobileNavOpen((open) => !open);
+  }
 
   if (embed) {
     return (
@@ -49,10 +73,16 @@ function DashboardLayoutContent({ children }: { children: React.ReactNode }) {
       <div className="flex min-h-screen bg-background">
         <Sidebar
           mobileOpen={mobileNavOpen}
+          desktopOpen={desktopOpen}
+          animate={sidebarReady}
           onMobileClose={() => setMobileNavOpen(false)}
         />
         <div className="flex min-w-0 flex-1 flex-col">
-          <Header onOpenMobileNav={() => setMobileNavOpen(true)} />
+          <Header
+            mobileOpen={mobileNavOpen}
+            desktopOpen={desktopOpen}
+            onToggleNav={toggleNav}
+          />
           <EmailVerificationBanner />
           <main className="min-w-0 flex-1 p-3 sm:p-6 lg:p-8">
             <div className="mx-auto w-full min-w-0 max-w-7xl">{children}</div>

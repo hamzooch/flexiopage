@@ -9,7 +9,7 @@
  * backend can re-run an identical calculation on save.
  */
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { motion } from 'framer-motion';
 import {
   AlertCircle,
@@ -40,33 +40,64 @@ import {
   ResponsiveContainer,
   Tooltip as RechartsTooltip,
 } from 'recharts';
-import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { AutoFitValue } from '@/components/dashboard/auto-fit-value';
-import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { usePrompt } from '@/components/ui/confirm-dialog';
 import { PageHeader } from '@/components/dashboard/page-header';
-import { calculatorApi, type CalculatorSnapshot } from '@/lib/api';
+import { calculatorApi, storesApi, type CalculatorSnapshot } from '@/lib/api';
+import { useStoreStore } from '@/stores/store-store';
 import {
   calculate,
+  CALCULATOR_CURRENCIES,
   COUNTRY_PRESETS,
+  currencySymbol,
   EMPTY_INPUTS,
   roasVerdict,
   type CalculatorInputs,
 } from '@/lib/cod-calculator';
 import { cn, formatCurrency } from '@/lib/utils';
 
+function money(amount: number, currency: string): string {
+  return formatCurrency(amount, currency, 'fr');
+}
+
+interface CatalogProduct {
+  _id: string;
+  name: string;
+  price: number;
+  cost?: number;
+  shippingCost?: number;
+  pricing?: Array<{ country: string; price: number; currency?: string; available?: boolean }>;
+}
+
+/** Prix du marché du pays choisi, sinon le prix principal du produit. */
+function resolveProductPrice(product: CatalogProduct, country: string | null): { price: number; currency?: string } {
+  if (country && product.pricing?.length) {
+    const row = product.pricing.find(
+      (p) => p.country?.toUpperCase() === country.toUpperCase() && p.available !== false && p.price > 0,
+    );
+    if (row) return { price: row.price, currency: row.currency?.toUpperCase() };
+  }
+  return { price: product.price || 0 };
+}
+
 export default function CodCalculatorPage() {
   const prompt = usePrompt();
+  const currentStoreId = useStoreStore((s) => s.currentStoreId);
+  const currencyTouched = useRef(false);
   const [inputs, setInputs] = useState<CalculatorInputs>(EMPTY_INPUTS);
-  const [currency, setCurrency] = useState('USD');
+  const [currency, setCurrency] = useState('XOF');
   const [advanced, setAdvanced] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [history, setHistory] = useState<CalculatorSnapshot[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [activeCountry, setActiveCountry] = useState<string | null>(null);
+  const [catalogStoreId, setCatalogStoreId] = useState<string | null>(currentStoreId);
+  const [products, setProducts] = useState<CatalogProduct[]>([]);
+  const [productsLoading, setProductsLoading] = useState(false);
+  const [selectedProductId, setSelectedProductId] = useState('');
   // Tiny ephemeral banner — the project doesn't ship a useToast hook.
   const [feedback, setFeedback] = useState<{ kind: 'info' | 'error'; text: string } | null>(null);
   const flash = useCallback((text: string, kind: 'info' | 'error' = 'info') => {
@@ -99,17 +130,91 @@ export default function CodCalculatorPage() {
     });
   }, []);
 
+  const chooseCurrency = useCallback((code: string) => {
+    currencyTouched.current = true;
+    setCurrency(code);
+  }, []);
+
+  // Open in the active store's currency (CFA, dinar, euro…) instead of a
+  // hardcoded dollar. A manual choice or a country preset wins after that.
+  useEffect(() => {
+    let cancelled = false;
+    storesApi
+      .list()
+      .then((res) => {
+        if (cancelled || currencyTouched.current) return;
+        const stores = (res.data.stores || []) as Array<{ _id: string; settings?: { currency?: string } }>;
+        const active = stores.find((s) => s._id === currentStoreId) || stores[0];
+        if (active?._id) setCatalogStoreId(active._id);
+        const code = active?.settings?.currency?.trim().toUpperCase();
+        if (code) setCurrency(code);
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [currentStoreId]);
+
+  useEffect(() => {
+    if (!catalogStoreId) {
+      setProducts([]);
+      return;
+    }
+    let cancelled = false;
+    setProductsLoading(true);
+    storesApi
+      .listProducts(catalogStoreId, { limit: 200 })
+      .then((res) => {
+        if (cancelled) return;
+        const list = ((res.data.products || []) as CatalogProduct[])
+          .filter((p) => p && p._id && p.name)
+          .sort((a, b) => a.name.localeCompare(b.name, 'fr'));
+        setProducts(list);
+      })
+      .catch(() => { if (!cancelled) setProducts([]); })
+      .finally(() => { if (!cancelled) setProductsLoading(false); });
+    return () => { cancelled = true; };
+  }, [catalogStoreId]);
+
+  const applyProduct = useCallback((id: string) => {
+    setSelectedProductId(id);
+    if (!id) return;
+    const product = products.find((p) => p._id === id);
+    if (!product) return;
+    const priced = resolveProductPrice(product, activeCountry);
+    if (priced.currency) {
+      currencyTouched.current = true;
+      setCurrency(priced.currency);
+    }
+    setInputs((prev) => ({
+      ...prev,
+      sellingPrice: priced.price,
+      ...(typeof product.cost === 'number' && product.cost > 0 ? { productCost: product.cost } : {}),
+      ...(typeof product.shippingCost === 'number' && product.shippingCost > 0 ? { shippingCost: product.shippingCost } : {}),
+    }));
+    const filled = ['prix de vente'];
+    if (typeof product.cost === 'number' && product.cost > 0) filled.push('coût');
+    if (typeof product.shippingCost === 'number' && product.shippingCost > 0) filled.push('livraison');
+    flash(`« ${product.name} » ajouté. ${filled.join(', ')} repris du produit.`);
+  }, [products, activeCountry, flash]);
+
   const applyPreset = useCallback((code: string) => {
     const preset = COUNTRY_PRESETS.find((p) => p.code === code);
     if (!preset) return;
+    const product = products.find((p) => p._id === selectedProductId);
+    const priced = product ? resolveProductPrice(product, code) : null;
     setActiveCountry(code);
-    setCurrency(preset.currency);
-    setInputs((prev) => ({ ...prev, ...preset.defaults }));
-  }, []);
+    currencyTouched.current = true;
+    setCurrency(priced?.currency || preset.currency);
+    setInputs((prev) => ({
+      ...prev,
+      ...preset.defaults,
+      ...(priced ? { sellingPrice: priced.price } : {}),
+    }));
+  }, [products, selectedProductId]);
 
   const resetAll = useCallback(() => {
     setInputs(EMPTY_INPUTS);
     setActiveCountry(null);
+    setSelectedProductId('');
     flash('Calculatrice réinitialisée');
   }, [flash]);
 
@@ -182,8 +287,8 @@ export default function CodCalculatorPage() {
     <div className="space-y-4">
       <PageHeader
         icon={Calculator}
-        title="Calculatrice de profit COD"
-        description="Estime ton profit net AVANT de lancer ta campagne pub : leads → confirmés → livrés → cash."
+        title="Calculatrice de profit"
+        description="Estime le profit net d’une campagne avant de dépenser en publicité."
         actions={
           <>
             <button
@@ -232,9 +337,18 @@ export default function CodCalculatorPage() {
         </div>
       )}
 
-      <CountryPresets active={activeCountry} onPick={applyPreset} currency={currency} onCurrencyChange={setCurrency} />
+      <CountryPresets
+        active={activeCountry}
+        onPick={applyPreset}
+        currency={currency}
+        onCurrencyChange={chooseCurrency}
+        products={products}
+        productsLoading={productsLoading}
+        selectedProductId={selectedProductId}
+        onProductChange={applyProduct}
+      />
 
-      <div className="grid gap-4 lg:grid-cols-[1fr_420px]">
+      <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_22.5rem]">
         {/* Left — inputs. Produit & Pub vivent côte à côte sur md+ pour gagner
             de la hauteur ; Opérations COD reste full-width en dessous (6 champs,
             besoin d'espace). */}
@@ -318,7 +432,7 @@ export default function CodCalculatorPage() {
                   compact
                 />
                 <p className="col-span-full text-[11px] text-muted-foreground">
-                  CPL calculé : <span className="font-semibold tabular-nums text-foreground">{formatCurrency(outputs.effectiveCpl, currency)}</span>
+                  CPL calculé : <span className="font-semibold tabular-nums text-foreground">{money(outputs.effectiveCpl, currency)}</span>
                 </p>
               </div>
             )}
@@ -374,7 +488,7 @@ export default function CodCalculatorPage() {
         </div>
 
         {/* Right — sticky results */}
-        <div className="space-y-4 lg:sticky lg:top-20 lg:self-start">
+        <div className="space-y-4 xl:sticky xl:top-20 xl:self-start">
           {isEmpty ? (
             <EmptyState />
           ) : (
@@ -414,7 +528,7 @@ export default function CodCalculatorPage() {
                     <button type="button" onClick={() => handleLoad(s)} className="min-w-0 flex-1 text-left">
                       <div className="truncate text-sm font-semibold">{s.name}</div>
                       <div className="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[11px] text-muted-foreground">
-                        <span>Profit : <span className={cn('font-semibold tabular-nums', s.outputs.netProfit >= 0 ? 'text-emerald-700' : 'text-red-700')}>{formatCurrency(s.outputs.netProfit, currency)}</span></span>
+                        <span>Profit : <span className={cn('font-semibold tabular-nums', s.outputs.netProfit >= 0 ? 'text-emerald-700' : 'text-red-700')}>{money(s.outputs.netProfit, currency)}</span></span>
                         <span>ROAS ×{s.outputs.roas.toFixed(2)}</span>
                         <span>{new Date(s.createdAt).toLocaleDateString('fr-FR')}</span>
                       </div>
@@ -422,7 +536,7 @@ export default function CodCalculatorPage() {
                     <button
                       type="button"
                       onClick={() => handleDelete(s._id)}
-                      className="rounded-lg p-1.5 text-muted-foreground opacity-0 transition-opacity hover:bg-destructive/10 hover:text-destructive group-hover:opacity-100"
+                      className="rounded-lg p-1.5 text-muted-foreground transition-opacity hover:bg-destructive/10 hover:text-destructive sm:opacity-0 sm:group-hover:opacity-100"
                       aria-label="Supprimer"
                     >
                       <Trash2 className="h-3.5 w-3.5" />
@@ -441,48 +555,102 @@ export default function CodCalculatorPage() {
 // ─────────────────────────────────────────────────────────────────────
 // Country presets bar
 // ─────────────────────────────────────────────────────────────────────
+const controlClass =
+  'h-11 w-full appearance-none rounded-xl border border-border/60 bg-background px-3 text-sm font-medium text-foreground shadow-sm focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20';
+
 function CountryPresets({
   active,
   onPick,
   currency,
   onCurrencyChange,
+  products,
+  productsLoading,
+  selectedProductId,
+  onProductChange,
 }: {
   active: string | null;
   onPick: (code: string) => void;
   currency: string;
   onCurrencyChange: (v: string) => void;
+  products: CatalogProduct[];
+  productsLoading: boolean;
+  selectedProductId: string;
+  onProductChange: (id: string) => void;
 }) {
+  const selected = products.find((p) => p._id === selectedProductId);
   return (
-    <div className="flex flex-col gap-2 rounded-xl border border-border/60 bg-card p-2.5 sm:flex-row sm:items-center sm:gap-2">
-      <div className="flex items-center gap-2 overflow-x-auto sm:flex-wrap sm:overflow-visible">
-        <span className="flex shrink-0 items-center gap-1.5 text-xs font-semibold text-muted-foreground">
-          <Globe2 className="h-3.5 w-3.5" /> Pays :
-        </span>
-        {COUNTRY_PRESETS.map((p) => (
-          <button
-            key={p.code}
-            type="button"
-            onClick={() => onPick(p.code)}
-            className={cn(
-              'inline-flex shrink-0 items-center gap-1.5 rounded-lg border px-2.5 py-1 text-xs font-medium transition-colors',
-              active === p.code
-                ? 'border-primary/40 bg-primary/10 text-primary'
-                : 'border-border/60 bg-background text-muted-foreground hover:border-foreground/30 hover:text-foreground',
-            )}
+    <div className="grid gap-3 rounded-2xl border border-border/60 bg-card p-3 sm:grid-cols-2 sm:p-4">
+      <div className="space-y-1.5 sm:col-span-2">
+        <Label htmlFor="catalog-product" className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
+          <Package className="h-3.5 w-3.5" />
+          Produit de la boutique
+        </Label>
+        <div className="relative">
+          <select
+            id="catalog-product"
+            value={selectedProductId}
+            disabled={productsLoading}
+            onChange={(e) => onProductChange(e.target.value)}
+            className={cn(controlClass, 'pr-9 disabled:opacity-60')}
           >
-            <span>{p.flag}</span>
-            {p.name}
-          </button>
-        ))}
+            <option value="">
+              {productsLoading ? 'Chargement des produits…' : products.length ? 'Choisir un produit' : 'Aucun produit dans cette boutique'}
+            </option>
+            {products.map((p) => {
+              const priced = resolveProductPrice(p, active);
+              return (
+                <option key={p._id} value={p._id}>
+                  {p.name} — {money(priced.price, priced.currency || currency)}
+                </option>
+              );
+            })}
+          </select>
+          <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+        </div>
+        {selected && (
+          <p className="text-[11px] text-muted-foreground">
+            Les chiffres repris du produit restent modifiables.
+          </p>
+        )}
       </div>
-      <div className="flex items-center gap-1.5 sm:ml-auto">
-        <Label htmlFor="currency-code" className="text-xs text-muted-foreground">Devise</Label>
-        <Input
-          id="currency-code"
-          value={currency}
-          onChange={(e) => onCurrencyChange(e.target.value.toUpperCase().slice(0, 6))}
-          className="h-7 w-16 text-center text-xs uppercase tabular-nums"
-        />
+      <div className="space-y-1.5">
+        <Label htmlFor="country-preset" className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
+          <Globe2 className="h-3.5 w-3.5" />
+          Pays
+        </Label>
+        <div className="relative">
+          <select
+            id="country-preset"
+            value={active ?? ''}
+            onChange={(e) => { if (e.target.value) onPick(e.target.value); }}
+            className={cn(controlClass, 'pr-9')}
+          >
+            <option value="">Choisir un pays</option>
+            {COUNTRY_PRESETS.map((p) => (
+              <option key={p.code} value={p.code}>{p.flag} {p.name}</option>
+            ))}
+          </select>
+          <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+        </div>
+      </div>
+      <div className="space-y-1.5">
+        <Label htmlFor="currency-code" className="text-xs font-medium text-muted-foreground">Devise</Label>
+        <div className="relative">
+          <select
+            id="currency-code"
+            value={currency}
+            onChange={(e) => onCurrencyChange(e.target.value)}
+            className={cn(controlClass, 'pr-9')}
+          >
+            {!CALCULATOR_CURRENCIES.some((c) => c.code === currency) && (
+              <option value={currency}>{currency}</option>
+            )}
+            {CALCULATOR_CURRENCIES.map((c) => (
+              <option key={c.code} value={c.code}>{c.label}</option>
+            ))}
+          </select>
+          <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+        </div>
       </div>
     </div>
   );
@@ -512,21 +680,21 @@ function InputSection({
 }) {
   const [open, setOpen] = useState(defaultOpen);
   return (
-    <Card>
+    <Card className="overflow-hidden rounded-2xl">
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
-        className="flex w-full items-center justify-between gap-3 rounded-t-xl px-5 py-3 text-left transition-colors hover:bg-muted/50"
+        className="flex min-h-12 w-full items-center justify-between gap-3 px-4 py-3 text-left transition-colors hover:bg-muted/40"
       >
         <span className="flex items-center gap-2.5">
           <span className={cn('grid h-8 w-8 place-items-center rounded-lg', TONE_BG[tone])}>
             <Icon className="h-4 w-4" />
           </span>
-          <span className="font-semibold">{title}</span>
+          <span className="text-sm font-semibold">{title}</span>
         </span>
-        <ChevronDown className={cn('h-4 w-4 text-muted-foreground transition-transform', open && 'rotate-180')} />
+        <ChevronDown className={cn('h-4 w-4 text-muted-foreground transition-transform duration-200', open && 'rotate-180')} />
       </button>
-      {open && <CardContent className="space-y-3 pt-0">{children}</CardContent>}
+      {open && <CardContent className="space-y-3 px-4 pb-4 pt-0">{children}</CardContent>}
     </Card>
   );
 }
@@ -590,20 +758,25 @@ function Field({
           </span>
         </span>
       </div>
-      <div className="relative">
-        <Input
+      <div className={cn(
+        'flex items-center rounded-xl border border-border/60 bg-background shadow-sm focus-within:border-primary focus-within:ring-2 focus-within:ring-primary/20',
+        compact ? 'h-10' : 'h-11',
+      )}>
+        <input
           type="number"
           inputMode="decimal"
           min={0}
           step="0.01"
           value={value || ''}
           onChange={(e) => onChange(e.target.value)}
-          className={cn('pr-14 tabular-nums', compact ? 'h-9 text-sm' : 'h-10')}
           placeholder="0"
+          className="h-full min-w-0 flex-1 bg-transparent px-3 text-base tabular-nums text-foreground outline-none placeholder:text-muted-foreground/50"
         />
-        <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[10px] font-medium uppercase text-muted-foreground">
-          {suffix || currency}
-        </span>
+        {(suffix || currency) && (
+          <span className="shrink-0 pr-3 text-xs font-medium text-muted-foreground">
+            {suffix || currencySymbol(currency || '')}
+          </span>
+        )}
       </div>
     </div>
   );
@@ -614,7 +787,7 @@ function Field({
 // ─────────────────────────────────────────────────────────────────────
 function EmptyState() {
   return (
-    <Card>
+    <Card className="rounded-2xl">
       <CardContent className="py-10 text-center">
         <div className="mx-auto grid h-12 w-12 place-items-center rounded-2xl bg-muted">
           <Calculator className="h-5 w-5 text-muted-foreground" />
@@ -646,54 +819,54 @@ function KpiGrid({ outputs, currency }: { outputs: ReturnType<typeof calculate>;
   const verdict = roasVerdict(outputs.roas, outputs.adSpend);
   const profitable = outputs.netProfit >= 0;
   return (
-    <div className="grid grid-cols-2 gap-2">
-      <Card className={cn('p-3', profitable ? 'border-emerald-500/30 bg-emerald-500/5' : 'border-red-500/30 bg-red-500/5')}>
-        <div className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Profit net</div>
-        <AutoFitValue className={cn('mt-1 text-lg font-bold tabular-nums sm:text-2xl', profitable ? 'text-emerald-700' : 'text-red-700')}>
-          <AnimatedNumber value={outputs.netProfit} format={(n) => `${n >= 0 ? '+' : ''}${formatCurrency(n, currency)}`} />
+    <Card className="overflow-hidden rounded-2xl">
+      <div className={cn('px-4 py-4', profitable ? 'bg-emerald-500/10' : 'bg-red-500/10')}>
+        <div className="text-xs font-medium text-muted-foreground">Profit net</div>
+        <AutoFitValue className={cn('mt-1 text-3xl font-semibold tracking-tight', profitable ? 'text-emerald-700 dark:text-emerald-400' : 'text-red-700 dark:text-red-400')}>
+          <AnimatedNumber value={outputs.netProfit} format={(n) => `${n >= 0 ? '+' : ''}${money(n, currency)}`} />
         </AutoFitValue>
-        <div className="mt-0.5 inline-flex items-center gap-1 text-[10px] text-muted-foreground">
-          {profitable ? <TrendingUp className="h-3 w-3" /> : <TrendingDown className="h-3 w-3" />}
-          {profitable ? 'rentable' : 'en perte'}
+        <div className="mt-1.5 inline-flex items-center gap-1 text-xs text-muted-foreground">
+          {profitable ? <TrendingUp className="h-3.5 w-3.5" /> : <TrendingDown className="h-3.5 w-3.5" />}
+          {profitable ? 'Campagne rentable' : 'Campagne en perte'}
         </div>
-      </Card>
-      <Card className="p-3">
-        <div className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">ROAS</div>
-        <div className="mt-1 flex items-baseline gap-2">
-          <div className="text-lg font-bold tabular-nums sm:text-2xl">
+      </div>
+      <div className="grid grid-cols-3 divide-x divide-border/60 border-t border-border/60">
+        <Metric label="ROAS" hint="revenu / pub">
+          <span className="flex items-center gap-1.5">
             <AnimatedNumber value={outputs.roas} format={(n) => `×${n.toFixed(2)}`} />
-          </div>
-          <RoasBadge verdict={verdict} />
-        </div>
-        <div className="mt-0.5 text-[10px] text-muted-foreground">revenu / pub</div>
-      </Card>
-      <Card className="p-3">
-        <div className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Marge</div>
-        <div className="mt-1 text-lg font-bold tabular-nums sm:text-2xl">
-          <AnimatedNumber value={outputs.marginPercent} format={(n) => `${n.toFixed(1)}%`} />
-        </div>
-        <div className="mt-0.5 text-[10px] text-muted-foreground">profit / revenu</div>
-      </Card>
-      <Card className="p-3">
-        <div className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Profit / livraison</div>
-        <AutoFitValue className="mt-1 text-lg font-bold tabular-nums sm:text-2xl">
-          <AnimatedNumber value={outputs.profitPerDelivered} format={(n) => formatCurrency(n, currency)} />
-        </AutoFitValue>
-        <div className="mt-0.5 text-[10px] text-muted-foreground">par colis livré</div>
-      </Card>
+            <RoasBadge verdict={verdict} />
+          </span>
+        </Metric>
+        <Metric label="Marge" hint="profit / revenu">
+          <AnimatedNumber value={outputs.marginPercent} format={(n) => `${n.toFixed(1)} %`} />
+        </Metric>
+        <Metric label="Par livraison" hint="colis livré">
+          <AnimatedNumber value={outputs.profitPerDelivered} format={(n) => money(n, currency)} />
+        </Metric>
+      </div>
+    </Card>
+  );
+}
+
+function Metric({ label, hint, children }: { label: string; hint: string; children: React.ReactNode }) {
+  return (
+    <div className="min-w-0 px-3 py-3">
+      <div className="text-[11px] font-medium text-muted-foreground">{label}</div>
+      <div className="mt-0.5 truncate text-sm font-semibold tabular-nums">{children}</div>
+      <div className="mt-0.5 truncate text-[10px] text-muted-foreground">{hint}</div>
     </div>
   );
 }
 
 function RoasBadge({ verdict }: { verdict: ReturnType<typeof roasVerdict> }) {
   const cls = {
-    bad: 'bg-red-500/10 text-red-700 border-red-500/30',
-    ok: 'bg-amber-500/10 text-amber-700 border-amber-500/30',
-    good: 'bg-emerald-500/10 text-emerald-700 border-emerald-500/30',
-    idle: 'bg-muted text-muted-foreground border-border',
+    bad: 'bg-red-500/10 text-red-700 dark:text-red-400',
+    ok: 'bg-amber-500/10 text-amber-700 dark:text-amber-400',
+    good: 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-400',
+    idle: 'bg-muted text-muted-foreground',
   }[verdict];
-  const label = { bad: 'Bad', ok: 'OK', good: 'Good', idle: '—' }[verdict];
-  return <span className={cn('rounded-full border px-1.5 py-0.5 text-[9px] font-bold uppercase', cls)}>{label}</span>;
+  const label = { bad: 'Faible', ok: 'Correct', good: 'Bon', idle: '—' }[verdict];
+  return <span className={cn('rounded-full px-1.5 py-0.5 text-[10px] font-semibold', cls)}>{label}</span>;
 }
 
 const FUNNEL_COLORS = ['#a855f7', '#ec4899', '#f97316', '#10b981'];
@@ -705,9 +878,9 @@ function FunnelCard({ outputs }: { outputs: ReturnType<typeof calculate> }) {
     { name: 'Livrés', value: Math.round(outputs.deliveredOrders), fill: FUNNEL_COLORS[2] },
   ].filter((d) => d.value > 0);
   return (
-    <Card>
-      <CardContent className="py-3">
-        <div className="mb-1 text-xs font-semibold">Tunnel de conversion</div>
+    <Card className="rounded-2xl">
+      <CardContent className="py-4">
+        <div className="mb-1 text-sm font-semibold">Tunnel de conversion</div>
         <p className="mb-2 text-[10px] text-muted-foreground">Leads → confirmés au call center → livrés</p>
         {data.length === 0 ? (
           <p className="grid h-32 place-items-center text-xs text-muted-foreground">— pas assez de données —</p>
@@ -748,10 +921,10 @@ function CostBreakdownCard({ outputs, currency }: { outputs: ReturnType<typeof c
     { name: 'Comm. COD', value: outputs.codFeeTotal },
   ].filter((s) => s.value > 0.01);
   return (
-    <Card>
-      <CardContent className="py-3">
-        <div className="mb-1 text-xs font-semibold">Répartition des coûts</div>
-        <p className="mb-2 text-[10px] text-muted-foreground">Total : {formatCurrency(outputs.totalCosts, currency)}</p>
+    <Card className="rounded-2xl">
+      <CardContent className="py-4">
+        <div className="mb-1 text-sm font-semibold">Répartition des coûts</div>
+        <p className="mb-2 text-[10px] text-muted-foreground">Total : {money(outputs.totalCosts, currency)}</p>
         {slices.length === 0 ? (
           <p className="grid h-32 place-items-center text-xs text-muted-foreground">— pas de coûts —</p>
         ) : (
@@ -760,7 +933,7 @@ function CostBreakdownCard({ outputs, currency }: { outputs: ReturnType<typeof c
               <PieChart>
                 <RechartsTooltip
                   contentStyle={{ borderRadius: 8, fontSize: 12, border: '1px solid hsl(var(--border))' }}
-                  formatter={(value: number, name: string) => [formatCurrency(value, currency), name]}
+                  formatter={(value: number, name: string) => [money(value, currency), name]}
                 />
                 <RechartsLegend
                   iconType="circle"
@@ -797,14 +970,14 @@ function MetricsTable({
     { label: 'Commandes confirmées', value: Math.round(outputs.confirmedOrders).toString() },
     { label: 'Commandes livrées', value: Math.round(outputs.deliveredOrders).toString(), tone: 'good' },
     { label: 'Colis retournés', value: Math.round(outputs.returnedOrders).toString(), tone: 'bad' },
-    { label: 'Revenu brut', value: formatCurrency(outputs.revenue, currency), tone: 'good' },
-    { label: 'Coût ads', value: formatCurrency(outputs.adSpend, currency), tone: 'muted' },
-    { label: 'Coût produit', value: formatCurrency(outputs.productCostTotal, currency), tone: 'muted' },
-    { label: 'Coût shipping', value: formatCurrency(outputs.shippingCostTotal, currency), tone: 'muted' },
-    { label: 'Coût retours', value: formatCurrency(outputs.returnCostTotal, currency), tone: 'muted' },
-    { label: 'Coût call center', value: formatCurrency(outputs.callCenterTotal, currency), tone: 'muted' },
-    { label: 'Commission COD', value: formatCurrency(outputs.codFeeTotal, currency), tone: 'muted' },
-    { label: 'CPA (par livraison)', value: formatCurrency(outputs.cpa, currency) },
+    { label: 'Revenu brut', value: money(outputs.revenue, currency), tone: 'good' },
+    { label: 'Coût ads', value: money(outputs.adSpend, currency), tone: 'muted' },
+    { label: 'Coût produit', value: money(outputs.productCostTotal, currency), tone: 'muted' },
+    { label: 'Coût shipping', value: money(outputs.shippingCostTotal, currency), tone: 'muted' },
+    { label: 'Coût retours', value: money(outputs.returnCostTotal, currency), tone: 'muted' },
+    { label: 'Coût call center', value: money(outputs.callCenterTotal, currency), tone: 'muted' },
+    { label: 'Commission COD', value: money(outputs.codFeeTotal, currency), tone: 'muted' },
+    { label: 'CPA (par livraison)', value: money(outputs.cpa, currency) },
     {
       label: 'Break-even livraisons',
       value: outputs.breakEvenDeliveries > 0 ? Math.ceil(outputs.breakEvenDeliveries).toString() : '—',
@@ -812,9 +985,9 @@ function MetricsTable({
     },
   ];
   return (
-    <Card>
-      <CardContent className="py-3">
-        <div className="mb-2 text-xs font-semibold">Détail complet</div>
+    <Card className="rounded-2xl">
+      <CardContent className="py-4">
+        <div className="mb-2 text-sm font-semibold">Détail</div>
         <div className="divide-y divide-border/60 text-xs">
           {rows.map((r) => (
             <div key={r.label} className="flex items-center justify-between gap-2 py-1.5">
@@ -837,7 +1010,7 @@ function MetricsTable({
           </div>
         )}
         <p className="mt-2 text-[10px] text-muted-foreground">
-          CPL effectif : {formatCurrency(outputs.effectiveCpl, currency)} · Inputs : prix {formatCurrency(inputs.sellingPrice, currency)}, COGS {formatCurrency(inputs.productCost, currency)}
+          CPL effectif : {money(outputs.effectiveCpl, currency)} · Inputs : prix {money(inputs.sellingPrice, currency)}, COGS {money(inputs.productCost, currency)}
         </p>
       </CardContent>
     </Card>

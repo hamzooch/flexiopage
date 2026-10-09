@@ -50,7 +50,7 @@ interface StoreLite {
   };
 }
 
-const DEFAULT_GREETING = "Salut 👋 Comment puis-je t'aider ?";
+const DEFAULT_GREETING = "Salut 👋 Je peux te montrer les produits et prendre ta commande.";
 const DEFAULT_LAUNCHER = 'Discuter avec nous';
 const DEFAULT_CTA_LABEL = 'Discuter sur WhatsApp';
 const DEFAULT_ACCENT = '#4f46e5';
@@ -175,8 +175,8 @@ export default function BotstorePage() {
             <div>
               <div className="text-sm font-semibold">Activer le Botstore</div>
               <p className="text-[11px] text-muted-foreground">
-                Affiche une bulle de chat sur toutes les pages de ta boutique. Le bot répond aux
-                questions à partir de ton catalogue et de tes réglages.
+                Bulle de chat sur les pages de cette boutique. Le bot répond avec tes produits
+                et enregistre la commande du client (paiement à la livraison).
               </p>
             </div>
           </label>

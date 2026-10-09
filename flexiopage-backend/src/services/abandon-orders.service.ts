@@ -22,7 +22,7 @@ import { leaderElection } from '../lib/leader-election';
 import { Order } from '../models/Order.model';
 
 /** How long a pending order can sit before it's considered abandoned. */
-const GRACE_WINDOW_MS = 15 * 60 * 1000; // 15 min
+export const ABANDON_GRACE_MS = 15 * 60 * 1000; // 15 min
 /** How often we sweep. Short-enough that a payment stuck 20+ min shows as
  *  abandoned within a minute or two — not exactly on the 15-min mark. */
 const SWEEP_INTERVAL_MS = 5 * 60 * 1000; // 5 min
@@ -31,7 +31,7 @@ let sweepTimer: NodeJS.Timeout | null = null;
 
 /** Run one sweep. Exposed for the admin "abandon now" button + tests. */
 export async function sweepAbandonedOrders(): Promise<{ scanned: number; flipped: number }> {
-  const cutoff = new Date(Date.now() - GRACE_WINDOW_MS);
+  const cutoff = new Date(Date.now() - ABANDON_GRACE_MS);
   // COD orders live their whole life as `pending` until the seller marks them
   // paid on delivery — sweeping them would silently erase real orders from the
   // dashboard KPIs (analytics excludes `abandoned`).
@@ -74,7 +74,7 @@ export function startAbandonOrdersJob(): void {
   }, SWEEP_INTERVAL_MS);
   sweepTimer.unref?.();
   logger.info(
-    { graceWindowMs: GRACE_WINDOW_MS, sweepIntervalMs: SWEEP_INTERVAL_MS },
+    { graceWindowMs: ABANDON_GRACE_MS, sweepIntervalMs: SWEEP_INTERVAL_MS },
     '[abandon] cart-abandonment sweeper started (leader-gated)',
   );
 }

@@ -9,11 +9,10 @@ import {
 } from '@/lib/section-order';
 import { formatCurrency, mediaUrl, discountBadgeAnimClass, type DiscountBadgeAnimation } from '@/lib/utils';
 import {
-  STORE_THEME_TEMPLATES,
   RADIUS_PX,
   tokensToCssVars,
   googleFontsHref,
-  withLayoutFallback,
+  resolveStoreTheme,
   type ThemeTokens,
 } from '@/data/store-themes';
 import {
@@ -199,8 +198,6 @@ function applyGridSettings(
   return out;
 }
 
-const FALLBACK_THEME = STORE_THEME_TEMPLATES[0].theme;
-
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { storeSlug } = await params;
   const apiBase = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
@@ -225,15 +222,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 }
 
 function resolveTheme(store: StoreDoc): ThemeTokens {
-  const saved = store.theme as Partial<ThemeTokens> | undefined;
-  // A fully-saved theme carries the customized palette — use it verbatim
-  // (backfilling the structural `layout` block for stores saved before it
-  // existed). Otherwise fall back to the named template.
-  if (saved && saved.primary && saved.background && saved.foreground) {
-    return withLayoutFallback(saved as ThemeTokens);
-  }
-  const found = STORE_THEME_TEMPLATES.find((t) => t.id === saved?.templateId);
-  return found?.theme || FALLBACK_THEME;
+  return resolveStoreTheme(store);
 }
 
 interface DraftStoreInfo {
@@ -422,7 +411,15 @@ export default async function PublicStorePage({ params }: Props) {
         {(() => {
           const order = resolveSectionOrder(sf.sectionOrder);
           const blocks: Record<MovableSectionId, React.ReactNode> = {
-            hero: showHero ? <Hero store={store} theme={theme} isDigital={isDigital} /> : null,
+            hero: showHero ? (
+              <Hero
+                store={store}
+                theme={theme}
+                isDigital={isDigital}
+                currency={currency}
+                featuredProduct={products.find((p) => p.images?.[0])}
+              />
+            ) : null,
             slider: (
               <StorefrontSlider
                 config={sf.slider}
@@ -575,7 +572,19 @@ function HeroCta({ theme, label }: { theme: ThemeTokens; label: string }) {
   );
 }
 
-function Hero({ store, theme, isDigital = false }: { store: StoreDoc; theme: ThemeTokens; isDigital?: boolean }) {
+function Hero({
+  store,
+  theme,
+  isDigital = false,
+  featuredProduct,
+  currency = 'USD',
+}: {
+  store: StoreDoc;
+  theme: ThemeTokens;
+  isDigital?: boolean;
+  featuredProduct?: ProductDoc;
+  currency?: string;
+}) {
   const layout = theme.layout?.hero || 'centered';
   const title = store.settings?.storefront?.heroTitle || store.name;
   const subtitle = store.settings?.storefront?.heroSubtitle || store.description;
@@ -590,6 +599,9 @@ function Hero({ store, theme, isDigital = false }: { store: StoreDoc; theme: The
   const titleSize =
     theme.fontDisplaySize === 'xlarge' ? 'text-4xl sm:text-6xl lg:text-7xl' :
     theme.fontDisplaySize === 'large'  ? 'text-3xl sm:text-5xl lg:text-6xl' : 'text-3xl sm:text-4xl lg:text-5xl';
+  const featuredImage = featuredProduct?.images?.[0];
+  const featuredSrc = featuredImage ? (mediaUrl(featuredImage) || featuredImage) : '';
+  const trust = ['Paiement à la livraison', 'Livraison à domicile', 'Service client'];
 
   // When the seller uploads hero media (image OR video) we render a dedicated
   // media-cover layout (background + dark scrim + white text) instead of one of
@@ -675,42 +687,42 @@ function Hero({ store, theme, isDigital = false }: { store: StoreDoc; theme: The
     );
   }
 
-  // ── EDITORIAL — asymmetric, left-aligned, big serif, accent rule ──
+  // ── EDITORIAL — magazine : grand sérif à gauche, photo produit à droite ──
   if (layout === 'editorial') {
     return (
       <section className="relative overflow-hidden" style={{ backgroundColor: theme.background }}>
-        <div className="relative mx-auto max-w-6xl px-4 py-16 sm:px-6 sm:py-24 lg:py-32">
-          <div className="grid gap-10 lg:grid-cols-[1.4fr_1fr] lg:items-end">
-            <div>
-              <div
-                className="mb-5 flex items-center gap-3 text-[11px] font-semibold uppercase tracking-[0.3em]"
-                style={{ color: theme.accent }}
-              >
-                <span className="h-px w-10" style={{ backgroundColor: theme.accent }} />
-                {isDigital ? 'Sélection digitale' : 'Maison & collection'}
-              </div>
-              <h1
-                className={`${titleSize} font-bold leading-[0.95] tracking-tight`}
-                style={{ fontFamily: theme.fontHeading, color: theme.foreground }}
-              >
-                {title}
-              </h1>
+        <div className="relative mx-auto grid max-w-6xl items-center gap-10 px-4 py-12 sm:px-6 sm:py-16 md:grid-cols-[1.05fr_0.95fr] md:py-16">
+          <div>
+            <div
+              className="mb-5 flex items-center gap-3 text-[11px] font-semibold uppercase tracking-[0.3em]"
+              style={{ color: theme.accent }}
+            >
+              <span className="h-px w-10" style={{ backgroundColor: theme.accent }} />
+              {isDigital ? 'Sélection digitale' : 'Collection'}
             </div>
+            <h1
+              className={`${titleSize} font-bold leading-[0.95] tracking-tight`}
+              style={{ fontFamily: theme.fontHeading, color: theme.foreground }}
+            >
+              {title}
+            </h1>
             {subtitle && (
               <p
-                className="max-w-sm border-l pl-5 text-base leading-relaxed"
-                style={{ color: theme.muted, fontFamily: theme.fontBody, borderColor: theme.border }}
+                className="mt-6 max-w-md text-base leading-relaxed"
+                style={{ color: theme.muted, fontFamily: theme.fontBody }}
               >
                 {subtitle}
               </p>
             )}
+            <div className="mt-8">
+              <HeroCta theme={theme} label="Voir la collection" />
+            </div>
           </div>
-          <div className="mt-10 flex flex-wrap items-center gap-5">
-            <HeroCta theme={theme} label="Découvrir" />
-            <a href="#products" className="text-sm font-medium underline underline-offset-4" style={{ color: theme.foreground }}>
-              Voir tout le catalogue
-            </a>
-          </div>
+          {featuredSrc && (
+            <div className="relative aspect-[4/5] overflow-hidden" style={{ backgroundColor: theme.surfaceMuted }}>
+              <Image src={featuredSrc} alt="" fill priority className="object-cover" sizes="(max-width: 1024px) 100vw, 46vw" />
+            </div>
+          )}
         </div>
       </section>
     );
@@ -745,31 +757,16 @@ function Hero({ store, theme, isDigital = false }: { store: StoreDoc; theme: The
               <HeroCta theme={theme} label="Découvrir nos produits" />
             </div>
           </div>
-          {/* Visual panel */}
           <div
-            className="relative aspect-[4/3] overflow-hidden lg:aspect-square"
+            className="relative aspect-[4/5] overflow-hidden lg:aspect-[4/5]"
             style={{
               borderRadius: radius,
-              background: `linear-gradient(135deg, ${theme.gradientFrom}, ${theme.gradientTo})`,
+              background: featuredSrc ? theme.surfaceMuted : `linear-gradient(160deg, ${theme.gradientFrom}, ${theme.gradientTo})`,
             }}
           >
-            <div
-              className="absolute left-6 top-6 h-24 w-24 rounded-2xl opacity-90 blur-[1px]"
-              style={{ backgroundColor: hexA(theme.surface, 0.55) }}
-              aria-hidden
-            />
-            <div
-              className="absolute bottom-8 right-8 h-32 w-32 rounded-full"
-              style={{ backgroundColor: hexA(theme.background, 0.35) }}
-              aria-hidden
-            />
-            <div
-              className="absolute inset-x-6 bottom-6 rounded-xl p-4 backdrop-blur"
-              style={{ backgroundColor: hexA(theme.surface, 0.85), borderRadius: radius }}
-            >
-              <div className="h-2 w-2/3 rounded-full" style={{ backgroundColor: theme.foreground, opacity: 0.7 }} />
-              <div className="mt-2 h-2 w-1/3 rounded-full" style={{ backgroundColor: theme.primary }} />
-            </div>
+            {featuredSrc && (
+              <Image src={featuredSrc} alt="" fill priority className="object-cover" sizes="(max-width: 1024px) 100vw, 50vw" />
+            )}
           </div>
         </div>
       </section>
@@ -802,6 +799,115 @@ function Hero({ store, theme, isDigital = false }: { store: StoreDoc; theme: The
             <HeroCta theme={theme} label="Parcourir" />
           </div>
           <div className="mt-14 h-px w-full" style={{ backgroundColor: theme.border }} />
+        </div>
+      </section>
+    );
+  }
+
+  // ── CATALOG — bandeau court : la grille produit arrive tout de suite ──
+  if (layout === 'catalog') {
+    return (
+      <section style={{ backgroundColor: theme.background }}>
+        <div className="border-b" style={{ borderColor: theme.border, backgroundColor: theme.surfaceMuted }}>
+          <ul className="mx-auto flex max-w-6xl flex-wrap items-center justify-center gap-x-3 gap-y-1 px-4 py-2.5 text-[11px] font-semibold uppercase tracking-[0.14em]" style={{ color: theme.muted }}>
+            {trust.map((item, i) => (
+              <li key={item} className="inline-flex items-center gap-3">
+                {i > 0 && <span aria-hidden style={{ color: theme.primary }}>·</span>}
+                {item}
+              </li>
+            ))}
+          </ul>
+        </div>
+        <div className="mx-auto flex max-w-6xl flex-col gap-5 px-4 py-8 sm:flex-row sm:items-end sm:justify-between sm:px-6 sm:py-10">
+          <div className="max-w-xl">
+            <p className="text-[11px] font-bold uppercase tracking-[0.2em]" style={{ color: theme.primary }}>
+              {eyebrow}
+            </p>
+            <h1
+              className={`${titleSize} mt-2 font-bold leading-[1.05] tracking-tight`}
+              style={{ fontFamily: theme.fontHeading, color: theme.foreground }}
+            >
+              {title}
+            </h1>
+            {subtitle && (
+              <p className="mt-3 max-w-lg text-sm leading-relaxed sm:text-base" style={{ color: theme.muted, fontFamily: theme.fontBody }}>
+                {subtitle}
+              </p>
+            )}
+          </div>
+          <HeroCta theme={theme} label="Voir le catalogue" />
+        </div>
+      </section>
+    );
+  }
+
+  // ── OFFER — produit phare à côté de l'offre, preuves sous le bouton ──
+  if (layout === 'offer') {
+    return (
+      <section style={{ backgroundColor: theme.background }}>
+        <div className="mx-auto grid max-w-6xl items-center gap-8 px-4 py-8 sm:px-6 sm:py-12 md:grid-cols-2 md:py-14">
+          <div className="order-2 md:order-1">
+            <p className="text-[11px] font-bold uppercase tracking-[0.2em]" style={{ color: theme.accent }}>
+              {eyebrow}
+            </p>
+            <h1
+              className={`${titleSize} mt-3 font-extrabold leading-[1.02] tracking-tight`}
+              style={{ fontFamily: theme.fontHeading, color: theme.foreground }}
+            >
+              {title}
+            </h1>
+            {subtitle && (
+              <p className="mt-4 max-w-md text-base leading-relaxed" style={{ color: theme.muted, fontFamily: theme.fontBody }}>
+                {subtitle}
+              </p>
+            )}
+            <div className="mt-6">
+              <HeroCta theme={theme} label="Commander" />
+            </div>
+            <ul className="mt-5 flex flex-wrap gap-2">
+              {trust.map((item) => (
+                <li
+                  key={item}
+                  className="border px-3 py-1 text-[11px] font-semibold"
+                  style={{
+                    borderColor: theme.border,
+                    color: theme.foreground,
+                    backgroundColor: theme.surface,
+                    borderRadius: radius,
+                  }}
+                >
+                  {item}
+                </li>
+              ))}
+            </ul>
+          </div>
+          {featuredProduct && featuredSrc ? (
+            <a
+              href={`/${store.slug}/product/${featuredProduct.slug}`}
+              className="order-1 block overflow-hidden border md:order-2"
+              style={{ borderColor: theme.border, borderRadius: radius, backgroundColor: theme.surface }}
+            >
+              <div className="relative aspect-[4/5]" style={{ backgroundColor: theme.surfaceMuted }}>
+                <Image src={featuredSrc} alt={featuredProduct.name} fill priority className="object-cover" sizes="(max-width: 768px) 100vw, 50vw" />
+              </div>
+              <div className="flex items-end justify-between gap-3 p-4">
+                <div>
+                  <p className="text-base font-semibold leading-snug" style={{ fontFamily: theme.fontHeading, color: theme.foreground }}>
+                    {featuredProduct.name}
+                  </p>
+                  <p className="mt-1 text-sm font-medium" style={{ color: theme.primary }}>
+                    {formatCurrency(featuredProduct.price, currency)}
+                  </p>
+                </div>
+                <span className="shrink-0 text-xs font-semibold" style={{ color: theme.foreground }}>Voir →</span>
+              </div>
+            </a>
+          ) : (
+            <div
+              className="order-1 aspect-[4/5] md:order-2"
+              style={{ borderRadius: radius, background: `linear-gradient(160deg, ${theme.gradientFrom}, ${theme.gradientTo})` }}
+            />
+          )}
         </div>
       </section>
     );
@@ -903,7 +1009,11 @@ function ProductCard({
           unoptimized={mediaUrl(p.images[0])?.includes('cloudinary') ?? false}
           placeholder="blur"
           blurDataURL={IMAGE_BLUR_DATA_URL}
-          className="object-cover transition-transform duration-[700ms] ease-out group-hover:scale-110 group-hover:rotate-[0.6deg]"
+          className={
+            cardStyle === 'editorial' || cardStyle === 'minimal'
+              ? 'object-cover transition-transform duration-700 ease-out group-hover:scale-[1.03]'
+              : 'object-cover transition-transform duration-700 ease-out group-hover:scale-105'
+          }
         />
       ) : (
         <div className="grid h-full place-items-center text-xs" style={{ color: theme.muted }}>
@@ -1032,7 +1142,7 @@ function ProductCard({
         </div>
         <div className="pt-3 transition-colors">
           <h3
-            className="text-base font-medium leading-snug transition-colors group-hover:opacity-80"
+            className="text-lg font-medium leading-snug transition-colors group-hover:opacity-80 sm:text-xl"
             style={{ fontFamily: theme.fontHeading, color: theme.foreground }}
           >
             {p.name}
@@ -1148,7 +1258,8 @@ function ProductsGrid({
   // "Bold" nav themes (Volt, Studio) also use loud uppercase section heads.
   const uppercase = theme.layout?.nav === 'bold';
   // Editorial / left-aligned section heads vs centered ones.
-  const leftAlign = theme.layout?.hero === 'editorial' || theme.layout?.hero === 'minimal';
+  const shopHead = theme.layout?.hero === 'catalog' || theme.layout?.hero === 'offer';
+  const leftAlign = theme.layout?.hero === 'editorial' || theme.layout?.hero === 'minimal' || shopHead;
   // Le vendeur peut forcer le nombre de colonnes — sinon, fallback sur le thème.
   const cols = columnsOverride || theme.layout?.gridColumns || 3;
   const gridClass = GRID_COLS_CLASS[cols] || GRID_COLS_CLASS[3];
@@ -1161,7 +1272,7 @@ function ProductsGrid({
     >
       <div className="mx-auto max-w-6xl px-4 py-10 sm:px-6 sm:py-16 lg:py-20">
         <div className={`mb-7 sm:mb-10 ${leftAlign ? '' : 'text-center'}`}>
-          {leftAlign && (
+          {leftAlign && !shopHead && (
             <div
               className="mb-2 text-[10px] font-semibold uppercase tracking-[0.25em] sm:text-xs"
               style={{ color: theme.accent }}

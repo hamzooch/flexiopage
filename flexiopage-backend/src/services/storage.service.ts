@@ -6,6 +6,7 @@ import { v2 as cloudinary } from 'cloudinary';
 import sharp from 'sharp';
 import type { StorageConfig, UploadResult, StorageDriver, UploadPurpose } from '../config/storage';
 import { logger } from '../lib/logger';
+import { fetchWithRetry } from '../lib/outbound-fetch';
 
 const config: StorageConfig = {
   driver: (process.env.STORAGE_DRIVER as StorageDriver) || 'local',
@@ -26,6 +27,18 @@ const config: StorageConfig = {
   r2PublicBaseUrl: process.env.R2_PUBLIC_BASE_URL,
 };
 
+/** Second compartiment R2, public, réservé aux photos. Les PDF/ZIP restent sur R2_BUCKET. */
+const mediaR2 = {
+  bucket: process.env.R2_MEDIA_BUCKET,
+  accessKeyId: process.env.R2_MEDIA_ACCESS_KEY_ID || process.env.R2_ACCESS_KEY_ID,
+  secretAccessKey: process.env.R2_MEDIA_SECRET_ACCESS_KEY || process.env.R2_SECRET_ACCESS_KEY,
+  publicBaseUrl: process.env.R2_MEDIA_PUBLIC_BASE_URL,
+};
+
+function isMediaR2Configured(): boolean {
+  return !!(config.r2AccountId && mediaR2.bucket && mediaR2.accessKeyId && mediaR2.secretAccessKey && mediaR2.publicBaseUrl);
+}
+
 /** True if R2 is fully configured (account id + bucket + credentials). */
 export function isR2Configured(): boolean {
   return !!(config.r2AccountId && config.r2Bucket && config.r2AccessKeyId && config.r2SecretAccessKey);
@@ -39,6 +52,7 @@ logger.info(
     driver: config.driver,
     cloudinaryReady: !!(config.cloudinaryCloudName && config.cloudinaryApiKey && config.cloudinaryApiSecret),
     r2Ready: isR2Configured(),
+    r2MediaReady: isMediaR2Configured(),
     s3Ready: !!(config.s3Bucket && config.s3AccessKey),
   },
   '[storage] driver loaded',
@@ -119,6 +133,40 @@ async function uploadR2(
   const base = config.r2PublicBaseUrl
     ? config.r2PublicBaseUrl.replace(/\/+$/, '')
     : `https://${config.r2AccountId}.r2.cloudflarestorage.com/${config.r2Bucket}`;
+  return { key, url: `${base}/${key}`, size: buffer.length, mimeType };
+}
+
+let r2MediaClient: S3Client | null = null;
+
+function getR2MediaClient(): S3Client {
+  if (!r2MediaClient) {
+    r2MediaClient = new S3Client({
+      region: 'auto',
+      endpoint: `https://${config.r2AccountId}.r2.cloudflarestorage.com`,
+      credentials: {
+        accessKeyId: mediaR2.accessKeyId!,
+        secretAccessKey: mediaR2.secretAccessKey!,
+      },
+    });
+  }
+  return r2MediaClient;
+}
+
+/** Photos publiques sur flexiopage1. L'URL r2.dev doit être autorisée sur le compartiment. */
+async function uploadR2Media(
+  key: string,
+  buffer: Buffer,
+  mimeType?: string,
+): Promise<UploadResult> {
+  await getR2MediaClient().send(
+    new PutObjectCommand({
+      Bucket: mediaR2.bucket!,
+      Key: key,
+      Body: buffer,
+      ContentType: mimeType,
+    }),
+  );
+  const base = mediaR2.publicBaseUrl!.replace(/\/+$/, '');
   return { key, url: `${base}/${key}`, size: buffer.length, mimeType };
 }
 
@@ -332,13 +380,51 @@ export async function uploadFile(
   if (purpose === 'deliverable' && isR2Configured()) {
     return uploadR2(key, opt.buffer, opt.mimeType);
   }
-  if (config.driver === 'cloudinary') {
-    return uploadCloudinary(key, opt.buffer, opt.mimeType);
+  return uploadMedia(key, opt.buffer, opt.mimeType);
+}
+
+function redactStorageError(err: unknown): string {
+  return ((err as Error).message || 'upload failed').replace(/api_key\s+\S+/gi, 'api_key [redacted]');
+}
+
+/**
+ * Upload sur le driver configuré. Si Cloudinary refuse la clé (cas vu en
+ * génération), on bascule sur R2 puis sur le disque local pour que l'image
+ * ne reste pas sur une URL fal.media qui expire en 24 h.
+ */
+async function uploadMedia(
+  key: string,
+  buffer: Buffer,
+  mimeType?: string,
+): Promise<UploadResult> {
+  const primary = () => {
+    if (config.driver === 'cloudinary') return uploadCloudinary(key, buffer, mimeType);
+    if (config.driver === 's3' && config.s3Bucket) return uploadS3(key, buffer, mimeType);
+    return uploadLocal(key, buffer, mimeType);
+  };
+  try {
+    return await primary();
+  } catch (err) {
+    if (config.driver === 'local') throw err;
+    logger.warn(
+      { err: redactStorageError(err), driver: config.driver },
+      '[storage] primary upload failed, falling back',
+    );
+    if (isMediaR2Configured()) {
+      try {
+        return await uploadR2Media(key, buffer, mimeType);
+      } catch (r2err) {
+        logger.warn({ err: redactStorageError(r2err) }, '[storage] r2 media fallback failed');
+      }
+    } else if (isR2Configured()) {
+      try {
+        return await uploadR2(key, buffer, mimeType);
+      } catch (r2err) {
+        logger.warn({ err: redactStorageError(r2err) }, '[storage] r2 fallback failed');
+      }
+    }
+    return uploadLocal(key, buffer, mimeType);
   }
-  if (config.driver === 's3' && config.s3Bucket) {
-    return uploadS3(key, opt.buffer, opt.mimeType);
-  }
-  return uploadLocal(key, opt.buffer, opt.mimeType);
 }
 
 const EXT_BY_MIME: Record<string, string> = {
@@ -367,7 +453,7 @@ export async function persistRemoteImage(
   const apiBase = (process.env.API_PUBLIC_URL || '').replace(/\/$/, '');
   if (apiBase && remoteUrl.startsWith(apiBase)) return remoteUrl;
 
-  const res = await fetch(remoteUrl);
+  const res = await fetchWithRetry(remoteUrl);
   if (!res.ok) {
     throw new Error(`persistRemoteImage: failed to fetch ${remoteUrl} (${res.status})`);
   }
@@ -375,16 +461,7 @@ export async function persistRemoteImage(
   const ext = EXT_BY_MIME[mimeType] || path.extname(new URL(remoteUrl).pathname) || '.jpg';
   const buffer = Buffer.from(await res.arrayBuffer());
   const filename = `${Date.now()}-${Math.random().toString(36).slice(2, 10)}${ext}`;
-  const key = `${folder}/${filename}`;
-  if (config.driver === 'cloudinary') {
-    const result = await uploadCloudinary(key, buffer, mimeType);
-    return result.url;
-  }
-  if (config.driver === 's3' && config.s3Bucket) {
-    const result = await uploadS3(key, buffer, mimeType);
-    return result.url;
-  }
-  const result = await uploadLocal(key, buffer, mimeType);
+  const result = await uploadMedia(`${folder}/${filename}`, buffer, mimeType);
   return result.url;
 }
 

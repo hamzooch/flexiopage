@@ -3,25 +3,19 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import {
-  Activity,
   BarChart3,
-  Clock,
   DollarSign,
   Download,
-  Eye,
-  MousePointerClick,
   Percent,
   RefreshCcw,
-  RotateCcw,
   ShoppingCart,
-  Sparkles,
-  TrendingUp,
-  Users,
 } from 'lucide-react';
 import { storesApi } from '@/lib/api';
 import { useScopedStoreId } from '@/lib/use-scoped-store';
 import { formatCurrency, cn, formatYmdLabel } from '@/lib/utils';
+import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { PageHeader } from '@/components/dashboard/page-header';
 import { KpiCard } from '@/components/charts/KpiCard';
 import { RangeSwitcher } from '@/components/charts/RangeSwitcher';
 import { RevenueAreaChart } from '@/components/charts/RevenueAreaChart';
@@ -115,41 +109,43 @@ export default function DashboardAnalyticsPage() {
   const selectedStore = useMemo(() => stores.find((s) => s._id === selectedStoreId), [stores, selectedStoreId]);
 
   return (
-    <div className="space-y-5 sm:space-y-6">
-      {/* Header */}
-      <div className="flex flex-col gap-3 sm:gap-4 lg:flex-row lg:items-end lg:justify-between">
-        <div className="min-w-0">
-          <div className="inline-flex items-center gap-2 rounded-full bg-gradient-to-r from-pink-500/10 to-violet-500/10 px-3 py-1 text-[11px] font-semibold uppercase tracking-wider text-violet-700">
-            <Sparkles className="h-3 w-3" />
-            Tableau de bord
-          </div>
-          <h1 className="mt-2 text-2xl font-bold tracking-tight sm:text-3xl">Analytics</h1>
-          <p className="truncate text-xs text-muted-foreground sm:text-sm">
-            Performance de {selectedStore?.name || 'ta boutique'} en temps réel.
-          </p>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <RangeSwitcher value={range} onChange={setRange} />
-          <button
-            type="button"
-            onClick={refresh}
-            disabled={!selectedStoreId || refreshing}
-            className="inline-flex h-9 items-center gap-1.5 rounded-xl border border-border/60 bg-card px-2.5 text-xs font-semibold shadow-sm transition-colors hover:bg-muted disabled:opacity-50 sm:px-3"
-            title="Rafraîchir"
-          >
-            <RefreshCcw className={`h-3.5 w-3.5 ${refreshing ? 'animate-spin' : ''}`} />
-            <span className="hidden sm:inline">Actualiser</span>
-          </button>
-          <button
-            type="button"
-            onClick={() => data && downloadCsv(`analytics-${selectedStore?.name || 'store'}-${range}.csv`, toCsv(data))}
-            disabled={!data}
-            className="inline-flex h-9 items-center gap-1.5 rounded-xl border border-border/60 bg-card px-2.5 text-xs font-semibold shadow-sm transition-colors hover:bg-muted disabled:opacity-50 sm:px-3"
-          >
-            <Download className="h-3.5 w-3.5" />
-            CSV
-          </button>
-        </div>
+    <div className="space-y-5">
+      <PageHeader
+        icon={BarChart3}
+        title="Analytics"
+        description={
+          data
+            ? `${selectedStore?.name || 'Boutique'} · ${windowLabel(data)}`
+            : `Performance de ${selectedStore?.name || 'ta boutique'}.`
+        }
+        actions={
+          <>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={refresh}
+              disabled={!selectedStoreId || refreshing}
+              className="h-10 gap-1.5"
+            >
+              <RefreshCcw className={`h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} />
+              Actualiser
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => data && downloadCsv(`analytics-${selectedStore?.name || 'store'}-${range}.csv`, toCsv(data))}
+              disabled={!data}
+              className="h-10 gap-1.5"
+            >
+              <Download className="h-4 w-4" />
+              CSV
+            </Button>
+          </>
+        }
+      />
+
+      <div className="overflow-x-auto">
+        <RangeSwitcher value={range} onChange={setRange} />
       </div>
 
       {/* Store switcher — horizontal scroll on mobile so it doesn't wrap into
@@ -162,10 +158,10 @@ export default function DashboardAnalyticsPage() {
                 key={s._id}
                 type="button"
                 onClick={() => setSelectedStoreId(s._id)}
-                className={`shrink-0 rounded-full border px-3 py-1.5 text-xs font-semibold transition-all sm:px-3.5 ${
+                className={`min-h-9 shrink-0 rounded-full border px-3 py-1.5 text-xs font-medium transition-colors ${
                   selectedStoreId === s._id
-                    ? 'border-transparent bg-gradient-to-r from-pink-500 to-violet-600 text-white shadow-md'
-                    : 'border-border/60 bg-card text-muted-foreground hover:border-foreground/30 hover:text-foreground'
+                    ? 'border-transparent bg-foreground text-background'
+                    : 'border-border/60 bg-card text-muted-foreground hover:text-foreground'
                 }`}
               >
                 {s.name}
@@ -191,18 +187,17 @@ export default function DashboardAnalyticsPage() {
         </Card>
       ) : (
         <>
-          {/* KPI grid — denser: 2 cols mobile, 3 tablet, 4 desktop, 5 xl. */}
-          <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 sm:gap-2.5 lg:grid-cols-4 xl:grid-cols-5">
+          <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
             <KpiCard
-              label="Ventes totales"
+              label="Ventes"
               value={formatCurrency(data.kpis.sales.value, currency)}
               delta={data.kpis.sales.deltaPct}
               icon={DollarSign}
-              accent="pink"
+              accent="slate"
               hint="toutes commandes"
             />
             <KpiCard
-              label="Revenu encaissé"
+              label="Encaissé"
               value={formatCurrency(data.kpis.revenue.value, currency)}
               delta={data.kpis.revenue.deltaPct}
               icon={DollarSign}
@@ -214,78 +209,28 @@ export default function DashboardAnalyticsPage() {
               value={String(data.kpis.paidOrders.value)}
               delta={data.kpis.paidOrders.deltaPct}
               icon={ShoppingCart}
-              accent="violet"
-              hint="vs période préc."
-            />
-            <KpiCard
-              label="Panier moyen"
-              value={formatCurrency(data.kpis.averageOrderValue.value, currency)}
-              delta={data.kpis.averageOrderValue.deltaPct}
-              icon={TrendingUp}
-              accent="emerald"
-              hint="toutes commandes"
-            />
-            <KpiCard
-              label="Clients uniques"
-              value={String(data.kpis.uniqueCustomers.value)}
-              delta={data.kpis.uniqueCustomers.deltaPct}
-              icon={Users}
-              accent="sky"
-              hint="emails distincts"
-            />
-            <KpiCard
-              label="Commandes totales"
-              value={String(data.kpis.orders.value)}
-              delta={data.kpis.orders.deltaPct}
-              icon={BarChart3}
               accent="slate"
+              hint="sur la période"
             />
             <KpiCard
-              label="Taux de livraison"
-              value={`${data.kpis.fulfillmentRate.value.toFixed(1)}%`}
-              delta={data.kpis.fulfillmentRate.deltaPct}
-              icon={Activity}
-              accent="emerald"
-            />
-            <KpiCard
-              label="Taux remboursement"
-              value={`${data.kpis.refundRate.value.toFixed(1)}%`}
-              delta={data.kpis.refundRate.deltaPct}
-              invertDelta
-              icon={RotateCcw}
-              accent="amber"
-            />
-            <KpiCard
-              label="Paiements en attente"
-              value={String(data.kpis.pendingOrders.value)}
-              icon={Clock}
-              accent="amber"
-              hint="toutes périodes"
-            />
-            <KpiCard
-              label="Vues de page"
-              value={String(data.kpis.pageViews.value)}
-              delta={data.kpis.pageViews.deltaPct}
-              icon={Eye}
-              accent="sky"
-              hint="trafic storefront"
-            />
-            <KpiCard
-              label="Vues produits"
-              value={String(data.kpis.productViews.value)}
-              delta={data.kpis.productViews.deltaPct}
-              icon={MousePointerClick}
-              accent="violet"
-              hint="fiches produit ouvertes"
-            />
-            <KpiCard
-              label="Taux de conversion"
+              label="Conversion"
               value={`${data.kpis.conversionRate.value.toFixed(2)}%`}
               delta={data.kpis.conversionRate.deltaPct}
               icon={Percent}
-              accent="pink"
-              hint="visites → commandes"
+              accent="slate"
+              hint="visites vers commandes"
             />
+          </div>
+
+          <div className="grid grid-cols-2 gap-px overflow-hidden rounded-2xl border border-border/60 bg-border/60 sm:grid-cols-4">
+            <MetricCell label="Panier moyen" value={formatCurrency(data.kpis.averageOrderValue.value, currency)} delta={data.kpis.averageOrderValue.deltaPct} />
+            <MetricCell label="Clients" value={String(data.kpis.uniqueCustomers.value)} delta={data.kpis.uniqueCustomers.deltaPct} />
+            <MetricCell label="Commandes" value={String(data.kpis.orders.value)} delta={data.kpis.orders.deltaPct} />
+            <MetricCell label="Vues" value={String(data.kpis.pageViews.value)} delta={data.kpis.pageViews.deltaPct} />
+            <MetricCell label="Vues produits" value={String(data.kpis.productViews.value)} delta={data.kpis.productViews.deltaPct} />
+            <MetricCell label="Livraison" value={`${data.kpis.fulfillmentRate.value.toFixed(1)}%`} delta={data.kpis.fulfillmentRate.deltaPct} />
+            <MetricCell label="Remboursement" value={`${data.kpis.refundRate.value.toFixed(1)}%`} delta={data.kpis.refundRate.deltaPct} invert />
+            <MetricCell label="En attente" value={String(data.kpis.pendingOrders.value)} />
           </div>
 
           {/* Revenue chart (full width) */}
@@ -293,7 +238,7 @@ export default function DashboardAnalyticsPage() {
             <CardHeader className="flex flex-row items-start justify-between gap-3 pb-2">
               <div className="min-w-0">
                 <CardTitle className="text-sm sm:text-base">Ventes &amp; encaissé</CardTitle>
-                <p className="mt-0.5 truncate text-[11px] text-muted-foreground sm:text-xs">
+                <p className="mt-0.5 truncate text-xs text-muted-foreground">
                   {monthly ? 'Mensuel' : 'Quotidien'} · {windowLabel(data)}
                 </p>
               </div>
@@ -309,7 +254,7 @@ export default function DashboardAnalyticsPage() {
             <Card className="lg:col-span-2">
               <CardHeader className="pb-2">
                 <CardTitle className="text-sm sm:text-base">Top produits</CardTitle>
-                <p className="text-[11px] text-muted-foreground sm:text-xs">Classés par ventes sur la période</p>
+                <p className="text-xs text-muted-foreground">Classés par ventes sur la période</p>
               </CardHeader>
               <CardContent>
                 <TopProductsList products={data.topProducts} currency={currency} />
@@ -318,7 +263,7 @@ export default function DashboardAnalyticsPage() {
             <Card>
               <CardHeader className="pb-2">
                 <CardTitle className="text-sm sm:text-base">Funnel COD</CardTitle>
-                <p className="text-[11px] text-muted-foreground sm:text-xs">
+                <p className="text-xs text-muted-foreground">
                   Créée → contactée → confirmée → dispatchée → livrée → payée
                 </p>
               </CardHeader>
@@ -335,7 +280,7 @@ export default function DashboardAnalyticsPage() {
                 <Card>
                   <CardHeader className="pb-2">
                     <CardTitle className="text-sm sm:text-base">Top motifs de refus</CardTitle>
-                    <p className="text-[11px] text-muted-foreground sm:text-xs">
+                    <p className="text-xs text-muted-foreground">
                       Où corriger la cause racine — chaque motif suggère une action.
                     </p>
                   </CardHeader>
@@ -348,7 +293,7 @@ export default function DashboardAnalyticsPage() {
                 <Card>
                   <CardHeader className="pb-2">
                     <CardTitle className="text-sm sm:text-base">Performance par pays</CardTitle>
-                    <p className="text-[11px] text-muted-foreground sm:text-xs">
+                    <p className="text-xs text-muted-foreground">
                       CA + taux de livraison — sur la période.
                     </p>
                   </CardHeader>
@@ -367,7 +312,7 @@ export default function DashboardAnalyticsPage() {
                 <div className="flex items-start justify-between gap-3">
                   <div>
                     <CardTitle className="text-sm sm:text-base">Commandes par ville</CardTitle>
-                    <p className="text-[11px] text-muted-foreground sm:text-xs">
+                    <p className="text-xs text-muted-foreground">
                       Top 15 villes de tes clients sur la période — % des commandes, CA et taux de livraison.
                     </p>
                   </div>
@@ -384,7 +329,7 @@ export default function DashboardAnalyticsPage() {
             <Card>
               <CardHeader className="pb-2">
                 <CardTitle className="text-sm sm:text-base">Méthodes de paiement</CardTitle>
-                <p className="text-[11px] text-muted-foreground sm:text-xs">Répartition par fournisseur sur la période</p>
+                <p className="text-xs text-muted-foreground">Répartition par fournisseur sur la période</p>
               </CardHeader>
               <CardContent>
                 <PaymentDonutChart data={data.paymentBreakdown} currency={currency} />
@@ -393,7 +338,7 @@ export default function DashboardAnalyticsPage() {
             <Card>
               <CardHeader className="pb-2">
                 <CardTitle className="text-sm sm:text-base">Commandes récentes</CardTitle>
-                <p className="text-[11px] text-muted-foreground sm:text-xs">Sur la période sélectionnée</p>
+                <p className="text-xs text-muted-foreground">Sur la période sélectionnée</p>
               </CardHeader>
               <CardContent>
                 <RecentOrdersPanel orders={data.recentOrders} />
@@ -405,7 +350,7 @@ export default function DashboardAnalyticsPage() {
           <Card>
             <CardHeader className="pb-2">
               <CardTitle className="text-sm sm:text-base">Depuis le début</CardTitle>
-              <p className="text-[11px] text-muted-foreground sm:text-xs">Cumul total de la boutique, hors filtre de période</p>
+              <p className="text-xs text-muted-foreground">Cumul total de la boutique, hors filtre de période</p>
             </CardHeader>
             <CardContent className="grid grid-cols-2 gap-4 py-4 lg:grid-cols-4">
               <FooterStat label="Ventes totales" value={formatCurrency(data.totals.totalSales, currency)} />
@@ -416,6 +361,45 @@ export default function DashboardAnalyticsPage() {
           </Card>
         </>
       )}
+    </div>
+  );
+}
+
+function MetricCell({
+  label,
+  value,
+  delta,
+  invert,
+}: {
+  label: string;
+  value: string;
+  delta?: number | null;
+  invert?: boolean;
+}) {
+  const hasDelta = delta !== undefined && delta !== null && Number.isFinite(delta);
+  const isUp = hasDelta && (delta as number) > 0;
+  const isDown = hasDelta && (delta as number) < 0;
+  const positive = invert ? isDown : isUp;
+  const negative = invert ? isUp : isDown;
+  return (
+    <div className="bg-card px-4 py-3">
+      <div className="text-xs text-muted-foreground">{label}</div>
+      <div className="mt-1 flex items-baseline justify-between gap-2">
+        <span className="text-base font-semibold tabular-nums">{value}</span>
+        {hasDelta && (
+          <span
+            className={cn(
+              'text-xs font-medium tabular-nums',
+              positive && 'text-emerald-700',
+              negative && 'text-rose-700',
+              !positive && !negative && 'text-muted-foreground',
+            )}
+          >
+            {(delta as number) > 0 ? '+' : ''}
+            {(delta as number).toFixed(1)}%
+          </span>
+        )}
+      </div>
     </div>
   );
 }
@@ -436,7 +420,7 @@ function Legend() {
 function FooterStat({ label, value }: { label: string; value: string }) {
   return (
     <div className="min-w-0 border-l border-border/60 pl-3 first:border-l-0 first:pl-0 lg:pl-4">
-      <div className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground sm:text-[11px]">{label}</div>
+      <div className="text-xs text-muted-foreground">{label}</div>
       <div className="mt-1 break-words text-lg font-bold tabular-nums sm:text-xl">{value}</div>
     </div>
   );
@@ -487,7 +471,7 @@ function CancelReasonsWidget({ items }: { items: Array<{ code: string; count: nu
           </div>
         );
       })}
-      <p className="mt-3 text-[10px] text-muted-foreground">
+      <p className="mt-3 text-xs text-muted-foreground">
         Total {total} refus/annulations. Chaque motif suggère une action corrective
         (adresse incorrecte → améliorer le form, prix trop cher → tester A/B, doublons → détection auto).
       </p>
@@ -528,7 +512,7 @@ function ByCityWidget({
   return (
     <div className="overflow-x-auto">
       <table className="w-full min-w-[360px] text-sm">
-        <thead className="text-left text-[10px] uppercase tracking-wider text-muted-foreground">
+        <thead className="text-left text-xs font-medium text-muted-foreground">
           <tr>
             <th className="py-1.5 pr-2 font-semibold">Ville</th>
             <th className="py-1.5 px-2 font-semibold">Part</th>
@@ -558,7 +542,7 @@ function ByCityWidget({
                 <td className="py-2 px-2 text-right tabular-nums text-muted-foreground">{fmt(c.revenue)}</td>
                 <td className="py-2 pl-2 text-right tabular-nums">
                   <span className={cn(
-                    'inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[10px] font-bold',
+                    'inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-xs font-medium',
                     rate >= 60 ? 'bg-emerald-500/10 text-emerald-700'
                       : rate >= 40 ? 'bg-amber-500/10 text-amber-700'
                       : 'bg-rose-500/10 text-rose-700',
@@ -608,7 +592,7 @@ function ByCountryWidget({ items, currency }: { items: Array<{ country: string; 
   return (
     <div className="overflow-x-auto">
       <table className="w-full min-w-[280px] text-sm">
-        <thead className="text-left text-[10px] uppercase tracking-wider text-muted-foreground">
+        <thead className="text-left text-xs font-medium text-muted-foreground">
           <tr>
             <th className="py-1.5 pr-2 font-semibold">Pays</th>
             <th className="py-1.5 px-2 text-right font-semibold">CA</th>
@@ -626,7 +610,7 @@ function ByCountryWidget({ items, currency }: { items: Array<{ country: string; 
                 <td className="py-2 px-2 text-right tabular-nums text-muted-foreground">{c.orders}</td>
                 <td className="py-2 pl-2 text-right tabular-nums">
                   <span className={cn(
-                    'inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[10px] font-bold',
+                    'inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-xs font-medium',
                     rate >= 60 ? 'bg-emerald-500/10 text-emerald-700'
                       : rate >= 40 ? 'bg-amber-500/10 text-amber-700'
                       : 'bg-rose-500/10 text-rose-700',

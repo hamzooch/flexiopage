@@ -49,11 +49,27 @@ function iconAnimationClass(anim: BotstoreIconAnimation | undefined, open: boole
   }
 }
 
+interface OrderCard {
+  orderId: string;
+  orderNumber: string;
+  total: number;
+  currency: string;
+  shippingCost: number;
+  items: Array<{ name: string; quantity: number; price: number }>;
+}
+
+interface ChatChoice {
+  label: string;
+  message: string;
+}
+
 interface ChatMessage {
   role: 'user' | 'assistant';
   content: string;
   /** Si le bot signale qu'il ne sait pas, on affiche un CTA WhatsApp sous la bulle. */
   offerWhatsapp?: boolean;
+  order?: OrderCard;
+  choices?: ChatChoice[];
 }
 
 interface Props {
@@ -62,9 +78,10 @@ interface Props {
   whatsapp?: WhatsappConfig;
 }
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
+const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5051';
 const DEFAULT_ACCENT = '#4f46e5';
-const DEFAULT_GREETING = "Salut 👋 Comment puis-je t'aider ?";
+const DEFAULT_GREETING = "Salut 👋 Je peux te montrer les produits et prendre ta commande.";
+const STARTERS = ['Voir les produits', 'Je veux commander'];
 const DEFAULT_LAUNCHER = 'Discuter avec nous';
 const DEFAULT_CTA_LABEL = 'Discuter sur WhatsApp';
 // On borne la fenêtre d'historique envoyée au backend (le backend a sa propre
@@ -191,6 +208,8 @@ export function BotstoreWidget({ storeSlug, config, whatsapp }: Props) {
         const data = (await res.json()) as {
           reply: string;
           offerWhatsappFallback: boolean;
+          order?: OrderCard;
+          choices?: ChatChoice[];
         };
         setMessages((prev) => [
           ...prev,
@@ -198,6 +217,8 @@ export function BotstoreWidget({ storeSlug, config, whatsapp }: Props) {
             role: 'assistant',
             content: data.reply,
             offerWhatsapp: fallbackEnabled && (alwaysOfferWhatsapp || data.offerWhatsappFallback),
+            order: data.order,
+            choices: data.choices,
           },
         ]);
       } catch (err) {
@@ -296,8 +317,24 @@ export function BotstoreWidget({ storeSlug, config, whatsapp }: Props) {
                 accent={accent}
                 whatsappHref={m.offerWhatsapp ? buildWhatsappHref(m.content) : null}
                 ctaLabel={ctaLabel}
+                choicesActive={i === displayedMessages.length - 1 && !sending}
+                onChoose={(text) => void send(text)}
               />
             ))}
+            {messages.length === 0 && !sending && (
+              <div className="flex flex-wrap gap-1.5">
+                {STARTERS.map((label) => (
+                  <button
+                    key={label}
+                    type="button"
+                    onClick={() => void send(label)}
+                    className="rounded-full border border-neutral-200 bg-white px-3 py-1 text-xs font-medium text-neutral-700 shadow-sm hover:border-neutral-300"
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+            )}
             {sending && (
               <div className="flex justify-start">
                 <div className="flexio-bs-typing inline-flex items-center gap-1 rounded-2xl bg-white px-3 py-2 shadow-sm">
@@ -400,16 +437,32 @@ export function BotstoreWidget({ storeSlug, config, whatsapp }: Props) {
   );
 }
 
+function linkify(text: string) {
+  const parts = text.split(/(https?:\/\/[^\s]+|\/store\/[^\s]+|\/thanks\/cod\/[^\s]+)/g);
+  return parts.map((part, index) => {
+    if (!/^(https?:\/\/|\/store\/|\/thanks\/cod\/)/.test(part)) return <span key={index}>{part}</span>;
+    return (
+      <a key={index} href={part} className="underline underline-offset-2">
+        {part}
+      </a>
+    );
+  });
+}
+
 function MessageBubble({
   msg,
   accent,
   whatsappHref,
   ctaLabel,
+  choicesActive,
+  onChoose,
 }: {
   msg: ChatMessage;
   accent: string;
   whatsappHref: string | null;
   ctaLabel: string;
+  choicesActive?: boolean;
+  onChoose?: (message: string) => void;
 }) {
   const isUser = msg.role === 'user';
   return (
@@ -421,8 +474,40 @@ function MessageBubble({
           }`}
           style={isUser ? { backgroundColor: accent } : undefined}
         >
-          {msg.content}
+          {isUser ? msg.content : linkify(msg.content)}
         </div>
+        {choicesActive && msg.choices && msg.choices.length > 0 && (
+          <div className="flex flex-wrap gap-1.5">
+            {msg.choices.map((choice) => (
+              <button
+                key={choice.message}
+                type="button"
+                onClick={() => onChoose?.(choice.message)}
+                className="rounded-full border border-neutral-200 bg-white px-3 py-1 text-xs font-semibold text-neutral-800 shadow-sm hover:border-neutral-400"
+              >
+                {choice.label}
+              </button>
+            ))}
+          </div>
+        )}
+        {msg.order && (
+          <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-950">
+            <div className="font-semibold">Commande {msg.order.orderNumber}</div>
+            <ul className="mt-1 space-y-0.5">
+              {msg.order.items.map((item) => (
+                <li key={`${item.name}-${item.quantity}`}>
+                  {item.quantity} × {item.name}
+                </li>
+              ))}
+            </ul>
+            <div className="mt-1 font-medium">
+              Total {msg.order.total} {msg.order.currency} · paiement à la livraison
+            </div>
+            <a href={`/thanks/cod/${msg.order.orderId}`} className="mt-1 inline-block font-semibold underline underline-offset-2">
+              Voir le récapitulatif
+            </a>
+          </div>
+        )}
         {whatsappHref && (
           <a
             href={whatsappHref}

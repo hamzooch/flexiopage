@@ -12,7 +12,7 @@
  * range (today / 7d / 30d / 90d) refreshes the KPIs + chart + lists.
  */
 
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { AutoFitValue } from '@/components/dashboard/auto-fit-value';
 import Link from 'next/link';
 import {
@@ -40,6 +40,8 @@ import {
   RefreshCw,
   CheckCircle2,
   CalendarRange,
+  Check,
+  ChevronDown,
   Percent,
   Smartphone,
   Monitor,
@@ -110,10 +112,16 @@ const RANGE_LABELS: Record<RangeKey, string> = {
   custom: 'Personnalisé',
 };
 
-/** Preset chips shown on the overview — kept short on purpose. The seller
- *  reaches for longer windows (90j / 12m) via the "Personnaliser" picker.
- *  'all' = tous les temps (depuis la 1re commande de la boutique). */
-const QUICK_RANGES: ReadonlyArray<Exclude<RangeKey, 'custom' | '90d' | '12m'>> = ['today', 'yesterday', '7d', '30d', 'all'];
+/** Presets listed in the overview period menu. Custom dates sit under the list. */
+const MENU_RANGES: ReadonlyArray<Exclude<RangeKey, 'custom'>> = [
+  'today',
+  'yesterday',
+  '7d',
+  '30d',
+  '90d',
+  '12m',
+  'all',
+];
 
 function todayISO(): string {
   const d = new Date();
@@ -161,7 +169,10 @@ export default function DashboardOverviewPage() {
   // first open is never blank.
   const [customFrom, setCustomFrom] = useState<string>(() => daysAgoISO(13));
   const [customTo, setCustomTo] = useState<string>(() => todayISO());
-  const [customOpen, setCustomOpen] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [draftFrom, setDraftFrom] = useState<string>(() => daysAgoISO(13));
+  const [draftTo, setDraftTo] = useState<string>(() => todayISO());
+  const menuRef = useRef<HTMLDivElement>(null);
 
   // ── Bootstrap stores ──────────────────────────────────────────────
   useEffect(() => {
@@ -261,57 +272,44 @@ export default function DashboardOverviewPage() {
   const pendingOrders = k?.pendingOrders.value ?? 0;
   const totalActionItems = pendingOrders + abandoned + lowStock.length;
 
-  // Shared popover for the "Personnaliser" date range — rendered inside both
-  // the desktop segmented control and the mobile dropdown row so it positions
-  // itself under whichever trigger is visible at the current breakpoint.
-  const rangePopover = customOpen && (
-    <div
-      role="dialog"
-      aria-label="Choisir une période personnalisée"
-      className="absolute left-0 top-[calc(100%+6px)] z-30 w-[280px] rounded-xl border border-border/60 bg-card p-3 shadow-lg"
-    >
-      <div className="space-y-2">
-        <label className="block text-[11px] font-semibold text-muted-foreground">
-          Du
-          <input
-            type="date"
-            value={customFrom}
-            max={customTo || todayISO()}
-            onChange={(e) => setCustomFrom(e.target.value)}
-            className="mt-1 w-full rounded-md border border-border/60 bg-background px-2 py-1.5 text-sm text-foreground focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
-          />
-        </label>
-        <label className="block text-[11px] font-semibold text-muted-foreground">
-          Au
-          <input
-            type="date"
-            value={customTo}
-            min={customFrom || undefined}
-            max={todayISO()}
-            onChange={(e) => setCustomTo(e.target.value)}
-            className="mt-1 w-full rounded-md border border-border/60 bg-background px-2 py-1.5 text-sm text-foreground focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
-          />
-        </label>
-      </div>
-      <div className="mt-3 flex items-center justify-end gap-2">
-        <button
-          type="button"
-          onClick={() => setCustomOpen(false)}
-          className="rounded-md px-2.5 py-1 text-xs font-semibold text-muted-foreground hover:bg-muted/60"
-        >
-          Annuler
-        </button>
-        <button
-          type="button"
-          disabled={!customFrom || !customTo || customFrom > customTo}
-          onClick={() => { setRange('custom'); setCustomOpen(false); }}
-          className="rounded-md bg-gradient-to-br from-primary to-fuchsia-600 px-3 py-1 text-xs font-semibold text-white shadow-sm disabled:opacity-50"
-        >
-          Appliquer
-        </button>
-      </div>
-    </div>
-  );
+  useEffect(() => {
+    if (!menuOpen) return;
+    const onPointer = (event: MouseEvent) => {
+      if (!menuRef.current?.contains(event.target as Node)) setMenuOpen(false);
+    };
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setMenuOpen(false);
+    };
+    document.addEventListener('mousedown', onPointer);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('mousedown', onPointer);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [menuOpen]);
+
+  const rangeButtonLabel = range === 'custom'
+    ? `${formatDateFR(customFrom)} → ${formatDateFR(customTo)}`
+    : RANGE_LABELS[range];
+  const draftInvalid = Boolean(draftFrom && draftTo && draftFrom > draftTo);
+
+  const openRangeMenu = () => {
+    if (menuOpen) {
+      setMenuOpen(false);
+      return;
+    }
+    setDraftFrom(customFrom);
+    setDraftTo(customTo);
+    setMenuOpen(true);
+  };
+
+  const applyCustomRange = () => {
+    if (!draftFrom || !draftTo || draftFrom > draftTo) return;
+    setCustomFrom(draftFrom);
+    setCustomTo(draftTo);
+    setRange('custom');
+    setMenuOpen(false);
+  };
 
   return (
     <div className="min-w-0 space-y-6">
@@ -365,75 +363,81 @@ export default function DashboardOverviewPage() {
       {/* ── Range selector + refresh ─────────────────────────── */}
       {activeStore && (
         <div className="flex flex-wrap items-center justify-between gap-3">
-          {/* Desktop — segmented control (chips). Hidden below sm because
-              5 chips + "Personnaliser" wrapped or overflowed on phones. */}
-          <div className="relative hidden items-center gap-0.5 rounded-xl border border-border/60 bg-card p-1 shadow-sm sm:inline-flex">
-            {QUICK_RANGES.map((r) => {
-              const active = range === r;
-              return (
-                <button
-                  key={r}
-                  type="button"
-                  onClick={() => { setRange(r); setCustomOpen(false); }}
-                  className={cn(
-                    'rounded-lg px-3 py-1.5 text-xs font-semibold transition-all',
-                    active
-                      ? 'bg-gradient-to-br from-primary to-fuchsia-600 text-white shadow-sm'
-                      : 'text-muted-foreground hover:bg-muted/60 hover:text-foreground'
+          <div className="relative" ref={menuRef}>
+            <button
+              type="button"
+              onClick={openRangeMenu}
+              className="inline-flex h-9 max-w-full items-center gap-2 rounded-xl border border-border/60 bg-card px-3 text-xs font-semibold text-foreground shadow-sm transition-colors hover:border-primary/30"
+              aria-expanded={menuOpen}
+              aria-haspopup="listbox"
+            >
+              <CalendarRange className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+              <span className="truncate">{rangeButtonLabel}</span>
+              <ChevronDown className={cn('h-3.5 w-3.5 shrink-0 text-muted-foreground transition-transform duration-200', menuOpen && 'rotate-180')} />
+            </button>
+            {menuOpen && (
+              <div
+                role="listbox"
+                aria-label="Choisir une période"
+                className="absolute left-0 top-[calc(100%+6px)] z-30 w-[min(16.5rem,calc(100vw-2rem))] rounded-xl border border-border/60 bg-card p-1.5 shadow-lg"
+              >
+                {MENU_RANGES.map((r) => {
+                  const selected = range === r;
+                  return (
+                    <button
+                      key={r}
+                      type="button"
+                      role="option"
+                      aria-selected={selected}
+                      onClick={() => { setRange(r); setMenuOpen(false); }}
+                      className={cn(
+                        'flex min-h-9 w-full items-center justify-between gap-2 rounded-lg px-2.5 text-left text-sm transition-colors',
+                        selected
+                          ? 'bg-muted font-semibold text-foreground'
+                          : 'text-foreground hover:bg-muted/60'
+                      )}
+                    >
+                      {RANGE_LABELS[r]}
+                      {selected && <Check className="h-3.5 w-3.5 shrink-0 text-primary" />}
+                    </button>
+                  );
+                })}
+                <div className="mt-1.5 space-y-2 border-t border-border/60 px-1.5 pb-1 pt-2.5">
+                  <label className="block text-[11px] font-semibold text-muted-foreground">
+                    Du
+                    <input
+                      type="date"
+                      value={draftFrom}
+                      max={draftTo || todayISO()}
+                      onChange={(e) => setDraftFrom(e.target.value)}
+                      className="mt-1 w-full rounded-md border border-border/60 bg-background px-2 py-1.5 text-sm font-medium text-foreground focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
+                    />
+                  </label>
+                  <label className="block text-[11px] font-semibold text-muted-foreground">
+                    Au
+                    <input
+                      type="date"
+                      value={draftTo}
+                      min={draftFrom || undefined}
+                      max={todayISO()}
+                      onChange={(e) => setDraftTo(e.target.value)}
+                      className="mt-1 w-full rounded-md border border-border/60 bg-background px-2 py-1.5 text-sm font-medium text-foreground focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
+                    />
+                  </label>
+                  {draftInvalid && (
+                    <p className="text-[11px] font-medium text-rose-700">La date de début est après la date de fin.</p>
                   )}
-                >
-                  {RANGE_LABELS[r]}
-                </button>
-              );
-            })}
-            <button
-              type="button"
-              onClick={() => setCustomOpen((v) => !v)}
-              className={cn(
-                'inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition-all',
-                range === 'custom'
-                  ? 'bg-gradient-to-br from-primary to-fuchsia-600 text-white shadow-sm'
-                  : 'text-muted-foreground hover:bg-muted/60 hover:text-foreground'
-              )}
-              aria-expanded={customOpen}
-              aria-haspopup="dialog"
-            >
-              <CalendarRange className="h-3.5 w-3.5" />
-              {range === 'custom' ? `${formatDateFR(customFrom)} → ${formatDateFR(customTo)}` : 'Personnaliser'}
-            </button>
-            {rangePopover}
-          </div>
-          {/* Mobile — native <select> for presets + icon button for custom
-              range. Native select gives the OS date picker feel and never
-              overflows the viewport. */}
-          <div className="relative flex w-full items-center gap-2 sm:hidden">
-            <select
-              value={range}
-              onChange={(e) => { setRange(e.target.value as RangeKey); setCustomOpen(false); }}
-              className="flex-1 rounded-lg border border-border/60 bg-card px-3 py-2 text-sm font-semibold text-foreground shadow-sm focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
-              aria-label="Période affichée"
-            >
-              {(['today', 'yesterday', '7d', '30d', 'all'] as const).map((r) => (
-                <option key={r} value={r}>{RANGE_LABELS[r]}</option>
-              ))}
-              {range === 'custom' && (
-                <option value="custom">{`Personnalisé (${formatDateFR(customFrom)} → ${formatDateFR(customTo)})`}</option>
-              )}
-            </select>
-            <button
-              type="button"
-              onClick={() => setCustomOpen((v) => !v)}
-              className={cn(
-                'inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-border/60 bg-card text-muted-foreground shadow-sm transition-colors hover:text-foreground',
-                range === 'custom' && 'border-transparent bg-gradient-to-br from-primary to-fuchsia-600 text-white'
-              )}
-              aria-label="Choisir une période personnalisée"
-              aria-expanded={customOpen}
-              aria-haspopup="dialog"
-            >
-              <CalendarRange className="h-4 w-4" />
-            </button>
-            {rangePopover}
+                  <button
+                    type="button"
+                    disabled={!draftFrom || !draftTo || draftInvalid}
+                    onClick={applyCustomRange}
+                    className="h-8 w-full rounded-md bg-gradient-to-br from-primary to-fuchsia-600 text-xs font-semibold text-white shadow-sm disabled:opacity-50"
+                  >
+                    Appliquer
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
           <div className="flex items-center gap-2">
             {activeStore && (

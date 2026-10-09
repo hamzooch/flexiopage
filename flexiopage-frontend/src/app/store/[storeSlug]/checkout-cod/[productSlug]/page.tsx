@@ -22,8 +22,8 @@ import { IMAGE_BLUR_DATA_URL } from '@/lib/image-placeholder';
 import { ArrowLeft, Loader2, ShieldCheck, Truck, Wallet } from 'lucide-react';
 import { cn, formatCurrency, mediaUrl } from '@/lib/utils';
 import {
-  STORE_THEME_TEMPLATES,
   RADIUS_PX,
+  resolveStoreTheme,
   tokensToCssVars,
   googleFontsHref,
   type ThemeTokens,
@@ -74,10 +74,8 @@ interface StoreDoc {
   integrations?: { marketing?: MarketingConfig };
 }
 
-const FALLBACK_THEME = STORE_THEME_TEMPLATES[0].theme;
 function resolveTheme(store: StoreDoc | null): ThemeTokens {
-  if (!store) return FALLBACK_THEME;
-  return STORE_THEME_TEMPLATES.find((t) => t.id === store.theme?.templateId)?.theme || FALLBACK_THEME;
+  return resolveStoreTheme(store);
 }
 
 // West Africa + Maghreb — countries we ship to.

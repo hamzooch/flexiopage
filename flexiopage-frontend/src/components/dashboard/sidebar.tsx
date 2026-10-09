@@ -134,12 +134,16 @@ const SECTIONS: { titleKey: TKey; items: NavItem[] }[] = [
 ];
 
 interface Props {
-  /** Mobile drawer state, controlled by Header's hamburger. */
+  /** Tiroir mobile, ouvert par le burger. */
   mobileOpen?: boolean;
+  /** Rail desktop replié ou non. Le burger de la navbar le pilote. */
+  desktopOpen?: boolean;
+  /** Faux au premier rendu client, le temps d'appliquer le choix mémorisé. */
+  animate?: boolean;
   onMobileClose?: () => void;
 }
 
-export function Sidebar({ mobileOpen = false, onMobileClose }: Props) {
+export function Sidebar({ mobileOpen = false, desktopOpen = true, animate = false, onMobileClose }: Props) {
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const currentTab = searchParams?.get('tab') ?? null;
@@ -238,26 +242,28 @@ export function Sidebar({ mobileOpen = false, onMobileClose }: Props) {
       />
 
       <aside
+        id="dashboard-sidebar"
         className={cn(
-          // `start-0` + `border-e` are logical: in LTR they render as left:0 /
-          // border-right, in RTL they auto-flip to right:0 / border-left so the
-          // drawer hugs the correct edge in Arabic.
-          'fixed inset-y-0 start-0 z-50 flex h-full w-72 flex-col overflow-hidden border-e border-sidebar-border bg-sidebar text-sidebar-foreground transition-transform duration-300',
-          'md:sticky md:top-0 md:z-30 md:h-screen md:w-64 md:translate-x-0',
-          // `translate-x` always means physical X, so we pair the LTR variant
-          // (-translate-x-full hides off the left) with the RTL variant
-          // (translate-x-full hides off the right) for the closed state.
-          mobileOpen ? 'translate-x-0' : '-translate-x-full rtl:translate-x-full md:translate-x-0 md:rtl:translate-x-0'
+          // Tiroir fixe sous md. Dès md il est dans le flux : le burger
+          // change sa largeur (64 → 0) au lieu de le translater, pour que
+          // le contenu récupère la place.
+          'fixed inset-y-0 start-0 z-50 overflow-hidden border-e border-sidebar-border bg-sidebar text-sidebar-foreground',
+          'w-72',
+          mobileOpen ? 'translate-x-0' : '-translate-x-full rtl:translate-x-full',
+          'md:sticky md:top-0 md:z-30 md:h-screen md:translate-x-0 md:rtl:translate-x-0',
+          desktopOpen ? 'md:w-64' : 'md:w-0 md:border-e-0',
+          animate ? 'transition-[width,transform] duration-300 ease-out motion-reduce:transition-none' : 'transition-none',
         )}
       >
+        <div className="relative flex h-full w-72 shrink-0 flex-col md:w-64">
         {/* Ambiance : halo orange discret en haut du rail. */}
         <div
           aria-hidden
           className="pointer-events-none absolute inset-x-0 top-0 -z-10 h-44 bg-gradient-to-b from-primary/10 via-primary/[0.04] to-transparent"
         />
 
-        {/* Logo + close (mobile) */}
-        <div className="relative flex shrink-0 items-center justify-between border-b border-sidebar-border/60 px-5 py-4">
+        {/* Logo + fermer (mobile). Même hauteur que la navbar. */}
+        <div className="relative flex h-16 shrink-0 items-center justify-between border-b border-sidebar-border/60 px-4">
           <Link
             href="/dashboard"
             className="flex items-center"
@@ -270,10 +276,10 @@ export function Sidebar({ mobileOpen = false, onMobileClose }: Props) {
           <button
             type="button"
             onClick={onMobileClose}
-            className="grid h-8 w-8 place-items-center rounded-lg text-sidebar-foreground transition-colors hover:bg-sidebar-muted hover:text-sidebar-strong md:hidden"
+            className="grid h-10 w-10 place-items-center rounded-xl text-sidebar-foreground transition-colors hover:bg-sidebar-muted hover:text-sidebar-strong md:hidden"
             aria-label={t('sidebar.closeMenu')}
           >
-            <X className="h-4 w-4" />
+            <X className="h-5 w-5" />
           </button>
         </div>
 
@@ -284,7 +290,7 @@ export function Sidebar({ mobileOpen = false, onMobileClose }: Props) {
             ouvert) et Safari bloque le scroll UP pendant que le scroll DOWN a
             encore de l'inertie — d'où la sensation de « scroll qui bugue quand
             on remonte ». On isole le scroll au nav pour couper ce chaînage. */}
-        <nav className="flex-1 space-y-5 overflow-y-auto overscroll-contain touch-pan-y px-3 py-4">
+        <nav className="flex-1 space-y-4 overflow-y-auto overscroll-contain touch-pan-y px-3 py-3">
           {sections.map((section, sIdx) => (
             <div key={section.titleKey}>
               <div className="px-3 pb-1.5 text-[11px] font-bold uppercase tracking-wider text-sidebar-foreground/50">
@@ -330,10 +336,10 @@ export function Sidebar({ mobileOpen = false, onMobileClose }: Props) {
                           onMobileClose?.();
                         }}
                         className={cn(
-                          'group relative flex items-center gap-3 rounded-xl px-3 py-2.5 text-[15px] font-medium transition-all duration-200',
+                          'group relative flex min-h-11 items-center gap-3 rounded-xl px-3 text-sm font-medium transition-colors duration-200',
                           isActive
-                            ? 'bg-sidebar-muted text-sidebar-strong shadow-sm shadow-black/25'
-                            : 'text-sidebar-foreground hover:translate-x-0.5 hover:bg-sidebar-muted/60 hover:text-sidebar-strong'
+                            ? 'bg-sidebar-muted text-sidebar-strong'
+                            : 'text-sidebar-foreground hover:bg-sidebar-muted/70 hover:text-sidebar-strong'
                         )}
                       >
                         {isActive && (
@@ -344,7 +350,7 @@ export function Sidebar({ mobileOpen = false, onMobileClose }: Props) {
                         )}
                         <item.icon
                           className={cn(
-                            'h-[18px] w-[18px] shrink-0 transition-transform duration-200 group-hover:scale-110',
+                            'h-[18px] w-[18px] shrink-0',
                             isActive && 'text-sidebar-active'
                           )}
                         />
@@ -373,10 +379,10 @@ export function Sidebar({ mobileOpen = false, onMobileClose }: Props) {
                                   href={app.href}
                                   onClick={onMobileClose}
                                   className={cn(
-                                    'group flex items-center gap-2 rounded-md px-2 py-1.5 text-[13px] transition-all duration-200',
+                                    'group flex min-h-10 items-center gap-2 rounded-lg px-2 text-[13px] transition-colors duration-200',
                                     subActive
                                       ? 'bg-sidebar-muted text-sidebar-strong font-medium'
-                                      : 'text-sidebar-foreground hover:translate-x-0.5 hover:bg-sidebar-muted/60 hover:text-sidebar-strong'
+                                      : 'text-sidebar-foreground hover:bg-sidebar-muted/70 hover:text-sidebar-strong'
                                   )}
                                 >
                                   <AppBrandLogo src={app.logo} bg={app.logoBg} className="h-5 w-5 rounded-md" imgClassName="h-[82%] w-[82%]" />
@@ -402,10 +408,10 @@ export function Sidebar({ mobileOpen = false, onMobileClose }: Props) {
                                   href={child.href}
                                   onClick={onMobileClose}
                                   className={cn(
-                                    'group flex items-center gap-2 rounded-md px-2 py-1.5 text-[13px] transition-all duration-200',
+                                    'group flex min-h-10 items-center gap-2 rounded-lg px-2 text-[13px] transition-colors duration-200',
                                     childActive
                                       ? 'bg-sidebar-muted text-sidebar-strong font-medium'
-                                      : 'text-sidebar-foreground hover:translate-x-0.5 hover:bg-sidebar-muted/60 hover:text-sidebar-strong'
+                                      : 'text-sidebar-foreground hover:bg-sidebar-muted/70 hover:text-sidebar-strong'
                                   )}
                                 >
                                   <child.icon className="h-3.5 w-3.5 shrink-0" />
@@ -459,6 +465,7 @@ export function Sidebar({ mobileOpen = false, onMobileClose }: Props) {
               </div>
             </div>
           </Link>
+        </div>
         </div>
       </aside>
     </>

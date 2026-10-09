@@ -11,8 +11,8 @@ import { ProductPageTimer } from '@/components/storefront/product-page-timer';
 import { ProductPageBadges } from '@/components/storefront/product-page-badges';
 import type { ProductBundle } from '@/lib/api';
 import {
-  STORE_THEME_TEMPLATES,
   RADIUS_PX,
+  resolveStoreTheme,
   tokensToCssVars,
   googleFontsHref,
   type ThemeTokens,
@@ -141,11 +141,8 @@ interface ResolvedMarketHint {
   source?: string;
 }
 
-const FALLBACK_THEME = STORE_THEME_TEMPLATES[0].theme;
 function resolveTheme(store: StoreDoc | null): ThemeTokens {
-  if (!store) return FALLBACK_THEME;
-  const id = store.theme?.templateId;
-  return STORE_THEME_TEMPLATES.find((t) => t.id === id)?.theme || FALLBACK_THEME;
+  return resolveStoreTheme(store);
 }
 
 const KIND_META: Record<NonNullable<ProductDoc['digitalKind']>, { label: string; icon: string; what: string }> = {

@@ -342,7 +342,8 @@ export default function NewLandingPagePage() {
     if (!p) return;
     if (p.compareAtPrice !== undefined && !priceBefore) setPriceBefore(String(p.compareAtPrice));
     if (p.price !== undefined && !priceAfter) setPriceAfter(String(p.price));
-    if (p.type && !category) setCategory(p.type === 'digital' ? 'digital products' : 'physical products');
+    // Ne pas préremplir la niche avec "physical products" : ce libellé
+    // n'est pas une catégorie et forçait le mauvais modèle photo.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedProductId, products]);
 

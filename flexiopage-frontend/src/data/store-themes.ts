@@ -38,7 +38,9 @@ export type HeroLayout =
   | 'split'       // text left, visual panel right
   | 'editorial'   // big asymmetric serif headline, left-aligned
   | 'fullbleed'   // edge-to-edge color block, oversized type
-  | 'minimal';    // stark, type-only, lots of whitespace
+  | 'minimal'     // stark, type-only, lots of whitespace
+  | 'catalog'     // short shop strip + trust line, products start high
+  | 'offer';      // one product in front, copy and proof beside it
 export type ProductCardStyle =
   | 'classic'     // image, then padded text block below
   | 'editorial'   // flat image, serif name, no border
@@ -441,7 +443,7 @@ const sage: StoreThemeTemplate = {
     borderRadius: 'large',
     spacing: 'relaxed',
     style: 'soft',
-    layout: { hero: 'split', productCard: 'classic', gridColumns: 2, nav: 'standard', testimonials: 'grid', footer: 'split' },
+    layout: { hero: 'centered', productCard: 'classic', gridColumns: 2, nav: 'standard', testimonials: 'grid', footer: 'split' },
     pattern: 'none',
     shadow: 'soft',
     dark: false,
@@ -542,7 +544,7 @@ const nova: StoreThemeTemplate = {
   name: 'Nova',
   tagline: 'Premium D2C · épuré · contemporain',
   description:
-    'Toile blanc-os, encre charbon, vert forêt profond, accent champagne. Inter Display géant, hero centré, cartes pleines, grille 3 colonnes. Convient à tout produit premium photographié sur fond clair (cosmétique, mode, déco, lifestyle).',
+    'Toile blanc-os, encre charbon, vert forêt profond, accent champagne. Hero photo à droite, navigation simple, cartes nettes. Pour un produit premium photographié sur fond clair.',
   niche: 'general',
   nicheLabel: 'Premium retail',
   forStoreTypes: ['physical'],
@@ -565,7 +567,7 @@ const nova: StoreThemeTemplate = {
     borderRadius: 'medium',
     spacing: 'relaxed',
     style: 'minimal',
-    layout: { hero: 'centered', productCard: 'classic', gridColumns: 3, nav: 'editorial', testimonials: 'grid', footer: 'full' },
+    layout: { hero: 'split', productCard: 'classic', gridColumns: 3, nav: 'standard', testimonials: 'grid', footer: 'full' },
     pattern: 'none',
     shadow: 'soft',
     dark: false,
@@ -695,7 +697,7 @@ const maison: StoreThemeTemplate = {
     spacing: 'relaxed',          // beaucoup de blanc
     style: 'editorial',
     // hero 'fullbleed' → toutes les sections (hero/slider/products/testimonials) recommandées.
-    layout: { hero: 'fullbleed', productCard: 'editorial', gridColumns: 3, nav: 'editorial', testimonials: 'editorial', footer: 'bold' },
+    layout: { hero: 'fullbleed', productCard: 'editorial', gridColumns: 3, nav: 'bold', testimonials: 'editorial', footer: 'bold' },
     pattern: 'none',
     shadow: 'sharp',
     dark: false,
@@ -790,12 +792,12 @@ const prima: StoreThemeTemplate = {
     spacing: 'relaxed',
     style: 'editorial',
     layout: {
-      hero: 'editorial',           // titre sérif asymétrique, magazine
-      productCard: 'editorial',    // sans bordure, focus produit
-      gridColumns: 2,              // spotlight-per-piece, pas de catalogue
-      nav: 'centered',             // marque au-dessus, liens sous — heritage
-      testimonials: 'wall',        // mur de mini-quotes artisan, dense
-      footer: 'split',             // colonnes + newsletter
+      hero: 'minimal',
+      productCard: 'minimal',
+      gridColumns: 2,
+      nav: 'centered',
+      testimonials: 'wall',
+      footer: 'split',
     },
     pattern: 'none',               // le contraste Bodoni porte le visuel
     shadow: 'sharp',
@@ -841,12 +843,12 @@ const aurum: StoreThemeTemplate = {
     spacing: 'relaxed',
     style: 'minimal',
     layout: {
-      hero: 'centered',            // une pièce héroïsée au centre
-      productCard: 'minimal',      // tight, la pièce prend la lumière
-      gridColumns: 4,              // catalogue dense
-      nav: 'centered',             // héritage-maison, logo au-dessus
-      testimonials: 'carousel',    // presse & célébrités
-      footer: 'minimal',           // retenue, une seule ligne
+      hero: 'minimal',
+      productCard: 'minimal',
+      gridColumns: 4,
+      nav: 'centered',
+      testimonials: 'carousel',
+      footer: 'minimal',
     },
     pattern: 'none',
     shadow: 'soft',                // éclat gemme diffus
@@ -892,14 +894,112 @@ const vinum: StoreThemeTemplate = {
     spacing: 'normal',
     style: 'editorial',
     layout: {
-      hero: 'fullbleed',           // cellier immersif edge-to-edge
-      productCard: 'overlay',      // bouteille + titre en surimpression
+      hero: 'fullbleed',
+      productCard: 'classic',
       gridColumns: 3,
-      nav: 'bold',                 // uppercase épais, signage cave
-      testimonials: 'grid',        // conversion-safe pour caviste
+      nav: 'centered',
+      testimonials: 'grid',
       footer: 'full',              // newsletter allocations + contact tastings
     },
     pattern: 'noise',              // texture papier vieilli
+    shadow: 'soft',
+    dark: false,
+  }),
+};
+
+// ─────────────────────────────────────────────────────────────────────
+// COMPTOIR — catalogue qui convertit. Inspiré de Shopify Dawn et
+// Warehouse : le rayon commence tout de suite, un seul bouton, une ligne
+// de confiance, quatre colonnes pour montrer plus de produits au-dessus
+// du pli. Blanc, cobalt, typo Outfit. Pour les boutiques à plusieurs
+// références (mode, déco, alimentaire, généraliste).
+// ─────────────────────────────────────────────────────────────────────
+const comptoir: StoreThemeTemplate = {
+  id: 'comptoir',
+  name: 'Comptoir',
+  tagline: 'Catalogue dense · bouton clair · vente rapide',
+  description:
+    'Toile blanche, bouton cobalt, titres Outfit. Bandeau court avec ligne de confiance, puis le catalogue en quatre colonnes. Le visiteur voit les prix sans scroller un hero. Pour les boutiques qui ont plusieurs produits à montrer.',
+  niche: 'general',
+  nicheLabel: 'Catalogue',
+  forStoreTypes: ['physical'],
+  theme: makeTheme({
+    templateId: 'comptoir',
+    primary: '#1d4ed8',
+    primaryFg: '#ffffff',
+    accent: '#f59e0b',
+    background: '#ffffff',
+    surface: '#ffffff',
+    surfaceMuted: '#f3f5f8',
+    foreground: '#0f172a',
+    muted: '#64748b',
+    border: '#e2e8f0',
+    gradientFrom: '#1d4ed8',
+    gradientTo: '#38bdf8',
+    fontHeading: '"Outfit", "Inter", system-ui, sans-serif',
+    fontBody: '"Inter", system-ui, -apple-system, sans-serif',
+    fontDisplaySize: 'compact',
+    borderRadius: 'small',
+    spacing: 'normal',
+    style: 'minimal',
+    layout: {
+      hero: 'catalog',
+      productCard: 'classic',
+      gridColumns: 4,
+      nav: 'standard',
+      testimonials: 'carousel',
+      footer: 'full',
+    },
+    pattern: 'none',
+    shadow: 'soft',
+    dark: false,
+  }),
+};
+
+// ─────────────────────────────────────────────────────────────────────
+// HALLE — une offre, une photo, une décision. Inspiré des pages produit
+// Impulse / landing COD : le produit phare occupe la moitié de l'écran,
+// le bouton est corail, trois preuves courtes sous le titre, puis une
+// grille de deux grandes cartes. Pour les boutiques qui vendent peu de
+// références et doivent faire choisir vite.
+// ─────────────────────────────────────────────────────────────────────
+const halle: StoreThemeTemplate = {
+  id: 'halle',
+  name: 'Halle',
+  tagline: 'Offre phare · grande photo · preuve sociale',
+  description:
+    'Pierre claire, bouton corail, titres Manrope. Le premier produit est cadré à côté de l’offre, avec paiement à la livraison, livraison et service client sous le bouton. Grille deux colonnes, cartes classiques, avis en mur. Pour une boutique qui mise sur quelques produits.',
+  niche: 'general',
+  nicheLabel: 'Offre',
+  forStoreTypes: ['physical'],
+  theme: makeTheme({
+    templateId: 'halle',
+    primary: '#e11d48',
+    primaryFg: '#ffffff',
+    accent: '#0f766e',
+    background: '#f6f7f4',
+    surface: '#ffffff',
+    surfaceMuted: '#eef1ea',
+    foreground: '#142018',
+    muted: '#5c6b63',
+    border: '#dde3dc',
+    gradientFrom: '#e11d48',
+    gradientTo: '#0f766e',
+    fontHeading: '"Manrope", "Inter", system-ui, sans-serif',
+    fontBody: '"Inter", system-ui, -apple-system, sans-serif',
+    fontDisplaySize: 'large',
+    borderRadius: 'medium',
+    spacing: 'normal',
+    style: 'soft',
+    layout: {
+      hero: 'offer',
+      productCard: 'classic',
+      gridColumns: 2,
+      nav: 'bold',
+      testimonials: 'wall',
+      footer: 'split',
+    },
+    pattern: 'none',
     shadow: 'soft',
     dark: false,
   }),
@@ -959,7 +1059,7 @@ const afro3dprod: StoreThemeTemplate = {
 
 export const STORE_THEME_TEMPLATES: StoreThemeTemplate[] = [
   // Physical stores
-  maison, nova, carthago, volt, atelier, bloom, forge, prima, aurum, vinum,
+  comptoir, halle, maison, nova, carthago, volt, atelier, bloom, forge, prima, aurum, vinum,
   // Digital stores
   pulse, sage, studio, lumen,
   // Universal / multi-type
@@ -1025,7 +1125,20 @@ export function resolveStoreTheme(
     const overrides = Object.fromEntries(
       Object.entries(saved).filter(([, value]) => value !== undefined && value !== null && value !== ''),
     ) as Partial<ThemeTokens>;
-    return withLayoutFallback({ ...template, ...overrides });
+    // La palette enregistrée ne porte souvent que les couleurs. La forme
+    // (police, coins, hero, cartes) reste celle du thème choisi.
+    const merged = withLayoutFallback({ ...template, ...overrides });
+    if (!saved.fontHeading) merged.fontHeading = template.fontHeading;
+    if (!saved.fontBody) merged.fontBody = template.fontBody;
+    if (!saved.fontDisplaySize) merged.fontDisplaySize = template.fontDisplaySize;
+    if (!saved.borderRadius) merged.borderRadius = template.borderRadius;
+    if (!saved.spacing) merged.spacing = template.spacing;
+    if (!saved.style) merged.style = template.style;
+    if (!saved.pattern) merged.pattern = template.pattern;
+    if (!saved.shadow) merged.shadow = template.shadow;
+    if (!saved.layout?.hero) merged.layout = template.layout;
+    merged.primaryFg = contrastText(merged.primary);
+    return merged;
   }
   return template;
 }

@@ -23,11 +23,14 @@ import {
   generateImagesParallel,
   isBannerPrompt,
   classifyCategory,
+  resolveLandingCategory,
   type ImageGenInput,
   type CategoryClass,
 } from './image-generation.service';
 import { persistRemoteImage } from './storage.service';
 import { logger } from '../lib/logger';
+import { fetchWithRetry } from '../lib/outbound-fetch';
+import { lockLandingSections, lockSeo } from './landing-facts';
 
 const FAL_BASE = 'https://fal.run';
 
@@ -364,7 +367,7 @@ async function falRequest<T>(
   const timeoutMs = options.timeoutMs ?? 90_000;
   const timeout = setTimeout(() => ctrl.abort(), timeoutMs);
   try {
-    const res = await fetch(`${FAL_BASE}/${model}`, {
+    const res = await fetchWithRetry(`${FAL_BASE}/${model}`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -565,7 +568,7 @@ export async function falQueueRequest<T>(
   const submitUrl = `https://queue.fal.run/${model}`;
 
   // 1. Submit
-  const submit = await fetch(submitUrl, {
+  const submit = await fetchWithRetry(submitUrl, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -594,7 +597,7 @@ export async function falQueueRequest<T>(
   const deadline = Date.now() + maxWaitMs;
   while (Date.now() < deadline) {
     await new Promise((r) => setTimeout(r, pollIntervalMs));
-    const st = await fetch(queued.status_url, {
+    const st = await fetchWithRetry(queued.status_url, {
       headers: { Authorization: `Key ${key}` },
     });
     if (!st.ok) {
@@ -625,7 +628,7 @@ export async function falQueueRequest<T>(
   }
 
   // 3. Fetch the actual output
-  const out = await fetch(queued.response_url, {
+  const out = await fetchWithRetry(queued.response_url, {
     headers: { Authorization: `Key ${key}` },
   });
   if (!out.ok) {
@@ -723,7 +726,7 @@ const CATEGORY_TEMPLATES: Record<CategoryClass, CategoryTemplate> = {
   luxury: {
     sectionOrder: ['hero', 'features', 'gallery', 'brands', 'testimonials', 'video', 'cod-form', 'faq', 'cta'],
     focus:
-      'Craftsmanship + héritage + rareté + histoire. Pas de "premium" — décris LE savoir-faire spécifique (tannage végétal 21 jours, cousu main, atelier familial depuis 1960). La preuve sociale doit venir de figures d\'autorité (presse, célébrités locales) plus que de clients anonymes.',
+      'Craftsmanship + héritage + histoire, uniquement si la fiche le dit. Pas de "premium", pas de presse inventée, pas d\'atelier ou de date que le vendeur n\'a pas écrits.',
     heroAngles: [
       'Heritage-story : "Cousu main à Fès depuis 1960. Chaque pièce prend 3 jours à un artisan."',
       'Rarity-hook : "Édition de 200 exemplaires. Numérotés. Livrés avec le certificat de l\'artisan."',
@@ -750,14 +753,14 @@ const DTC_COPY_FORMULAS = `
    Structure :
      Ligne 1 (title) : Nomme le problème du prospect en 6-11 mots avec un angle spécifique
      Ligne 2 (subtitle, partie 1) : Amplifie la douleur — décris CE QU'IL RESSENT dans son quotidien
-     Ligne 2 (subtitle, partie 2) : Introduis la solution avec un chiffre/preuve concret
-   Exemple beauty : "Ton sourire mérite mieux que du blanchiment agressif." / "94% des rouges à dents sont abrasifs. Notre kit V34 blanchit en 14 jours SANS abîmer l'émail — validé par 12 000 utilisatrices."
-   Exemple tech    : "Ton chargeur casse tous les 3 mois." / "C'est normal — les câbles standards sont conçus pour tenir 200 branchements. Le nôtre en tient 8 000, garanti 2 ans."
+     Ligne 2 (subtitle, partie 2) : Introduis la solution avec un fait PRÉSENT dans la fiche (matière, usage, prix). Jamais un pourcentage ou un nombre de clients.
+   Exemple beauty : "Ton sourire mérite mieux que du blanchiment agressif." / "Un sérum sans peroxyde, à poser le soir. Tu payes seulement quand le livreur te le remet."
+   Exemple tech    : "Ton chargeur casse tous les 3 mois." / "Câble tressé, prise USB-C, et tu le testes avant de payer le livreur."
 
 ## FEATURES — Utilise BAB (Before → After → Bridge) sur chaque item
    Structure : titre = le RÉSULTAT concret, description = le BÉNÉFICE + le POURQUOI CE PRODUIT le délivre
    Bad  : "Qualité premium" — "Fabriqué avec des matériaux de haute qualité"
-   Good : "Ne casse pas au 3e mois" — "Testé sur 10 000 cycles. Cuir véritable, coutures renforcées — pas de plastique premier prix qui craque au premier hiver."
+   Good : "Ne craque pas au premier hiver" — "Cuir véritable, coutures renforcées — pas de plastique premier prix." (seulement si la fiche dit cuir)
 
 ## TESTIMONIALS — Utilise SSS (Star → Story → Solution) dans chaque quote
    Star     : présente le témoin (nom, âge, ville, situation initiale)
@@ -769,7 +772,7 @@ const DTC_COPY_FORMULAS = `
    title      (Attention) : STOP-scroll — question directe ou fait choquant
    subtitle   (Interest+Desire) : la promesse + l'urgence crédible + la levée d'objection COD
    buttonText (Action) : verbe direct à la 2e personne + bénéfice ("Reçois le mien", pas "Acheter")
-   urgency    : chiffre crédible ("38 pièces restantes", "réappro dans 2 semaines"), JAMAIS "vite vite"
+   urgency    : objection COD ("tu payes quand tu l'as en main"). JAMAIS un stock, un délai ou un "X pièces restantes" inventé.
 
 ## FAQ — Adresse les VRAIES objections COD, pas des questions marketing bidon
    Les 5 questions doivent couvrir dans cet ordre :
@@ -786,7 +789,7 @@ const DTC_COPY_FORMULAS = `
    - Superlatifs non prouvés : "meilleur du marché", "le plus efficace"
 
 # ✅ OBLIGATOIRE partout :
-   - Chiffres spécifiques (94%, 12 000 clients, 21 jours, 2 semaines)
+   - Faits de la fiche seulement (nom, matière, prix donné). Zéro client, zéro avis, zéro stock, zéro presse inventés.
    - 2e personne directe (tu/إنتي/إنت — jamais "vous" sauf B2B explicite)
    - Nom de ville locale au moins 2 fois dans la page (Casablanca, Dakar, Tunis, Alger, etc.)
    - Levée d'objection COD dans hero + testimonial + FAQ + CTA
@@ -935,7 +938,7 @@ Per-section schema:
 - "features" props: { "title", "subtitle", "items": [{ "title", "description", "icon" }] }
   4–6 items. Icon ∈ {"check","shield","truck","clock","star","heart","sparkles","zap","gift","leaf","award","crown","lock","refresh","headphones"}.
 
-- "stats" props: { "title"?, "items": [{ "value", "label" }] } — 3–4 believable numbers.
+- "stats": DO NOT emit this section. Customer counts, percentages and stock figures are forbidden unless they appear verbatim in the product data above.
 
 - "gallery" props: { "title"?, "subtitle"?, "imagePrompts": ["scene 1", "scene 2", "scene 3", "scene 4"] }
   4 short ENGLISH prompts for varied lifestyle/usage shots in the local culture. The pipeline turns them into images.
@@ -944,12 +947,12 @@ Per-section schema:
     "name", "tagline", "priceBefore"?, "priceAfter"?, "currency"?, "discountPct"?,
     "highlights": [4–6 short bullets, 4–8 words each],
     "ctaText", "trustBadges"?: [...] (e.g. "دفع عند الاستلام", "شحن مجاني" for AR markets),
-    "rating"?: 4.7, "reviewCount"?: 1240,
+    Do NOT set "rating" or "reviewCount".
     "imagePrompt": "scene only — the product as a clean premium hero still life on a soft warm backdrop, slightly off-center"${productImagesProvided ? ',\n    "gallery": ["__PRODUCT_IMAGE_0__", "__PRODUCT_IMAGE_1__", ...]' : ''}
   }
   ${productImagesProvided ? 'IMPORTANT: a product photo is provided — DO NOT set product.imageUrl. Always write a scene-only "imagePrompt": the pipeline regenerates the main product shot from the real photo (image-to-image) so it shows the SAME product in a premium styled scene. The raw photos only feed the small "gallery" thumbnail strip.' : ''}
 
-- "brands" props: { "title"?, "items": [{ "name" }] } — 4–6 plausible local media outlet names.
+- "brands": DO NOT emit this section. Never invent press outlets, magazines, or "as seen in" logos.
 
 - "testimonials" props: { "title", "items": [{ "quote", "author", "role"?, "rating"?, "imagePrompt": "scene only — a warm friendly [age range] [gender] [country origin], relaxed at home" }] }
   3 items. Authors must be plausible names for ${country || 'the target country'}. Quotes 2–3 sentences, specific.
@@ -1049,48 +1052,42 @@ Direct "tu" in French / إنتي in Arabic. Every section pushes toward the
 cod-form. Adress the COD-payment objection ("tu payes seulement quand
 tu l'as en main") in hero + testimonial + faq + cta.
 
-STRUCTURE (mandatory order, 10-13 sections). Each section MUST include
+STRUCTURE (mandatory order, 8-11 sections). Each section MUST include
 the props listed — omitting a listed prop = invalid output:
 
-1. hero (full-width, big BENEFIT headline — not product name)
-   props: { title (buyer OUTCOME, e.g. "Protège ton laptop en plein marché"), subtitle (specific promise + delivery + COD reassurance), ctaText ("Commander · paiement à la livraison"), ctaHref: "#cod-order-form-section", ctaBadge ("−${discountPct}% aujourd'hui" if discount), trustLine ("Paiement à la livraison · Livraison 48h · Retour 14j"), imagePrompt (english lifestyle scene) }
+1. hero (full-width, big BENEFIT headline about THIS product)
+   props: { title (buyer OUTCOME for the exact product, e.g. "Protège ton laptop en plein marché"), subtitle (promise grounded in the product description + COD reassurance), ctaText ("Commander · paiement à la livraison"), ctaHref: "#cod-order-form-section"${hasDiscount ? `, ctaBadge ("−${discountPct}%")` : ''}, trustLine ("Paiement à la livraison"), imagePrompt (english lifestyle scene of the SAME product) }
 
-2. stats (3-4 social-proof numbers — MUST include "clients au ${country || 'target country'}")
-   props: { items: [{ value: "3 200+", label: "clients au Maroc" }, { value: "48h", label: "livraison Casa+régions" }, { value: "97%", label: "recommandent" }] }
+2. features (4-6 emotional benefits — each solves a real buyer pain)
+   Each item: { icon (Shield/Truck/Zap/Heart/Award/Gift/Clock/Star), title (result), description (BAB — Before/After/Bridge). Only materials and uses present in the product data. }
 
-3. features (4-6 emotional benefits — each solves a real buyer pain)
-   Each item: { icon (Shield/Truck/Zap/Heart/Award/Gift/Clock/Star), title (result), description (BAB — Before/After/Bridge) }
-
-4. steps (3-4 steps of how it works OR how to order)
+3. steps (3-4 steps of how it works OR how to order)
    Each: { number, title (verb + outcome), description (1-2 sentences) }
 
-5. gallery (product in CONTEXT / LIFESTYLE — real people using it)
+4. gallery (product in CONTEXT / LIFESTYLE — the same product, not a look-alike)
    props: { title, imagePrompts (list of ENGLISH lifestyle scenes) }
 
-6. testimonials (3-5 emotional quotes — SSS pattern: Star/Story/Solution)
-   Each: { quote (mentions specific pain solved), author (native name), role ("Cliente — Casablanca"), avatarPrompt }
+5. testimonials (3 emotional quotes — SSS pattern: Star/Story/Solution)
+   Each: { quote (mentions a pain solved, NO buyer count, NO score), author (native name), role ("Cliente — Casablanca"), avatarPrompt }
 
-7. brands (press logos OR "as seen in" — 4-6 items, boosts trust; use text labels since we can't render real logos)
-   props: { title ("Vu dans" / "Recommandé par"), items: [{ name }, { name }, ...] }
+6. video (poster only — leave url empty)
+   props: { title ("Voir en action"), url (empty), posterPrompt }
 
-8. video (30-60s pitch — the offer explained)
-   props: { title ("Voir en action"), url (empty if none), posterPrompt }
-
-9. cod-form (auto-injected — you MAY still emit one; server keeps only one)
+7. cod-form (auto-injected — you MAY still emit one; server keeps only one)
    props: { title ("Commande maintenant — paiement à la livraison"), reassurance ("Zéro avance. Tu payes en main propre au livreur."), productSlug }
 
-10. faq (5 objection-crushing questions — see DTC_COPY_FORMULAS FAQ block)
-    Each: { question, answer (concrete, addresses the buyer's fear) }
+8. faq (5 objection-crushing questions — see DTC_COPY_FORMULAS FAQ block)
+    Each: { question, answer (concrete, addresses the buyer's fear). Do not invent a delivery delay or a return window that was not provided. }
 
-11. cta (FINAL push with real urgency — MUST include a number)
-    props: { title ("Il reste 38 pièces à ce prix"), subtitle (levée d'objection COD + delivery), buttonText ("Commander maintenant"), buttonHref: "#cod-order-form-section", urgency ("Stock limité · réappro dans 2 semaines"), ${hasDiscount ? `discountBadge ("−${discountPct}% jusqu'à minuit")` : ''} }
+9. cta (FINAL push — COD reassurance, no fake stock count)
+    props: { title (bénéfice + paiement à la livraison), subtitle (levée d'objection COD), buttonText ("Commander maintenant"), buttonHref: "#cod-order-form-section", urgency ("Tu payes seulement quand tu l'as en main")${hasDiscount ? `, discountBadge ("−${discountPct}%")` : ''} }
 
-12. footer
+10. footer
     props: { brandName, tagline, links, paymentMethods: ["cod", "wave", "orangeMoney"] }
 
-DO NOT USE on a landing: "product" as a detail block (too much info for
-cold traffic — features + gallery already cover it), "pricing" table
-(this is a single offer, not a plan comparison).
+DO NOT USE on a landing: "stats", "brands", "pricing" table, and do not
+rename the product. A "product" detail block is optional; if you emit one,
+its name MUST be the catalog name exactly.
 
 ⚠️ MANDATORY: hero.ctaHref AND cta.buttonHref MUST both be
 "#cod-order-form-section" (they scroll the buyer to the form). Every
@@ -1112,7 +1109,8 @@ ${imageCaption}
 2. Every concrete attribute (color, material, finish, hardware, distinctive parts) mentioned in the description MUST appear at least once across your copy (hero, features, product, faq).
 3. Forbidden: inventing features or attributes NOT in the description. If the description doesn't say "waterproof", do NOT claim waterproof. If it doesn't mention a battery, do NOT mention battery life.
 4. The hero title, product.name and faq questions all refer to THE SAME OBJECT.
-5. Before writing, mentally answer: "What is this object?" → write that answer in 2-3 words → that's your product category. Use it consistently.`
+5. Before writing, mentally answer: "What is this object?" → write that answer in 2-3 words → that's your product category. Use it consistently.
+6. Image prompts must show THIS object: same type, same color, same number of pieces as the vision description. Never write a different color or a different outfit.`
     : '';
 
   // ──────── Arabic few-shots (only injected when targeting Arab market) ────────
@@ -1143,7 +1141,7 @@ Testimonial (Saoudi, Khaliji):
 
 CTA section (Égypte, Masri):
   title: "اطلبه دلوقتي قبل ما يخلص!"
-  subtitle: "آخر 50 قطعة في المخزون — الدفع عند الاستلام والشحن مجاني لكل المحافظات."
+  subtitle: "الدفع عند الاستلام. تشوف المنتج قبل ما تخلّص."
   buttonText: "اطلب دلوقتي"
   urgency: "عرض محدود · ينتهي قريب"
 
@@ -1160,9 +1158,9 @@ FAQ (Algérie, Darija):
 # ✅ PRINCIPES de copy (à appliquer dans CHAQUE section):
   - PARLE comme sur Facebook/WhatsApp, pas comme un journal de presse
   - 2ème personne directe ("إنتي", "نتا", "إنت") — JAMAIS de "نحن نقدم"
-  - SPÉCIFIQUE: prix, durée (48h, 7 jours), nombres (1500 client), bénéfice concret
+  - SPÉCIFIQUE: le prix donné, la matière écrite dans la fiche, un bénéfice concret. Pas de nombre de clients.
   - SENSORIEL: décris la sensation/usage, pas l'abstraction
-  - URGENCE crédible: "آخر X قطعة", "ينتهي السبت", PAS "اشتري بسرعة"
+  - URGENCE = الدفع عند الاستلام. PAS un stock inventé ("آخر X قطعة").
   - Mots français intégrés QUAND la dialect_map le permet (Maghreb surtout)
   - Questions rhétoriques OK pour le hero/cta — donne du rythme conversationnel
 ` : '';
@@ -1176,7 +1174,7 @@ FAQ (Algérie, Darija):
 
 Hero (Maroc):
   title: "Reçu chez toi en 48h — paiement quand tu l'as en main."
-  subtitle: "Plus de 3 200 Marocains l'ont déjà commandé ce mois. Tu paies cash au livreur, zéro avance, zéro carte."
+  subtitle: "Tu paies cash au livreur, zéro avance, zéro carte."
   ctaText: "Commander · paiement à la livraison"
 
 Hero (Sénégal):
@@ -1186,7 +1184,7 @@ Hero (Sénégal):
 
 Features item (générique FR):
   title: "Solide, vraiment solide"
-  description: "Testé plus de 10 000 fois sans casser. Cuir véritable, coutures renforcées — pas du plastique premier prix."
+  description: "Cuir véritable, coutures renforcées — pas du plastique premier prix."
 
 Testimonial (Côte d'Ivoire):
   quote: "J'étais sceptique au début, mais quand le livreur est passé chez moi à Yopougon avec le colis, j'ai vu la qualité avant même de payer. Excellent."
@@ -1194,10 +1192,10 @@ Testimonial (Côte d'Ivoire):
   role: "Cliente — Abidjan"
 
 CTA section (Tunisie FR):
-  title: "Il reste 38 pièces. Après, on attend la prochaine livraison."
-  subtitle: "Commande maintenant, paye à la réception. Tu refuses sans frais si ça ne te plaît pas."
+  title: "Commande maintenant, paye à la réception."
+  subtitle: "Tu ouvres le colis avant de payer. Si ça ne te plaît pas, tu refuses."
   buttonText: "Commander maintenant"
-  urgency: "Stock limité · réapprovisionnement dans 2 semaines"
+  urgency: "Tu payes seulement quand tu l'as en main"
 
 FAQ (Maroc FR):
   question: "Et si je ne suis pas satisfait ?"
@@ -1212,9 +1210,9 @@ FAQ (Maroc FR):
 
 # ✅ PRINCIPES de copy FR (à appliquer dans CHAQUE section):
   - PARLE direct : "tu" + verbe à la 2ème personne, jamais "vous" sauf B2B explicite
-  - SPÉCIFIQUE : chiffres (3 200 clients, 48h, -30%), villes locales (Yopougon, Casa, Dakar)
+  - SPÉCIFIQUE : le produit réel, le prix donné, une ville locale (Yopougon, Casa, Dakar). Pas de nombre de clients.
   - CONCRET : la sensation, l'usage, le moment précis ("quand le livreur passe", "le matin avant le café")
-  - URGENCE crédible : "38 pièces restantes", "réappro dans 2 semaines", PAS "vite vite stock limité"
+  - URGENCE = paiement à la livraison, PAS un stock ou un réappro inventé
   - Adresse l'objection COD frontalement : "tu payes seulement quand tu l'as en main"
   - Rythme court : phrases de 6-12 mots dans les CTA, jamais de subordonnée alambiquée
   - Zéro mot-jargon : pas de "premium", "exception", "engagement", "expérience", "univers"
@@ -1240,7 +1238,13 @@ ${pageKind}${productPageRules}
 
 # Product
 ${productBlock}
-${priceLines ? `\n# Pricing\n${priceLines}` : ''}${imageBlock}
+${priceLines ? `\n# Pricing\n${priceLines}` : '\n# Pricing\nNo crossed-out price was provided. Do not invent priceBefore, a discount, or a "back to X" price.'}${imageBlock}
+
+# Truth lock
+${product?.name ? `- The catalog name is exactly "${product.name}". seoTitle MUST contain it. Do not rename the product, and do not add pieces, colors, or materials that are absent from the name, the description, and the vision caption.` : '- Do not invent a product name.'}
+- Do NOT output "stats" or "brands". Do NOT invent ratings, review counts, customer counts, remaining stock, press outlets, delivery delays, or return windows.
+- Testimonials may use plausible local first names. Quotes must not cite a number of buyers or a score.
+- Every imagePrompt must depict the same product (same garment, same color, same pieces). Never describe a look-alike.
 ${categoryTemplateBlock}${DTC_COPY_FORMULAS}
 ${arabFewShots}${frenchFewShots}
 # Section schema
@@ -1257,7 +1261,7 @@ ${sectionsSchema}
 - Strict JSON. No trailing commas. No code fences.
 - ALL human-readable copy in ${langLabel}${dialect ? ` (dialect: ${dialect.split(/[.\n]/)[0]})` : ''}.${arabHint}
 ${isArabicDialect ? `- DIALECT IS NON-NEGOTIABLE. Re-read the dialect block above before writing each section. After drafting, scan your output for any Fusha forms (e.g. "اشترِ", "احصل على", "الذي", verb-initial sentences with classical conjugation) and REWRITE them in ${country?.toUpperCase() || 'the target'} dialect with the markers listed.\n- French loanwords are encouraged where the dialect block lists them — DO NOT translate them to Arabic equivalents.` : ''}
-${isFrenchCopy ? `- VOICE IS NON-NEGOTIABLE. Re-read the French few-shot above before EACH section. After drafting, scan for forbidden corporate jargon ("premium", "exception", "univers", "engagement", "découvrez notre gamme", "expérience inégalée", "nous vous proposons") and REWRITE in the direct tu-form WhatsApp-tone shown in the examples.\n- Use "tu" (B2C), never "vous". Cite concrete numbers, local city names where natural, and address the COD payment objection head-on.` : ''}
+${isFrenchCopy ? `- VOICE IS NON-NEGOTIABLE. Re-read the French few-shot above before EACH section. After drafting, scan for forbidden corporate jargon ("premium", "exception", "univers", "engagement", "découvrez notre gamme", "expérience inégalée", "nous vous proposons") and REWRITE in the direct tu-form WhatsApp-tone shown in the examples.\n- Use "tu" (B2C), never "vous". Address the COD payment objection head-on. Never invent a customer count, a rating, a stock level, a press mention, or a price.` : ''}
 - ALL "imagePrompt" / "imagePrompts" fields stay in ENGLISH (image model needs English).
 - 9 to 13 sections. Start with "hero", end with "footer". Always include "cta" near the end.
 - NEVER invent a filename or URL. The ONLY allowed values for "imageUrl", "posterUrl", "avatarUrl", "images", "gallery" are: an http(s):// URL we already gave you, OR the literal placeholder "__PRODUCT_IMAGE_N__". For every other case, OMIT the field entirely and use "imagePrompt" / "imagePrompts" instead.
@@ -1588,13 +1592,10 @@ async function buildImageGenInput(
  * Retourne `undefined` si rien de significatif → routing par slot par défaut.
  */
 function detectProductCategory(input: FalGenerateInput): string | undefined {
-  const explicit = input.category?.trim();
-  if (explicit) return explicit;
   const tags = input.product?.tags && Array.isArray(input.product.tags)
     ? (input.product.tags as string[]).join(' ')
     : '';
-  if (tags.trim()) return tags;
-  return input.product?.name;
+  return resolveLandingCategory(input.category, input.product?.name, tags);
 }
 
 /**
@@ -1862,7 +1863,6 @@ function synthesizeMissingPrompts(
   // When a product image is available, generation will be img-to-img —
   // wording must reference "this exact product", not describe a new one.
   const hasRef = (product?.images?.filter((u) => typeof u === 'string' && u.length > 0).length || 0) > 0;
-  const productPhrase = hasRef ? 'the exact product shown in the reference image' : `a ${subject}`;
 
   for (const sec of sections) {
     const p = sec.props;
@@ -1876,19 +1876,26 @@ function synthesizeMissingPrompts(
       ? `the exact product from the reference image, kept visually identical (same shape, color, material, branding)`
       : '';
 
-    // HERO — wide lifestyle scene featuring the product
-    if (sec.type === 'hero' && !p.imagePrompt && !p.imageUrl) {
+    const realPhotos = (product?.images || []).filter((u) => typeof u === 'string' && u.length > 0);
+
+    // HERO — when a catalog photo exists, ignore the model's scene text.
+    // It was renaming the garment ("mint-blue 3-piece") and the image model followed.
+    if (sec.type === 'hero' && (hasRef || (!p.imagePrompt && !p.imageUrl))) {
       p.imagePrompt = hasRef
-        ? `A person happily using ${refLock} as the main subject of a wide lifestyle scene set in ${culture}, subject off-center on the left third, warm morning daylight`
+        ? `A person wearing or holding ${refLock} as the main subject of a wide lifestyle scene set in ${culture}, subject off-center on the left third, warm morning daylight`
         : `A person happily using a ${subject} in a bright real-world setting (${culture}), subject off-center on the left third, warm morning daylight`;
       if (!p.layout) p.layout = 'split';
     }
 
-    // GALLERY — 4 distinct angles, all in the SAME warm-daylight world
+    // GALLERY — catalog photos are the product. Generated prompts were inventing
+    // another color and another cut, so they are dropped when real photos exist.
     if (sec.type === 'gallery') {
-      const hasImages = Array.isArray(p.images) && (p.images as unknown[]).filter((u) => typeof u === 'string' && u).length > 0;
+      const hasImages = Array.isArray(p.images) && (p.images as unknown[]).filter((u) => typeof u === 'string' && u && !String(u).startsWith('__')).length > 0;
       const hasPrompts = Array.isArray(p.imagePrompts) && (p.imagePrompts as unknown[]).filter((s) => typeof s === 'string' && s).length > 0;
-      if (!hasImages && !hasPrompts) {
+      if (hasRef && realPhotos.length > 0) {
+        p.images = realPhotos.slice(0, 6);
+        delete p.imagePrompts;
+      } else if (!hasImages && !hasPrompts) {
         const noun = hasRef ? refLock : `a ${subject}`;
         p.imagePrompts = [
           `Close-up macro detail of ${noun}, revealing texture and craftsmanship, on a soft warm-toned surface`,
@@ -1899,11 +1906,14 @@ function synthesizeMissingPrompts(
       }
     }
 
-    // PRODUCT (rare path: only when injectProductImagesFirst didn't run)
-    if (sec.type === 'product' && !p.imagePrompt && !p.imageUrl) {
+    if (sec.type === 'product' && (hasRef || (!p.imagePrompt && !p.imageUrl))) {
       p.imagePrompt = hasRef
         ? `${refLock} as a clean hero still life on a soft warm gradient backdrop, subject slightly off-center`
         : `A ${subject} as a clean hero still life on a soft warm gradient backdrop, subject slightly off-center`;
+    }
+
+    if (sec.type === 'video' && hasRef) {
+      p.imagePrompt = `${refLock} in genuine use, a lifestyle still that works as a video poster, set in ${culture}, warm daylight`;
     }
 
     // TESTIMONIALS — avatars, NO product reference (these are people)
@@ -1931,7 +1941,15 @@ async function runFullPipeline(
   onProgress?: PipelineProgress
 ): Promise<FalGenerateResult> {
   const t0 = Date.now();
-  console.log(`[landing-gen] start kind=${input.pageKind} country=${input.country} lang=${language} llm=${LLM_MODEL}`);
+  const resolvedCategory = resolveLandingCategory(
+    input.category,
+    input.product?.name,
+    input.product?.tags?.join(' '),
+  );
+  if (resolvedCategory !== input.category) {
+    input = { ...input, category: resolvedCategory };
+  }
+  console.log(`[landing-gen] start kind=${input.pageKind} country=${input.country} lang=${language} category=${input.category || '-'} llm=${LLM_MODEL}`);
   const tick = async (step: PipelineStep, status: 'running' | 'done' | 'failed') => {
     if (onProgress) {
       try { await onProgress({ step, status }); } catch { /* progress errors must not block the pipeline */ }
@@ -1989,11 +2007,20 @@ async function runFullPipeline(
       props: resolveProductPlaceholders((s.props && typeof s.props === 'object') ? s.props : {}, productImages) as Record<string, unknown>,
     }));
 
+  const allowDiscount =
+    typeof input.priceBefore === 'number' &&
+    typeof input.priceAfter === 'number' &&
+    input.priceBefore > input.priceAfter;
+  const factualSections = lockLandingSections(sections, {
+    productName: input.product?.name,
+    allowDiscount,
+  });
+
   // Inject the user's real product images FIRST (priority over AI generation),
   // then synthesize prompts only for slots that are still empty.
-  injectProductImagesFirst(sections, productImages);
-  synthesizeMissingPrompts(sections, input.product, input.country);
-  injectPromoBannerIfDiscount(sections, input);
+  injectProductImagesFirst(factualSections, productImages);
+  synthesizeMissingPrompts(factualSections, input.product, input.country);
+  injectPromoBannerIfDiscount(factualSections, input);
 
   // STEP 2 — image generation (parallel) — gated by env
   await tick('images', 'running');
@@ -2001,7 +2028,7 @@ async function runFullPipeline(
   let imagesGenerated = 0;
   if (imagesEnabled) {
     const productImageRef = productImages[0];
-    const slots = collectImageSlots(sections, productImageRef);
+    const slots = collectImageSlots(factualSections, productImageRef);
     const refCount = slots.filter((s) => s.referenceImage).length;
     console.log(`[landing-gen] image slots collected: ${slots.length} (${refCount} with product reference for img2img)`);
     if (slots.length > 0) {
@@ -2048,14 +2075,15 @@ async function runFullPipeline(
 
   // STEP 3 — finalize / inject fallbacks
   await tick('assemble', 'running');
-  const finalSections = finalize(sections, input.product, input.currency, input.pageKind, input.country);
+  const finalSections = finalize(factualSections, input.product, input.currency, input.pageKind, input.country);
+  const seo = lockSeo(parsed.seoTitle, parsed.seoDescription, input.product?.name);
   console.log(`[landing-gen] done in ${Date.now() - t0}ms — ${finalSections.length} sections, ${imagesGenerated} images`);
   await tick('assemble', 'done');
 
   return {
     sections: finalSections,
-    seoTitle: parsed.seoTitle,
-    seoDescription: parsed.seoDescription,
+    seoTitle: seo.seoTitle,
+    seoDescription: seo.seoDescription,
     imageCaption: input.imageCaption,
     language,
     direction,

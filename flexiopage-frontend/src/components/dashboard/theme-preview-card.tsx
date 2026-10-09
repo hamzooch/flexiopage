@@ -576,6 +576,47 @@ function ModalHero({ template }: { template: StoreThemeTemplate }) {
     );
   }
 
+  if (hl === 'catalog') {
+    return (
+      <section style={{ backgroundColor: t.background }}>
+        <div className="border-b px-6 py-2 text-center text-[11px] font-semibold uppercase tracking-[0.14em]" style={{ borderColor: t.border, backgroundColor: t.surfaceMuted, color: t.muted }}>
+          Paiement à la livraison · Livraison à domicile · Service client
+        </div>
+        <div className="mx-auto flex max-w-5xl flex-col gap-4 px-6 py-10 sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <p className="text-[11px] font-bold uppercase tracking-[0.2em]" style={{ color: t.primary }}>Nouvelle collection</p>
+            <h1 className={`${titleSize} mt-2 font-bold leading-[1.05] tracking-tight`} style={{ fontFamily: t.fontHeading, color: t.foreground }}>{headline}</h1>
+            <p className="mt-3 max-w-lg text-sm leading-relaxed" style={{ color: t.muted }}>{sub}</p>
+          </div>
+          <ModalCta t={t} label="Voir le catalogue" />
+        </div>
+      </section>
+    );
+  }
+
+  if (hl === 'offer') {
+    return (
+      <section style={{ backgroundColor: t.background }}>
+        <div className="mx-auto grid max-w-5xl items-center gap-8 px-6 py-12 md:grid-cols-2">
+          <div>
+            <p className="text-[11px] font-bold uppercase tracking-[0.2em]" style={{ color: t.accent }}>Nouvelle collection</p>
+            <h1 className={`${titleSize} mt-3 font-extrabold leading-[1.02] tracking-tight`} style={{ fontFamily: t.fontHeading, color: t.foreground }}>{headline}</h1>
+            <p className="mt-4 max-w-md text-base leading-relaxed" style={{ color: t.muted }}>{sub}</p>
+            <div className="mt-6"><ModalCta t={t} label="Commander" /></div>
+            <p className="mt-4 text-[11px] font-semibold" style={{ color: t.foreground }}>Paiement à la livraison · Livraison à domicile · Service client</p>
+          </div>
+          <div className="overflow-hidden border" style={{ borderColor: t.border, borderRadius: radius, backgroundColor: t.surface }}>
+            <div className="aspect-[4/5]" style={{ background: `linear-gradient(160deg, ${t.gradientFrom}, ${t.gradientTo})` }} />
+            <div className="flex items-center justify-between p-4">
+              <div className="h-2 w-1/2 rounded" style={{ backgroundColor: t.foreground, opacity: 0.7 }} />
+              <div className="h-2 w-16 rounded" style={{ backgroundColor: t.primary }} />
+            </div>
+          </div>
+        </div>
+      </section>
+    );
+  }
+
   // centered
   return (
     <section className="relative overflow-hidden" style={{ backgroundColor: t.background }}>
@@ -611,14 +652,15 @@ function ModalProductGrid({ template }: { template: StoreThemeTemplate }) {
   const cardStyle = t.layout?.productCard || 'classic';
   const cols = t.layout?.gridColumns || 3;
   const uppercase = t.layout?.nav === 'bold';
-  const leftAlign = t.layout?.hero === 'editorial' || t.layout?.hero === 'minimal';
+  const shopHead = t.layout?.hero === 'catalog' || t.layout?.hero === 'offer';
+  const leftAlign = t.layout?.hero === 'editorial' || t.layout?.hero === 'minimal' || shopHead;
   const gridClass = MODAL_GRID_COLS[cols] || MODAL_GRID_COLS[3];
 
   return (
     <section style={{ backgroundColor: t.background }}>
       <div className="mx-auto max-w-5xl px-6 py-14">
         <div className={`mb-8 ${leftAlign ? '' : 'text-center'}`}>
-          {leftAlign && (
+          {leftAlign && !shopHead && (
             <div className="mb-2 text-[11px] font-semibold uppercase tracking-[0.25em]" style={{ color: t.accent }}>
               — Sélection
             </div>

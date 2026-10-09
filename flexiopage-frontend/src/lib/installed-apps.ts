@@ -7,10 +7,10 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Bot, MessageSquare, FileSpreadsheet } from 'lucide-react';
-import { messengerBotApi, whatsappBotApi, storesApi } from '@/lib/api';
+import { Bot, GitBranch, MessageCircle, MessageSquare, FileSpreadsheet, Send } from 'lucide-react';
+import { messengerBotApi, whatsappBotApi, storesApi, telegramApi } from '@/lib/api';
 
-export type InstalledAppId = 'messenger-bot' | 'whatsapp-bot' | 'google-sheets';
+export type InstalledAppId = 'messenger-bot' | 'whatsapp-bot' | 'google-sheets' | 'workflow' | 'telegram-bot' | 'botstore';
 
 export interface InstalledApp {
   id: InstalledAppId;
@@ -46,12 +46,36 @@ const META: Record<InstalledAppId, Omit<InstalledApp, 'href'>> = {
     logo: '/brands/google-sheets.svg',
     accent: 'from-emerald-500 to-green-600',
   },
+  workflow: {
+    id: 'workflow',
+    name: 'Workflow',
+    icon: GitBranch,
+    logo: '/brands/workflow.svg',
+    accent: 'from-violet-600 to-fuchsia-600',
+  },
+  'telegram-bot': {
+    id: 'telegram-bot',
+    name: 'Telegram',
+    icon: Send,
+    logo: '/brands/telegram.svg',
+    accent: 'from-sky-500 to-blue-600',
+  },
+  botstore: {
+    id: 'botstore',
+    name: 'Botstore',
+    icon: MessageCircle,
+    logo: '/brands/botstore.svg',
+    accent: 'from-indigo-500 to-fuchsia-600',
+  },
 };
 
 const hrefFor = (id: InstalledAppId, storeId: string): string => {
   const sid = encodeURIComponent(storeId);
   if (id === 'messenger-bot') return `/dashboard/apps/messenger-bot?storeId=${sid}`;
   if (id === 'whatsapp-bot') return `/dashboard/apps/whatsapp-bot?storeId=${sid}`;
+  if (id === 'workflow') return `/dashboard/apps/workflow?storeId=${sid}`;
+  if (id === 'telegram-bot') return '/dashboard/apps/telegram-bot';
+  if (id === 'botstore') return `/dashboard/apps/botstore?storeId=${sid}`;
   return `/dashboard/apps?storeId=${sid}`; // google-sheets vit dans la page apps elle-même
 };
 
@@ -67,17 +91,22 @@ export function useInstalledApps(storeId: string | null | undefined): InstalledA
     if (!storeId) { setApps([]); return; }
     let cancelled = false;
     void (async () => {
-      const [mb, wb, store] = await Promise.all([
+      const [mb, wb, store, tg] = await Promise.all([
         messengerBotApi.getConfig(storeId).catch(() => null),
         whatsappBotApi.getConfig(storeId).catch(() => null),
         storesApi.get(storeId).catch(() => null),
+        telegramApi.status().catch(() => null),
       ]);
       if (cancelled) return;
       const list: InstalledApp[] = [];
       if (mb?.data.connected) list.push({ ...META['messenger-bot'], href: hrefFor('messenger-bot', storeId) });
       if (wb?.data.connected) list.push({ ...META['whatsapp-bot'], href: hrefFor('whatsapp-bot', storeId) });
-      const gs = (store?.data as { store?: { integrations?: { googleSheets?: { enabled?: boolean; webhookUrl?: string } } } })?.store?.integrations?.googleSheets;
+      const doc = (store?.data as { store?: { integrations?: { googleSheets?: { enabled?: boolean; webhookUrl?: string } }; settings?: { workflow?: { enabled?: boolean }; botstore?: { enabled?: boolean } } } })?.store;
+      const gs = doc?.integrations?.googleSheets;
       if (gs?.enabled && gs.webhookUrl) list.push({ ...META['google-sheets'], href: hrefFor('google-sheets', storeId) });
+      if (doc?.settings?.workflow?.enabled) list.push({ ...META.workflow, href: hrefFor('workflow', storeId) });
+      if (doc?.settings?.botstore?.enabled) list.push({ ...META.botstore, href: hrefFor('botstore', storeId) });
+      if (tg?.data.linked || tg?.data.paused) list.push({ ...META['telegram-bot'], href: hrefFor('telegram-bot', storeId) });
       setApps(list);
     })();
     return () => { cancelled = true; };

@@ -18,6 +18,7 @@ import * as subscriberService from '../services/subscriber.service';
 import * as reviewService from '../services/review.service';
 import * as abandonedCartService from '../services/abandoned-cart.service';
 import { sendEmail } from '../services/email.service';
+import { resumeCheckout } from '../services/workflow.service';
 import { Product } from '../models/Product.model';
 import { Order } from '../models/Order.model';
 import { Store } from '../models/Store.model';
@@ -1128,6 +1129,12 @@ router.get('/downloads/:token/file/:assetId', async (req: Request, res: Response
  * /api/webhooks/<provider>; finalizePaidOrder generates the download token
  * and emails the buyer the link to /d/<token>.
  */
+/** Lien des emails Workflow : rouvre le paiement de la commande abandonnée. */
+router.get('/checkout/resume/:orderId', async (req: Request, res: Response): Promise<void> => {
+  const url = await resumeCheckout(String(req.params.orderId || ''));
+  res.redirect(url);
+});
+
 router.post('/checkout/init', async (req: Request, res: Response): Promise<void> => {
   const body = req.body as {
     storeSlug?: string;

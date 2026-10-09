@@ -144,7 +144,7 @@ import {
 import {
   STORE_THEME_TEMPLATES,
   themesForStoreType,
-  withLayoutFallback,
+  resolveStoreTheme,
   type StoreThemeTemplate,
   type ThemeTokens,
 } from '@/data/store-themes';
@@ -1228,7 +1228,7 @@ function ThemeEditor({ block, store, setStore, markDirty, openThemePicker, curre
   // personnalisé — on backfill les tokens structurels manquants pour éviter
   // que les éditeurs palette/fonts affichent des valeurs vides.
   const themeForEditors: ThemeTokens | null =
-    theme.primary && theme.background ? withLayoutFallback(theme as ThemeTokens) : null;
+    theme.templateId || (theme.primary && theme.background) ? resolveStoreTheme({ theme }) : null;
 
   function patchTheme(next: ThemeTokens) {
     setStore((s) => (s ? { ...s, theme: next as unknown as Record<string, unknown> } : s));

@@ -160,6 +160,8 @@ export const telegramApi = {
   setPreferences: (enabled: boolean) =>
     api.patch<{ ok: boolean; enabled: boolean }>('/telegram/preferences', { enabled }),
   test: () => api.post<{ ok: boolean; reason?: string }>('/telegram/test', {}),
+  open: (key: string) =>
+    api.post<{ token: string; next: string; user: { _id: string; email: string; name: string; role?: string } }>('/telegram/open', { key }),
 };
 
 // Team — seller invites staff (managers, confirmation agents)
@@ -1552,6 +1554,41 @@ export const storesApi = {
   get: (storeId: string) => api.get<{ store: unknown }>(`/stores/${storeId}`),
   update: (storeId: string, data: Record<string, unknown>) =>
     api.patch<{ store: unknown }>(`/stores/${storeId}`, data),
+  getWorkflow: (storeId: string) =>
+    api.get<{
+      workflow: {
+        storeType: 'physical' | 'digital';
+        enabled: boolean;
+        enabledAt: string | null;
+        abandonedCheckout: {
+          firstDelayMinutes: number;
+          secondEnabled: boolean;
+          secondDelayHours: number;
+          subject: string;
+          body: string;
+        };
+      };
+      runs: Array<{
+        id: string;
+        orderId: string;
+        orderNumber: string;
+        step: 1 | 2;
+        status: 'sent' | 'failed';
+        recovered: boolean;
+        to: string;
+        subject: string;
+        error: string | null;
+        sentAt: string;
+      }>;
+    }>(`/stores/${storeId}/workflow`),
+  saveWorkflow: (storeId: string, data: {
+    enabled: boolean;
+    firstDelayMinutes: number;
+    secondEnabled: boolean;
+    secondDelayHours: number;
+    subject: string;
+    body: string;
+  }) => api.put<{ workflow: { enabled: boolean } }>(`/stores/${storeId}/workflow`, data),
   /** Snapshot des modifs en cours dans l'éditeur — lu par l'iframe d'aperçu
    *  (?preview=1). Ne touche pas au live tant que `update` n'est pas
    *  appelé. Auto-débouncé côté éditeur pour ne pas spam le backend. */

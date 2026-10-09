@@ -5,6 +5,7 @@ import { dispatchOrder } from '../services/delivery.service';
 import { Order, CONFIRMATION_STATUSES, CANCEL_REASON_CODES, type ConfirmationStatus, type CancelReasonCode } from '../models/Order.model';
 import { Product } from '../models/Product.model';
 import { logActivity } from '../services/activity-log.service';
+import { applyConfirmationStatus } from '../services/order-confirmation.service';
 import { reverseMarketplaceDebitsForRefund } from '../services/seller-earnings.service';
 import { ORDER_EXPORT_MAX, ordersToCsv, ordersToXlsx } from '../services/order-export.service';
 
@@ -412,89 +413,18 @@ export async function updateConfirmationStatus(req: AuthRequest, res: Response):
     return;
   }
 
-  const order = await Order.findOne({ _id: req.params.orderId, storeId: store._id });
-  if (!order) { res.status(404).json({ error: 'Order not found' }); return; }
-
-  const previous = order.confirmationStatus || 'pending';
-  order.confirmationStatus = confirmationStatus;
-  order.confirmedAt = new Date();
-  if (typeof note === 'string') order.confirmationNote = note.trim().slice(0, 500) || undefined;
-
-  // callbackAt only makes sense for the callback bucket. Allow ISO strings
-  // and JS Date — anything unparseable is silently dropped (UX over hard fail).
-  if (confirmationStatus === 'callback') {
-    if (callbackAt) {
-      const d = new Date(callbackAt);
-      if (!Number.isNaN(d.getTime())) order.callbackAt = d;
-    }
-  } else {
-    // Leaving the callback bucket clears the schedule so it can't haunt
-    // future filters / reminders.
-    order.callbackAt = undefined;
-  }
-
-  // "declined" === buyer refused the order during the call → cancel the order
-  // and restock (idempotent via inventoryRestored, same path as manual cancel).
-  let restockedItems = 0;
-  if (confirmationStatus === 'declined' && order.fulfillmentStatus !== 'cancelled') {
-    order.fulfillmentStatus = 'cancelled';
-    if (!order.inventoryRestored) {
-      const productIds = order.items.map((i) => i.productId).filter(Boolean);
-      const tracked = await Product.find({ _id: { $in: productIds }, trackInventory: true })
-        .select('_id')
-        .lean();
-      const trackedSet = new Set(tracked.map((p) => p._id.toString()));
-      await Promise.all(
-        order.items
-          .filter((i) => trackedSet.has(i.productId.toString()))
-          .map((i) =>
-            Product.updateOne({ _id: i.productId }, { $inc: { stock: i.quantity } }).then(() => {
-              restockedItems += 1;
-            })
-          )
-      );
-      order.inventoryRestored = true;
-      order.cancelReason = (note?.trim() || 'Refusé à la confirmation').slice(0, 500);
-      // Motif structuré si fourni — tolère l'absence pour compat descendante.
-      if (cancelReasonCode && CANCEL_REASON_CODES.includes(cancelReasonCode)) {
-        order.cancelReasonCode = cancelReasonCode;
-      }
-    }
-  }
-
-  order.statusHistory = order.statusHistory || [];
-  order.statusHistory.push({
-    at: new Date(),
-    by: userId as unknown as undefined,
+  const result = await applyConfirmationStatus({
+    orderId: String(req.params.orderId || ''),
+    storeId: store._id.toString(),
+    userId: userId?.toString(),
     confirmationStatus,
-    fulfillmentStatus: confirmationStatus === 'declined' ? 'cancelled' : undefined,
-    note: note?.trim().slice(0, 500),
+    note,
+    callbackAt,
+    cancelReasonCode,
   });
-
-  await order.save();
-
-  void logActivity({
-    type: 'order.confirmation_updated',
-    message: `Confirmation commande ${order.orderNumber} : ${previous} → ${confirmationStatus}`,
-    storeId: store._id,
-    userId: store.ownerId,
-    metadata: {
-      orderId: order._id.toString(),
-      from: previous,
-      to: confirmationStatus,
-      note: note || null,
-      restockedItems,
-    },
-  });
-
-  // Trigger "confirmed" pour la notif client WhatsApp — uniquement à la
-  // transition VERS confirmed (pas à chaque save de la même valeur, l'idem-
-  // potence côté service couvre en plus les retries).
-  if (confirmationStatus === 'confirmed' && previous !== 'confirmed') {
-    void import('../services/clientNotifications.service').then(({ sendClientNotification }) =>
-      sendClientNotification({ orderId: order._id, trigger: 'confirmed' }),
-    ).catch(() => {});
+  if ('error' in result) {
+    res.status(result.status).json({ error: result.error });
+    return;
   }
-
-  res.json({ order, restockedItems });
+  res.json({ order: result.order, restockedItems: result.restockedItems });
 }

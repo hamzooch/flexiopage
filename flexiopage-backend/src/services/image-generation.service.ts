@@ -20,6 +20,7 @@
 import fs from 'fs/promises';
 import path from 'path';
 import Anthropic from '@anthropic-ai/sdk';
+import { fetchWithRetry } from '../lib/outbound-fetch';
 
 const FAL_BASE = 'https://fal.run';
 
@@ -445,7 +446,7 @@ async function callFalDirect(input: ImageGenInput): Promise<ImageGenResult> {
   const endpoint = resolveEndpoint(model, hasRef);
   const body = buildBody(endpoint, adjusted);
 
-  const res = await fetch(`${FAL_BASE}/${endpoint}`, {
+  const res = await fetchWithRetry(`${FAL_BASE}/${endpoint}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Authorization: `Key ${key}` },
     body: JSON.stringify(body),
@@ -525,7 +526,7 @@ const CATEGORY_KEYWORDS: Array<{ class: CategoryClass; patterns: RegExp[] }> = [
   {
     class: 'fashion',
     patterns: [
-      /\b(fashion|mode|apparel|clothing|v[êe]tement|vetement|habit|chaussure|shoes|sneaker|boot|robe|dress|shirt|chemise|pantalon|jean|tenue|streetwear|outfit)\b/i,
+      /\b(fashion|mode|apparel|clothing|v[êe]tement|vetement|habit|chaussure|shoes|sneaker|boot|robe|dress|shirt|chemise|pantalon|jean|tenue|streetwear|outfit|caftan|kaftan|djellaba|jellaba|abaya|hijab|babouches?|boubou|gandoura|takchita|qamis|thobe|jalabiya|soie|brod[ée]e?)\b/i,
     ],
   },
   {
@@ -561,6 +562,34 @@ export function classifyCategory(input?: string): CategoryClass {
     if (patterns.some((r) => r.test(text))) return cls;
   }
   return 'generic';
+}
+
+/** "physical products" est ce que l'UI envoyait pour tout article physique.
+ *  Ce n'est pas une niche : ça forçait FLUX Schnell et un template vide. */
+const PLACEHOLDER_CATEGORY =
+  /^(physical products|digital products|produits? physiques?|produits? digitaux|produits? num[ée]riques|physical|digital|mixed|g[ée]n[ée]rique)$/i;
+
+export function isPlaceholderCategory(value: string): boolean {
+  return PLACEHOLDER_CATEGORY.test(value.trim());
+}
+
+/**
+ * Catégorie réellement utile pour le copy et le choix du modèle photo.
+ * Un libellé vide ou générique laisse la place au nom du produit
+ * (« Caftan Brodé ») ou à des tags qui matchent une vraie verticale.
+ */
+export function resolveLandingCategory(
+  explicit?: string,
+  productName?: string,
+  tags?: string,
+): string | undefined {
+  const clean = explicit?.trim();
+  if (clean && !isPlaceholderCategory(clean)) return clean;
+  const tagText = tags?.trim();
+  if (tagText && classifyCategory(tagText) !== 'generic') return tagText;
+  const name = productName?.trim();
+  if (name) return name;
+  return tagText || undefined;
 }
 
 /**
@@ -793,7 +822,7 @@ async function enhanceImage(url: string, slot: ImageSlot): Promise<string> {
     if (isFace) {
       body.prompt = 'high quality face, natural skin, sharp catchlight, editorial portrait';
     }
-    const res = await fetch(`${FAL_BASE}/${UPSCALER_MODEL}`, {
+    const res = await fetchWithRetry(`${FAL_BASE}/${UPSCALER_MODEL}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Key ${key}` },
       body: JSON.stringify(body),
@@ -842,7 +871,7 @@ const BG_REMOVAL_MODEL = process.env.FAL_BG_REMOVAL_MODEL || 'fal-ai/imageutils/
 async function removeBackground(url: string): Promise<string> {
   const key = getFalKey();
   try {
-    const res = await fetch(`${FAL_BASE}/${BG_REMOVAL_MODEL}`, {
+    const res = await fetchWithRetry(`${FAL_BASE}/${BG_REMOVAL_MODEL}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Key ${key}` },
       body: JSON.stringify({ image_url: url }),

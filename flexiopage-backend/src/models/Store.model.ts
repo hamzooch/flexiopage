@@ -228,6 +228,22 @@ export interface IStore extends Document {
         minutesAgo?: number;
       }>;
     };
+    /**
+     * Application Workflow — scénarios automatiques. Le premier envoie un
+     * email quand une commande digitale reste impayée.
+     */
+    workflow?: {
+      enabled?: boolean;
+      /** Posé au moment de l'activation. Seules les commandes créées après sont relancées. */
+      enabledAt?: Date;
+      abandonedCheckout?: {
+        firstDelayMinutes?: number;
+        secondEnabled?: boolean;
+        secondDelayHours?: number;
+        subject?: string;
+        body?: string;
+      };
+    };
     whatsapp?: {
       enabled?: boolean;          // default false
       /** E.164 phone (e.g. "+216551234"). Required when enabled. */
@@ -801,6 +817,17 @@ const StoreSchema = new Schema<IStore>(
             minutesAgo: { type: Number, min: 0 },
           },
         ],
+      },
+      workflow: {
+        enabled: { type: Boolean, default: false },
+        enabledAt: { type: Date },
+        abandonedCheckout: {
+          firstDelayMinutes: { type: Number, default: 20, min: 5, max: 240 },
+          secondEnabled: { type: Boolean, default: true },
+          secondDelayHours: { type: Number, default: 24, min: 1, max: 72 },
+          subject: { type: String, trim: true, maxlength: 140 },
+          body: { type: String, trim: true, maxlength: 2000 },
+        },
       },
       whatsapp: {
         enabled: { type: Boolean, default: false },

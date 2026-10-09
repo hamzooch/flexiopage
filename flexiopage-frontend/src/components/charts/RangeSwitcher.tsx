@@ -27,9 +27,9 @@ export function RangeSwitcher({ value, onChange }: Props) {
           type="button"
           onClick={() => onChange(r.id)}
           className={cn(
-            'rounded-lg px-2 py-1.5 text-[11px] font-semibold transition-all sm:px-3 sm:text-xs',
+            'min-h-9 rounded-lg px-2.5 py-1.5 text-xs font-medium transition-colors sm:px-3',
             value === r.id
-              ? 'bg-gradient-to-br from-pink-500 to-violet-600 text-white shadow-sm'
+              ? 'bg-foreground text-background'
               : 'text-muted-foreground hover:bg-muted hover:text-foreground'
           )}
         >

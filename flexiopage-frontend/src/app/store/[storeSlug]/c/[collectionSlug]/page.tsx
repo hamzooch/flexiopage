@@ -10,11 +10,10 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import {
-  STORE_THEME_TEMPLATES,
   RADIUS_PX,
   tokensToCssVars,
   googleFontsHref,
-  withLayoutFallback,
+  resolveStoreTheme,
   type ThemeTokens,
 } from '@/data/store-themes';
 import { formatCurrency, mediaUrl, discountBadgeAnimClass } from '@/lib/utils';
@@ -79,8 +78,6 @@ interface FetchResult {
   products?: ProductDoc[];
 }
 
-const FALLBACK_THEME = STORE_THEME_TEMPLATES[0].theme;
-
 async function fetchData(storeSlug: string, collectionSlug: string): Promise<FetchResult> {
   const apiBase = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
   try {
@@ -96,12 +93,7 @@ async function fetchData(storeSlug: string, collectionSlug: string): Promise<Fet
 }
 
 function resolveTheme(store: StoreDoc): ThemeTokens {
-  const saved = store.theme as Partial<ThemeTokens> | undefined;
-  if (saved && saved.primary && saved.background && saved.foreground) {
-    return withLayoutFallback(saved as ThemeTokens);
-  }
-  const found = STORE_THEME_TEMPLATES.find((t) => t.id === saved?.templateId);
-  return found?.theme || FALLBACK_THEME;
+  return resolveStoreTheme(store);
 }
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {

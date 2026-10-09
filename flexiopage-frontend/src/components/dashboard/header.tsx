@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
-import { Check, ChevronDown, LogOut, Menu, Plus, Search, Settings as SettingsIcon, Store as StoreIcon, User } from 'lucide-react';
+import { Check, ChevronDown, LogOut, Menu, Plus, Search, Settings as SettingsIcon, Store as StoreIcon, User, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useAuthStore, readPersistedUser } from '@/stores/auth-store';
 import { useStoreStore } from '@/stores/store-store';
@@ -50,10 +50,26 @@ function isObjectId(seg: string): boolean {
 }
 
 interface Props {
-  onOpenMobileNav?: () => void;
+  onToggleNav?: () => void;
+  mobileOpen?: boolean;
+  desktopOpen?: boolean;
 }
 
-export function Header({ onOpenMobileNav }: Props = {}) {
+function useIsDesktop() {
+  const [desktop, setDesktop] = useState(false);
+  useEffect(() => {
+    const mq = window.matchMedia('(min-width: 768px)');
+    const apply = () => setDesktop(mq.matches);
+    apply();
+    mq.addEventListener('change', apply);
+    return () => mq.removeEventListener('change', apply);
+  }, []);
+  return desktop;
+}
+
+export function Header({ onToggleNav, mobileOpen = false, desktopOpen = true }: Props = {}) {
+  const isDesktop = useIsDesktop();
+  const navOpen = isDesktop ? desktopOpen : mobileOpen;
   const logout = useAuthStore((s) => s.logout);
   // Live store + fallback localStorage : la réhydratation zustand peut laisser
   // `user` à null au render → l'avatar/menu afficherait « U »/placeholder. Le
@@ -159,29 +175,31 @@ export function Header({ onOpenMobileNav }: Props = {}) {
   }
 
   return (
-    <header className="sticky top-0 z-20 flex h-16 items-center justify-between gap-4 border-b border-sidebar-border bg-sidebar/85 px-4 text-sidebar-foreground backdrop-blur-xl sm:px-6">
+    <header className="sticky top-0 z-20 flex h-16 items-center gap-2 border-b border-sidebar-border bg-sidebar/85 px-3 text-sidebar-foreground backdrop-blur-xl sm:gap-3 sm:px-4">
       {/* Ligne d'accent animée en bas de la navbar. */}
       <span aria-hidden className="pointer-events-none absolute inset-x-0 bottom-0 h-px overflow-hidden">
         <span className="block h-full w-1/3 gradient-brand animate-chrome-sheen" />
       </span>
 
       {/* Fil d'Ariane seulement. Le titre de la page (h1) vit dans le contenu. */}
-      <div className="flex min-w-0 items-center gap-2">
+      <div className="flex min-w-0 flex-1 items-center gap-2">
         <button
           type="button"
-          onClick={onOpenMobileNav}
-          className="grid h-10 w-10 place-items-center rounded-xl text-sidebar-foreground transition-all hover:bg-sidebar-muted hover:text-sidebar-strong md:hidden"
-          aria-label={t('header.openMenu')}
+          onClick={onToggleNav}
+          className="grid h-10 w-10 shrink-0 place-items-center rounded-xl border border-sidebar-border bg-sidebar-muted/50 text-sidebar-foreground transition-colors hover:bg-sidebar-muted hover:text-sidebar-strong"
+          aria-label={navOpen ? t('sidebar.closeMenu') : t('header.openMenu')}
+          aria-expanded={navOpen}
+          aria-controls="dashboard-sidebar"
         >
-          <Menu className="h-5 w-5" />
+          {navOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
         </button>
         <nav aria-label="Fil d'Ariane" className="flex min-w-0 items-center gap-1.5 text-sm">
           {segments.length <= 1 ? (
-            <span className="hidden truncate font-medium text-sidebar-strong sm:inline">{t('header.dashboard')}</span>
+            <span className="hidden truncate font-medium text-sidebar-strong lg:inline">{t('header.dashboard')}</span>
           ) : (
             <>
-              <span className="hidden truncate text-sidebar-foreground/70 sm:inline">{t('header.dashboard')}</span>
-              <span className="hidden text-sidebar-foreground/40 sm:inline" aria-hidden="true">/</span>
+              <span className="hidden truncate text-sidebar-foreground/70 lg:inline">{t('header.dashboard')}</span>
+              <span className="hidden text-sidebar-foreground/40 lg:inline" aria-hidden="true">/</span>
               <span className="truncate font-medium text-sidebar-strong">{title}</span>
             </>
           )}
@@ -189,7 +207,7 @@ export function Header({ onOpenMobileNav }: Props = {}) {
       </div>
 
       {/* Search */}
-      <div className="hidden min-w-[12rem] flex-1 max-w-md xl:block">
+      <div className="hidden min-w-[12rem] max-w-md flex-1 xl:block">
         <div className="group relative">
           <Search className="pointer-events-none absolute start-3 top-1/2 h-4 w-4 -translate-y-1/2 text-sidebar-foreground transition-colors group-focus-within:text-primary" />
           <input
@@ -220,7 +238,7 @@ export function Header({ onOpenMobileNav }: Props = {}) {
             aria-expanded={storeMenuOpen}
           >
             <StoreIcon className="h-4 w-4 text-primary" />
-            <span className="max-w-[140px] truncate font-medium">
+            <span className="hidden max-w-[7rem] truncate font-medium lg:inline xl:max-w-[10rem]">
               {activeStoreName || t('header.chooseStore')}
             </span>
             <ChevronDown className={cn('h-3 w-3 text-sidebar-foreground transition-transform', storeMenuOpen && 'rotate-180')} />

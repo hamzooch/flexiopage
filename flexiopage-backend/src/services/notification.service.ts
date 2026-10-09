@@ -37,7 +37,10 @@ export async function createNotification(args: CreateArgs) {
   // pour éviter tout cycle de dépendances.
   try {
     const { sendToUser } = await import('./telegram.service');
-    await sendToUser(args.userId, { title: args.title, body: args.body, link: args.link });
+    const orderId = args.type === 'order.created' && typeof args.meta?.orderId === 'string'
+      ? args.meta.orderId
+      : undefined;
+    await sendToUser(args.userId, { title: args.title, body: args.body, link: args.link, orderId });
   } catch {
     /* non-fatal */
   }

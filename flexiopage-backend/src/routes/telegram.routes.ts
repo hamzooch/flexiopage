@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { authMiddleware } from '../middleware/auth.middleware';
 import {
   getTelegramStatus,
+  openTelegramSession,
   startTelegramLink,
   unlinkTelegram,
   setTelegramPreferences,
@@ -12,6 +13,7 @@ import {
 // sous /api/webhooks/telegram (non authentifié, cf. webhooks.routes.ts).
 const router = Router();
 
+router.post('/open', openTelegramSession);
 router.use(authMiddleware);
 router.get('/status', getTelegramStatus);
 router.post('/link', startTelegramLink);

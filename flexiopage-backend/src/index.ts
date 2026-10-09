@@ -28,6 +28,7 @@ import paymentRoutes from './routes/payment.routes';
 import { setupTelegramWebhook } from './services/telegram.service';
 import { startSecurityMonitor } from './services/security-monitor.service';
 import { startAbandonOrdersJob } from './services/abandon-orders.service';
+import { startWorkflowJob } from './services/workflow.service';
 import { startAnnouncementScheduler } from './services/announcement-scheduler.service';
 import { registerMessengerBot } from './modules/messenger-bot';
 import walletRoutes from './routes/wallet.routes';
@@ -281,6 +282,7 @@ async function start() {
   // implémentation). On les lance tous — ils savent se taire.
   startSecurityMonitor();
   startAbandonOrdersJob();
+  startWorkflowJob();
   startAnnouncementScheduler();
 
   // ── Graceful shutdown ──────────────────────────────────────────────

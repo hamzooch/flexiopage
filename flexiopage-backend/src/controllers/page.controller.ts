@@ -135,6 +135,7 @@ export async function generateFromProduct(req: AuthRequest, res: Response): Prom
         price: product.price,
         type: product.type,
         images: product.images,
+        tags: product.tags,
       },
       tone,
       {
@@ -361,6 +362,7 @@ export async function generateFromProductAsync(req: AuthRequest, res: Response):
     storeName: store.name,
     product: {
       name: product.name,
+      slug: product.slug,
       description: product.description,
       price: product.price,
       compareAtPrice: product.compareAtPrice,
@@ -594,6 +596,7 @@ export async function generateFromUrlAsync(req: AuthRequest, res: Response): Pro
     storeName: store.name,
     product: {
       name: product.name,
+      slug: product.slug,
       description: product.description,
       price: product.price,
       compareAtPrice: product.compareAtPrice,

@@ -17,7 +17,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { storesApi, messengerBotApi, whatsappBotApi } from '@/lib/api';
+import { storesApi, messengerBotApi, whatsappBotApi, telegramApi } from '@/lib/api';
 import { useStoreStore } from '@/stores/store-store';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
@@ -28,6 +28,7 @@ import {
   Check,
   Loader2,
   Plug,
+  Power,
   Sparkles,
   Info,
   Clock,
@@ -45,6 +46,7 @@ interface StoreDoc {
     salesPopup?: { enabled?: boolean };
     clientNotifications?: { enabled?: boolean };
     botstore?: { enabled?: boolean };
+    workflow?: { enabled?: boolean };
   };
 }
 
@@ -69,6 +71,7 @@ export default function AppBrowsePage() {
     messengerBot: false,
     whatsappBot: false,
   });
+  const [telegramLinked, setTelegramLinked] = useState(false);
 
   const activeStore = useMemo(
     () => stores.find((s) => s._id === currentStoreId) || stores[0] || null,
@@ -109,6 +112,13 @@ export default function AppBrowsePage() {
     })();
   }, [activeStore?._id]);
 
+  useEffect(() => {
+    if (rawAppId !== 'telegram-bot') return;
+    void telegramApi.status()
+      .then((res) => setTelegramLinked(!!(res.data.linked || res.data.paused)))
+      .catch(() => setTelegramLinked(false));
+  }, [rawAppId]);
+
   const connected = useMemo((): boolean => {
     if (!app || !activeStore) return false;
     switch (app.id) {
@@ -124,10 +134,14 @@ export default function AppBrowsePage() {
         return !!activeStore.settings?.clientNotifications?.enabled;
       case 'botstore':
         return !!activeStore.settings?.botstore?.enabled;
+      case 'workflow':
+        return !!activeStore.settings?.workflow?.enabled;
+      case 'telegram-bot':
+        return telegramLinked;
       default:
         return false;
     }
-  }, [app, activeStore, botStatus]);
+  }, [app, activeStore, botStatus, telegramLinked]);
 
   // ── Rendus dégradés (app inconnue / boutique manquante) ─────────────
   if (!app || !detail) {
@@ -149,9 +163,19 @@ export default function AppBrowsePage() {
   }
 
   const canInstall = app.available && !!detail.configPath;
-  const installLabel = detail.installLabel || (connected ? "Gérer l'application" : "Installer l'application");
+  const disconnecting = app.id === 'telegram-bot' && connected;
+  const installLabel = disconnecting
+    ? 'Déconnecter'
+    : detail.installLabel || (connected ? "Gérer l'application" : "Installer l'application");
 
   const handleInstall = () => {
+    if (disconnecting) {
+      if (!window.confirm('Déconnecter Telegram ? Les notifications sur ce compte s’arrêtent.')) return;
+      void telegramApi.unlink()
+        .then(() => setTelegramLinked(false))
+        .catch(() => window.alert('Impossible de déconnecter Telegram.'));
+      return;
+    }
     if (!activeStore || !detail.configPath) return;
     router.push(detail.configPath(activeStore._id));
   };
@@ -216,7 +240,7 @@ export default function AppBrowsePage() {
                 </span>
               )}
             </div>
-            <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+            <p className="text-[11px] font-semibold text-muted-foreground">
               {app.category}
             </p>
             <p className="text-sm text-muted-foreground sm:text-base">{app.description}</p>
@@ -225,14 +249,15 @@ export default function AppBrowsePage() {
               {canInstall ? (
                 <Button
                   onClick={handleInstall}
-                  disabled={!activeStore}
+                  disabled={!activeStore && !disconnecting}
                   size="lg"
+                  variant={disconnecting ? 'outline' : 'default'}
                   className={cn(
                     'gap-2',
-                    connected ? 'border-emerald-500/30 bg-emerald-500 text-white hover:bg-emerald-600' : 'gradient-brand text-white',
+                    disconnecting ? '' : connected ? 'border-emerald-500/30 bg-emerald-500 text-white hover:bg-emerald-600' : 'gradient-brand text-white',
                   )}
                 >
-                  {connected ? <Check className="h-4 w-4" strokeWidth={3} /> : <Plug className="h-4 w-4" />}
+                  {disconnecting ? <Power className="h-4 w-4" /> : connected ? <Check className="h-4 w-4" strokeWidth={3} /> : <Plug className="h-4 w-4" />}
                   {installLabel}
                 </Button>
               ) : (
@@ -361,19 +386,22 @@ export default function AppBrowsePage() {
           {canInstall && (
             <div className="rounded-2xl border border-border/60 bg-muted/20 p-5 text-center">
               <p className="mb-3 text-xs text-muted-foreground">
-                {connected
-                  ? "Cette application est déjà installée. Ouvre-la pour ajuster ses réglages."
-                  : "Installation gratuite et réversible à tout moment."}
+                {disconnecting
+                  ? 'Telegram est lié à ce compte. Déconnecte-le pour arrêter les notifications.'
+                  : connected
+                    ? "Cette application est déjà installée. Ouvre-la pour ajuster ses réglages."
+                    : "Installation gratuite et réversible à tout moment."}
               </p>
               <Button
                 onClick={handleInstall}
-                disabled={!activeStore}
+                disabled={!activeStore && !disconnecting}
                 className={cn(
                   'w-full gap-1.5',
-                  connected ? 'border-emerald-500/30 bg-emerald-500 text-white hover:bg-emerald-600' : 'gradient-brand text-white',
+                  disconnecting ? '' : connected ? 'border-emerald-500/30 bg-emerald-500 text-white hover:bg-emerald-600' : 'gradient-brand text-white',
                 )}
+                variant={disconnecting ? 'outline' : 'default'}
               >
-                {connected ? <Check className="h-3.5 w-3.5" strokeWidth={3} /> : <Plug className="h-3.5 w-3.5" />}
+                {disconnecting ? <Power className="h-3.5 w-3.5" /> : connected ? <Check className="h-3.5 w-3.5" strokeWidth={3} /> : <Plug className="h-3.5 w-3.5" />}
                 {installLabel}
               </Button>
             </div>

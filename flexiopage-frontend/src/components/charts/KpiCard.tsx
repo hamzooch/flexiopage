@@ -38,19 +38,19 @@ export function KpiCard({ label, value, delta, invertDelta, hint, icon: Icon, ac
   const negative = invertDelta ? isUp : isDown;
 
   return (
-    <div className="group relative flex flex-col gap-2 rounded-xl border border-border/60 bg-card p-3 transition-colors hover:border-foreground/20">
+    <div className="flex flex-col gap-2 rounded-2xl border border-border/60 bg-card p-4">
       <div className="flex items-center justify-between gap-2">
-        <span className="truncate text-[10px] font-semibold uppercase tracking-wider text-muted-foreground sm:text-[11px]">
+        <span className="text-xs font-medium text-muted-foreground">
           {label}
         </span>
         {Icon && (
-          <span className={cn('grid h-6 w-6 shrink-0 place-items-center rounded-md', ACCENT_BG[accent])}>
-            <Icon className="h-3 w-3" />
+          <span className={cn('grid h-7 w-7 shrink-0 place-items-center rounded-lg', ACCENT_BG[accent])}>
+            <Icon className="h-3.5 w-3.5" />
           </span>
         )}
       </div>
 
-      <div className="break-words text-xl font-bold leading-none tracking-tight tabular-nums sm:text-2xl">
+      <div className="break-words text-2xl font-semibold leading-none tracking-tight tabular-nums">
         {value}
       </div>
 
@@ -58,7 +58,7 @@ export function KpiCard({ label, value, delta, invertDelta, hint, icon: Icon, ac
         {hasDelta ? (
           <span
             className={cn(
-              'inline-flex items-center gap-0.5 rounded-md px-1.5 py-0.5 text-[10px] font-semibold leading-none',
+              'inline-flex items-center gap-0.5 rounded-md px-1.5 py-0.5 text-xs font-medium leading-none',
               positive && 'bg-emerald-500/10 text-emerald-700',
               negative && 'bg-rose-500/10 text-rose-700',
               !positive && !negative && 'bg-muted text-muted-foreground'
@@ -68,9 +68,9 @@ export function KpiCard({ label, value, delta, invertDelta, hint, icon: Icon, ac
             {Math.abs(delta as number).toFixed(1)}%
           </span>
         ) : (
-          <span className="text-[10px] text-muted-foreground">—</span>
+          <span className="text-xs text-muted-foreground">—</span>
         )}
-        {hint && <span className="hidden truncate text-[10px] text-muted-foreground sm:inline">{hint}</span>}
+        {hint && <span className="truncate text-xs text-muted-foreground">{hint}</span>}
       </div>
     </div>
   );

@@ -188,38 +188,61 @@ export interface CountryPreset {
 
 export const COUNTRY_PRESETS: CountryPreset[] = [
   {
-    code: 'MA',
-    name: 'Morocco',
-    flag: '🇲🇦',
-    currency: 'MAD',
-    defaults: { shippingCost: 25, deliveryRate: 65, codFeePercent: 5, returnCost: 15, confirmationRate: 60 },
+    code: 'TN',
+    name: 'Tunisie',
+    flag: '🇹🇳',
+    currency: 'TND',
+    defaults: { shippingCost: 8, deliveryRate: 70, codFeePercent: 4, returnCost: 4, confirmationRate: 65 },
+  },
+  {
+    code: 'DZ',
+    name: 'Algérie',
+    flag: '🇩🇿',
+    currency: 'DZD',
+    defaults: { shippingCost: 600, deliveryRate: 55, codFeePercent: 5, returnCost: 350, confirmationRate: 50 },
   },
   {
     code: 'CI',
-    name: 'Ivory Coast',
+    name: "Côte d'Ivoire",
     flag: '🇨🇮',
     currency: 'XOF',
     defaults: { shippingCost: 2000, deliveryRate: 60, codFeePercent: 6, returnCost: 1000, confirmationRate: 55 },
   },
   {
     code: 'SN',
-    name: 'Senegal',
+    name: 'Sénégal',
     flag: '🇸🇳',
     currency: 'XOF',
     defaults: { shippingCost: 2500, deliveryRate: 60, codFeePercent: 6, returnCost: 1200, confirmationRate: 55 },
   },
   {
+    code: 'MA',
+    name: 'Maroc',
+    flag: '🇲🇦',
+    currency: 'MAD',
+    defaults: { shippingCost: 25, deliveryRate: 65, codFeePercent: 5, returnCost: 15, confirmationRate: 60 },
+  },
+  {
     code: 'EG',
-    name: 'Egypt',
+    name: 'Égypte',
     flag: '🇪🇬',
     currency: 'EGP',
     defaults: { shippingCost: 70, deliveryRate: 70, codFeePercent: 5, returnCost: 35, confirmationRate: 65 },
   },
-  {
-    code: 'TN',
-    name: 'Tunisia',
-    flag: '🇹🇳',
-    currency: 'TND',
-    defaults: { shippingCost: 8, deliveryRate: 70, codFeePercent: 4, returnCost: 4, confirmationRate: 65 },
-  },
 ];
+
+/** Currencies the calculator can display. ISO code is what Intl formats;
+ *  symbol is the short mark shown inside the input fields. */
+export const CALCULATOR_CURRENCIES: Array<{ code: string; label: string; symbol: string }> = [
+  { code: 'TND', label: 'Dinar tunisien', symbol: 'DT' },
+  { code: 'EUR', label: 'Euro', symbol: '€' },
+  { code: 'XOF', label: 'Franc CFA', symbol: 'CFA' },
+  { code: 'DZD', label: 'Dinar algérien', symbol: 'DA' },
+  { code: 'MAD', label: 'Dirham marocain', symbol: 'DH' },
+  { code: 'EGP', label: 'Livre égyptienne', symbol: 'EGP' },
+  { code: 'USD', label: 'Dollar US', symbol: '$' },
+];
+
+export function currencySymbol(code: string): string {
+  return CALCULATOR_CURRENCIES.find((c) => c.code === code)?.symbol || code;
+}
