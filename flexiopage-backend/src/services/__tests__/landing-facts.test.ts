@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { classifyCategory, resolveLandingCategory } from '../image-generation.service';
-import { lockLandingSections, lockSeo } from '../landing-facts';
+import { buildConversionHooks, hookImagePrompt, lockLandingSections, lockSeo } from '../landing-facts';
 
 describe('catégorie landing', () => {
   it('reconnaît un caftan comme de la mode', () => {
@@ -51,5 +51,26 @@ describe('faits de la landing', () => {
     expect(seo.seoTitle).toContain('Caftan Brodé Marrakech');
     expect(seo.seoDescription).not.toMatch(/clientes/);
     expect(seo.seoDescription).toMatch(/Paiement à la livraison/);
+  });
+});
+
+describe('accroches image', () => {
+  it('peint la remise réelle et le paiement à la livraison, sans délai inventé', () => {
+    const hooks = buildConversionHooks({ priceBefore: 60000, priceAfter: 45000, currency: 'XOF' });
+    const texts = [hooks.hero.text, ...hooks.frames.map((f) => f.text)];
+    expect(hooks.hero.text).toBe('-25%');
+    expect(texts).toContain('PAYE A LA LIVRAISON');
+    expect(texts.some((t) => t.includes('45'))).toBe(true);
+    expect(texts.join(' ')).not.toMatch(/72|48h|14 jours|gratuit/i);
+    const prompt = hookImagePrompt(hooks.hero, 'a Dakar home');
+    expect(prompt).toContain('-25%');
+    expect(prompt).toContain('reference image');
+    expect(prompt).not.toMatch(/no text/i);
+  });
+
+  it('sans prix barré, l\'accroche est le paiement à la livraison', () => {
+    const hooks = buildConversionHooks({ priceAfter: 12000, currency: 'XOF' });
+    expect(hooks.hero.text).toBe('PAYE A LA LIVRAISON');
+    expect([hooks.hero.text, ...hooks.frames.map((f) => f.text)].join(' ')).not.toMatch(/%/);
   });
 });

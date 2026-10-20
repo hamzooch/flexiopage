@@ -273,7 +273,8 @@ function HeroSection({ p }: { p: Record<string, unknown> }) {
   const subtitle = str(p.subtitle);
   const ctaText = str(p.ctaText, 'Shop now');
   const ctaSecondary = str(p.ctaSecondary);
-  const badge = str(p.badge, 'New');
+  const badge = str(p.ctaBadge) || str(p.badge);
+  const ctaHref = str(p.ctaHref, '#cod-order-form-section');
   const layout = str(p.layout, 'center');
   const imageUrl = absUrl(str(p.imageUrl));
   const rating = num(p.rating) ?? 4.9;
@@ -286,6 +287,7 @@ function HeroSection({ p }: { p: Record<string, unknown> }) {
         <GradientMesh />
         <div className="mx-auto grid max-w-6xl items-center gap-8 px-4 py-12 sm:gap-10 sm:px-6 sm:py-16 md:py-24 lg:grid-cols-[1.05fr_1fr]">
           <div className="space-y-5 sm:space-y-6">
+            {badge && (
             <div className="inline-flex items-center gap-2 rounded-full border border-border/60 bg-card/80 px-3 py-1 text-xs font-semibold backdrop-blur">
               <span className="relative grid h-1.5 w-1.5 place-items-center">
                 <span className="absolute inset-0 animate-ping rounded-full bg-orange-500/60" />
@@ -295,6 +297,7 @@ function HeroSection({ p }: { p: Record<string, unknown> }) {
                 {badge}
               </span>
             </div>
+            )}
             <h1 className="text-balance text-3xl font-bold leading-[1.1] tracking-tight sm:text-4xl md:text-5xl lg:text-6xl">
               {title}
             </h1>
@@ -305,7 +308,7 @@ function HeroSection({ p }: { p: Record<string, unknown> }) {
             )}
             <div className="flex flex-wrap items-center gap-3 pt-2">
               <a
-                href="#cta"
+                href={ctaHref}
                 className="group inline-flex h-12 items-center justify-center gap-2 rounded-full gradient-brand px-6 text-sm font-semibold text-white shadow-xl shadow-primary/30 transition-all hover:scale-[1.02] hover:shadow-2xl"
               >
                 {ctaText}
@@ -346,10 +349,12 @@ function HeroSection({ p }: { p: Record<string, unknown> }) {
     <section className="relative overflow-hidden">
       <GradientMesh />
       <div className="mx-auto max-w-5xl px-4 py-16 text-center sm:px-6 sm:py-24 md:py-32">
+        {badge && (
         <div className="mx-auto mb-6 inline-flex items-center gap-2 rounded-full border border-border/60 bg-card/70 px-3 py-1 text-xs font-semibold backdrop-blur">
           <Sparkles className="h-3 w-3 text-orange-500" />
           <span className="bg-gradient-to-r from-amber-500 to-orange-600 bg-clip-text text-transparent">{badge}</span>
         </div>
+        )}
         <h1 className="text-balance text-3xl font-bold leading-[1.1] tracking-tight sm:text-5xl md:text-6xl lg:text-7xl">
           {title}
         </h1>
@@ -360,7 +365,7 @@ function HeroSection({ p }: { p: Record<string, unknown> }) {
         )}
         <div className="mt-9 flex flex-wrap items-center justify-center gap-3">
           <a
-            href="#cta"
+            href={ctaHref}
             className="group inline-flex h-12 items-center justify-center gap-2 rounded-full gradient-brand px-6 text-sm font-semibold text-white shadow-xl shadow-primary/30 transition-all hover:scale-[1.02] hover:shadow-2xl"
           >
             {ctaText}
@@ -615,6 +620,7 @@ function ProductSection({
   const gallery = arr<string>(p.gallery).filter((u) => u);
   const highlights = arr<string>(p.highlights).filter((u) => u);
   const ctaText = str(p.ctaText, 'Add to cart');
+  const ctaHref = str(p.ctaHref, '#cod-order-form-section');
   const trustBadges = arr<string>(p.trustBadges).filter((u) => u);
   const rating = num(p.rating);
   const reviewCount = num(p.reviewCount);
@@ -713,7 +719,7 @@ function ProductSection({
 
           <div className="flex flex-wrap gap-3 pt-2">
             <a
-              href="#cta"
+              href={ctaHref}
               className="group inline-flex h-13 flex-1 items-center justify-center gap-2 rounded-full gradient-brand px-6 py-3.5 text-sm font-semibold text-white shadow-xl shadow-primary/30 transition-all hover:scale-[1.02]"
             >
               <ShoppingBag className="h-4 w-4" />
@@ -1097,6 +1103,7 @@ function CtaSection({ p }: { p: Record<string, unknown> }) {
   const title = str(p.title, 'Ready to get started?');
   const subtitle = str(p.subtitle);
   const buttonText = str(p.buttonText, 'Get started');
+  const buttonHref = str(p.buttonHref, '#cod-order-form-section');
   const secondaryText = str(p.secondaryText);
   const urgency = str(p.urgency);
   return (
@@ -1114,13 +1121,13 @@ function CtaSection({ p }: { p: Record<string, unknown> }) {
           <h2 className="relative mt-4 text-balance text-2xl font-bold leading-tight tracking-tight sm:mt-5 sm:text-4xl md:text-5xl">{title}</h2>
           {subtitle && <p className="relative mx-auto mt-3 max-w-2xl text-sm text-white/90 sm:mt-4 sm:text-base md:text-lg">{subtitle}</p>}
           <div className="relative mt-9 flex flex-wrap items-center justify-center gap-3">
-            <button
-              type="button"
+            <a
+              href={buttonHref}
               className="group inline-flex h-13 items-center justify-center gap-2 rounded-full bg-white px-7 py-3.5 text-sm font-semibold text-primary shadow-lg transition-transform hover:scale-[1.02]"
             >
               {buttonText}
               <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5 rtl:rotate-180" />
-            </button>
+            </a>
             {secondaryText && <span className="text-xs text-white/80">{secondaryText}</span>}
           </div>
         </div>
@@ -1277,11 +1284,11 @@ function stickyCtaConfig(
     return {
       label: str(p.ctaText, 'Acheter maintenant'),
       price: typeof after === 'number' ? fmtPrice(after, cur || 'USD') : undefined,
-      href: '#cta',
+      href: '#cod-order-form-section',
     };
   }
   if (ctaSec) {
-    return { label: str(ctaSec.props.buttonText, 'Get started'), href: '#cta' };
+    return { label: str(ctaSec.props.buttonText, 'Get started'), href: str(ctaSec.props.buttonHref, '#cod-order-form-section') };
   }
   return null;
 }

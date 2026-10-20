@@ -33,7 +33,7 @@ export type ImageAspect = 'square' | 'portrait' | 'landscape' | 'wide' | 'tall';
  *   - Si l'absence de reference image doit émettre un warning
  *   - Le prompt d'évaluation du quality gate (product fidelity vs face quality)
  */
-export type ImageSlot = 'hero' | 'gallery' | 'product' | 'avatar' | 'banner' | 'video-poster' | 'other';
+export type ImageSlot = 'hero' | 'gallery' | 'product' | 'avatar' | 'banner' | 'video-poster' | 'hook' | 'other';
 
 export interface ImageGenInput {
   prompt: string;
@@ -605,6 +605,9 @@ export function resolveModelForCategory(
   category?: string,
 ): string {
   const cls = classifyCategory(category);
+  // Accroche peinte sur la photo produit : Nano Banana Edit garde le produit
+  // et écrit le texte. Ideogram écrirait mieux, mais il jette la photo.
+  if (slot === 'hook') return process.env.FAL_HOOK_MODEL || 'fal-ai/nano-banana';
   // Banner reste sur Ideogram (spécialiste texte) quelle que soit la catégorie.
   if (slot === 'banner') return BANNER_MODEL;
   // Avatar : Realism partout — c'est LE modèle pour les visages humains.
@@ -690,6 +693,12 @@ async function assessImageQuality(
       '1. face_quality (0-10) : visage réaliste, sans doigts en trop, pas de traits déformés, catchlight naturel dans les yeux',
       '2. defects (0-10, 10 = zéro défaut) : pas d\'artefacts (main cassée, œil déformé, texture peau plastique)',
       '3. authenticity (0-10) : ressemble à une vraie photo humaine (pas AI-glossy, pas symétrique)',
+    ].join('\n');
+  } else if (slot === 'hook') {
+    criteria = [
+      '1. productFidelity (0-10) : on reconnaît le MÊME produit que la référence (couleur, forme, pièces), même si le cadrage et le fond ont changé',
+      '2. defects (0-10, 10 = texte parfait) : l\'accroche est lisible, sans faute, sans mots en trop. Un texte net n\'est PAS un défaut',
+      '3. brandQuality (0-10) : ça ressemble à une pub sociale qui vend, pas à une fiche catalogue',
     ].join('\n');
   } else if (slot === 'banner') {
     criteria = [
@@ -795,7 +804,7 @@ const UPSCALE_GALLERY = process.env.FAL_UPSCALE_GALLERY === 'true';
  */
 function shouldUpscale(slot: ImageSlot): boolean {
   if (!UPSCALE_ENABLED) return false;
-  if (slot === 'banner') return false; // Ideogram sort déjà en haute qualité
+  if (slot === 'banner' || slot === 'hook') return false; // l'upscale brouille le texte de l'accroche
   if (slot === 'gallery') return UPSCALE_GALLERY;
   return slot === 'hero' || slot === 'product' || slot === 'avatar' || slot === 'video-poster';
 }

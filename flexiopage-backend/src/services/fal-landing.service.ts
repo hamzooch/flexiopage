@@ -30,7 +30,7 @@ import {
 import { persistRemoteImage } from './storage.service';
 import { logger } from '../lib/logger';
 import { fetchWithRetry } from '../lib/outbound-fetch';
-import { lockLandingSections, lockSeo } from './landing-facts';
+import { buildConversionHooks, hookImagePrompt, lockLandingSections, lockSeo } from './landing-facts';
 
 const FAL_BASE = 'https://fal.run';
 
@@ -993,55 +993,14 @@ Per-section schema:
   // sequence + copy register + per-section prop shape. Without this
   // per-kind blueprint the LLM produces two visually identical pages
   // and sellers can't tell why they'd pick one over the other.
-  const productPageRules = pageKind === 'product'
+  const productPageNote = pageKind === 'product'
     ? `
-# 📖 PAGE INTENT: PRODUCT DETAIL PAGE
-Buyer already WANTS THIS CATEGORY and is comparing options. They need
-INFORMATION + PROOF, not persuasion. Sell the SPECIFIC ITEM.
-
-TONE: informative, specific, credible. Zero hype ("révolutionnaire",
-"incroyable"). Every claim concrete and verifiable (materials, dimensions,
-usage, warranty). Short sentences. No storytelling arc.
-
-STRUCTURE (mandatory order, 9-11 sections). Each section MUST include
-the props listed — omitting a listed prop = invalid output:
-
-1. hero (split — image on one side, copy on the other)
-   props: { title (product-focused: "Sac anti-vol USB — cuir véritable, garanti 2 ans"), subtitle (1-line factual benefit + delivery), ctaText: "Commander · paiement à la livraison", ctaHref: "#cod-order-form-section", trustLine ("Livré en 48h · Retour 14j"), imageUrl: "__PRODUCT_IMAGE_1__" }
-
-2. product (detailed block — front and center)
-   props: { name, price, priceBefore (if any), currency, benefits: array of 3-5 concrete bullets, ctaText, ctaHref: "#cod-order-form-section" }
-
-3. gallery (4-6 images: angles, close-ups, in-use)
-   props: { title ("Chaque détail compte" style), images: ["__PRODUCT_IMAGE_1__", ...] OR imagePrompts (list of ENGLISH scene descriptions) }
-
-4. features (3-6 TECHNICAL benefits, use Truck/Shield/Zap/Clock icon keys)
-   Each item: { icon, title (result), description (why: material + test data) }
-
-5. video (product demo — 15-45s in-use footage)
-   props: { title, url (leave empty if none), posterPrompt (english scene) }
-
-6. testimonials (2-3 SHORT factual quotes, native names, city)
-   Each: { quote (2-3 sentences, mentions a spec), author, role, avatarPrompt }
-
-7. cod-form (auto-injected — you MAY still emit one; server will keep only one)
-   props: { title ("Commander · paiement à la livraison"), reassurance, productSlug }
-
-8. faq (5 product-specific questions: sizing/care/compatibility/warranty/return)
-   Each: { question, answer (concrete, 2-4 sentences) }
-
-9. footer
-   props: { brandName, tagline, links, paymentMethods: ["cod", "wave", "orangeMoney", "card"] }
-
-DO NOT USE on a product page: "steps" (obvious how to buy), "brands"
-(irrelevant), "stats" (company pitch, not product), "cta" as a section
-(hero + cod-form already carry it), "pricing" table (single item).
-
-⚠️ MANDATORY: hero.ctaHref MUST be "#cod-order-form-section". Every
-image reference MUST be "__PRODUCT_IMAGE_N__" (N=1..8) or a real https
-URL — never invent filenames.
+# PAGE INTENT OVERRIDE
+This is NOT a standard product page. No spec sheet, no size chart, no gallery of the raw catalog photos.
+Write the conversion landing below. Leave imagePrompt, imagePrompts, hero.imageUrl and gallery.images empty: the server paints hook ads FROM the product photo.
 `
-    : `
+    : '';
+  const productPageRules = `
 # 📖 PAGE INTENT: LANDING PAGE (single-offer conversion funnel)
 Cold traffic — hasn't decided anything. Hook, story, proof, risk
 reversal, urgency, close. OFFER + PROOF + RISK REVERSAL beat product
@@ -1056,7 +1015,8 @@ STRUCTURE (mandatory order, 8-11 sections). Each section MUST include
 the props listed — omitting a listed prop = invalid output:
 
 1. hero (full-width, big BENEFIT headline about THIS product)
-   props: { title (buyer OUTCOME for the exact product, e.g. "Protège ton laptop en plein marché"), subtitle (promise grounded in the product description + COD reassurance), ctaText ("Commander · paiement à la livraison"), ctaHref: "#cod-order-form-section"${hasDiscount ? `, ctaBadge ("−${discountPct}%")` : ''}, trustLine ("Paiement à la livraison"), imagePrompt (english lifestyle scene of the SAME product) }
+   props: { title (buyer OUTCOME for the exact product, e.g. "Protège ton laptop en plein marché"), subtitle (promise grounded in the product description + COD reassurance), ctaText ("Commander · paiement à la livraison"), ctaHref: "#cod-order-form-section"${hasDiscount ? `, ctaBadge ("−${discountPct}%")` : ''}, trustLine ("Paiement à la livraison") }
+   Omit imageUrl and imagePrompt. The server builds a hook ad from the product photo.
 
 2. features (4-6 emotional benefits — each solves a real buyer pain)
    Each item: { icon (Shield/Truck/Zap/Heart/Award/Gift/Clock/Star), title (result), description (BAB — Before/After/Bridge). Only materials and uses present in the product data. }
@@ -1064,8 +1024,9 @@ the props listed — omitting a listed prop = invalid output:
 3. steps (3-4 steps of how it works OR how to order)
    Each: { number, title (verb + outcome), description (1-2 sentences) }
 
-4. gallery (product in CONTEXT / LIFESTYLE — the same product, not a look-alike)
-   props: { title, imagePrompts (list of ENGLISH lifestyle scenes) }
+4. gallery
+   props: { title }
+   Omit images and imagePrompts. The server builds four hook ads from the product photo. Do not paste the catalog photos.
 
 5. testimonials (3 emotional quotes — SSS pattern: Star/Story/Solution)
    Each: { quote (mentions a pain solved, NO buyer count, NO score), author (native name), role ("Cliente — Casablanca"), avatarPrompt }
@@ -1090,9 +1051,9 @@ rename the product. A "product" detail block is optional; if you emit one,
 its name MUST be the catalog name exactly.
 
 ⚠️ MANDATORY: hero.ctaHref AND cta.buttonHref MUST both be
-"#cod-order-form-section" (they scroll the buyer to the form). Every
-image reference MUST be "__PRODUCT_IMAGE_N__" (N=1..8) or a real https
-URL — never invent filenames.
+"#cod-order-form-section" (they scroll the buyer to the form).
+Do NOT paste catalog photos or "__PRODUCT_IMAGE_N__" into hero.imageUrl or gallery.images.
+The server generates hook ads from the product photo. Never invent a filename.
 `;
 
   const imageBlock = imageCaption
@@ -1234,7 +1195,7 @@ Tone: ${tone}
 ${audienceLines}
 
 # Page kind
-${pageKind}${productPageRules}
+${pageKind}${productPageNote}${productPageRules}
 
 # Product
 ${productBlock}
@@ -1350,7 +1311,7 @@ interface ImageSlot {
   /** Prompt for the image model. */
   prompt: string;
   /** Hint for sizing / model selection. */
-  kind: 'hero' | 'gallery' | 'product' | 'avatar' | 'video' | 'banner' | 'generic';
+  kind: 'hero' | 'gallery' | 'product' | 'avatar' | 'video' | 'banner' | 'hook' | 'generic';
   /**
    * If set, the slot is generated via image-to-image so the output contains
    * THIS exact reference product. Used for hero & gallery so the AI variants
@@ -1394,17 +1355,19 @@ function collectImageSlots(
     // hero / video / product / generic single-image slot
     if (typeof p.imagePrompt === 'string' && !p.imageUrl) {
       const prompt = p.imagePrompt;
-      // Detect "banner-style" prompts even when emitted under imagePrompt.
-      // These prompts ask for legible text → route to Ideogram, no reference.
-      const isBanner = isBannerPrompt(prompt);
+      // Hook ads keep the product photo AND paint a short offer on it.
+      // A banner detector would send them to Ideogram and drop the photo.
+      const hooks = p.creativeMode === 'hooks';
+      const isBanner = !hooks && isBannerPrompt(prompt);
       const kind: ImageSlot['kind'] =
+        hooks ? 'hook' :
         isBanner ? 'banner' :
         sec.type === 'hero' ? 'hero' :
         sec.type === 'video' ? 'video' :
         sec.type === 'product' ? 'product' : 'generic';
       // Video posters showcase the product in use — they MUST use the product
       // reference, otherwise the model invents a generic look-alike.
-      const useRef = !isBanner && productImage && (kind === 'hero' || kind === 'product' || kind === 'generic' || kind === 'video');
+      const useRef = !!productImage && (kind === 'hook' || (!isBanner && (kind === 'hero' || kind === 'product' || kind === 'generic' || kind === 'video')));
       slots.push({
         prompt,
         kind,
@@ -1421,10 +1384,11 @@ function collectImageSlots(
       const prompts = (p.imagePrompts as unknown[]).filter((x) => typeof x === 'string') as string[];
       const urls: (string | null)[] = new Array(prompts.length).fill(null);
       p.images = urls; // placeholder slot, finalized after generation
+      const hooks = p.creativeMode === 'hooks';
       prompts.forEach((prompt, idx) => {
         slots.push({
           prompt,
-          kind: 'gallery',
+          kind: hooks ? 'hook' : 'gallery',
           referenceImage: productImage,
           apply: (url) => { urls[idx] = url; },
         });
@@ -1455,6 +1419,7 @@ const ASPECT_FOR_KIND: Record<ImageSlot['kind'], 'square' | 'portrait' | 'landsc
   avatar:  'portrait',
   video:   'wide',
   banner:  'wide',     // promo banners are typically wide
+  hook:    'portrait', // pub 4:5, le texte de l'accroche doit rester lisible
   generic: 'square',
 };
 
@@ -1489,6 +1454,7 @@ function toGenSlot(kind: ImageSlot['kind']): 'hero' | 'gallery' | 'product' | 'a
     case 'product': return 'product';
     case 'avatar': return 'avatar';
     case 'banner': return 'banner';
+    case 'hook': return 'hook';
     case 'video': return 'video-poster';
     case 'generic':
     default: return 'other';
@@ -1500,7 +1466,7 @@ function toGenSlot(kind: ImageSlot['kind']): 'hero' | 'gallery' | 'product' | 'a
  * store, ces slots DOIVENT recevoir la reference photo (sinon le modèle
  * invente un look-alike). Sert au warn `expectsProductReference`.
  */
-const PRODUCT_BEARING_KINDS = new Set<ImageSlot['kind']>(['hero', 'gallery', 'product', 'video']);
+const PRODUCT_BEARING_KINDS = new Set<ImageSlot['kind']>(['hero', 'gallery', 'product', 'video', 'hook']);
 
 async function buildImageGenInput(
   slot: ImageSlot,
@@ -1512,9 +1478,12 @@ async function buildImageGenInput(
   // Every other slot gets the shared house style so the whole page is one
   // coherent shoot; avatars get the people-specific portrait style instead.
   const isBanner = slot.kind === 'banner';
+  const isHook = slot.kind === 'hook';
   const isAvatar = slot.kind === 'avatar';
   const cleanScene = slot.prompt.trim().replace(/[.,;\s]+$/, '');
-  let finalPrompt = isBanner
+  // Les accroches portent du texte. Le style maison ajoute « no text » et
+  // empêcherait l'offre d'apparaître sur l'image.
+  let finalPrompt = isBanner || isHook
     ? slot.prompt
     : cleanScene + (isAvatar ? PORTRAIT_STYLE : HOUSE_STYLE);
 
@@ -1538,7 +1507,12 @@ async function buildImageGenInput(
   // as we have a reference image, regardless of the model name — the new
   // routing layer will pick the right img2img endpoint.
   const hasReference = !!(referenceImages && referenceImages.length > 0);
-  if (hasReference) {
+  if (hasReference && isHook) {
+    finalPrompt =
+      'The reference photo is the product. Keep it recognizable (same color, shape, material, pieces). ' +
+      'Change the crop and the background, and add the typography. Do not swap in a different product. ' +
+      finalPrompt;
+  } else if (hasReference) {
     const fidelityHead =
       'CRITICAL IDENTITY LOCK — READ FIRST: The product in the reference image is FIXED and IMMUTABLE. ' +
       'You MUST preserve, pixel by pixel, every visible detail of that exact product: its silhouette, ' +
@@ -1558,8 +1532,8 @@ async function buildImageGenInput(
   // the image so we MUST NOT add "text, watermark, logo" to the negative.
   // For img2img runs we additionally veto "different product" drift.
   const baseNeg = 'text, watermark, logo, deformed, blurry, lowres, ugly, extra fingers, distorted face';
-  const negativePrompt = isBanner
-    ? 'blurry, lowres, distorted, deformed'
+  const negativePrompt = isBanner || isHook
+    ? 'misspelled text, extra words, watermark, different product, blurry, lowres, distorted, deformed'
     : hasReference
       ? `${baseNeg}, different product, alternative product, redesigned product, similar but different, wrong color variant, wrong branding, generic look-alike`
       : baseNeg;
@@ -1617,6 +1591,7 @@ function finalize(
     // Strip imagePrompt-style fields from the final output (already consumed)
     delete p.imagePrompt;
     delete p.imagePrompts;
+    delete p.creativeMode;
     if (sec.type === 'testimonials' && Array.isArray(p.items)) {
       (p.items as Array<Record<string, unknown>>).forEach((it) => { delete it.imagePrompt; });
     }
@@ -1641,7 +1616,8 @@ function finalize(
     }
     if (sec.type === 'product') {
       if (!p.imageUrl && firstImage) p.imageUrl = firstImage;
-      if (!Array.isArray(p.gallery) && productImages.length > 0) p.gallery = productImages;
+      // Ne pas recoller les photos catalogue sous une accroche déjà générée.
+      if (!p.imageUrl && !Array.isArray(p.gallery) && productImages.length > 0) p.gallery = productImages;
     }
   }
 
@@ -1734,7 +1710,13 @@ function finalize(
     }
   }
 
-  return sections.map((s, i) => ({
+  const visible = sections.filter((s) => {
+    if (s.type !== 'video') return true;
+    const p = s.props;
+    return Boolean(p.url || p.posterUrl || p.videoUrl);
+  });
+
+  return visible.map((s, i) => ({
     id: generateId(),
     type: s.type,
     order: i,
@@ -1745,14 +1727,6 @@ function finalize(
 // ─────────────────────────────────────────────────────────────────────
 // Public API
 // ─────────────────────────────────────────────────────────────────────
-/**
- * Pre-fill ONLY the product detail section with the raw product image (it
- * shows the unaltered photo). Hero / gallery slots are intentionally left
- * empty so the pipeline generates AI VARIANTS of the same product via
- * image-to-image (Nano Banana Edit) — placing the product into lifestyle
- * scenes, studio shots, flatlays, etc.
- */
-
 /**
  * Auto-inject a promo banner imagePrompt when the seller has set a
  * compareAtPrice (priceBefore > priceAfter) but the LLM forgot to emit a
@@ -1833,13 +1807,6 @@ function injectProductImagesFirst(
       if (sec.type === 'hero' && !p.layout) p.layout = 'split';
     }
 
-    // The raw uploaded photos still feed the product section's thumbnail strip.
-    if (sec.type === 'product') {
-      const existing = Array.isArray(p.gallery)
-        ? (p.gallery as unknown[]).filter((u) => typeof u === 'string' && u) as string[]
-        : [];
-      if (existing.length === 0) p.gallery = productImages;
-    }
   }
 }
 
@@ -1854,7 +1821,8 @@ function injectProductImagesFirst(
 function synthesizeMissingPrompts(
   sections: Array<{ type: string; props: Record<string, unknown> }>,
   product: ProductInput | undefined,
-  country: string | undefined
+  country: string | undefined,
+  pricing?: { priceBefore?: number; priceAfter?: number; currency?: string },
 ): void {
   const productName = product?.name || 'product';
   const productDesc = product?.description ? product.description.slice(0, 120) : '';
@@ -1868,35 +1836,18 @@ function synthesizeMissingPrompts(
     const p = sec.props;
     if (!p || typeof p !== 'object') continue;
 
-    // Fallback prompts describe the SCENE ONLY — the pipeline appends the
-    // shared house photography style (HOUSE_STYLE), so every fallback image
-    // lands in the same coherent, premium world. The reference-image variants
-    // tell Nano Banana Edit to keep the exact product.
-    const refLock = hasRef
-      ? `the exact product from the reference image, kept visually identical (same shape, color, material, branding)`
-      : '';
-
-    const realPhotos = (product?.images || []).filter((u) => typeof u === 'string' && u.length > 0);
-
-    // HERO — when a catalog photo exists, ignore the model's scene text.
-    // It was renaming the garment ("mint-blue 3-piece") and the image model followed.
-    if (sec.type === 'hero' && (hasRef || (!p.imagePrompt && !p.imageUrl))) {
-      p.imagePrompt = hasRef
-        ? `A person wearing or holding ${refLock} as the main subject of a wide lifestyle scene set in ${culture}, subject off-center on the left third, warm morning daylight`
-        : `A person happily using a ${subject} in a bright real-world setting (${culture}), subject off-center on the left third, warm morning daylight`;
+    // HERO — sans photo produit, on décrit une scène. Avec photo, les
+    // accroches sont posées après cette boucle.
+    if (!hasRef && sec.type === 'hero' && !p.imagePrompt && !p.imageUrl) {
+      p.imagePrompt = `A person happily using a ${subject} in a bright real-world setting (${culture}), subject off-center on the left third, warm morning daylight`;
       if (!p.layout) p.layout = 'split';
     }
 
-    // GALLERY — catalog photos are the product. Generated prompts were inventing
-    // another color and another cut, so they are dropped when real photos exist.
-    if (sec.type === 'gallery') {
+    if (sec.type === 'gallery' && !hasRef) {
       const hasImages = Array.isArray(p.images) && (p.images as unknown[]).filter((u) => typeof u === 'string' && u && !String(u).startsWith('__')).length > 0;
       const hasPrompts = Array.isArray(p.imagePrompts) && (p.imagePrompts as unknown[]).filter((s) => typeof s === 'string' && s).length > 0;
-      if (hasRef && realPhotos.length > 0) {
-        p.images = realPhotos.slice(0, 6);
-        delete p.imagePrompts;
-      } else if (!hasImages && !hasPrompts) {
-        const noun = hasRef ? refLock : `a ${subject}`;
+      if (!hasImages && !hasPrompts) {
+        const noun = `a ${subject}`;
         p.imagePrompts = [
           `Close-up macro detail of ${noun}, revealing texture and craftsmanship, on a soft warm-toned surface`,
           `${noun} in genuine everyday use within ${culture}, candid framing, warm daylight`,
@@ -1906,14 +1857,8 @@ function synthesizeMissingPrompts(
       }
     }
 
-    if (sec.type === 'product' && (hasRef || (!p.imagePrompt && !p.imageUrl))) {
-      p.imagePrompt = hasRef
-        ? `${refLock} as a clean hero still life on a soft warm gradient backdrop, subject slightly off-center`
-        : `A ${subject} as a clean hero still life on a soft warm gradient backdrop, subject slightly off-center`;
-    }
-
-    if (sec.type === 'video' && hasRef) {
-      p.imagePrompt = `${refLock} in genuine use, a lifestyle still that works as a video poster, set in ${culture}, warm daylight`;
+    if (!hasRef && sec.type === 'product' && !p.imagePrompt && !p.imageUrl) {
+      p.imagePrompt = `A ${subject} as a clean hero still life on a soft warm gradient backdrop, subject slightly off-center`;
     }
 
     // TESTIMONIALS — avatars, NO product reference (these are people)
@@ -1926,6 +1871,65 @@ function synthesizeMissingPrompts(
           it.imagePrompt = `A warm, friendly ${age} year old ${gender} with ${heritage}, relaxed at home`;
         }
       });
+    }
+  }
+
+  if (hasRef) paintHookCreatives(sections, country, {
+    priceBefore: pricing?.priceBefore,
+    priceAfter: pricing?.priceAfter ?? product?.price,
+    currency: pricing?.currency,
+  });
+}
+
+/**
+ * Remplace les photos catalogue par des pubs générées DEPUIS la photo produit.
+ * Chaque image garde le produit et porte une accroche courte (prix réel, remise réelle, COD).
+ */
+function paintHookCreatives(
+  sections: Array<{ type: string; props: Record<string, unknown> }>,
+  country: string | undefined,
+  pricing: { priceBefore?: number; priceAfter?: number; currency?: string },
+): void {
+  const culture = getPhotoCulture(country);
+  const hooks = buildConversionHooks(pricing);
+  const heroPrompt = hookImagePrompt(hooks.hero, culture);
+  const framePrompts = hooks.frames.map((frame) => hookImagePrompt(frame, culture));
+
+  if (!sections.some((s) => s.type === 'gallery')) {
+    const heroIdx = sections.findIndex((s) => s.type === 'hero');
+    const gallery = {
+      type: 'gallery',
+      props: { title: 'Avant de commander', imagePrompts: framePrompts, creativeMode: 'hooks' } as Record<string, unknown>,
+    };
+    if (heroIdx >= 0) sections.splice(heroIdx + 1, 0, gallery);
+    else sections.unshift(gallery);
+  }
+
+  for (const sec of sections) {
+    const p = sec.props;
+    if (!p) continue;
+    if (sec.type === 'hero') {
+      delete p.imageUrl;
+      p.imagePrompt = heroPrompt;
+      p.creativeMode = 'hooks';
+      if (!p.layout) p.layout = 'split';
+    }
+    if (sec.type === 'gallery') {
+      delete p.images;
+      p.imagePrompts = framePrompts;
+      p.creativeMode = 'hooks';
+      p.title = 'Avant de commander';
+    }
+    if (sec.type === 'product') {
+      delete p.imageUrl;
+      delete p.gallery;
+      p.imagePrompt = framePrompts[1] || heroPrompt;
+      p.creativeMode = 'hooks';
+    }
+    if (sec.type === 'video') {
+      delete p.posterUrl;
+      p.imagePrompt = framePrompts[0] || heroPrompt;
+      p.creativeMode = 'hooks';
     }
   }
 }
@@ -2019,7 +2023,11 @@ async function runFullPipeline(
   // Inject the user's real product images FIRST (priority over AI generation),
   // then synthesize prompts only for slots that are still empty.
   injectProductImagesFirst(factualSections, productImages);
-  synthesizeMissingPrompts(factualSections, input.product, input.country);
+  synthesizeMissingPrompts(factualSections, input.product, input.country, {
+    priceBefore: input.priceBefore,
+    priceAfter: input.priceAfter ?? input.product?.price,
+    currency: input.currency,
+  });
   injectPromoBannerIfDiscount(factualSections, input);
 
   // STEP 2 — image generation (parallel) — gated by env
