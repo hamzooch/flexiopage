@@ -70,6 +70,23 @@ function isPollingRequest(req: Request): boolean {
   return POLLING_PATHS.some((re) => re.test(req.path));
 }
 
+function hasClientIp(req: Request): boolean {
+  const xff = (req.headers['x-forwarded-for'] as string | undefined)?.split(',')[0]?.trim();
+  return !!(xff || req.ip);
+}
+
+/**
+ * Caddy's on-demand TLS gate calls GET /internal/cert-ask straight on the
+ * docker network, with no X-Forwarded-For. `trust proxy = 1` then leaves
+ * `req.ip` empty, so every ask — scanners and real store domains — shares
+ * one bucket. Once that bucket passes the global cap, Caddy gets 429 and
+ * refuses to issue certificates, and the security monitor emails forever.
+ * Public callers that do carry an IP stay on the global limiter.
+ */
+function isInternalAskWithoutClientIp(req: Request): boolean {
+  return req.path.startsWith('/internal/') && !hasClientIp(req);
+}
+
 export const rateLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
   // Generous in dev (frequent reloads), tighter in prod.
@@ -78,8 +95,9 @@ export const rateLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   store: makeStore('global'),
-  // Don't count high-frequency polling endpoints against the limit.
-  skip: isPollingRequest,
+  // Don't count high-frequency polling endpoints, or Caddy's IP-less
+  // cert-ask, against the limit.
+  skip: (req) => isPollingRequest(req) || isInternalAskWithoutClientIp(req),
   handler: (req, res, _next, options) => {
     onLimitReached(req, res);
     res.status(options.statusCode).json(options.message);

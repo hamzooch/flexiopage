@@ -35,6 +35,7 @@ import {
 import { FieldToggle, type CodFormSettings } from '@/components/dashboard/store-editor';
 import { TimerPresetPicker } from '@/components/dashboard/timer-presets';
 import { PalettePresetPicker } from '@/components/dashboard/palette-presets';
+import { contrastText } from '@/data/store-themes';
 import {
   TrustBadgeCard,
   TrustBadgesPreviewStrip,
@@ -644,7 +645,9 @@ export function ProductPageEditor({ cfg, onChange, codForm, onCodFormChange, cur
             </span>
           </div>
           <p className="mb-4 text-[11px] text-muted-foreground">
-            Textes affichés, champs visibles + frais de livraison. Le design (couleurs, forme du bouton) se règle dans <strong>Style visuel</strong> juste au-dessus.
+            Textes, champs et frais de livraison. Les couleurs du formulaire s&apos;adaptent
+            toutes seules au fond choisi : un titre sombre ne disparaît plus sur une carte noire.
+            Tu peux quand même forcer chaque couleur ci-dessous.
           </p>
 
           {/* Texts */}
@@ -692,6 +695,33 @@ export function ProductPageEditor({ cfg, onChange, codForm, onCodFormChange, cur
               />
               <p className="text-[10px] text-muted-foreground">Ajouté au total à payer.</p>
             </div>
+          </div>
+
+          <div className="mt-4 grid gap-3 sm:grid-cols-2">
+            <PpColorField
+              label="Fond du formulaire"
+              value={codForm.backgroundColor}
+              onChange={(c) => onCodFormChange({ ...codForm, backgroundColor: c })}
+              defaultLabel="Surface du thème"
+            />
+            <PpColorField
+              label="Titre et texte"
+              value={codForm.textColor}
+              onChange={(c) => onCodFormChange({ ...codForm, textColor: c })}
+              defaultLabel="Contraste auto"
+            />
+            <PpColorField
+              label="Labels (Nom, Téléphone…)"
+              value={codForm.mutedColor}
+              onChange={(c) => onCodFormChange({ ...codForm, mutedColor: c })}
+              defaultLabel="Contraste auto"
+            />
+            <PpColorField
+              label="Séparateurs"
+              value={codForm.borderColor}
+              onChange={(c) => onCodFormChange({ ...codForm, borderColor: c })}
+              defaultLabel="Contraste auto"
+            />
           </div>
 
           {/* Field toggles */}
@@ -1038,9 +1068,15 @@ function ProductPageLivePreview({
                 {storeType === 'physical' ? (
                   <div
                     className="space-y-1.5 rounded border border-border/40 p-1.5"
-                    style={{ backgroundColor: codForm?.backgroundColor || '#ffffff' }}
+                    style={{
+                      backgroundColor: codForm?.backgroundColor || '#ffffff',
+                      borderColor: codForm?.borderColor,
+                    }}
                   >
-                    <div className="text-[9px] font-bold leading-tight" style={{ color: '#0f172a' }}>
+                    <div
+                      className="text-[9px] font-bold leading-tight"
+                      style={{ color: codForm?.textColor || contrastText(codForm?.backgroundColor || '#ffffff') }}
+                    >
                       {codForm?.headline || 'Commander · Paiement à la livraison'}
                     </div>
 

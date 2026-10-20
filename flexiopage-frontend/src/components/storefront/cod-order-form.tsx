@@ -10,11 +10,11 @@
  * shape the form (email on/off, postalCode on/off, etc.) from the dashboard.
  */
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { createContext, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Loader2, ShieldCheck, Truck, Wallet, Check, BadgePercent, X } from 'lucide-react';
 import { cn, formatCurrency } from '@/lib/utils';
-import type { ThemeTokens } from '@/data/store-themes';
+import { ensureContrast, resolveCodFormInk, type ThemeTokens } from '@/data/store-themes';
 import type { ProductBundle } from '@/lib/api';
 import { getSessionId, trackStoreEvent } from '@/lib/storefront-track';
 import { fireMarketingEvent } from '@/components/storefront/TrackEvent';
@@ -27,6 +27,9 @@ import { DeliveryEta } from '@/components/storefront/delivery-eta';
 import { joinPhone } from '@/components/storefront/phone-country-field';
 
 const API_BASE = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5001').replace(/\/$/, '');
+
+/** Card ink, so labels rendered in Field stay readable on a custom form fill. */
+const CodInkContext = createContext<{ text: string; muted: string; border: string } | null>(null);
 
 export interface CodFormConfig {
   headline?: string;
@@ -44,6 +47,9 @@ export interface CodFormConfig {
   shippingFee?: number;
   // Visual customization
   backgroundColor?: string;
+  textColor?: string;
+  mutedColor?: string;
+  borderColor?: string;
   buttonColor?: string;
   buttonTextColor?: string;
   buttonShape?: 'pill' | 'rounded' | 'square';
@@ -152,9 +158,10 @@ export function CodOrderForm({
   radius,
   priceColor,
 }: Props) {
-  // Un seul token de couleur "prix" — piloté par le vendeur via
-  // `productPage.style.priceColor`. Fallback: la couleur primaire du thème.
-  const priceTint = priceColor || theme.primary;
+  // Text painted on the card follows the card fill, not the page theme.
+  // A black form on a light boutique otherwise hides the headline.
+  const ink = resolveCodFormInk(theme, config);
+  const priceTint = ensureContrast(priceColor || theme.primary, ink.bg, 3);
   const router = useRouter();
 
   // Defaults are intentionally minimal: only full name, phone (+ country code)
@@ -593,6 +600,7 @@ export function CodOrderForm({
   }
 
   return (
+    <CodInkContext.Provider value={ink}>
     <form
       id="cod-order-form"
       onSubmit={handleSubmit}
@@ -600,19 +608,20 @@ export function CodOrderForm({
       onBlurCapture={captureAbandonedCart}
       className="space-y-4 border p-4 sm:space-y-5 sm:p-6"
       style={{
-        backgroundColor: config?.backgroundColor || theme.surface,
-        borderColor: theme.border,
+        backgroundColor: ink.bg,
+        borderColor: ink.border,
         borderRadius: radius,
+        color: ink.text,
       }}
     >
       <div>
         <h2
           className="text-lg font-bold leading-tight tracking-tight sm:text-2xl"
-          style={{ fontFamily: theme.fontHeading, color: theme.foreground }}
+          style={{ fontFamily: theme.fontHeading, color: ink.text }}
         >
           {headline}
         </h2>
-        <p className="mt-0.5 text-xs sm:mt-1 sm:text-sm" style={{ color: theme.muted }}>
+        <p className="mt-0.5 text-xs sm:mt-1 sm:text-sm" style={{ color: ink.muted }}>
           {selectedMethod?.gateway === 'cod'
             ? <>Tu paies <strong>{formatCurrency(total, currency)}</strong> en espèces au livreur.</>
             : <>Tu paies <strong>{formatCurrency(total, currency)}</strong> en ligne, en toute sécurité.</>}
@@ -697,7 +706,7 @@ export function CodOrderForm({
           its own row of swatches. Selecting one updates the unit price +
           stock used by the rest of the form. */}
       {hasVariants && (
-        <div className="border-t pt-4" style={{ borderColor: theme.border }}>
+        <div className="border-t pt-4" style={{ borderColor: ink.border }}>
           <VariantSwatches
             variants={variants!}
             activeIdx={variantIdx}
@@ -714,8 +723,8 @@ export function CodOrderForm({
 
       {/* Bundle tier picker — "buy more, save more" — replaces the stepper */}
       {bundleActive ? (
-        <div className="border-t pt-4" style={{ borderColor: theme.border }}>
-          <div className="mb-2.5 text-sm font-bold" style={{ color: theme.foreground }}>
+        <div className="border-t pt-4" style={{ borderColor: ink.border }}>
+          <div className="mb-2.5 text-sm font-bold" style={{ color: ink.text }}>
             {bundle?.title || 'Offre spéciale — économise en achetant plus'}
           </div>
           <div className="space-y-2">
@@ -793,9 +802,9 @@ export function CodOrderForm({
           </div>
         </div>
       ) : showQuantity ? (
-        <div className="flex items-center justify-between border-t pt-4" style={{ borderColor: theme.border }}>
-          <span className="text-sm font-medium">Quantité</span>
-          <div className="inline-flex items-center border" style={{ borderColor: theme.border, borderRadius: radius }}>
+        <div className="flex items-center justify-between border-t pt-4" style={{ borderColor: ink.border }}>
+          <span className="text-sm font-medium" style={{ color: ink.text }}>Quantité</span>
+          <div className="inline-flex items-center border" style={{ borderColor: ink.border, borderRadius: radius, color: ink.text }}>
             <button
               type="button"
               onClick={() => setQuantity((q) => Math.max(1, q - 1))}
@@ -817,7 +826,7 @@ export function CodOrderForm({
 
       {/* Promo code — collapsible row, expands into "input + Apply" then
           replaces itself with an applied chip once a code is accepted. */}
-      <div className="border-t pt-4" style={{ borderColor: theme.border }}>
+      <div className="border-t pt-4" style={{ borderColor: ink.border }}>
         {couponApplied ? (
           <div
             className="flex items-center justify-between gap-3 border p-3"
@@ -941,13 +950,13 @@ export function CodOrderForm({
           the existing shipping line when shipping is non-zero. Also
           surfaces bump-offer additions so the buyer sees the breakdown. */}
       {(shippingFee > 0 || liveDiscount > 0 || upsellsTotal > 0) ? (
-        <div className="space-y-1.5 border-t pt-4" style={{ borderColor: theme.border }}>
-          <div className="flex items-center justify-between text-sm" style={{ color: theme.muted }}>
+        <div className="space-y-1.5 border-t pt-4" style={{ borderColor: ink.border }}>
+          <div className="flex items-center justify-between text-sm" style={{ color: ink.muted }}>
             <span>Sous-total</span>
             <span>{formatCurrency(productsTotal, currency)}</span>
           </div>
           {upsellsTotal > 0 && (
-            <div className="flex items-center justify-between text-sm" style={{ color: theme.muted }}>
+            <div className="flex items-center justify-between text-sm" style={{ color: ink.muted }}>
               <span>Ajouts ({selectedUpsellIds.length})</span>
               <span>+ {formatCurrency(upsellsTotal, currency)}</span>
             </div>
@@ -962,21 +971,21 @@ export function CodOrderForm({
             </div>
           )}
           {shippingFee > 0 && (
-            <div className="flex items-center justify-between text-sm" style={{ color: theme.muted }}>
+            <div className="flex items-center justify-between text-sm" style={{ color: ink.muted }}>
               <span>Livraison</span>
               <span>+ {formatCurrency(shippingFee, currency)}</span>
             </div>
           )}
           <div className="flex items-center justify-between pt-2">
-            <span className="text-sm font-medium" style={{ color: theme.foreground }}>À payer à la livraison</span>
+            <span className="text-sm font-medium" style={{ color: ink.text }}>À payer à la livraison</span>
             <span className="text-2xl font-extrabold" style={{ color: priceTint }}>
               {formatCurrency(total, currency)}
             </span>
           </div>
         </div>
       ) : (
-        <div className="flex items-center justify-between border-t pt-4" style={{ borderColor: theme.border }}>
-          <span className="text-sm" style={{ color: theme.muted }}>À payer à la livraison</span>
+        <div className="flex items-center justify-between border-t pt-4" style={{ borderColor: ink.border }}>
+          <span className="text-sm" style={{ color: ink.muted }}>À payer à la livraison</span>
           <span className="text-2xl font-extrabold" style={{ color: priceTint }}>
             {formatCurrency(total, currency)}
           </span>
@@ -999,7 +1008,8 @@ export function CodOrderForm({
           || (theme.style === 'tech'
               ? `linear-gradient(135deg, ${theme.gradientFrom}, ${theme.gradientTo})`
               : theme.primary);
-        const btnFg = config?.buttonTextColor || theme.primaryFg;
+        const btnFg = config?.buttonTextColor
+          || ensureContrast(theme.primaryFg, /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.test(String(btnBg)) ? String(btnBg) : theme.primary, 3);
         const shape = config?.buttonShape || 'pill';
         const btnRadius =
           shape === 'pill'    ? '999px'
@@ -1059,16 +1069,17 @@ export function CodOrderForm({
 
       <div
         className="flex flex-wrap items-center justify-center gap-4 text-[11px]"
-        style={{ color: theme.muted }}
+        style={{ color: ink.muted }}
       >
         <span className="inline-flex items-center gap-1"><Wallet className="h-3 w-3" /> Paiement à la livraison</span>
         <span className="inline-flex items-center gap-1"><Truck className="h-3 w-3" /> Livraison dans 24h</span>
         <span className="inline-flex items-center gap-1"><ShieldCheck className="h-3 w-3" /> Aucun prépaiement</span>
       </div>
       {reassurance && (
-        <p className="text-center text-xs" style={{ color: theme.muted }}>{reassurance}</p>
+        <p className="text-center text-xs" style={{ color: ink.muted }}>{reassurance}</p>
       )}
     </form>
+    </CodInkContext.Provider>
   );
 }
 
@@ -1089,9 +1100,10 @@ function Field({
   theme: ThemeTokens;
   radius: string;
 }) {
+  const ink = useContext(CodInkContext);
   return (
     <div>
-      <label className="mb-1 block text-xs font-medium" style={{ color: theme.muted }}>{label}</label>
+      <label className="mb-1 block text-xs font-medium" style={{ color: ink?.muted || theme.muted }}>{label}</label>
       <input
         type={type}
         value={value}
@@ -1128,9 +1140,10 @@ function PhoneField({
   theme: ThemeTokens;
   radius: string;
 }) {
+  const ink = useContext(CodInkContext);
   return (
     <div>
-      <label className="mb-1 block text-xs font-medium" style={{ color: theme.muted }}>{label}</label>
+      <label className="mb-1 block text-xs font-medium" style={{ color: ink?.muted || theme.muted }}>{label}</label>
       <div
         className="flex h-11 w-full items-stretch overflow-hidden border bg-transparent focus-within:outline-none"
         style={{ borderColor: theme.border, borderRadius: radius, backgroundColor: theme.background }}

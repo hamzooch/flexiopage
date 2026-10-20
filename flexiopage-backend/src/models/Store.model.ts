@@ -96,6 +96,12 @@ export interface IStore extends Document {
       /** ── Visual customization (overrides the active theme on the COD form) ── */
       /** Background fill of the form card (hex). Defaults to theme.surface. */
       backgroundColor?: string;
+      /** Headline + body text on the form card. Auto-contrasted when unset. */
+      textColor?: string;
+      /** Labels and secondary lines on the form card. Auto-contrasted when unset. */
+      mutedColor?: string;
+      /** Dividers on the form card. Auto-contrasted when unset. */
+      borderColor?: string;
       /** Hex color for the submit button. Defaults to theme.primary. */
       buttonColor?: string;
       /** Hex color for text rendered on the submit button. Defaults to theme.primaryFg. */
@@ -749,6 +755,9 @@ const StoreSchema = new Schema<IStore>(
         reassurance: { type: String },
         shippingFee: { type: Number, default: 0, min: 0 },
         backgroundColor: { type: String, trim: true },
+        textColor: { type: String, trim: true },
+        mutedColor: { type: String, trim: true },
+        borderColor: { type: String, trim: true },
         buttonColor: { type: String, trim: true },
         buttonTextColor: { type: String, trim: true },
         buttonShape: { type: String, enum: ['pill', 'rounded', 'square'], default: 'pill' },

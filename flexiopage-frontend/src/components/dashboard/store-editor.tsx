@@ -137,6 +137,9 @@ export interface CodFormSettings {
   shippingFee?: number;
   // ── Visual customization (overrides the active theme on the COD form) ──
   backgroundColor?: string;
+  textColor?: string;
+  mutedColor?: string;
+  borderColor?: string;
   buttonColor?: string;
   buttonTextColor?: string;
   buttonShape?: 'pill' | 'rounded' | 'square';

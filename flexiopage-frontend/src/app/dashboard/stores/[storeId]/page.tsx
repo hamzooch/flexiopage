@@ -2843,6 +2843,24 @@ function CodFormEditor({ block, store, setStore, markDirty }: EditorCtx) {
             placeholder="#ffffff"
           />
           <ColorField
+            label="Titre et texte"
+            value={cf.textColor}
+            onChange={(v) => patchCf({ ...cf, textColor: v })}
+            placeholder="Contraste automatique"
+          />
+          <ColorField
+            label="Labels (Nom, Téléphone…)"
+            value={cf.mutedColor}
+            onChange={(v) => patchCf({ ...cf, mutedColor: v })}
+            placeholder="Contraste automatique"
+          />
+          <ColorField
+            label="Séparateurs"
+            value={cf.borderColor}
+            onChange={(v) => patchCf({ ...cf, borderColor: v })}
+            placeholder="Contraste automatique"
+          />
+          <ColorField
             label="Couleur du bouton"
             value={cf.buttonColor}
             onChange={(v) => patchCf({ ...cf, buttonColor: v })}

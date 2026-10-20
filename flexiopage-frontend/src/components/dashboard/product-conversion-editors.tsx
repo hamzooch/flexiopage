@@ -995,6 +995,35 @@ export function CodFormPanel({ value, onChange, advancedHref, currency = 'TND' }
         </div>
       </div>
 
+      <div className="grid gap-3 sm:grid-cols-2">
+        {(
+          [
+            ['backgroundColor', 'Fond du formulaire', 'Surface du thème'],
+            ['textColor', 'Titre et texte', 'Contraste auto'],
+            ['mutedColor', 'Labels', 'Contraste auto'],
+            ['borderColor', 'Séparateurs', 'Contraste auto'],
+          ] as const
+        ).map(([key, label, placeholder]) => (
+          <div key={key} className="space-y-1.5">
+            <Label className="text-[10px] uppercase tracking-wider text-muted-foreground">{label}</Label>
+            <div className="flex items-center gap-2">
+              <input
+                type="color"
+                value={value[key] || '#111111'}
+                onChange={(e) => set({ [key]: e.target.value })}
+                className="h-9 w-11 cursor-pointer rounded-md border border-border/60 bg-background p-0"
+              />
+              <Input
+                value={value[key] || ''}
+                onChange={(e) => set({ [key]: e.target.value || undefined })}
+                placeholder={placeholder}
+                className="h-9 font-mono text-xs"
+              />
+            </div>
+          </div>
+        ))}
+      </div>
+
       {/* ── Apparence du bouton ─────────────────────────────────────── */}
       <div className="space-y-3 rounded-xl border border-border/60 bg-muted/20 p-3">
         <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">

@@ -203,6 +203,60 @@ export function contrastText(hex: string): string {
   return isLightColor(hex) ? '#0b0b0b' : '#ffffff';
 }
 
+/** WCAG contrast ratio between two hex colors. 1 = identical, 21 = black/white. */
+export function contrastRatio(a: string, b: string): number {
+  const l1 = relLuminance(a);
+  const l2 = relLuminance(b);
+  const hi = Math.max(l1, l2);
+  const lo = Math.min(l1, l2);
+  return (hi + 0.05) / (lo + 0.05);
+}
+
+/**
+ * Keep `fg` when it is already readable on `bg`. Otherwise return a near-black
+ * or near-white that clears `min` (4.5 ≈ body text, 3 ≈ labels).
+ */
+export function ensureContrast(fg: string, bg: string, min = 4.5): string {
+  const fill = bg || '#ffffff';
+  const ink = fg || contrastText(fill);
+  if (contrastRatio(ink, fill) >= min) return ink;
+  return contrastText(fill) === '#ffffff'
+    ? mixHex('#ffffff', fill, 0.06)
+    : mixHex('#111111', fill, 0.04);
+}
+
+/** Quieter label color that still stays readable on `bg`. */
+function mutedInk(text: string, bg: string): string {
+  const softer = mixHex(text, bg, 0.34);
+  if (contrastRatio(softer, bg) >= 3) return softer;
+  return mixHex(text, bg, 0.18);
+}
+
+export interface CodFormColorInput {
+  backgroundColor?: string;
+  textColor?: string;
+  mutedColor?: string;
+  borderColor?: string;
+}
+
+/**
+ * Colors painted ON the COD card. A custom form background (black card on a
+ * light theme, cream card on a dark theme) must not keep the theme's text:
+ * that is what made "Commander · Paiement à la livraison" disappear.
+ * Seller overrides win. Everything else is chosen to clear contrast on `bg`.
+ */
+export function resolveCodFormInk(theme: ThemeTokens, config?: CodFormColorInput) {
+  const bg = config?.backgroundColor || theme.surface;
+  const text = config?.textColor || ensureContrast(theme.foreground, bg, 4.5);
+  const muted = config?.mutedColor || (
+    contrastRatio(theme.muted, bg) >= 3 ? theme.muted : mutedInk(text, bg)
+  );
+  const border = config?.borderColor || (
+    contrastRatio(theme.border, bg) >= 1.35 ? theme.border : mixHex(text, bg, 0.72)
+  );
+  return { bg, text, muted, border };
+}
+
 /**
  * Regenerate a complete, contrast-safe theme from a base theme plus up to
  * three overridden colors. The base supplies fonts, radius, layout and

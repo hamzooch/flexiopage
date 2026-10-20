@@ -118,9 +118,15 @@ async function flush(): Promise<void> {
       // Alert if the bucket just crossed the threshold this minute AND we
       // haven't already alerted recently. `bucket.hits` is the hits added
       // THIS flush window — a genuine spike, not the cumulative total.
+      //
+      // cert-ask from Caddy has no client IP, so the whole internet scan of
+      // :443 collapses into sourceIp "unknown". That background noise stays
+      // in the admin dashboard, but it must not email every cooldown window
+      // for months. A cert_flood that carries a real IP still alerts.
+      const backgroundCertScan = type === 'cert_flood' && sourceIp === 'unknown';
       const notifiedRecently =
         doc.notifiedAt && now.getTime() - doc.notifiedAt.getTime() < ALERT_COOLDOWN_MS;
-      if (bucket.hits >= threshold && !notifiedRecently) {
+      if (bucket.hits >= threshold && !notifiedRecently && !backgroundCertScan) {
         void dispatchAlert({
           type,
           sourceIp,
