@@ -7,6 +7,7 @@ import { Router, Request, Response } from 'express';
 import express from 'express';
 import { getProviderById } from '../services/mobile-money.service';
 import { finalizePaidOrder } from '../services/order-finalize.service';
+import { markOrderPaymentFailed } from '../services/payment-failure-alert.service';
 import { applyDeliveryWebhook } from '../services/delivery.service';
 import { Order, type PaymentProvider } from '../models/Order.model';
 import { logPayment } from '../models/PaymentLog.model';
@@ -126,11 +127,8 @@ async function handlePaymentWebhook(
         webhookData: result.raw,
       });
     } else if (result.status === 'failed' && result.orderId) {
-      // Never downgrade an already-paid order.
-      await Order.updateOne(
-        { _id: result.orderId, paymentStatus: { $ne: 'paid' } },
-        { $set: { paymentStatus: 'failed', paymentWebhookData: result.raw } },
-      );
+      // Never downgrade an already-paid order. First transition emails the owner.
+      await markOrderPaymentFailed(result.orderId, result.raw);
     }
     // Gateways expect HTTP 200 to mark the webhook delivered.
     res.status(200).send('OK');

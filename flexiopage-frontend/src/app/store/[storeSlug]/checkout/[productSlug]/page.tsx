@@ -1,13 +1,14 @@
 'use client';
 
 /**
- * Checkout page for a digital product — single-page form.
+ * Checkout digital en deux étapes :
+ *   1. Coordonnées (email + WhatsApp)
+ *   2. Opérateur CinetPay du pays du numéro
  *
- * Contact + phone (WhatsApp) + payment method all on one screen. Submit
- * POSTs /api/public/checkout/init, which creates the order and returns the
- * gateway checkout URL. After payment the provider posts the webhook →
- * backend finalises + emails → user is redirected to /thanks/[orderId]
- * which polls for paid status and then jumps to /d/[downloadToken].
+ * Le brouillon est gardé dans sessionStorage : un retour arrière (étape
+ * opérateur, ou retour depuis la page CinetPay) ne vide pas le formulaire.
+ * L'opérateur choisi est envoyé à CinetPay, qui n'affiche plus son propre
+ * sélecteur.
  */
 
 import { useEffect, useRef, useState } from 'react';
@@ -15,8 +16,9 @@ import Link from 'next/link';
 import Image from 'next/image';
 import { useParams, useRouter } from 'next/navigation';
 import { IMAGE_BLUR_DATA_URL } from '@/lib/image-placeholder';
-import { Loader2, ShieldCheck, Zap, ArrowLeft, CreditCard, CheckCircle2, MessageCircle, Mail, User, Package, AlertCircle } from 'lucide-react';
+import { Loader2, ShieldCheck, Zap, ArrowLeft, MessageCircle, Mail, User, Package, AlertCircle } from 'lucide-react';
 import { cn, mediaUrl } from '@/lib/utils';
+import { cinetpayOperators, type CinetpayOperator } from '@/lib/cinetpay-operators';
 import { StoreNavbar, type NavbarConfig } from '@/components/storefront/StoreNavbar';
 import {
   PhoneCountryField,
@@ -28,24 +30,45 @@ import { resolveStoreTheme } from '@/data/store-themes';
 
 const API_BASE = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000').replace(/\/$/, '');
 
-type Channel = 'wave' | 'orange_money' | 'mtn_momo' | 'moov_money' | 'card' | 'all';
+type CheckoutStep = 'details' | 'operator';
 
-interface ChannelOption {
-  id: Channel;
-  label: string;
-  badge?: string;
-  gradient: string;
-  emoji: string;
-  countries: string;
+interface CheckoutDraft {
+  name: string;
+  email: string;
+  phone: string;
+  phoneCountry: string;
+  step: CheckoutStep;
 }
 
-const CHANNELS: ChannelOption[] = [
-  { id: 'wave',         label: 'Wave',         emoji: '🌊', gradient: 'from-cyan-500 to-blue-600',     countries: 'SN · CI · ML · BF · GM · UG' },
-  { id: 'orange_money', label: 'Orange Money', emoji: '🟠', gradient: 'from-orange-500 to-orange-700', countries: 'SN · CI · CM · ML · BF · MA · TN · MG' },
-  { id: 'mtn_momo',     label: 'MTN MoMo',     emoji: '🟡', gradient: 'from-yellow-400 to-amber-600',  countries: 'GH · CI · CM · UG · RW · ZM' },
-  { id: 'moov_money',   label: 'Moov Money',   emoji: '🔵', gradient: 'from-sky-500 to-indigo-600',    countries: 'BJ · TG · CI · BF · NE · SN' },
-  { id: 'card',         label: 'Carte bancaire', badge: 'Visa / Mastercard', emoji: '💳', gradient: 'from-slate-700 to-slate-900', countries: 'International' },
-];
+function draftKey(storeSlug: string, productSlug: string): string {
+  return `fp-checkout:${storeSlug}:${productSlug}`;
+}
+
+function readDraft(storeSlug: string, productSlug: string): CheckoutDraft | null {
+  try {
+    const raw = sessionStorage.getItem(draftKey(storeSlug, productSlug));
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as Partial<CheckoutDraft>;
+    if (!parsed || typeof parsed !== 'object') return null;
+    return {
+      name: typeof parsed.name === 'string' ? parsed.name : '',
+      email: typeof parsed.email === 'string' ? parsed.email : '',
+      phone: typeof parsed.phone === 'string' ? parsed.phone : '',
+      phoneCountry: typeof parsed.phoneCountry === 'string' ? parsed.phoneCountry : '',
+      step: parsed.step === 'operator' ? 'operator' : 'details',
+    };
+  } catch {
+    return null;
+  }
+}
+
+function writeDraft(storeSlug: string, productSlug: string, draft: CheckoutDraft): void {
+  try {
+    sessionStorage.setItem(draftKey(storeSlug, productSlug), JSON.stringify(draft));
+  } catch {
+    // Quota or private mode — the in-memory step still keeps the fields.
+  }
+}
 
 interface ProductDoc {
   _id: string;
@@ -104,6 +127,12 @@ function friendlyCheckoutError(status: number, data: { error?: string; code?: st
       message: data.error || 'Vérifie les champs indiqués.',
     };
   }
+  if (data.code === 'invalid_operator') {
+    return {
+      title: 'Opérateur indisponible',
+      message: data.error || 'Choisis un opérateur Mobile Money disponible dans ton pays.',
+    };
+  }
   if (status === 404) {
     return {
       title: 'Produit introuvable',
@@ -140,12 +169,47 @@ export default function CheckoutPage() {
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
   const [phoneCountry, setPhoneCountry] = useState('SN');
-  const [channel, setChannel] = useState<Channel>('all');
+  const [step, setStep] = useState<CheckoutStep>('details');
   const [submitting, setSubmitting] = useState(false);
+  const [payingId, setPayingId] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
   const [formAlert, setFormAlert] = useState<FormAlert | null>(null);
+  const [draftReady, setDraftReady] = useState(false);
   const alertRef = useRef<HTMLDivElement>(null);
   const countryPicked = useRef(false);
+  const operatorHistory = useRef(false);
+
+  useEffect(() => {
+    function onPopState() {
+      operatorHistory.current = false;
+      setStep('details');
+      setFormAlert(null);
+    }
+    window.addEventListener('popstate', onPopState);
+    return () => window.removeEventListener('popstate', onPopState);
+  }, []);
+
+  useEffect(() => {
+    const draft = readDraft(storeSlug, productSlug);
+    if (draft) {
+      setName(draft.name);
+      setEmail(draft.email);
+      setPhone(draft.phone);
+      if (draft.phoneCountry) {
+        setPhoneCountry(draft.phoneCountry);
+        countryPicked.current = true;
+      }
+      if (draft.step === 'operator' && cinetpayOperators(draft.phoneCountry).length > 0) {
+        setStep('operator');
+      }
+    }
+    setDraftReady(true);
+  }, [storeSlug, productSlug]);
+
+  useEffect(() => {
+    if (!draftReady) return;
+    writeDraft(storeSlug, productSlug, { name, email, phone, phoneCountry, step });
+  }, [draftReady, storeSlug, productSlug, name, email, phone, phoneCountry, step]);
 
   useEffect(() => {
     let cancelled = false;
@@ -185,8 +249,7 @@ export default function CheckoutPage() {
     });
   }
 
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
+  function contactErrors(): { fields: FieldErrors; phone: string } {
     const prefix = phoneCountryByCode(phoneCountry)?.phonePrefix || '';
     const fullPhone = joinPhone(prefix, phone);
     const nextFields: FieldErrors = {};
@@ -194,20 +257,54 @@ export default function CheckoutPage() {
     else if (!isValidEmail(email)) nextFields.email = 'Cette adresse email n’est pas valide.';
     if (!phone.trim()) nextFields.phone = 'Indique ton numéro WhatsApp.';
     else if (!fullPhone) nextFields.phone = 'Ce numéro est incomplet. Vérifie l’indicatif et les chiffres.';
-    if (nextFields.email || nextFields.phone) {
-      setFieldErrors(nextFields);
+    return { fields: nextFields, phone: fullPhone };
+  }
+
+  function continueToOperators() {
+    const { fields } = contactErrors();
+    if (fields.email || fields.phone) {
+      setFieldErrors(fields);
       revealAlert({
         title: 'Informations à corriger',
-        message: nextFields.email && nextFields.phone
+        message: fields.email && fields.phone
           ? 'L’email et le numéro WhatsApp doivent être remplis correctement.'
-          : (nextFields.email || nextFields.phone) as string,
+          : (fields.email || fields.phone) as string,
       });
       return;
     }
+    if (cinetpayOperators(phoneCountry).length === 0) {
+      setFieldErrors({});
+      revealAlert({
+        title: 'Paiement indisponible pour ce pays',
+        message: 'Le Mobile Money CinetPay ne couvre pas ce pays. Choisis le pays de ton numéro.',
+      });
+      return;
+    }
+    setFieldErrors({});
+    setFormAlert(null);
+    setStep('operator');
+    if (!operatorHistory.current) {
+      window.history.pushState({ fpCheckout: 'operator' }, '');
+      operatorHistory.current = true;
+    }
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
 
+  async function pay(operator: CinetpayOperator) {
+    const { fields, phone: fullPhone } = contactErrors();
+    if (fields.email || fields.phone) {
+      setStep('details');
+      setFieldErrors(fields);
+      revealAlert({
+        title: 'Informations à corriger',
+        message: (fields.email || fields.phone) as string,
+      });
+      return;
+    }
     setFieldErrors({});
     setFormAlert(null);
     setSubmitting(true);
+    setPayingId(operator.id);
     try {
       const res = await fetch(`${API_BASE}/api/public/checkout/init`, {
         method: 'POST',
@@ -220,7 +317,8 @@ export default function CheckoutPage() {
           customerName: name.trim() || undefined,
           phone: fullPhone,
           whatsapp: fullPhone,
-          channel,
+          country: phoneCountry,
+          paymentMethod: operator.id,
         }),
       });
       let data: { error?: string; code?: string; fields?: FieldErrors; checkoutUrl?: string } = {};
@@ -230,9 +328,14 @@ export default function CheckoutPage() {
         data = {};
       }
       if (!res.ok) {
-        if (data.fields) setFieldErrors(data.fields);
+        if (data.fields) {
+          setFieldErrors(data.fields);
+          setStep('details');
+        }
+        if (data.code === 'invalid_operator') setStep('operator');
         revealAlert(friendlyCheckoutError(res.status, data));
         setSubmitting(false);
+        setPayingId(null);
         return;
       }
       if (!data.checkoutUrl) {
@@ -241,6 +344,7 @@ export default function CheckoutPage() {
           message: 'Le paiement n’a pas pu démarrer. Réessaie dans un instant.',
         });
         setSubmitting(false);
+        setPayingId(null);
         return;
       }
       window.location.href = data.checkoutUrl;
@@ -250,6 +354,7 @@ export default function CheckoutPage() {
         message: 'Impossible de joindre le serveur. Vérifie ta connexion et réessaie.',
       });
       setSubmitting(false);
+      setPayingId(null);
     }
   }
 
@@ -332,17 +437,45 @@ export default function CheckoutPage() {
 
         <div className="grid gap-6 lg:grid-cols-[1fr_420px] lg:gap-8">
           {/* ─── Formulaire ─────────────────────────────────────── */}
-          <form onSubmit={handleSubmit} noValidate className="space-y-6">
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              if (step === 'details') continueToOperators();
+            }}
+            noValidate
+            className="space-y-6"
+          >
             <div>
+              {step === 'operator' ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setFormAlert(null);
+                    if (operatorHistory.current) {
+                      window.history.back();
+                      return;
+                    }
+                    setStep('details');
+                  }}
+                  className="mb-3 inline-flex items-center gap-1.5 text-sm font-medium text-muted-foreground hover:text-foreground"
+                >
+                  <ArrowLeft className="h-4 w-4" />
+                  Modifier mes informations
+                </button>
+              ) : null}
               <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">
-                {store.settings?.checkoutPage?.title || 'Finaliser ton achat'}
+                {step === 'operator'
+                  ? 'Choisis ton opérateur'
+                  : (store.settings?.checkoutPage?.title || 'Finaliser ton achat')}
               </h1>
               <p className="mt-1.5 text-sm text-muted-foreground">
-                {store.settings?.checkoutPage?.reassurance || 'Paiement sécurisé · Accès instantané après confirmation'}
+                {step === 'operator'
+                  ? `Mobile Money CinetPay · ${phoneCountryByCode(phoneCountry)?.name || phoneCountry}`
+                  : (store.settings?.checkoutPage?.reassurance || 'Paiement sécurisé · Accès instantané après confirmation')}
               </p>
             </div>
 
-            {/* Contact */}
+            {step === 'details' ? (
             <div className="space-y-4 rounded-2xl border border-border/60 bg-card p-5">
               <div>
                 <h2 className="text-sm font-semibold">Tes coordonnées</h2>
@@ -434,64 +567,35 @@ export default function CheckoutPage() {
                 </div>
               </div>
             </div>
-
-            {/* Payment method */}
+            ) : (
             <div className="space-y-3 rounded-2xl border border-border/60 bg-card p-5">
-              <div>
-                <h2 className="text-sm font-semibold">Mode de paiement</h2>
-                <p className="text-xs text-muted-foreground">
-                  Choisis ton opérateur — ou laisse-nous te proposer tous les modes sur la page de paiement.
-                </p>
+              <div className="rounded-xl bg-muted/50 px-3 py-2 text-xs text-muted-foreground">
+                <span className="font-medium text-foreground">{email}</span>
+                {' · '}
+                {phoneCountryByCode(phoneCountry)?.phonePrefix} {phone}
               </div>
               <div className="space-y-2">
-                <button
-                  type="button"
-                  onClick={() => setChannel('all')}
-                  className={cn(
-                    'flex w-full items-center gap-3 rounded-xl border-2 p-3 text-left transition-all',
-                    channel === 'all' ? 'border-primary bg-primary/5' : 'border-border/60 hover:border-primary/40'
-                  )}
-                >
-                  <div className="grid h-10 w-10 shrink-0 place-items-center rounded-lg bg-gradient-to-br from-fuchsia-500 to-indigo-600 text-lg text-white">
-                    ✨
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <div className="text-sm font-semibold">Tous les modes de paiement</div>
-                    <div className="text-xs text-muted-foreground">Wave, Orange Money, MTN, Moov, Carte — choisis sur la page suivante</div>
-                  </div>
-                  {channel === 'all' && (
-                    <CheckCircle2 className="h-5 w-5 shrink-0 text-primary" />
-                  )}
-                </button>
-                <div className="grid gap-2 sm:grid-cols-2">
-                  {CHANNELS.map((c) => (
-                    <button
-                      key={c.id}
-                      type="button"
-                      onClick={() => setChannel(c.id)}
-                      className={cn(
-                        'flex items-center gap-2.5 rounded-xl border-2 p-3 text-left transition-all',
-                        channel === c.id ? 'border-primary bg-primary/5' : 'border-border/60 hover:border-primary/40'
-                      )}
+                {cinetpayOperators(phoneCountry).map((op) => (
+                  <button
+                    key={op.id}
+                    type="button"
+                    disabled={submitting}
+                    onClick={() => void pay(op)}
+                    className="flex w-full items-center gap-3 rounded-xl border-2 border-border/60 p-3 text-left transition-all hover:border-primary/40 disabled:opacity-60"
+                  >
+                    <span
+                      className="grid h-10 w-10 shrink-0 place-items-center rounded-lg text-[11px] font-bold"
+                      style={{ backgroundColor: op.color, color: op.ink }}
                     >
-                      <div className={cn('grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-gradient-to-br text-base text-white', c.gradient)}>
-                        {c.emoji}
-                      </div>
-                      <div className="min-w-0 flex-1">
-                        <div className="flex flex-wrap items-center gap-1.5">
-                          <span className="text-sm font-semibold">{c.label}</span>
-                          {c.badge && <span className="rounded-full bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">{c.badge}</span>}
-                        </div>
-                        <div className="truncate text-[11px] uppercase tracking-wider text-muted-foreground">{c.countries}</div>
-                      </div>
-                      {channel === c.id && (
-                        <CheckCircle2 className="h-4 w-4 shrink-0 text-primary" />
-                      )}
-                    </button>
-                  ))}
-                </div>
+                      {op.mark}
+                    </span>
+                    <span className="min-w-0 flex-1 text-sm font-semibold">{op.label}</span>
+                    {payingId === op.id ? <Loader2 className="h-4 w-4 shrink-0 animate-spin" /> : null}
+                  </button>
+                ))}
               </div>
             </div>
+            )}
 
             {formAlert && (
               <div
@@ -507,28 +611,22 @@ export default function CheckoutPage() {
               </div>
             )}
 
-            <button
-              type="submit"
-              disabled={submitting}
-              className="inline-flex min-h-14 w-full items-center justify-center gap-2 rounded-2xl gradient-brand px-4 py-4 text-base font-bold text-white shadow-xl shadow-primary/30 transition-all hover:scale-[1.01] disabled:opacity-60"
-            >
-              {submitting ? (
-                <>
-                  <Loader2 className="h-5 w-5 animate-spin" />
-                  Initialisation…
-                </>
-              ) : (
-                <>
-                  <ShieldCheck className="h-5 w-5" />
-                  {store.settings?.checkoutPage?.submitLabel || 'Payer'} {fmtPrice(product.price, currency)}
-                </>
-              )}
-            </button>
+            {step === 'details' ? (
+              <button
+                type="submit"
+                className="inline-flex min-h-14 w-full items-center justify-center gap-2 rounded-2xl gradient-brand px-4 py-4 text-base font-bold text-white shadow-xl shadow-primary/30 transition-all hover:scale-[1.01]"
+              >
+                Continuer
+              </button>
+            ) : (
+              <p className="text-center text-sm font-semibold">
+                {fmtPrice(product.price, currency)} · touche un opérateur pour payer
+              </p>
+            )}
 
             <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-2 text-xs text-muted-foreground">
               <span className="inline-flex items-center gap-1"><ShieldCheck className="h-3.5 w-3.5" /> Paiement sécurisé</span>
               <span className="inline-flex items-center gap-1"><Zap className="h-3.5 w-3.5" /> Accès immédiat</span>
-              <span className="inline-flex items-center gap-1"><CreditCard className="h-3.5 w-3.5" /> Garantie 14 jours</span>
             </div>
           </form>
 

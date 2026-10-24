@@ -7,6 +7,7 @@ import { Order } from '../models/Order.model';
 import { Payout } from '../models/Payout.model';
 import { CinetPayProvider } from '../services/payment/cinetpay.service';
 import { commissionFor } from '../services/wallet.service';
+import { markOrderPaymentFailed } from '../services/payment-failure-alert.service';
 
 /** GET /api/admin/payments/config — payment gateway configuration */
 export async function getPaymentConfig(req: Request, res: Response): Promise<void> {
@@ -448,11 +449,8 @@ export async function verifyPaymentTransaction(req: Request, res: Response): Pro
         { _id: order._id },
         { $set: { paymentStatus: 'paid', paymentWebhookData: verifyResult.raw } }
       );
-    } else if (verifyResult.status === 'failed' && order.paymentStatus !== 'paid') {
-      await Order.updateOne(
-        { _id: order._id },
-        { $set: { paymentStatus: 'failed', paymentWebhookData: verifyResult.raw } }
-      );
+    } else if (verifyResult.status === 'failed') {
+      await markOrderPaymentFailed(String(order._id), verifyResult.raw);
     }
 
     // Log this verification attempt

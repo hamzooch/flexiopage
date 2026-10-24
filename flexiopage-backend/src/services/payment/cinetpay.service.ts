@@ -36,8 +36,10 @@ import {
   CinetPayClient,
   parseNotification,
   ApiError,
+  PAYMENT_METHODS_BY_COUNTRY,
   type CountryCode,
   type CountryCredentials,
+  type PaymentMethod,
   type PaymentRequest,
   type Channel as SdkChannel,
 } from 'cinetpay-js';
@@ -203,7 +205,8 @@ export class CinetPayProvider implements PaymentProviderImpl {
 
   async initPayment(args: InitPaymentArgs): Promise<InitPaymentResult> {
     const client = this.getClient();
-    const country = (args.order.shippingAddress?.country || 'CI').toUpperCase() as CountryCode;
+    const country = (args.country || args.order.shippingAddress?.country || 'CI').toUpperCase() as CountryCode;
+    const paymentMethod = cinetpayMethodForCountry(country, args.paymentMethod);
 
     const apiBase = (process.env.API_PUBLIC_URL || 'http://localhost:5051').replace(/\/$/, '');
     const frontBase = firstUrl(process.env.FRONTEND_URL) || 'http://localhost:3000';
@@ -232,6 +235,7 @@ export class CinetPayProvider implements PaymentProviderImpl {
       failedUrl: failedUrl.slice(0, 120),
       notifyUrl: notifyUrl.slice(0, 120),
       channel: channelForRequest(args.channel),
+      ...(paymentMethod ? { paymentMethod } : {}),
     };
 
     try {
@@ -379,6 +383,14 @@ export class CinetPayProvider implements PaymentProviderImpl {
       return null;
     }
   }
+}
+
+/** Keep only a method CinetPay actually offers in that country. */
+function cinetpayMethodForCountry(country: string, method: string | undefined): PaymentMethod | undefined {
+  if (!method) return undefined;
+  if (!(country in PAYMENT_METHODS_BY_COUNTRY)) return undefined;
+  const allowed = PAYMENT_METHODS_BY_COUNTRY[country as CountryCode] as readonly string[];
+  return allowed.includes(method) ? (method as PaymentMethod) : undefined;
 }
 
 /** Map our internal channel hint to the SDK's CHANNELS enum. */

@@ -21,6 +21,7 @@ import * as orderService from '../services/order.service';
 import { Order } from '../models/Order.model';
 import { logPayment } from '../models/PaymentLog.model';
 import { initOrderPaymentWith, getProviderById, isMockMode } from '../services/payment/registry';
+import { markOrderPaymentFailed } from '../services/payment-failure-alert.service';
 import {
   getAvailableMethods,
   isMethodAllowed,
@@ -249,8 +250,8 @@ router.get('/verify/:ref', async (req: Request, res: Response): Promise<void> =>
         paymentProvider: order.paymentProvider,
         webhookData: result.raw,
       });
-    } else if (result.status === 'failed' && order.paymentStatus !== 'paid') {
-      await Order.findByIdAndUpdate(order._id, { $set: { paymentStatus: 'failed' } });
+    } else if (result.status === 'failed') {
+      await markOrderPaymentFailed(order._id.toString(), result.raw);
     }
 
     const fresh = await Order.findById(order._id).select('paymentStatus orderNumber').lean();

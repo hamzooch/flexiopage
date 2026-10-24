@@ -23,7 +23,8 @@ import { Product } from '../models/Product.model';
 import { Order } from '../models/Order.model';
 import { Store } from '../models/Store.model';
 import { LandingPage } from '../models/LandingPage.model';
-import { initOrderPayment, isMockMode, type Channel } from '../services/mobile-money.service';
+import { initOrderPayment, isMockMode } from '../services/mobile-money.service';
+import { PAYMENT_METHODS_BY_COUNTRY, type CountryCode } from 'cinetpay-js';
 import { dispatchOrder } from '../services/delivery.service';
 import { notifyOrderCreated } from '../services/notification.service';
 import { pushOrderToSheets } from '../services/sheets.service';
@@ -1143,7 +1144,8 @@ router.post('/checkout/init', async (req: Request, res: Response): Promise<void>
     email?: string;
     customerName?: string;
     phone?: string;
-    channel?: Channel;
+    country?: string;
+    paymentMethod?: string;
   };
   if (!body.storeSlug || !body.productSlug) {
     res.status(400).json({
@@ -1163,6 +1165,18 @@ router.post('/checkout/init', async (req: Request, res: Response): Promise<void>
       error: 'Vérifie les informations indiquées avant de continuer.',
       code: 'invalid_form',
       fields,
+    });
+    return;
+  }
+  const country = String(body.country || '').trim().toUpperCase();
+  const paymentMethod = String(body.paymentMethod || '').trim();
+  const allowed = country in PAYMENT_METHODS_BY_COUNTRY
+    ? (PAYMENT_METHODS_BY_COUNTRY[country as CountryCode] as readonly string[])
+    : undefined;
+  if (!allowed?.includes(paymentMethod)) {
+    res.status(400).json({
+      error: 'Choisis un opérateur Mobile Money disponible dans ton pays.',
+      code: 'invalid_operator',
     });
     return;
   }
@@ -1215,7 +1229,9 @@ router.post('/checkout/init', async (req: Request, res: Response): Promise<void>
       tax: 0,
       discount: 0,
       currency: store.settings?.currency || 'USD',
-      paymentMethod: body.channel === 'card' ? 'card' : 'mobile_money',
+      paymentMethod: 'mobile_money',
+      shippingAddress: { country },
+      marketCountry: country,
     });
   } catch (err) {
     logger.error({ err }, 'checkout init: order creation failed');
@@ -1233,7 +1249,7 @@ router.post('/checkout/init', async (req: Request, res: Response): Promise<void>
   await order.save();
 
   try {
-    const init = await initOrderPayment(order, { phone, channel: body.channel });
+    const init = await initOrderPayment(order, { phone, country, paymentMethod });
     order.paymentReference = init.reference;
     order.paymentProvider = init.provider;
     await order.save();

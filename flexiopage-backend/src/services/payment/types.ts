@@ -14,6 +14,10 @@ export interface InitPaymentArgs {
   phone?: string;
   /** Hint to restrict the provider's UI to a specific channel (or 'all'). */
   channel?: Channel;
+  /** ISO country of the buyer phone. Drives the CinetPay account (CI, SN, …). */
+  country?: string;
+  /** CinetPay method id for that country, e.g. WAVE_SN. Other gateways ignore it. */
+  paymentMethod?: string;
   /** Where the user should land after checkout. */
   returnUrl?: string;
 }

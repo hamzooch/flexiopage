@@ -65,7 +65,7 @@ export function pickActiveProvider(): PaymentProviderImpl {
 
 export async function initOrderPayment(
   order: IOrder,
-  args: { phone?: string; channel?: Channel; returnUrl?: string } = {},
+  args: { phone?: string; channel?: Channel; returnUrl?: string; country?: string; paymentMethod?: string } = {},
 ): Promise<InitPaymentResult> {
   return pickActiveProvider().initPayment({ order, ...args });
 }
