@@ -1447,7 +1447,7 @@ const PORTRAIT_STYLE =
  * image-generation.service — permet à ce dernier de faire le routing
  * catégorie + le post-processing + le quality gate au bon niveau.
  */
-function toGenSlot(kind: ImageSlot['kind']): 'hero' | 'gallery' | 'product' | 'avatar' | 'banner' | 'video-poster' | 'other' {
+function toGenSlot(kind: ImageSlot['kind']): 'hero' | 'gallery' | 'product' | 'avatar' | 'banner' | 'video-poster' | 'hook' | 'other' {
   switch (kind) {
     case 'hero': return 'hero';
     case 'gallery': return 'gallery';
