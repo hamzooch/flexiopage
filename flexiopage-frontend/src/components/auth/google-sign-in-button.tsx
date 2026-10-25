@@ -14,7 +14,7 @@
  * "à configurer" placeholder so deploys without the env var don't crash.
  */
 
-import { useState } from 'react';
+import { useLayoutEffect, useRef, useState } from 'react';
 import { GoogleLogin, type CredentialResponse } from '@react-oauth/google';
 import { authApi, extractApiError } from '@/lib/api';
 import { useAuthStore } from '@/stores/auth-store';
@@ -30,11 +30,33 @@ export function GoogleSignInButton({ onSuccess, text = 'continue_with' }: Props)
   const setAuth = useAuthStore((s) => s.setAuth);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const boxRef = useRef<HTMLDivElement>(null);
+  const [width, setWidth] = useState(0);
 
   // No client ID configured → render nothing. The parent pages (/login,
   // /register) also drop the surrounding divider via isGoogleAuthAvailable()
   // so the email form keeps its original layout while Google is off.
   const clientId = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID || '';
+
+  // Google's button ignores CSS width ("100%") and paints a fixed iframe.
+  // Measure the form column and pass that pixel width so it matches the
+  // email fields on a phone.
+  useLayoutEffect(() => {
+    if (!clientId) return;
+    const el = boxRef.current;
+    if (!el) return;
+    const apply = () => {
+      const next = Math.floor(el.clientWidth);
+      if (next < 200) return;
+      const capped = Math.min(400, next);
+      setWidth((prev) => (Math.abs(prev - capped) > 1 ? capped : prev));
+    };
+    apply();
+    const observer = new ResizeObserver(apply);
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [clientId]);
+
   if (!clientId) return null;
 
   async function handleSuccess(res: CredentialResponse) {
@@ -57,17 +79,20 @@ export function GoogleSignInButton({ onSuccess, text = 'continue_with' }: Props)
   }
 
   return (
-    <div className="space-y-2">
-      <div className={loading ? 'opacity-60 pointer-events-none' : ''}>
-        <GoogleLogin
-          onSuccess={handleSuccess}
-          onError={() => setError('Erreur Google — réessaie ou utilise l\'email.')}
-          text={text}
-          shape="rectangular"
-          theme="outline"
-          size="large"
-          width="100%"
-        />
+    <div className="w-full space-y-2">
+      <div ref={boxRef} className={`w-full min-h-11 ${loading ? 'pointer-events-none opacity-60' : ''}`}>
+        {width > 0 && (
+          <GoogleLogin
+            key={width}
+            onSuccess={handleSuccess}
+            onError={() => setError('Erreur Google — réessaie ou utilise l\'email.')}
+            text={text}
+            shape="rectangular"
+            theme="outline"
+            size="large"
+            width={width}
+          />
+        )}
       </div>
       {error && (
         <p role="alert" className="text-xs text-rose-600">
