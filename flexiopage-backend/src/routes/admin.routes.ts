@@ -138,6 +138,7 @@ router.get('/payments/webhooks', payments.listWebhookLogs);
 router.get('/payments/cinetpay/overview', payments.getCinetpayOverview);
 router.get('/payments/cinetpay-logs', payments.listCinetpayLogs);
 router.get('/payments/stats', payments.getPaymentStats);
+router.get('/payments/ledger', payments.getPaymentLedger);
 router.post('/payments/test', requireAdminWrite, payments.testPaymentFlow);
 router.post('/payments/webhooks/:logId/retry', requireAdminWrite, payments.retryWebhook);
 

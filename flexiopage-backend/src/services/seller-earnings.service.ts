@@ -11,7 +11,7 @@
  * same orderId before crediting.
  */
 import { randomUUID } from 'crypto';
-import type { IOrder } from '../models/Order.model';
+import { Order, type IOrder } from '../models/Order.model';
 import { Store } from '../models/Store.model';
 import { Wallet } from '../models/Wallet.model';
 import { Product } from '../models/Product.model';
@@ -22,6 +22,16 @@ import { getSettings, type IPlatformSettings } from '../models/Settings.model';
 /** Online providers that route money through the platform's Moneroo account. */
 const PLATFORM_HELD_PROVIDERS = new Set(['cinetpay', 'flutterwave', 'stripe']);
 
+/** Tout paiement en ligne dont FlexioPage encaisse le brut (hors COD / manuel). */
+const COMMISSION_PROVIDERS = new Set([
+  ...PLATFORM_HELD_PROVIDERS,
+  'paydunya',
+  'wave',
+  'orange_money',
+  'mtn_momo',
+  'moov_money',
+]);
+
 export function isOnlineProvider(provider: string | undefined | null): boolean {
   if (!provider) return false;
   const normalized = String(provider).normalize('NFC').toLowerCase();
@@ -31,6 +41,13 @@ export function isOnlineProvider(provider: string | undefined | null): boolean {
   // is Moneroo (there is no other family of providers we integrate that
   // shares that prefix).
   return normalized.startsWith('moner');
+}
+
+/** True when the platform, not the seller, collected the buyer's payment. */
+export function holdsPlatformFunds(provider: string | undefined | null): boolean {
+  if (isOnlineProvider(provider)) return true;
+  if (!provider) return false;
+  return COMMISSION_PROVIDERS.has(String(provider).normalize('NFC').toLowerCase());
 }
 
 /**
@@ -257,4 +274,185 @@ export function commissionRateForOrderType(
       : platform?.commissionRatePhysical ?? platform?.commissionRate;
   const rate = typeof raw === 'number' && Number.isFinite(raw) ? raw : 0.15;
   return Math.max(0, Math.min(1, rate));
+}
+
+export interface PlatformCommissionRow {
+  currency: string;
+  orderType: 'digital' | 'physical';
+  commission: number;
+  gross: number;
+  count: number;
+  storeId?: string;
+  date?: string;
+}
+
+interface CommissionAggRow {
+  _id: {
+    currency?: string;
+    orderType?: string;
+    storeId?: { toString(): string };
+    date?: string;
+  };
+  commission: number;
+  gross: number;
+  count: number;
+}
+
+export interface PlatformCommissionSlice {
+  currency: string;
+  digital: number;
+  physical: number;
+  total: number;
+  digitalCount: number;
+  physicalCount: number;
+}
+
+/**
+ * Commission retenue par FlexioPage sur une commande déjà payée en ligne.
+ * Même formule que `creditSellerForPaidOrder` : 15% digital, taux physique
+ * sinon. COD / manuel → null (l'argent ne transite pas par la plateforme).
+ */
+export function commissionForOnlineOrder(
+  order: { total?: number; paymentStatus?: string; paymentProvider?: string | null },
+  productType: string | undefined,
+  rates: { digital: number; physical: number },
+): { amount: number; rate: number; orderType: 'digital' | 'physical' } | null {
+  if (order.paymentStatus !== 'paid') return null;
+  if (!holdsPlatformFunds(order.paymentProvider)) return null;
+  const orderType = productType === 'physical' ? 'physical' : 'digital';
+  const rate = orderType === 'digital' ? rates.digital : rates.physical;
+  return {
+    amount: Math.round((order.total || 0) * rate),
+    rate,
+    orderType,
+  };
+}
+
+/** Additionne des lignes d'agrégat en un solde par devise. */
+export function summarizePlatformCommission(rows: PlatformCommissionRow[]): PlatformCommissionSlice[] {
+  const map = new Map<string, PlatformCommissionSlice>();
+  for (const row of rows) {
+    const currency = row.currency || 'USD';
+    const slice = map.get(currency) || {
+      currency,
+      digital: 0,
+      physical: 0,
+      total: 0,
+      digitalCount: 0,
+      physicalCount: 0,
+    };
+    if (row.orderType === 'physical') {
+      slice.physical += row.commission;
+      slice.physicalCount += row.count;
+    } else {
+      slice.digital += row.commission;
+      slice.digitalCount += row.count;
+    }
+    slice.total += row.commission;
+    map.set(currency, slice);
+  }
+  return [...map.values()].sort((a, b) => b.digital - a.digital || b.total - a.total);
+}
+
+/**
+ * Commission plateforme sur les commandes payées en ligne (Moneroo, CinetPay,
+ * Flutterwave, Stripe). Le taux est appliqué commande par commande, comme au
+ * crédit vendeur — pas sur le total de la période.
+ */
+export async function aggregatePlatformCommission(opts: {
+  from?: Date;
+  to?: Date;
+  dateFormat?: string;
+  byStore?: boolean;
+  digitalRate: number;
+  physicalRate: number;
+}): Promise<PlatformCommissionRow[]> {
+  const match: Record<string, unknown> = {
+    paymentStatus: 'paid',
+    $or: [
+      { paymentProvider: { $in: [...COMMISSION_PROVIDERS] } },
+      { paymentProvider: { $regex: '^moner', $options: 'i' } },
+    ],
+  };
+  if (opts.from || opts.to) {
+    const createdAt: Record<string, Date> = {};
+    if (opts.from) createdAt.$gte = opts.from;
+    if (opts.to) createdAt.$lte = opts.to;
+    match.createdAt = createdAt;
+  }
+
+  const groupId: Record<string, unknown> = {
+    currency: { $ifNull: ['$currency', 'USD'] },
+    orderType: '$orderType',
+  };
+  if (opts.byStore) groupId.storeId = '$storeId';
+  if (opts.dateFormat) {
+    groupId.date = { $dateToString: { format: opts.dateFormat, date: '$createdAt' } };
+  }
+
+  const rows = await Order.aggregate<CommissionAggRow>([
+    { $match: match },
+    { $addFields: { firstProductId: { $arrayElemAt: ['$items.productId', 0] } } },
+    {
+      $lookup: {
+        from: 'products',
+        localField: 'firstProductId',
+        foreignField: '_id',
+        pipeline: [{ $project: { type: 1 } }],
+        as: 'product',
+      },
+    },
+    {
+      $addFields: {
+        orderType: {
+          $cond: [
+            { $eq: [{ $ifNull: [{ $arrayElemAt: ['$product.type', 0] }, ''] }, 'physical'] },
+            'physical',
+            'digital',
+          ],
+        },
+      },
+    },
+    {
+      $addFields: {
+        lineCommission: {
+          $floor: {
+            $add: [
+              {
+                $multiply: [
+                  { $ifNull: ['$total', 0] },
+                  {
+                    $cond: [
+                      { $eq: ['$orderType', 'physical'] },
+                      opts.physicalRate,
+                      opts.digitalRate,
+                    ],
+                  },
+                ],
+              },
+              0.5,
+            ],
+          },
+        },
+      },
+    },
+    {
+      $group: {
+        _id: groupId,
+        commission: { $sum: '$lineCommission' },
+        gross: { $sum: { $ifNull: ['$total', 0] } },
+        count: { $sum: 1 },
+      },
+    },
+  ]);
+
+  return rows.map((row) => ({
+    currency: row._id.currency || 'USD',
+    orderType: row._id.orderType === 'physical' ? 'physical' : 'digital',
+    commission: row.commission || 0,
+    gross: row.gross || 0,
+    count: row.count || 0,
+    storeId: row._id.storeId ? String(row._id.storeId) : undefined,
+    date: row._id.date,
+  }));
 }

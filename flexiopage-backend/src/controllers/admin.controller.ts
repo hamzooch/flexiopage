@@ -21,7 +21,12 @@ import { Order } from '../models/Order.model';
 import { Wallet } from '../models/Wallet.model';
 import { Payout } from '../models/Payout.model';
 import { BotUsage } from '../modules/messenger-bot/models/BotUsage.model';
-import { commissionRateForOrderType } from '../services/seller-earnings.service';
+import {
+  aggregatePlatformCommission,
+  commissionRateForOrderType,
+  summarizePlatformCommission,
+  type PlatformCommissionRow,
+} from '../services/seller-earnings.service';
 import { Complaint } from '../models/Complaint.model';
 import { credit, debit, usdToTokens, usdToTokensRate } from '../services/wallet.service';
 import { listActivities } from '../services/activity-log.service';
@@ -364,6 +369,9 @@ export async function getOverviewRich(req: AuthRequest, res: Response): Promise<
   const range = (allowed as string[]).includes(raw) ? (raw as AdminRange) : '30d';
   const w = range === 'all' ? await resolveAllTimeWindow() : resolveAdminRange(range);
   const dateFormat = w.bucket === 'day' ? '%Y-%m-%d' : '%Y-%m';
+  const platformSettings = await getSettings();
+  const digitalRate = commissionRateForOrderType(platformSettings.platform, 'digital');
+  const physicalRate = commissionRateForOrderType(platformSettings.platform, 'physical');
   const inWindow = range === 'all' ? {} : { createdAt: { $gte: w.from, $lte: w.to } };
   const notAbandoned = { paymentStatus: { $ne: 'abandoned' as const } };
   const prev = range === 'all' ? null : previousWindow(w);
@@ -391,7 +399,8 @@ export async function getOverviewRich(req: AuthRequest, res: Response): Promise<
     prevAbandonedCount,
     revenueSeries,
     signupSeries,
-    commissionSeries,
+    platformCommissionPeriod,
+    platformCommissionBalance,
     paymentMixRaw,
     geoBreakdown,
     topStoresRaw,
@@ -450,21 +459,17 @@ export async function getOverviewRich(req: AuthRequest, res: Response): Promise<
         },
       },
     ]),
-    // Commission collected timeseries — commission is stored as a negative
-    // wallet transaction (kind='commission'); we negate to get the platform's gain.
-    Wallet.aggregate([
-      { $unwind: '$transactions' },
-      { $match: { 'transactions.kind': 'commission', 'transactions.createdAt': { $gte: w.from, $lte: w.to } } },
-      {
-        $group: {
-          _id: {
-            date: { $dateToString: { date: '$transactions.createdAt', format: dateFormat } },
-            currency: { $ifNull: ['$currency', 'USD'] },
-          },
-          commission: { $sum: { $multiply: ['$transactions.amount', -1] } },
-        },
-      },
-    ]),
+    // 15% (digital) / taux physique retenus sur les paiements en ligne.
+    aggregatePlatformCommission({
+      from: range === 'all' ? undefined : w.from,
+      to: range === 'all' ? undefined : w.to,
+      dateFormat,
+      digitalRate,
+      physicalRate,
+    }),
+    range === 'all'
+      ? Promise.resolve([] as PlatformCommissionRow[])
+      : aggregatePlatformCommission({ digitalRate, physicalRate }),
     // Payment provider mix, split by currency.
     Order.aggregate([
       { $match: { createdAt: { $gte: w.from, $lte: w.to }, paymentStatus: 'paid' } },
@@ -555,11 +560,19 @@ export async function getOverviewRich(req: AuthRequest, res: Response): Promise<
     paid: r.paid,
     revenue: r.revenue,
   }));
-  const commissionRows = (commissionSeries as Array<{ _id: { date: string; currency: string }; commission: number }>).map((r) => ({
-    date: r._id.date,
-    currency: r._id.currency || 'USD',
-    commission: r.commission,
-  }));
+  const commissionByKey = new Map<string, { date: string; currency: string; commission: number }>();
+  for (const row of platformCommissionPeriod) {
+    if (!row.date || row.orderType !== 'digital') continue;
+    const key = `${row.date}|${row.currency}`;
+    const current = commissionByKey.get(key) || { date: row.date, currency: row.currency, commission: 0 };
+    current.commission += row.commission;
+    commissionByKey.set(key, current);
+  }
+  const commissionRows = [...commissionByKey.values()];
+  const flexioBalance = summarizePlatformCommission(
+    range === 'all' ? platformCommissionPeriod : platformCommissionBalance,
+  );
+  const flexioPeriod = summarizePlatformCommission(platformCommissionPeriod);
   const revenueTs = seriesByCurrency(w.from, w.to, w.bucket, revenueRows, ['orders', 'paid', 'revenue']);
   const signupTs = denseSeries(
     w.from, w.to, w.bucket,
@@ -602,6 +615,12 @@ export async function getOverviewRich(req: AuthRequest, res: Response): Promise<
     },
     walletsByCurrency: walletAgg,
     commissionByCurrency: commissionTotalAgg,
+    flexioCommission: {
+      digitalRate,
+      physicalRate,
+      balance: flexioBalance,
+      period: flexioPeriod,
+    },
     timeseries: {
       revenue: revenueTs,
       signups: signupTs,

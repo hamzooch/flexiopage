@@ -71,12 +71,12 @@ const METHOD_LABELS: Record<string, { label: string; color: string; emoji: strin
 
 type Tab = 'overview' | 'logs';
 
-export default function AdminCinetpayPage() {
+export function CinetPayDesk({ embedded = false }: { embedded?: boolean }) {
   const [tab, setTab] = useState<Tab>('overview');
 
   return (
     <div className="space-y-6">
-      <PageHeader tab={tab} />
+      <PageHeader tab={tab} embedded={embedded} />
 
       <div className="flex gap-1 rounded-lg border border-border/60 bg-card p-1">
         <TabButton active={tab === 'overview'} onClick={() => setTab('overview')} icon={TrendingUp}>
@@ -92,7 +92,12 @@ export default function AdminCinetpayPage() {
   );
 }
 
-function PageHeader({ tab }: { tab: Tab }) {
+export default function AdminCinetpayPage() {
+  return <CinetPayDesk />;
+}
+
+function PageHeader({ tab, embedded }: { tab: Tab; embedded?: boolean }) {
+  if (embedded) return null;
   return (
     <div className="flex flex-wrap items-start justify-between gap-4">
       <div>

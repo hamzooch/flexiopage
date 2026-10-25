@@ -1191,6 +1191,80 @@ export const adminApi = {
         orderPaymentStatus?: string;
       }>;
     }>('/admin/payments/cinetpay-logs', { params }),
+  getPaymentLedger: (params?: {
+    days?: number | 'all';
+    status?: string;
+    provider?: string;
+    q?: string;
+    sellerId?: string;
+    limit?: number;
+    skip?: number;
+  }) =>
+    api.get<{
+      summary: {
+        paid: number;
+        pending: number;
+        failed: number;
+        refunded: number;
+        manual: number;
+        total: number;
+        sellerCount: number;
+        volumes: Array<{ currency: string; amount: number }>;
+        commission: Array<{
+          currency: string;
+          digital: number;
+          physical: number;
+          total: number;
+          digitalCount: number;
+          physicalCount: number;
+        }>;
+        digitalRate: number;
+        physicalRate: number;
+      };
+      sellers: Array<{
+        id: string;
+        name: string;
+        email: string;
+        stores: Array<{ id: string; name: string; slug: string }>;
+        paid: number;
+        pending: number;
+        failed: number;
+        refunded: number;
+        manual: number;
+        total: number;
+        volumes: Array<{ currency: string; amount: number }>;
+        generated: Array<{ currency: string; amount: number }>;
+        withdrawable: { amount: number; currency: string };
+        commission: Array<{
+          currency: string;
+          digital: number;
+          physical: number;
+          total: number;
+          digitalCount: number;
+          physicalCount: number;
+        }>;
+        lastPaymentAt?: string;
+      }>;
+      payments: Array<{
+        id: string;
+        orderNumber: string;
+        total: number;
+        currency: string;
+        paymentStatus: string;
+        paymentMethod?: string;
+        paymentProvider?: string;
+        paymentReference?: string;
+        customerName?: string;
+        email?: string;
+        createdAt: string;
+        store?: { id: string; name: string; slug: string };
+        seller?: { id: string; name: string; email: string };
+        commission?: { amount: number; rate: number; orderType: 'digital' | 'physical' };
+      }>;
+      total: number;
+      limit: number;
+      skip: number;
+    }>('/admin/payments/ledger', { params }),
   getPaymentStats: (params?: { gateway?: string; days?: number }) =>
     api.get<{
       totalTransactions: number;

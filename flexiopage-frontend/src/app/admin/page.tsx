@@ -53,6 +53,28 @@ function fmt(amount: number, currency: string): string {
   }
 }
 
+function flexioMain(data: AdminOverviewRich) {
+  return [...(data.flexioCommission?.balance ?? [])].sort((a, b) => b.digital - a.digital)[0];
+}
+
+function flexioKpiValue(data: AdminOverviewRich): string {
+  const main = flexioMain(data);
+  if (!main || main.digital <= 0) return '0';
+  return fmt(main.digital, main.currency);
+}
+
+function flexioKpiHint(data: AdminOverviewRich, onPeriod: boolean): string {
+  const rate = Math.round((data.flexioCommission?.digitalRate ?? 0.15) * 100);
+  const main = flexioMain(data);
+  if (!main) return `${rate}% des ventes digitales en ligne`;
+  const period = data.flexioCommission.period.find((p) => p.currency === main.currency);
+  const extra = data.flexioCommission.balance.length > 1
+    ? ` · ${data.flexioCommission.balance.length} devises`
+    : '';
+  const periodBit = onPeriod && period ? `${fmt(period.digital, main.currency)} sur la période · ` : '';
+  return `${periodBit}solde ${rate}% digital${extra}`;
+}
+
 function timeAgo(iso: string): string {
   const d = new Date(iso);
   const diff = Date.now() - d.getTime();
@@ -246,6 +268,13 @@ export default function AdminOverviewPage() {
               delta={flowDelta(data.totals.orders.paid, data.totals.previous?.orders.paid)}
             />
             <KpiCard
+              label="Commission FlexioPage"
+              value={flexioKpiValue(data)}
+              icon={Sparkles}
+              accent="emerald"
+              hint={flexioKpiHint(data, onPeriod)}
+            />
+            <KpiCard
               label="Livrées"
               value={data.totals.orders.delivered.toLocaleString()}
               icon={TrendingUp}
@@ -348,7 +377,10 @@ export default function AdminOverviewPage() {
             <Card>
               <CardHeader className="pb-2">
                 <CardTitle className="flex items-center gap-2 text-sm sm:text-base"><Sparkles className="h-4 w-4 shrink-0" /> Commission encaissée</CardTitle>
-                <p className="text-[11px] text-muted-foreground sm:text-xs">Marge plateforme{activeCurrency ? ` · ${activeCurrency} seulement` : ''}</p>
+                <p className="text-[11px] text-muted-foreground sm:text-xs">
+                  Solde FlexioPage · {Math.round((data.flexioCommission?.digitalRate ?? 0.15) * 100)}% digital
+                  {activeCurrency ? ` · ${activeCurrency}` : ''}
+                </p>
               </CardHeader>
               <CardContent className="px-2 sm:px-6">
                 <CommissionAreaChart data={commissionSeries} currency={activeCurrency} monthly={monthly} />
@@ -485,24 +517,52 @@ export default function AdminOverviewPage() {
             </Card>
             <Card>
               <CardHeader className="pb-2">
-                <CardTitle className="flex items-center gap-2 text-sm sm:text-base"><TrendingUp className="h-4 w-4 shrink-0" /> Commission totale</CardTitle>
-                <p className="text-[11px] text-muted-foreground sm:text-xs">{onPeriod ? 'Sur la période, par devise' : 'Depuis le début, par devise'}</p>
+                <CardTitle className="flex items-center gap-2 text-sm sm:text-base"><TrendingUp className="h-4 w-4 shrink-0" /> Solde commission FlexioPage</CardTitle>
+                <p className="text-[11px] text-muted-foreground sm:text-xs">
+                  {Math.round((data.flexioCommission?.digitalRate ?? 0.15) * 100)}% retenu sur chaque commande digitale payée en ligne
+                </p>
               </CardHeader>
               <CardContent>
-                {data.commissionByCurrency.length === 0 ? (
-                  <p className="text-sm text-muted-foreground">Aucune commission encaissée.</p>
+                {(data.flexioCommission?.balance.length ?? 0) === 0 ? (
+                  <p className="text-sm text-muted-foreground">Aucune commission digitale encaissée.</p>
                 ) : (
                   <ul className="space-y-2">
-                    {data.commissionByCurrency.map((c) => (
-                      <li key={c._id} className="rounded-xl border border-emerald-500/30 bg-emerald-500/5 p-3">
-                        <div className="flex items-center justify-between gap-2">
-                          <span className="font-mono text-[11px] uppercase tracking-wider text-emerald-700 sm:text-xs">{c._id}</span>
-                          <span className="text-[10px] text-emerald-700 sm:text-[11px]">{c.count} prélèv.</span>
-                        </div>
-                        <div className="mt-1.5 break-all text-base font-bold text-emerald-900 sm:text-lg">{fmt(c.total, c._id)}</div>
-                      </li>
-                    ))}
+                    {data.flexioCommission.balance.map((c) => {
+                      const period = data.flexioCommission.period.find((p) => p.currency === c.currency);
+                      return (
+                        <li key={c.currency} className="rounded-xl border border-emerald-500/30 bg-emerald-500/5 p-3">
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="font-mono text-[11px] uppercase tracking-wider text-emerald-700 sm:text-xs">{c.currency}</span>
+                            <span className="text-[10px] text-emerald-700 sm:text-[11px]">{c.digitalCount} vente{c.digitalCount > 1 ? 's' : ''} digitale{c.digitalCount > 1 ? 's' : ''}</span>
+                          </div>
+                          <div className="mt-1.5 break-all text-base font-bold text-emerald-900 sm:text-lg">{fmt(c.digital, c.currency)}</div>
+                          {onPeriod && period && (
+                            <p className="mt-1 text-[11px] text-emerald-800">
+                              dont {fmt(period.digital, c.currency)} sur la période
+                            </p>
+                          )}
+                          {c.physical > 0 && (
+                            <p className="mt-1 text-[11px] text-muted-foreground">
+                              Physique {Math.round(data.flexioCommission.physicalRate * 100)}% : {fmt(c.physical, c.currency)} · {c.physicalCount} commande{c.physicalCount > 1 ? 's' : ''}
+                            </p>
+                          )}
+                        </li>
+                      );
+                    })}
                   </ul>
+                )}
+                {data.commissionByCurrency.some((c) => c.total > 0) && (
+                  <div className="mt-3 border-t border-border/60 pt-3">
+                    <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Prélèvements wallet livraison</p>
+                    <ul className="space-y-1">
+                      {data.commissionByCurrency.filter((c) => c.total > 0).map((c) => (
+                        <li key={c._id} className="flex items-center justify-between text-xs">
+                          <span className="font-mono uppercase text-muted-foreground">{c._id}</span>
+                          <span className="font-semibold tabular-nums">{fmt(c.total, c._id)}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
                 )}
               </CardContent>
             </Card>

@@ -29,7 +29,31 @@ export interface AdminOverviewRich {
     complaints: { open: number; urgent: number };
   };
   walletsByCurrency: Array<{ _id: string; totalBalance: number; totalAi: number; count: number }>;
+  /** Prélèvements wallet historiques (livraison). Pas le 15% digital. */
   commissionByCurrency: Array<{ _id: string; total: number; count: number }>;
+  /** Commission retenue par FlexioPage sur les paiements en ligne. */
+  flexioCommission: {
+    digitalRate: number;
+    physicalRate: number;
+    /** Depuis le début. `digital` = solde 15% (ou taux digital configuré). */
+    balance: Array<{
+      currency: string;
+      digital: number;
+      physical: number;
+      total: number;
+      digitalCount: number;
+      physicalCount: number;
+    }>;
+    /** Même forme, limitée à la période affichée. */
+    period: Array<{
+      currency: string;
+      digital: number;
+      physical: number;
+      total: number;
+      digitalCount: number;
+      physicalCount: number;
+    }>;
+  };
   timeseries: {
     revenue: Array<{ date: string; currency: string; revenue: number; orders: number; paid: number }>;
     signups: Array<{ date: string; signups: number }>;

@@ -5,7 +5,18 @@ import { Request, Response } from 'express';
 import { PaymentLog } from '../models/PaymentLog.model';
 import { Order } from '../models/Order.model';
 import { Payout } from '../models/Payout.model';
+import { Product } from '../models/Product.model';
+import { Store } from '../models/Store.model';
+import { User } from '../models/User.model';
+import { Wallet } from '../models/Wallet.model';
+import { getSettings } from '../models/Settings.model';
 import { CinetPayProvider } from '../services/payment/cinetpay.service';
+import {
+  aggregatePlatformCommission,
+  commissionForOnlineOrder,
+  commissionRateForOrderType,
+  summarizePlatformCommission,
+} from '../services/seller-earnings.service';
 import { commissionFor } from '../services/wallet.service';
 import { markOrderPaymentFailed } from '../services/payment-failure-alert.service';
 
@@ -400,6 +411,390 @@ export async function retryWebhook(req: Request, res: Response): Promise<void> {
   } catch (err) {
     console.error('[payments] retryWebhook error:', err);
     res.status(500).json({ error: 'Failed to retry webhook' });
+  }
+}
+
+const LEDGER_STATUSES = ['paid', 'pending', 'failed', 'refunded', 'manual'] as const;
+const LEDGER_PROVIDERS = [
+  'cinetpay', 'paydunya', 'flutterwave', 'moneróo', 'wave', 'orange_money',
+  'mtn_momo', 'moov_money', 'stripe', 'cod', 'manual',
+] as const;
+
+function escapeRegex(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+type LedgerGroup = {
+  _id: {
+    storeId?: { toString(): string } | null;
+    currency?: string;
+    status?: string;
+  };
+  count: number;
+  amount: number;
+  lastAt?: Date;
+};
+
+type SellerBucket = {
+  id: string;
+  stores: Map<string, { id: string; name: string; slug: string }>;
+  paid: number;
+  pending: number;
+  failed: number;
+  refunded: number;
+  manual: number;
+  total: number;
+  volumes: Map<string, number>;
+  lastPaymentAt?: Date;
+};
+
+function emptySeller(id: string): SellerBucket {
+  return {
+    id,
+    stores: new Map(),
+    paid: 0,
+    pending: 0,
+    failed: 0,
+    refunded: 0,
+    manual: 0,
+    total: 0,
+    volumes: new Map(),
+  };
+}
+
+/**
+ * GET /api/admin/payments/ledger
+ *
+ * Owner view of customer payments (orders), joined to the store and its
+ * seller. Returns a period summary, one row per seller, and a paginated
+ * payment list. Filters (status, provider, search, seller) apply only to
+ * the list — the summary and seller rollup stay on the whole period so
+ * the directory does not collapse when a status chip is selected.
+ *
+ * Query: days=7|30|90|all, status, provider, q, sellerId, limit, skip
+ */
+export async function getPaymentLedger(req: Request, res: Response): Promise<void> {
+  try {
+    const daysRaw = String(req.query.days ?? '30');
+    let since: Date | null = null;
+    if (daysRaw !== 'all') {
+      const days = Math.min(Math.max(parseInt(daysRaw, 10) || 30, 1), 3650);
+      since = new Date();
+      since.setDate(since.getDate() - days);
+    }
+
+    const statusRaw = String(req.query.status || 'all');
+    const status = (LEDGER_STATUSES as readonly string[]).includes(statusRaw) ? statusRaw : 'all';
+    const providerRaw = String(req.query.provider || 'all');
+    const provider = (LEDGER_PROVIDERS as readonly string[]).includes(providerRaw) ? providerRaw : 'all';
+    const sellerId = String(req.query.sellerId || '').trim();
+    const q = String(req.query.q || '').trim().slice(0, 80);
+    const limit = Math.min(Math.max(parseInt(String(req.query.limit || '30'), 10) || 30, 1), 100);
+    const skip = Math.max(parseInt(String(req.query.skip || '0'), 10) || 0, 0);
+
+    const periodMatch: Record<string, unknown> = {
+      paymentStatus: { $ne: 'abandoned' },
+    };
+    if (since) periodMatch.createdAt = { $gte: since };
+
+    const settings = await getSettings();
+    const digitalRate = commissionRateForOrderType(settings.platform, 'digital');
+    const physicalRate = commissionRateForOrderType(settings.platform, 'physical');
+
+    const [groups, stores, commissionRows, generatedGroups, wallets] = await Promise.all([
+      Order.aggregate<LedgerGroup>([
+        { $match: periodMatch },
+        {
+          $group: {
+            _id: {
+              storeId: '$storeId',
+              currency: { $ifNull: ['$currency', 'USD'] },
+              status: '$paymentStatus',
+            },
+            count: { $sum: 1 },
+            amount: { $sum: '$total' },
+            lastAt: { $max: '$createdAt' },
+          },
+        },
+      ]),
+      Store.find().select('name slug ownerId settings.currency').lean(),
+      aggregatePlatformCommission({
+        from: since || undefined,
+        byStore: true,
+        digitalRate,
+        physicalRate,
+      }),
+      Order.aggregate<Array<{ _id: { storeId?: { toString(): string }; currency?: string }; amount: number }>[number]>([
+        { $match: { paymentStatus: 'paid' } },
+        {
+          $group: {
+            _id: {
+              storeId: '$storeId',
+              currency: { $ifNull: ['$currency', 'USD'] },
+            },
+            amount: { $sum: '$total' },
+          },
+        },
+      ]),
+      Wallet.find().select('userId payoutBalance currency').lean(),
+    ]);
+
+    const storeById = new Map(stores.map((s) => [String(s._id), s]));
+    const sellerIds = [...new Set(stores.map((s) => (s.ownerId ? String(s.ownerId) : '')).filter(Boolean))];
+    const users = sellerIds.length
+      ? await User.find({ _id: { $in: sellerIds } }).select('name email').lean()
+      : [];
+    const userById = new Map(users.map((u) => [String(u._id), u]));
+    const walletByUser = new Map(wallets.map((w) => [String(w.userId), w]));
+    const generatedByStore = new Map<string, Map<string, number>>();
+    for (const row of generatedGroups) {
+      const storeId = row._id.storeId ? String(row._id.storeId) : '';
+      if (!storeId) continue;
+      const currency = row._id.currency || 'USD';
+      const amounts = generatedByStore.get(storeId) || new Map<string, number>();
+      amounts.set(currency, (amounts.get(currency) || 0) + (row.amount || 0));
+      generatedByStore.set(storeId, amounts);
+    }
+    const storesByOwner = new Map<string, typeof stores>();
+    for (const store of stores) {
+      const ownerKey = store.ownerId ? String(store.ownerId) : '';
+      if (!ownerKey) continue;
+      const list = storesByOwner.get(ownerKey) || [];
+      list.push(store);
+      storesByOwner.set(ownerKey, list);
+    }
+
+    const commissionByStore = new Map<string, typeof commissionRows>();
+    for (const row of commissionRows) {
+      if (!row.storeId) continue;
+      const list = commissionByStore.get(row.storeId) || [];
+      list.push(row);
+      commissionByStore.set(row.storeId, list);
+    }
+
+    const sellers = new Map<string, SellerBucket>();
+    const summaryCounts = { paid: 0, pending: 0, failed: 0, refunded: 0, manual: 0, total: 0 };
+    const summaryVolumes = new Map<string, number>();
+
+    for (const row of groups) {
+      const storeId = row._id.storeId ? String(row._id.storeId) : '';
+      const store = storeId ? storeById.get(storeId) : undefined;
+      const ownerKey = store?.ownerId ? String(store.ownerId) : 'unknown';
+      const bucket = sellers.get(ownerKey) || emptySeller(ownerKey);
+      if (storeId) {
+        bucket.stores.set(storeId, {
+          id: storeId,
+          name: store?.name || 'Boutique',
+          slug: store?.slug || '',
+        });
+      }
+      const count = row.count || 0;
+      const amount = row.amount || 0;
+      const currency = row._id.currency || 'USD';
+      const rowStatus = row._id.status || '';
+      bucket.total += count;
+      summaryCounts.total += count;
+      if (rowStatus === 'paid') {
+        bucket.paid += count;
+        summaryCounts.paid += count;
+        bucket.volumes.set(currency, (bucket.volumes.get(currency) || 0) + amount);
+        summaryVolumes.set(currency, (summaryVolumes.get(currency) || 0) + amount);
+      } else if (rowStatus === 'pending') {
+        bucket.pending += count;
+        summaryCounts.pending += count;
+      } else if (rowStatus === 'failed') {
+        bucket.failed += count;
+        summaryCounts.failed += count;
+      } else if (rowStatus === 'refunded') {
+        bucket.refunded += count;
+        summaryCounts.refunded += count;
+      } else if (rowStatus === 'manual') {
+        bucket.manual += count;
+        summaryCounts.manual += count;
+      }
+      if (row.lastAt && (!bucket.lastPaymentAt || row.lastAt > bucket.lastPaymentAt)) {
+        bucket.lastPaymentAt = row.lastAt;
+      }
+      sellers.set(ownerKey, bucket);
+    }
+
+    for (const [ownerKey, ownedStores] of storesByOwner) {
+      const payout = walletByUser.get(ownerKey)?.payoutBalance || 0;
+      const hasSales = ownedStores.some((store) => generatedByStore.has(String(store._id)));
+      if (sellers.has(ownerKey) || (payout === 0 && !hasSales)) continue;
+      const bucket = emptySeller(ownerKey);
+      for (const store of ownedStores) {
+        bucket.stores.set(String(store._id), {
+          id: String(store._id),
+          name: store.name || 'Boutique',
+          slug: store.slug || '',
+        });
+      }
+      sellers.set(ownerKey, bucket);
+    }
+
+    const sellerRows = [...sellers.values()]
+      .map((b) => {
+        const user = userById.get(b.id);
+        const owned = storesByOwner.get(b.id) || [];
+        const storeIds = owned.length
+          ? owned.map((store) => String(store._id))
+          : [...b.stores.keys()];
+        const generated = new Map<string, number>();
+        for (const storeId of storeIds) {
+          const amounts = generatedByStore.get(storeId);
+          if (!amounts) continue;
+          for (const [currency, amount] of amounts) {
+            generated.set(currency, (generated.get(currency) || 0) + amount);
+          }
+        }
+        const wallet = walletByUser.get(b.id);
+        const payoutCurrency = owned.map((store) => store.settings?.currency).find((code) => !!code)
+          || [...b.stores.keys()].map((id) => storeById.get(id)?.settings?.currency).find((code) => !!code)
+          || 'XOF';
+        return {
+          id: b.id,
+          name: user?.name || (b.id === 'unknown' ? 'Vendeur inconnu' : 'Compte supprimé'),
+          email: user?.email || '',
+          stores: [...b.stores.values()],
+          paid: b.paid,
+          pending: b.pending,
+          failed: b.failed,
+          refunded: b.refunded,
+          manual: b.manual,
+          total: b.total,
+          volumes: [...b.volumes.entries()]
+            .map(([currency, amount]) => ({ currency, amount }))
+            .sort((a, b2) => b2.amount - a.amount),
+          generated: [...generated.entries()]
+            .map(([currency, amount]) => ({ currency, amount }))
+            .sort((a, b2) => b2.amount - a.amount),
+          withdrawable: {
+            amount: wallet?.payoutBalance || 0,
+            currency: payoutCurrency,
+          },
+          commission: summarizePlatformCommission(
+            [...b.stores.keys()].flatMap((storeId) => commissionByStore.get(storeId) || []),
+          ),
+          lastPaymentAt: b.lastPaymentAt ? b.lastPaymentAt.toISOString() : undefined,
+        };
+      })
+      .sort((a, b) => (b.withdrawable.amount - a.withdrawable.amount) || b.paid - a.paid || b.total - a.total);
+
+    const listFilter: Record<string, unknown> = { ...periodMatch };
+    if (status !== 'all') listFilter.paymentStatus = status;
+    if (provider !== 'all') {
+      listFilter.$or = [{ paymentProvider: provider }, { paymentMethod: provider }];
+    }
+    if (sellerId) {
+      const ids = stores.filter((s) => String(s.ownerId) === sellerId).map((s) => s._id);
+      listFilter.storeId = { $in: ids };
+    }
+    if (q) {
+      const rx = new RegExp(escapeRegex(q), 'i');
+      const matchedUsers = await User.find({ $or: [{ name: rx }, { email: rx }] }).select('_id').limit(30).lean();
+      const ownerIds = new Set(matchedUsers.map((u) => String(u._id)));
+      const matchedStoreIds = stores
+        .filter((s) => rx.test(s.name || '') || rx.test(s.slug || '') || ownerIds.has(String(s.ownerId)))
+        .map((s) => s._id);
+      const textOr: Record<string, unknown>[] = [
+        { orderNumber: rx },
+        { email: rx },
+        { customerName: rx },
+        { paymentReference: rx },
+      ];
+      if (matchedStoreIds.length) textOr.push({ storeId: { $in: matchedStoreIds } });
+      if (listFilter.$or) {
+        listFilter.$and = [{ $or: listFilter.$or }, { $or: textOr }];
+        delete listFilter.$or;
+      } else {
+        listFilter.$or = textOr;
+      }
+    }
+
+    const [orders, total] = await Promise.all([
+      Order.find(listFilter)
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(limit)
+        .select('orderNumber total currency paymentStatus paymentMethod paymentProvider paymentReference customerName email storeId items.productId createdAt')
+        .populate({
+          path: 'storeId',
+          select: 'name slug ownerId',
+          populate: { path: 'ownerId', select: 'name email' },
+        })
+        .lean(),
+      Order.countDocuments(listFilter),
+    ]);
+
+    const productIds = [...new Set(
+      orders.map((o) => o.items?.[0]?.productId?.toString()).filter(Boolean),
+    )] as string[];
+    const productTypes = productIds.length
+      ? await Product.find({ _id: { $in: productIds } }).select('type').lean()
+      : [];
+    const productTypeById = new Map(productTypes.map((p) => [String(p._id), p.type]));
+    const rates = { digital: digitalRate, physical: physicalRate };
+
+    const payments = orders.map((o) => {
+      const store = o.storeId && typeof o.storeId === 'object' ? o.storeId as {
+        _id?: { toString(): string };
+        name?: string;
+        slug?: string;
+        ownerId?: { _id?: { toString(): string }; name?: string; email?: string } | string;
+      } : undefined;
+      const owner = store?.ownerId && typeof store.ownerId === 'object' ? store.ownerId : undefined;
+      const commission = commissionForOnlineOrder(
+        o,
+        productTypeById.get(String(o.items?.[0]?.productId)),
+        rates,
+      );
+      return {
+        id: String(o._id),
+        orderNumber: o.orderNumber,
+        total: o.total,
+        currency: o.currency || 'USD',
+        paymentStatus: o.paymentStatus,
+        paymentMethod: o.paymentMethod,
+        paymentProvider: o.paymentProvider,
+        paymentReference: o.paymentReference,
+        customerName: o.customerName,
+        email: o.email,
+        createdAt: o.createdAt,
+        store: store ? {
+          id: store._id ? String(store._id) : '',
+          name: store.name || 'Boutique',
+          slug: store.slug || '',
+        } : undefined,
+        seller: owner ? {
+          id: owner._id ? String(owner._id) : '',
+          name: owner.name || '',
+          email: owner.email || '',
+        } : undefined,
+        commission: commission || undefined,
+      };
+    });
+
+    res.json({
+      summary: {
+        ...summaryCounts,
+        sellerCount: sellerRows.length,
+        volumes: [...summaryVolumes.entries()]
+          .map(([currency, amount]) => ({ currency, amount }))
+          .sort((a, b) => b.amount - a.amount),
+        commission: summarizePlatformCommission(commissionRows),
+        digitalRate,
+        physicalRate,
+      },
+      sellers: sellerRows,
+      payments,
+      total,
+      limit,
+      skip,
+    });
+  } catch (err) {
+    console.error('[payments] getPaymentLedger error:', err);
+    res.status(500).json({ error: 'Failed to load payment ledger' });
   }
 }
 

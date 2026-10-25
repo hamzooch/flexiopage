@@ -434,6 +434,8 @@ function labelFromPath(path: string): string {
     stores: 'Boutiques',
     'store-limits': 'Limites',
     orders: 'Commandes',
+    payments: 'Paiements',
+    payouts: 'Versements',
     wallets: 'Wallets',
     pricing: 'Tarifs AI',
     complaints: 'Réclamations',
