@@ -187,16 +187,17 @@ export async function getOverview(_req: AuthRequest, res: Response): Promise<voi
 }
 
 /**
- * GET /api/admin/overview/rich?range=7d|30d|90d|12m
+ * GET /api/admin/overview/rich?range=today|yesterday|7d|30d|90d|12m|all
  *
  * Powers the new pro admin dashboard. Returns everything `getOverview` does
  * PLUS: signup timeseries, commission timeseries, geo breakdown, alerts, and
  * top stores enriched with currency-grouped GMV.
+ * KPI counters use the same window as the charts.
  */
-type AdminRange = 'today' | 'yesterday' | '7d' | '30d' | '90d' | '12m';
+type AdminRange = 'today' | 'yesterday' | '7d' | '30d' | '90d' | '12m' | 'all';
 interface AdminWindow { from: Date; to: Date; bucket: 'day' | 'month'; }
 
-function resolveAdminRange(range: AdminRange): AdminWindow {
+function resolveAdminRange(range: Exclude<AdminRange, 'all'>): AdminWindow {
   const now = new Date();
   const to = new Date(now);
   to.setHours(23, 59, 59, 999);
@@ -223,6 +224,112 @@ function resolveAdminRange(range: AdminRange): AdminWindow {
   from.setHours(0, 0, 0, 0);
   return { from, to, bucket: 'day' };
 }
+
+/** « Tous les temps » : du premier vendeur ou de la première commande à aujourd'hui. Mois si la fenêtre dépasse 120 jours. */
+async function resolveAllTimeWindow(): Promise<AdminWindow> {
+  const now = new Date();
+  const to = new Date(now);
+  to.setHours(23, 59, 59, 999);
+  const [firstOrder, firstUser] = await Promise.all([
+    Order.findOne().sort({ createdAt: 1 }).select('createdAt').lean(),
+    User.findOne({ role: 'user' }).sort({ createdAt: 1 }).select('createdAt').lean(),
+  ]);
+  const stamps = [firstOrder?.createdAt, firstUser?.createdAt]
+    .map((d) => (d ? new Date(d).getTime() : NaN))
+    .filter((n) => Number.isFinite(n));
+  const from = new Date(stamps.length ? Math.min(...stamps) : now.getTime());
+  from.setHours(0, 0, 0, 0);
+  const spanDays = (to.getTime() - from.getTime()) / 86_400_000;
+  return { from, to, bucket: spanDays > 120 ? 'month' : 'day' };
+}
+
+/** Fenêtre immédiatement précédente, de même durée. Sert au delta des tuiles. */
+function previousWindow(w: AdminWindow): AdminWindow {
+  const span = w.to.getTime() - w.from.getTime();
+  const to = new Date(w.from.getTime() - 1);
+  const from = new Date(to.getTime() - span);
+  return { from, to, bucket: w.bucket };
+}
+
+/**
+ * Commandes passées à `fulfilled` pendant la fenêtre.
+ * Date = première entrée statusHistory, sinon createdAt (commande digitale
+ * livrée dès la création, sans historique).
+ */
+async function countFulfilledBetween(from: Date, to: Date): Promise<number> {
+  const rows = await Order.aggregate<{ n: number }>([
+    { $match: { fulfillmentStatus: 'fulfilled' } },
+    {
+      $project: {
+        fulfilledAt: {
+          $ifNull: [
+            {
+              $min: {
+                $map: {
+                  input: {
+                    $filter: {
+                      input: { $ifNull: ['$statusHistory', []] },
+                      as: 'h',
+                      cond: { $eq: ['$$h.fulfillmentStatus', 'fulfilled'] },
+                    },
+                  },
+                  as: 'h',
+                  in: '$$h.at',
+                },
+              },
+            },
+            '$createdAt',
+          ],
+        },
+      },
+    },
+    { $match: { fulfilledAt: { $gte: from, $lte: to } } },
+    { $count: 'n' },
+  ]);
+  return rows[0]?.n ?? 0;
+}
+
+/** Une série dense par devise. On n'additionne jamais deux devises. */
+function seriesByCurrency(
+  from: Date,
+  to: Date,
+  bucket: 'day' | 'month',
+  rows: Array<{ date: string; currency: string; [key: string]: number | string }>,
+  fields: readonly string[],
+): Array<Record<string, number | string>> {
+  const currencies = [...new Set(rows.map((r) => r.currency || 'USD'))];
+  const out: Array<Record<string, number | string>> = [];
+  for (const currency of currencies) {
+    const subset = rows
+      .filter((r) => (r.currency || 'USD') === currency)
+      .map((r) => ({ ...r, _id: r.date }));
+    const dense = denseSeries(from, to, bucket, subset, fields);
+    for (const point of dense) out.push({ ...point, currency });
+  }
+  return out;
+}
+
+const BUYER_COUNTRY = {
+  $let: {
+    vars: {
+      ship: { $toUpper: { $ifNull: ['$shippingAddress.country', ''] } },
+      market: { $toUpper: { $ifNull: ['$marketCountry', ''] } },
+    },
+    in: {
+      $cond: [
+        { $and: [{ $ne: ['$$ship', ''] }, { $ne: ['$$ship', 'XX'] }] },
+        '$$ship',
+        {
+          $cond: [
+            { $and: [{ $ne: ['$$market', ''] }, { $ne: ['$$market', 'XX'] }] },
+            '$$market',
+            'XX',
+          ],
+        },
+      ],
+    },
+  },
+};
 
 function denseSeries(
   from: Date,
@@ -252,13 +359,20 @@ function denseSeries(
 }
 
 export async function getOverviewRich(req: AuthRequest, res: Response): Promise<void> {
-  const allowed: AdminRange[] = ['today', 'yesterday', '7d', '30d', '90d', '12m'];
+  const allowed: AdminRange[] = ['today', 'yesterday', '7d', '30d', '90d', '12m', 'all'];
   const raw = String(req.query.range || '30d');
   const range = (allowed as string[]).includes(raw) ? (raw as AdminRange) : '30d';
-  const w = resolveAdminRange(range);
+  const w = range === 'all' ? await resolveAllTimeWindow() : resolveAdminRange(range);
   const dateFormat = w.bucket === 'day' ? '%Y-%m-%d' : '%Y-%m';
+  const inWindow = range === 'all' ? {} : { createdAt: { $gte: w.from, $lte: w.to } };
+  const notAbandoned = { paymentStatus: { $ne: 'abandoned' as const } };
+  const prev = range === 'all' ? null : previousWindow(w);
+  const prevWindow = prev ? { createdAt: { $gte: prev.from, $lte: prev.to } } : null;
 
   const [
+    userStock,
+    storeStock,
+    productStock,
     userCount,
     storeCount,
     productCount,
@@ -266,16 +380,26 @@ export async function getOverviewRich(req: AuthRequest, res: Response): Promise<
     paidCount,
     deliveredCount,
     failedCount,
+    abandonedCount,
+    prevUserCount,
+    prevStoreCount,
+    prevProductCount,
+    prevOrderCount,
+    prevPaidCount,
+    prevDeliveredCount,
+    prevFailedCount,
+    prevAbandonedCount,
     revenueSeries,
     signupSeries,
     commissionSeries,
-    paymentMix,
+    paymentMixRaw,
     geoBreakdown,
     topStoresRaw,
     walletAgg,
     commissionTotalAgg,
     openComplaints,
     urgentComplaints,
+    negativeWallets,
     recentOrders,
     recentUsers,
     failingPayments,
@@ -283,16 +407,33 @@ export async function getOverviewRich(req: AuthRequest, res: Response): Promise<
     User.countDocuments({ role: 'user' }),
     Store.countDocuments(),
     Product.countDocuments(),
-    Order.countDocuments(),
-    Order.countDocuments({ paymentStatus: 'paid' }),
-    Order.countDocuments({ fulfillmentStatus: 'fulfilled' }),
-    Order.countDocuments({ paymentStatus: 'failed' }),
-    // Revenue + orders timeseries
+    User.countDocuments({ role: 'user', ...inWindow }),
+    Store.countDocuments(inWindow),
+    Product.countDocuments(inWindow),
+    Order.countDocuments({ ...inWindow, ...notAbandoned }),
+    Order.countDocuments({ ...inWindow, paymentStatus: 'paid' }),
+    range === 'all'
+      ? Order.countDocuments({ fulfillmentStatus: 'fulfilled' })
+      : countFulfilledBetween(w.from, w.to),
+    Order.countDocuments({ ...inWindow, paymentStatus: 'failed' }),
+    Order.countDocuments({ ...inWindow, paymentStatus: 'abandoned' }),
+    prevWindow ? User.countDocuments({ role: 'user', ...prevWindow }) : Promise.resolve(0),
+    prevWindow ? Store.countDocuments(prevWindow) : Promise.resolve(0),
+    prevWindow ? Product.countDocuments(prevWindow) : Promise.resolve(0),
+    prevWindow ? Order.countDocuments({ ...prevWindow, ...notAbandoned }) : Promise.resolve(0),
+    prevWindow ? Order.countDocuments({ ...prevWindow, paymentStatus: 'paid' }) : Promise.resolve(0),
+    prev ? countFulfilledBetween(prev.from, prev.to) : Promise.resolve(0),
+    prevWindow ? Order.countDocuments({ ...prevWindow, paymentStatus: 'failed' }) : Promise.resolve(0),
+    prevWindow ? Order.countDocuments({ ...prevWindow, paymentStatus: 'abandoned' }) : Promise.resolve(0),
+    // Revenue + orders timeseries, one bucket per day AND currency.
     Order.aggregate([
-      { $match: { createdAt: { $gte: w.from, $lte: w.to } } },
+      { $match: { createdAt: { $gte: w.from, $lte: w.to }, paymentStatus: { $ne: 'abandoned' } } },
       {
         $group: {
-          _id: { $dateToString: { date: '$createdAt', format: dateFormat } },
+          _id: {
+            date: { $dateToString: { date: '$createdAt', format: dateFormat } },
+            currency: { $ifNull: ['$currency', 'USD'] },
+          },
           orders: { $sum: 1 },
           paid: { $sum: { $cond: [{ $eq: ['$paymentStatus', 'paid'] }, 1, 0] } },
           revenue: { $sum: { $cond: [{ $eq: ['$paymentStatus', 'paid'] }, '$total', 0] } },
@@ -316,57 +457,61 @@ export async function getOverviewRich(req: AuthRequest, res: Response): Promise<
       { $match: { 'transactions.kind': 'commission', 'transactions.createdAt': { $gte: w.from, $lte: w.to } } },
       {
         $group: {
-          _id: { $dateToString: { date: '$transactions.createdAt', format: dateFormat } },
+          _id: {
+            date: { $dateToString: { date: '$transactions.createdAt', format: dateFormat } },
+            currency: { $ifNull: ['$currency', 'USD'] },
+          },
           commission: { $sum: { $multiply: ['$transactions.amount', -1] } },
         },
       },
     ]),
-    // Payment provider mix
+    // Payment provider mix, split by currency.
     Order.aggregate([
       { $match: { createdAt: { $gte: w.from, $lte: w.to }, paymentStatus: 'paid' } },
       {
         $group: {
-          _id: { $ifNull: ['$paymentProvider', '$paymentMethod'] },
+          _id: {
+            provider: { $ifNull: ['$paymentProvider', '$paymentMethod'] },
+            currency: { $ifNull: ['$currency', 'USD'] },
+          },
           orders: { $sum: 1 },
           revenue: { $sum: '$total' },
         },
       },
       { $sort: { revenue: -1 } },
     ]),
-    // Geographic breakdown — shippingAddress.country falls back to 'XX' when unset.
+    // Pays acheteur : adresse, sinon marketCountry. XX seulement si les deux manquent.
     Order.aggregate([
       { $match: { createdAt: { $gte: w.from, $lte: w.to }, paymentStatus: 'paid' } },
       {
         $group: {
-          _id: { $ifNull: ['$shippingAddress.country', 'XX'] },
+          _id: { country: BUYER_COUNTRY, currency: { $ifNull: ['$currency', 'USD'] } },
           orders: { $sum: 1 },
           revenue: { $sum: '$total' },
         },
       },
       { $sort: { revenue: -1 } },
-      { $limit: 12 },
     ]),
-    // Top 8 stores in window
+    // Top boutiques : une ligne par boutique ET par devise.
     Order.aggregate([
       { $match: { createdAt: { $gte: w.from, $lte: w.to }, paymentStatus: 'paid' } },
       {
         $group: {
-          _id: '$storeId',
+          _id: { storeId: '$storeId', currency: { $ifNull: ['$currency', 'USD'] } },
           orders: { $sum: 1 },
           gmv: { $sum: '$total' },
-          currency: { $first: '$currency' },
         },
       },
       { $sort: { gmv: -1 } },
-      { $limit: 8 },
-      { $lookup: { from: 'stores', localField: '_id', foreignField: '_id', as: 'store' } },
+      { $limit: 40 },
+      { $lookup: { from: 'stores', localField: '_id.storeId', foreignField: '_id', as: 'store' } },
       { $unwind: { path: '$store', preserveNullAndEmptyArrays: true } },
       {
         $project: {
-          _id: 1,
+          _id: '$_id.storeId',
+          currency: '$_id.currency',
           orders: 1,
           gmv: 1,
-          currency: 1,
           name: '$store.name',
           slug: '$store.slug',
           logo: '$store.logo',
@@ -378,18 +523,24 @@ export async function getOverviewRich(req: AuthRequest, res: Response): Promise<
     ]),
     Wallet.aggregate([
       { $unwind: '$transactions' },
-      { $match: { 'transactions.kind': 'commission' } },
+      {
+        $match: {
+          'transactions.kind': 'commission',
+          ...(range === 'all' ? {} : { 'transactions.createdAt': { $gte: w.from, $lte: w.to } }),
+        },
+      },
       { $group: { _id: '$currency', total: { $sum: { $multiply: ['$transactions.amount', -1] } }, count: { $sum: 1 } } },
     ]),
     Complaint.countDocuments({ status: { $in: ['open', 'in_progress'] } }),
     Complaint.countDocuments({ status: { $in: ['open', 'in_progress'] }, priority: 'urgent' }),
-    Order.find().populate('storeId', 'name slug').sort({ createdAt: -1 }).limit(8)
+    Wallet.countDocuments({ balance: { $lt: 0 } }),
+    Order.find({ ...inWindow, ...notAbandoned }).populate('storeId', 'name slug').sort({ createdAt: -1 }).limit(8)
       .select('orderNumber total currency paymentStatus fulfillmentStatus customerName email storeId createdAt')
       .lean(),
-    User.find({ role: 'user' }).sort({ createdAt: -1 }).limit(8)
+    User.find({ role: 'user', ...inWindow }).sort({ createdAt: -1 }).limit(8)
       .select('email name createdAt emailVerified country')
       .lean(),
-    Order.find({ paymentStatus: 'failed', createdAt: { $gte: w.from } })
+    Order.find({ paymentStatus: 'failed', ...inWindow })
       .populate('storeId', 'name slug')
       .sort({ createdAt: -1 })
       .limit(5)
@@ -397,30 +548,56 @@ export async function getOverviewRich(req: AuthRequest, res: Response): Promise<
       .lean(),
   ]);
 
-  const revenueTs = denseSeries(
-    w.from, w.to, w.bucket,
-    revenueSeries as Array<Record<string, unknown> & { _id: string }>,
-    ['orders', 'paid', 'revenue'],
-  );
+  const revenueRows = (revenueSeries as Array<{ _id: { date: string; currency: string }; orders: number; paid: number; revenue: number }>).map((r) => ({
+    date: r._id.date,
+    currency: r._id.currency || 'USD',
+    orders: r.orders,
+    paid: r.paid,
+    revenue: r.revenue,
+  }));
+  const commissionRows = (commissionSeries as Array<{ _id: { date: string; currency: string }; commission: number }>).map((r) => ({
+    date: r._id.date,
+    currency: r._id.currency || 'USD',
+    commission: r.commission,
+  }));
+  const revenueTs = seriesByCurrency(w.from, w.to, w.bucket, revenueRows, ['orders', 'paid', 'revenue']);
   const signupTs = denseSeries(
     w.from, w.to, w.bucket,
     signupSeries as Array<Record<string, unknown> & { _id: string }>,
     ['signups'],
   );
-  const commissionTs = denseSeries(
-    w.from, w.to, w.bucket,
-    commissionSeries as Array<Record<string, unknown> & { _id: string }>,
-    ['commission'],
-  );
+  const commissionTs = seriesByCurrency(w.from, w.to, w.bucket, commissionRows, ['commission']);
+  const ordersBlock = {
+    total: orderCount,
+    paid: paidCount,
+    delivered: deliveredCount,
+    failed: failedCount,
+    abandoned: abandonedCount,
+  };
 
   res.json({
     range,
-    window: { from: w.from.toISOString(), to: w.to.toISOString() },
+    window: { from: w.from.toISOString(), to: w.to.toISOString(), bucket: w.bucket },
     totals: {
-      users: userCount,
-      stores: storeCount,
-      products: productCount,
-      orders: { total: orderCount, paid: paidCount, delivered: deliveredCount, failed: failedCount },
+      users: userStock,
+      stores: storeStock,
+      products: productStock,
+      usersNew: userCount,
+      storesNew: storeCount,
+      productsNew: productCount,
+      orders: ordersBlock,
+      previous: prev ? {
+        usersNew: prevUserCount,
+        storesNew: prevStoreCount,
+        productsNew: prevProductCount,
+        orders: {
+          total: prevOrderCount,
+          paid: prevPaidCount,
+          delivered: prevDeliveredCount,
+          failed: prevFailedCount,
+          abandoned: prevAbandonedCount,
+        },
+      } : null,
       complaints: { open: openComplaints, urgent: urgentComplaints },
     },
     walletsByCurrency: walletAgg,
@@ -430,12 +607,23 @@ export async function getOverviewRich(req: AuthRequest, res: Response): Promise<
       signups: signupTs,
       commission: commissionTs,
     },
-    paymentMix,
-    geo: geoBreakdown,
+    paymentMix: (paymentMixRaw as Array<{ _id: { provider: string; currency: string }; orders: number; revenue: number }>).map((p) => ({
+      provider: p._id.provider || 'unknown',
+      currency: p._id.currency || 'USD',
+      orders: p.orders,
+      revenue: p.revenue,
+    })),
+    geo: (geoBreakdown as Array<{ _id: { country: string; currency: string }; orders: number; revenue: number }>).map((g) => ({
+      _id: g._id.country || 'XX',
+      currency: g._id.currency || 'USD',
+      orders: g.orders,
+      revenue: g.revenue,
+    })),
     topStores: topStoresRaw,
     recentOrders,
     recentUsers,
     alerts: {
+      negativeWallets,
       failedPayments: failingPayments,
     },
   });

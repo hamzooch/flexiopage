@@ -42,18 +42,22 @@ export function GeoBreakdownList({ data, currency }: Props) {
       </div>
     );
   }
-  const totalRev = data.reduce((s, d) => s + d.revenue, 0);
+  const knownRev = data
+    .filter((d) => (d._id || '').toUpperCase() !== 'XX')
+    .reduce((s, d) => s + d.revenue, 0);
 
   return (
     <ul className="space-y-2">
       {data.map((row) => {
-        const meta = COUNTRY_META[row._id?.toUpperCase()];
-        const pct = totalRev > 0 ? (row.revenue / totalRev) * 100 : 0;
+        const code = (row._id || '').toUpperCase();
+        const meta = COUNTRY_META[code];
+        const unknown = code === 'XX';
+        const pct = !unknown && knownRev > 0 ? (row.revenue / knownRev) * 100 : null;
         return (
           <li key={row._id} className="group relative overflow-hidden rounded-xl border border-border/60 bg-card/60 p-3 transition-colors hover:border-primary/40">
             <div
               className="pointer-events-none absolute inset-y-0 left-0 bg-gradient-to-r from-rose-500/10 via-rose-500/5 to-transparent"
-              style={{ width: `${pct}%` }}
+              style={{ width: `${pct ?? 0}%` }}
             />
             <div className="relative flex items-center gap-2 sm:gap-3">
               <span className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-muted text-base sm:h-9 sm:w-9">
@@ -69,7 +73,7 @@ export function GeoBreakdownList({ data, currency }: Props) {
               </div>
               <div className="shrink-0 text-right">
                 <div className="text-xs font-bold tabular-nums sm:text-sm">{formatCurrency(row.revenue, currency)}</div>
-                <div className="text-[10px] text-muted-foreground">{pct.toFixed(0)}%</div>
+                <div className="text-[10px] text-muted-foreground">{pct == null ? 'hors classement' : `${pct.toFixed(0)}%`}</div>
               </div>
             </div>
           </li>

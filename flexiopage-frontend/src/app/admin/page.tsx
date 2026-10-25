@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import {
   Activity,
@@ -26,7 +26,6 @@ import {
 } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { adminApi } from '@/lib/api';
-import { storeAbsoluteUrl } from '@/lib/utils';
 import { useAuthStore } from '@/stores/auth-store';
 import { KpiCard } from '@/components/charts/KpiCard';
 import { RangeSwitcher } from '@/components/charts/RangeSwitcher';
@@ -67,45 +66,106 @@ function timeAgo(iso: string): string {
   return d.toLocaleDateString('fr-FR', { day: '2-digit', month: 'short' });
 }
 
+const PAY_LABEL: Record<string, string> = {
+  paid: 'Payée',
+  pending: 'En attente',
+  failed: 'Échoué',
+  refunded: 'Remboursée',
+  manual: 'Manuel',
+  abandoned: 'Abandonnée',
+};
+
+function flowDelta(current: number, previous: number | undefined): number | undefined {
+  if (previous === undefined || previous === 0) return undefined;
+  return ((current - previous) / previous) * 100;
+}
+
+function storeIdOf(storeId: { _id: string } | string | undefined): string | undefined {
+  if (!storeId) return undefined;
+  return typeof storeId === 'string' ? storeId : storeId._id;
+}
+
 export default function AdminOverviewPage() {
   const [range, setRange] = useState<RangeKey>('30d');
   const [data, setData] = useState<AdminOverviewRich | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [currencyPick, setCurrencyPick] = useState<string | null>(null);
+  const seq = useRef(0);
   const user = useAuthStore((s) => s.user);
   const role = (user?.role as string) || 'admin';
   const meta = ROLE_BADGE[role] || ROLE_BADGE.admin;
   const RoleIcon = meta.Icon;
 
-  useEffect(() => {
-    setLoading(true);
-    adminApi.overviewRich(range)
-      .then((res) => setData(res.data))
-      .catch(() => setData(null))
-      .finally(() => setLoading(false));
-  }, [range]);
-
-  async function refresh() {
-    setRefreshing(true);
+  const load = useCallback(async (mode: 'range' | 'manual' | 'silent') => {
+    const id = ++seq.current;
+    if (mode === 'manual') setRefreshing(true);
+    else if (mode === 'range') setLoading(true);
     try {
       const res = await adminApi.overviewRich(range);
+      if (id !== seq.current) return;
       setData(res.data);
     } catch {
-      // ignore — UI already shows the previous payload
+      if (id !== seq.current) return;
     } finally {
-      setRefreshing(false);
+      if (id === seq.current) {
+        setLoading(false);
+        setRefreshing(false);
+      }
     }
-  }
+  }, [range]);
 
-  // Primary currency to display monetary KPIs in. Picks the currency with the
-  // largest commission (best proxy for platform's "main" currency).
-  const primaryCurrency = useMemo(() => {
-    if (!data) return 'USD';
-    const ranked = [...data.commissionByCurrency].sort((a, b) => b.total - a.total);
-    return ranked[0]?._id || 'USD';
+  useEffect(() => {
+    void load('range');
+  }, [load]);
+
+  useEffect(() => {
+    const id = window.setInterval(() => {
+      if (document.visibilityState === 'visible') void load('silent');
+    }, 60_000);
+    return () => window.clearInterval(id);
+  }, [load]);
+
+  const currencies = useMemo(() => {
+    if (!data) return [] as string[];
+    const score = new Map<string, number>();
+    const add = (code: string | undefined, n: number) => {
+      if (!code || n <= 0) return;
+      score.set(code, (score.get(code) || 0) + n);
+    };
+    for (const p of data.timeseries.revenue) add(p.currency, p.paid);
+    for (const p of data.paymentMix) add(p.currency, p.orders);
+    for (const p of data.timeseries.commission) add(p.currency, p.commission > 0 ? 1 : 0);
+    for (const s of data.topStores) add(s.currency, s.orders);
+    return Array.from(score.entries()).sort((a, b) => b[1] - a[1]).map(([code]) => code);
   }, [data]);
+  const activeCurrency = currencyPick && currencies.includes(currencyPick) ? currencyPick : (currencies[0] || '');
+  const revenueSeries = useMemo(
+    () => (data?.timeseries.revenue ?? []).filter((p) => p.currency === activeCurrency),
+    [data, activeCurrency],
+  );
+  const commissionSeries = useMemo(
+    () => (data?.timeseries.commission ?? []).filter((p) => p.currency === activeCurrency),
+    [data, activeCurrency],
+  );
+  const paymentMix = useMemo(
+    () => (data?.paymentMix ?? []).filter((p) => p.currency === activeCurrency),
+    [data, activeCurrency],
+  );
+  const geoRows = useMemo(
+    () => (data?.geo ?? []).filter((p) => p.currency === activeCurrency).slice(0, 12),
+    [data, activeCurrency],
+  );
+  const topStores = useMemo(
+    () => (data?.topStores ?? []).filter((s) => s.currency === activeCurrency).slice(0, 8),
+    [data, activeCurrency],
+  );
 
-  const monthly = range === '12m';
+  // Libellés calés sur les chiffres déjà chargés, pas sur le bouton cliqué
+  // (le bouton change tout de suite, la réponse API arrive juste après).
+  const shownRange = data?.range ?? range;
+  const monthly = data?.window.bucket === 'month';
+  const onPeriod = shownRange !== 'all';
 
   return (
     <div className="space-y-5 sm:space-y-6">
@@ -121,14 +181,15 @@ export default function AdminOverviewPage() {
               Vue plateforme
             </h1>
             <p className="mt-1.5 max-w-2xl text-xs text-muted-foreground sm:mt-2 sm:text-sm">
-              Bonjour {user?.name?.split(' ')[0] || 'Admin'} — vue temps réel sur la croissance, les revenus et la santé de la marketplace.
+              Bonjour {user?.name?.split(' ')[0] || 'Admin'} — chiffres de la période choisie, actualisés chaque minute.
+              {loading && data ? ' Mise à jour…' : ''}
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <RangeSwitcher value={range} onChange={setRange} />
             <button
               type="button"
-              onClick={refresh}
+              onClick={() => void load('manual')}
               disabled={refreshing}
               className="inline-flex h-9 items-center gap-1.5 rounded-xl border border-border/60 bg-card px-2.5 text-xs font-semibold shadow-sm transition-colors hover:bg-muted disabled:opacity-50 sm:px-3"
             >
@@ -144,7 +205,7 @@ export default function AdminOverviewPage() {
       ) : !data ? (
         <Card><CardContent className="py-16 text-center text-muted-foreground">Échec du chargement.</CardContent></Card>
       ) : (
-        <>
+        <div className={loading ? 'space-y-5 opacity-60 sm:space-y-6' : 'space-y-5 sm:space-y-6'}>
           {/* KPI grid — totals. 2 cols mobile, 4 cols desktop. */}
           <div className="grid grid-cols-2 gap-2.5 sm:gap-3 lg:grid-cols-4">
             <KpiCard
@@ -152,55 +213,84 @@ export default function AdminOverviewPage() {
               value={data.totals.users.toLocaleString()}
               icon={Users}
               accent="violet"
-              hint="comptes actifs"
+              hint={onPeriod ? `${data.totals.usersNew.toLocaleString()} inscrits sur la période` : 'comptes actifs'}
             />
             <KpiCard
               label="Boutiques"
               value={data.totals.stores.toLocaleString()}
               icon={Store}
               accent="pink"
-              hint="toutes confondues"
+              hint={onPeriod ? `${data.totals.storesNew.toLocaleString()} créées sur la période` : 'toutes confondues'}
             />
             <KpiCard
               label="Produits"
               value={data.totals.products.toLocaleString()}
               icon={Package}
               accent="amber"
+              hint={onPeriod ? `${data.totals.productsNew.toLocaleString()} créés sur la période` : 'tous confondus'}
             />
             <KpiCard
-              label="Commandes totales"
+              label="Commandes"
               value={data.totals.orders.total.toLocaleString()}
               icon={ShoppingCart}
               accent="sky"
+              hint="hors abandons"
+              delta={flowDelta(data.totals.orders.total, data.totals.previous?.orders.total)}
             />
             <KpiCard
               label="Payées"
               value={data.totals.orders.paid.toLocaleString()}
               icon={CheckCircle2}
               accent="emerald"
-              hint={`${((data.totals.orders.paid / Math.max(data.totals.orders.total, 1)) * 100).toFixed(1)}% du total`}
+              hint={`${((data.totals.orders.paid / Math.max(data.totals.orders.total, 1)) * 100).toFixed(1)}% hors abandons`}
+              delta={flowDelta(data.totals.orders.paid, data.totals.previous?.orders.paid)}
             />
             <KpiCard
               label="Livrées"
               value={data.totals.orders.delivered.toLocaleString()}
               icon={TrendingUp}
               accent="emerald"
+              hint="date de livraison"
+              delta={flowDelta(data.totals.orders.delivered, data.totals.previous?.orders.delivered)}
             />
             <KpiCard
               label="Échecs paiement"
               value={data.totals.orders.failed.toLocaleString()}
               icon={XCircle}
               accent="amber"
-              hint={`${((data.totals.orders.failed / Math.max(data.totals.orders.total, 1)) * 100).toFixed(1)}% du total`}
+              hint={`${((data.totals.orders.failed / Math.max(data.totals.orders.total, 1)) * 100).toFixed(1)}% hors abandons`}
+              invertDelta
+              delta={flowDelta(data.totals.orders.failed, data.totals.previous?.orders.failed)}
+            />
+            <KpiCard
+              label="Abandonnées"
+              value={data.totals.orders.abandoned.toLocaleString()}
+              icon={XCircle}
+              accent="slate"
+              hint="paniers non finis"
+              invertDelta
+              delta={flowDelta(data.totals.orders.abandoned, data.totals.previous?.orders.abandoned)}
             />
             <KpiCard
               label="Réclamations urgentes"
               value={data.totals.complaints.urgent.toLocaleString()}
               icon={AlertTriangle}
               accent="amber"
-              hint={`${data.totals.complaints.open} ouvertes`}
+              hint={`${data.totals.complaints.open} ouvertes maintenant`}
             />
           </div>
+
+          {data.alerts.negativeWallets > 0 && (
+            <Link
+              href="/admin/wallets"
+              className="flex items-center justify-between gap-3 rounded-2xl border border-rose-500/40 bg-rose-500/5 px-4 py-3 text-sm text-rose-800"
+            >
+              <span className="font-semibold">
+                {data.alerts.negativeWallets} wallet{data.alerts.negativeWallets > 1 ? 's' : ''} en négatif
+              </span>
+              <span className="text-xs font-medium">Voir les soldes</span>
+            </Link>
+          )}
 
           {/* Alerte payouts en attente — actionable si > 0 */}
           <PendingPayoutsWidget />
@@ -211,10 +301,24 @@ export default function AdminOverviewPage() {
               <div className="min-w-0">
                 <CardTitle className="flex items-center gap-2 text-sm sm:text-base"><Activity className="h-4 w-4 shrink-0" /> GMV &amp; commandes</CardTitle>
                 <p className="mt-0.5 truncate text-[11px] text-muted-foreground sm:text-xs">
-                  {monthly ? 'Mensuel' : 'Quotidien'} · {primaryCurrency} ·{' '}
+                  {monthly ? 'Mensuel' : 'Quotidien'}{activeCurrency ? ` · ${activeCurrency} seulement` : ''} ·{' '}
                   {new Date(data.window.from).toLocaleDateString('fr-FR', { day: '2-digit', month: 'short' })} →{' '}
                   {new Date(data.window.to).toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', year: 'numeric' })}
                 </p>
+                {currencies.length > 1 && (
+                  <div className="mt-2 flex flex-wrap gap-1">
+                    {currencies.map((code) => (
+                      <button
+                        key={code}
+                        type="button"
+                        onClick={() => setCurrencyPick(code)}
+                        className={`rounded-lg px-2 py-1 text-[11px] font-semibold ${code === activeCurrency ? 'bg-foreground text-background' : 'bg-muted text-muted-foreground'}`}
+                      >
+                        {code}
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
               <div className="hidden items-center gap-4 text-xs text-muted-foreground md:flex">
                 <span className="inline-flex items-center gap-1.5">
@@ -226,7 +330,7 @@ export default function AdminOverviewPage() {
               </div>
             </CardHeader>
             <CardContent className="px-2 sm:px-6">
-              <RevenueAreaChart data={data.timeseries.revenue} currency={primaryCurrency} monthly={monthly} />
+              <RevenueAreaChart data={revenueSeries} currency={activeCurrency} monthly={monthly} />
             </CardContent>
           </Card>
 
@@ -244,10 +348,10 @@ export default function AdminOverviewPage() {
             <Card>
               <CardHeader className="pb-2">
                 <CardTitle className="flex items-center gap-2 text-sm sm:text-base"><Sparkles className="h-4 w-4 shrink-0" /> Commission encaissée</CardTitle>
-                <p className="text-[11px] text-muted-foreground sm:text-xs">Marge plateforme · {primaryCurrency}</p>
+                <p className="text-[11px] text-muted-foreground sm:text-xs">Marge plateforme{activeCurrency ? ` · ${activeCurrency} seulement` : ''}</p>
               </CardHeader>
               <CardContent className="px-2 sm:px-6">
-                <CommissionAreaChart data={data.timeseries.commission} currency={primaryCurrency} monthly={monthly} />
+                <CommissionAreaChart data={commissionSeries} currency={activeCurrency} monthly={monthly} />
               </CardContent>
             </Card>
           </div>
@@ -260,20 +364,20 @@ export default function AdminOverviewPage() {
                 <p className="text-[11px] text-muted-foreground sm:text-xs">Cliquer pour voir le détail</p>
               </CardHeader>
               <CardContent>
-                {data.topStores.length === 0 ? (
-                  <p className="py-6 text-center text-sm text-muted-foreground">Aucune vente sur la période.</p>
+                {topStores.length === 0 ? (
+                  <p className="py-6 text-center text-sm text-muted-foreground">Aucune vente{activeCurrency ? ` en ${activeCurrency}` : ''} sur la période.</p>
                 ) : (
-                  <TopStoresGrid stores={data.topStores} />
+                  <TopStoresGrid stores={topStores} />
                 )}
               </CardContent>
             </Card>
             <Card>
               <CardHeader className="pb-2">
                 <CardTitle className="text-sm sm:text-base">Méthodes de paiement</CardTitle>
-                <p className="text-[11px] text-muted-foreground sm:text-xs">Sur la période</p>
+                <p className="text-[11px] text-muted-foreground sm:text-xs">Sur la période{activeCurrency ? ` · ${activeCurrency}` : ''}</p>
               </CardHeader>
               <CardContent>
-                <PaymentDonutChart data={data.paymentMix.map(p => ({ provider: p._id, orders: p.orders, revenue: p.revenue }))} currency={primaryCurrency} />
+                <PaymentDonutChart data={paymentMix.map(p => ({ provider: p.provider, orders: p.orders, revenue: p.revenue }))} currency={activeCurrency} />
               </CardContent>
             </Card>
           </div>
@@ -283,10 +387,10 @@ export default function AdminOverviewPage() {
             <Card>
               <CardHeader className="pb-2">
                 <CardTitle className="text-base">Top pays acheteurs</CardTitle>
-                <p className="text-xs text-muted-foreground">Top 12 par revenu</p>
+                <p className="text-xs text-muted-foreground">Top 12 par revenu{activeCurrency ? ` · ${activeCurrency}` : ''}. Pays inconnu hors des %.</p>
               </CardHeader>
               <CardContent>
-                <GeoBreakdownList data={data.geo} currency={primaryCurrency} />
+                <GeoBreakdownList data={geoRows} currency={activeCurrency} />
               </CardContent>
             </Card>
             <Card>
@@ -321,6 +425,7 @@ export default function AdminOverviewPage() {
                     <ul className="divide-y divide-border/50">
                       {data.alerts.failedPayments.map((o) => {
                         const storeName = typeof o.storeId === 'object' ? o.storeId?.name : undefined;
+                        const storeHref = `/admin/stores/${storeIdOf(o.storeId)}/analytics`;
                         return (
                           <li key={o._id} className="flex items-center gap-2 py-2 sm:gap-3">
                             <span className="grid h-7 w-7 shrink-0 place-items-center rounded-lg bg-rose-500/10 text-rose-600">
@@ -328,7 +433,7 @@ export default function AdminOverviewPage() {
                             </span>
                             <div className="min-w-0 flex-1">
                               <div className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5">
-                                <span className="font-mono text-[11px] font-semibold sm:text-xs">#{o.orderNumber}</span>
+                                <Link href={storeIdOf(o.storeId) ? storeHref : '/admin/orders'} className="font-mono text-[11px] font-semibold hover:underline sm:text-xs">#{o.orderNumber}</Link>
                                 {storeName && <span className="truncate text-[10px] text-muted-foreground sm:text-[11px]">· {storeName}</span>}
                               </div>
                               <div className="truncate text-[10px] text-muted-foreground sm:text-[11px]">
@@ -367,7 +472,7 @@ export default function AdminOverviewPage() {
                           <span className="text-[10px] text-muted-foreground sm:text-[11px]">{w.count} compte{w.count > 1 ? 's' : ''}</span>
                         </div>
                         <div className="mt-1.5 flex flex-wrap items-baseline justify-between gap-2">
-                          <span className="break-all text-base font-bold sm:text-lg">{fmt(w.totalBalance, w._id)}</span>
+                          <span className={`break-all text-base font-bold sm:text-lg ${w.totalBalance < 0 ? 'text-rose-700' : ''}`}>{fmt(w.totalBalance, w._id)}</span>
                           {w.totalAi > 0 && (
                             <span className="text-[10px] text-muted-foreground sm:text-[11px]">+ {fmt(w.totalAi, w._id)} IA</span>
                           )}
@@ -381,7 +486,7 @@ export default function AdminOverviewPage() {
             <Card>
               <CardHeader className="pb-2">
                 <CardTitle className="flex items-center gap-2 text-sm sm:text-base"><TrendingUp className="h-4 w-4 shrink-0" /> Commission totale</CardTitle>
-                <p className="text-[11px] text-muted-foreground sm:text-xs">Depuis le début</p>
+                <p className="text-[11px] text-muted-foreground sm:text-xs">{onPeriod ? 'Sur la période, par devise' : 'Depuis le début, par devise'}</p>
               </CardHeader>
               <CardContent>
                 {data.commissionByCurrency.length === 0 ? (
@@ -408,7 +513,7 @@ export default function AdminOverviewPage() {
             <Card>
               <CardHeader className="pb-2">
                 <CardTitle className="text-sm sm:text-base">Commandes récentes</CardTitle>
-                <p className="text-[11px] text-muted-foreground sm:text-xs">8 dernières · toutes boutiques</p>
+                <p className="text-[11px] text-muted-foreground sm:text-xs">{onPeriod ? '8 dernières sur la période' : '8 dernières · toutes boutiques'}</p>
               </CardHeader>
               <CardContent>
                 {data.recentOrders.length === 0 ? (
@@ -417,7 +522,7 @@ export default function AdminOverviewPage() {
                   <ul className="divide-y divide-border/50">
                     {data.recentOrders.map((o) => {
                       const storeName = typeof o.storeId === 'object' ? o.storeId?.name : undefined;
-                      const storeSlug = typeof o.storeId === 'object' ? o.storeId?.slug : undefined;
+                      const storeHref = storeIdOf(o.storeId) ? `/admin/stores/${storeIdOf(o.storeId)}/analytics` : '/admin/orders';
                       const payClass = o.paymentStatus === 'paid' ? 'bg-emerald-500/10 text-emerald-700'
                         : o.paymentStatus === 'failed' ? 'bg-rose-500/10 text-rose-700'
                         : 'bg-amber-500/10 text-amber-700';
@@ -425,12 +530,12 @@ export default function AdminOverviewPage() {
                         <li key={o._id} className="flex items-center gap-2 py-2.5 sm:gap-3">
                           <div className="min-w-0 flex-1">
                             <div className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5 sm:gap-2">
-                              <span className="font-mono text-[11px] font-semibold sm:text-xs">#{o.orderNumber}</span>
+                              <Link href={storeHref} className="font-mono text-[11px] font-semibold hover:underline sm:text-xs">#{o.orderNumber}</Link>
                               <span className={`rounded-full px-1.5 py-0.5 text-[10px] font-semibold ${payClass}`}>
-                                {o.paymentStatus}
+                                {PAY_LABEL[o.paymentStatus] || o.paymentStatus}
                               </span>
                               {storeName && (
-                                <Link href={storeSlug ? storeAbsoluteUrl(storeSlug) : '#'} target="_blank" className="truncate text-[10px] text-muted-foreground hover:text-foreground sm:text-[11px]">
+                                <Link href={storeHref} className="truncate text-[10px] text-muted-foreground hover:text-foreground sm:text-[11px]">
                                   · {storeName}
                                 </Link>
                               )}
@@ -450,8 +555,8 @@ export default function AdminOverviewPage() {
 
             <Card>
               <CardHeader className="pb-2">
-                <CardTitle className="text-sm sm:text-base">Nouveaux vendeurs</CardTitle>
-                <p className="text-[11px] text-muted-foreground sm:text-xs">8 inscriptions les plus récentes</p>
+                <CardTitle className="text-sm sm:text-base">Dernières inscriptions</CardTitle>
+                <p className="text-[11px] text-muted-foreground sm:text-xs">{onPeriod ? '8 inscriptions sur la période' : '8 inscriptions les plus récentes'}</p>
               </CardHeader>
               <CardContent>
                 {data.recentUsers.length === 0 ? (
@@ -479,7 +584,7 @@ export default function AdminOverviewPage() {
               </CardContent>
             </Card>
           </div>
-        </>
+        </div>
       )}
     </div>
   );

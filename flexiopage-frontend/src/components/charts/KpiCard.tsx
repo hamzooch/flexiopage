@@ -54,24 +54,26 @@ export function KpiCard({ label, value, delta, invertDelta, hint, icon: Icon, ac
         {value}
       </div>
 
-      <div className="flex items-center gap-1.5">
-        {hasDelta ? (
-          <span
-            className={cn(
-              'inline-flex items-center gap-0.5 rounded-md px-1.5 py-0.5 text-xs font-medium leading-none',
-              positive && 'bg-emerald-500/10 text-emerald-700',
-              negative && 'bg-rose-500/10 text-rose-700',
-              !positive && !negative && 'bg-muted text-muted-foreground'
-            )}
-          >
-            {isUp ? <ArrowUpRight className="h-3 w-3" /> : isDown ? <ArrowDownRight className="h-3 w-3" /> : <Minus className="h-3 w-3" />}
-            {Math.abs(delta as number).toFixed(1)}%
-          </span>
-        ) : (
-          <span className="text-xs text-muted-foreground">—</span>
-        )}
-        {hint && <span className="truncate text-xs text-muted-foreground">{hint}</span>}
-      </div>
+      {(hasDelta || delta === null || hint) && (
+        <div className="flex items-center gap-1.5">
+          {hasDelta ? (
+            <span
+              className={cn(
+                'inline-flex items-center gap-0.5 rounded-md px-1.5 py-0.5 text-xs font-medium leading-none',
+                positive && 'bg-emerald-500/10 text-emerald-700',
+                negative && 'bg-rose-500/10 text-rose-700',
+                !positive && !negative && 'bg-muted text-muted-foreground'
+              )}
+            >
+              {isUp ? <ArrowUpRight className="h-3 w-3" /> : isDown ? <ArrowDownRight className="h-3 w-3" /> : <Minus className="h-3 w-3" />}
+              {Math.abs(delta as number).toFixed(1)}%
+            </span>
+          ) : delta === null ? (
+            <span className="text-xs text-muted-foreground">—</span>
+          ) : null}
+          {hint && <span className="truncate text-xs text-muted-foreground">{hint}</span>}
+        </div>
+      )}
     </div>
   );
 }
