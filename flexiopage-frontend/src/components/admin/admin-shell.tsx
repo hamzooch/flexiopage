@@ -47,6 +47,7 @@ import {
 import { useAuthStore } from '@/stores/auth-store';
 import { cn } from '@/lib/utils';
 import { BrandLogo } from '@/components/brand-logo';
+import { NotificationsBell } from '@/components/dashboard/notifications-bell';
 
 interface NavItem { href: string; label: string; icon: React.ComponentType<{ className?: string }>; }
 
@@ -273,6 +274,7 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
             </div>
           </div>
           <div className="flex items-center gap-2">
+            <NotificationsBell />
             <ViewSwitcher currentView="admin" />
             <span className="hidden items-center gap-1.5 rounded-full bg-rose-500/10 px-2.5 py-1 text-[11px] font-semibold text-rose-700 ring-1 ring-rose-500/20 lg:inline-flex">
               <RoleIcon className="h-3 w-3" />

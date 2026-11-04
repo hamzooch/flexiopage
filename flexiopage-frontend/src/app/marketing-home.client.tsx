@@ -612,47 +612,43 @@ function Hero() {
   const { t } = useT();
   const reduceMotion = useReducedMotion();
   return (
-    <section className="relative mx-auto max-w-6xl px-4 pb-16 pt-10 sm:px-6 sm:pb-24 sm:pt-16 md:pt-32">
+    <section className="relative mx-auto max-w-6xl px-4 pb-14 pt-8 sm:px-6 sm:pb-20 sm:pt-12 lg:pt-16">
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-x-0 top-0 -z-10 h-[640px] opacity-70 [mask-image:linear-gradient(to_bottom,black_40%,transparent)]"
+        style={{
+          backgroundImage:
+            'linear-gradient(to right, hsl(var(--border)) 1px, transparent 1px), linear-gradient(to bottom, hsl(var(--border)) 1px, transparent 1px)',
+          backgroundSize: '56px 56px',
+        }}
+      />
+      <div className="grid items-center gap-10 lg:grid-cols-[minmax(0,1.05fr)_minmax(280px,0.9fr)] lg:gap-14">
       <motion.div
         initial="hidden"
         animate="show"
         variants={staggerContainer}
-        className="mx-auto max-w-3xl text-center"
+        className="mx-auto max-w-xl text-center lg:mx-0 lg:max-w-none lg:text-start"
       >
-        <motion.div
-          variants={fadeUp}
-          className="mb-6 inline-flex items-center gap-2 rounded-full border border-border/60 bg-card/60 px-3.5 py-1.5 text-xs font-semibold backdrop-blur"
-        >
-          <span className="relative grid h-1.5 w-1.5 place-items-center">
-            <span className="absolute h-1.5 w-1.5 animate-ping rounded-full bg-emerald-500 opacity-60" />
-            <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
-          </span>
-          {t('landing.hero.badge')}
-        </motion.div>
-
         <motion.h1
           variants={fadeUp}
-          className="text-balance text-3xl font-bold leading-[1.05] tracking-tight sm:text-5xl md:text-6xl lg:text-7xl"
+          className="text-balance text-4xl font-semibold leading-[1.02] tracking-[-0.035em] sm:text-5xl lg:text-6xl"
         >
-          <RevealWords text={t('landing.hero.title1')} delay={0.15} />{' '}
-          <span
-            className="bg-gradient-to-r from-amber-400 via-orange-500 to-orange-700 bg-clip-text text-transparent animate-gradient-shift"
-            style={{ backgroundSize: '200% 200%' }}
-          >
-            <RevealWords text={t('landing.hero.title2')} delay={0.45} />
+          <RevealWords text={t('landing.hero.title1')} delay={0.08} />{' '}
+          <span className="bg-gradient-to-r from-amber-500 via-orange-500 to-orange-600 bg-clip-text text-transparent">
+            <RevealWords text={t('landing.hero.title2')} delay={0.32} />
           </span>
         </motion.h1>
 
         <motion.p
           variants={fadeUp}
-          className="mx-auto mt-5 max-w-2xl text-balance text-sm leading-relaxed text-muted-foreground sm:mt-6 sm:text-lg md:text-xl"
+          className="mx-auto mt-5 max-w-lg text-balance text-base leading-relaxed text-muted-foreground sm:text-lg lg:mx-0"
         >
           {t('landing.hero.subtitle')}
         </motion.p>
 
         <motion.div
           variants={fadeUp}
-          className="mt-8 flex flex-wrap items-center justify-center gap-3 sm:mt-10"
+          className="mt-8 flex flex-wrap items-center justify-center gap-3 lg:justify-start"
         >
           {/* CTA primaire — pointe vers /register : le prospect n'a pas de
               compte, il vient pour créer. Se connecter reste dans la navbar. */}
@@ -683,42 +679,46 @@ function Hero() {
             ajustables ligne par ligne dans `HERO_STATS`. */}
         <motion.div
           variants={fadeUp}
-          className="mt-8 flex flex-wrap items-center justify-center gap-x-6 gap-y-3 sm:mt-10 sm:gap-x-10"
+          className="mx-auto mt-8 grid w-full max-w-sm grid-cols-3 gap-3 text-center lg:mx-0 lg:flex lg:max-w-none lg:justify-start lg:gap-0 lg:text-start"
         >
-          {HERO_STATS.map((stat) => (
-            <div key={stat.labelKey} className="flex items-baseline gap-1.5">
-              <span className="text-xl font-bold tracking-tight text-foreground tabular-nums sm:text-2xl">
+          {HERO_STATS.map((stat, i) => (
+            <div
+              key={stat.labelKey}
+              className={i > 0 ? 'lg:ms-5 lg:border-s lg:border-border lg:ps-5' : ''}
+            >
+              <div className="text-lg font-semibold tracking-tight text-foreground tabular-nums">
                 {stat.value}
-              </span>
-              <span className="text-[11px] font-medium text-muted-foreground sm:text-xs">
+              </div>
+              <div className="text-[11px] font-medium leading-tight text-muted-foreground">
                 {t(stat.labelKey)}
-              </span>
+              </div>
             </div>
           ))}
         </motion.div>
 
         <motion.p
           variants={fadeUp}
-          className="mt-6 inline-flex items-center gap-1.5 text-xs text-muted-foreground"
+          className="mx-auto mt-5 flex max-w-[16rem] items-start justify-center gap-1.5 text-center text-xs leading-relaxed text-muted-foreground sm:max-w-none lg:mx-0 lg:justify-start lg:text-start"
         >
-          <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" /> {t('landing.hero.reassure')}
+          <CheckCircle2 className="mt-0.5 h-3.5 w-3.5 shrink-0 text-emerald-500" />
+          <span>{t('landing.hero.reassure')}</span>
         </motion.p>
       </motion.div>
 
-      {/* Hero "screen" mock — slides up + floats subtly */}
       <motion.div
-        initial={{ opacity: 0, y: 80, scale: 0.97 }}
-        animate={{ opacity: 1, y: 0, scale: 1 }}
-        transition={{ duration: 0.9, delay: 0.35, ease: [0.21, 0.61, 0.35, 1] }}
-        className="relative mx-auto mt-12 max-w-5xl sm:mt-20"
+        initial={{ opacity: 0, y: 28 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.7, delay: 0.2, ease: [0.21, 0.61, 0.35, 1] }}
+        className="relative mx-auto w-full max-w-md lg:mx-0 lg:max-w-none lg:justify-self-end"
       >
         <motion.div
-          animate={reduceMotion ? undefined : { y: [0, -8, 0] }}
-          transition={{ duration: 6, repeat: Infinity, ease: 'easeInOut' }}
+          animate={reduceMotion ? undefined : { y: [0, -6, 0] }}
+          transition={{ duration: 7, repeat: Infinity, ease: 'easeInOut' }}
         >
           <HeroScreenMock />
         </motion.div>
       </motion.div>
+      </div>
     </section>
   );
 }
@@ -736,92 +736,56 @@ function HeroScreenMock() {
   const reduceMotion = useReducedMotion();
   return (
     <div className="relative">
-      <div className="absolute -inset-4 -z-10 rounded-3xl bg-gradient-to-br from-amber-400/30 via-orange-500/25 to-orange-700/20 blur-3xl" aria-hidden />
-      <div className="overflow-hidden rounded-2xl border border-border/60 bg-card shadow-2xl ring-1 ring-black/5">
-        {/* Browser chrome */}
-        <div className="flex items-center gap-2 border-b border-border/60 bg-muted/40 px-3 py-2 sm:px-4 sm:py-2.5">
-          <span className="h-2 w-2 rounded-full bg-rose-400 sm:h-2.5 sm:w-2.5" />
-          <span className="h-2 w-2 rounded-full bg-amber-400 sm:h-2.5 sm:w-2.5" />
-          <span className="h-2 w-2 rounded-full bg-emerald-400 sm:h-2.5 sm:w-2.5" />
-          <span className="ml-2 truncate rounded-md bg-background/60 px-2 py-0.5 text-[10px] text-muted-foreground sm:ml-3 sm:px-2.5 sm:text-[11px]">
-            boutique-test.flexiopage.com/p/caftan-marrakech
-          </span>
+      <div className="absolute -inset-8 -z-10 rounded-full bg-gradient-to-br from-amber-400/30 via-orange-500/10 to-transparent blur-3xl" aria-hidden />
+      <div className="overflow-hidden rounded-[28px] border border-border/70 bg-card shadow-[0_28px_70px_-36px_rgba(15,23,42,0.55)]">
+        <div className="relative aspect-[5/4] overflow-hidden">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={EXAMPLE_CAFTAN[0]} alt="" className="absolute inset-0 h-full w-full object-cover" />
+          <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/10 to-black/10" />
+          <div className="absolute start-3 top-3 inline-flex items-center rounded-full bg-white/95 px-2.5 py-1 text-[10px] font-semibold text-foreground shadow-sm">
+            −25%
+          </div>
+          <div className="absolute end-3 top-3 inline-flex items-center gap-1 rounded-full bg-black/40 px-2.5 py-1 text-[10px] font-semibold text-white backdrop-blur">
+            <Wallet className="h-3 w-3" /> {t('landing.heroMock.cash')}
+          </div>
+          <div className="absolute inset-x-4 bottom-4 text-white">
+            <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-white/75">{t('landing.heroMock.category')}</div>
+            <div className="mt-1 text-2xl font-semibold tracking-tight">{t('landing.heroMock.name')}</div>
+          </div>
         </div>
 
-        <div className="grid gap-4 p-4 sm:grid-cols-[1.05fr_1fr] sm:gap-8 sm:p-10">
-          {/* Mock product image */}
-          <div className="relative aspect-[4/5] overflow-hidden rounded-xl bg-gradient-to-br from-amber-50 via-orange-100 to-orange-200">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={EXAMPLE_CAFTAN[0]} alt="" className="absolute inset-0 h-full w-full object-cover" />
-            <motion.div
-              initial={{ y: -30, opacity: 0 }}
-              animate={{ y: 0, opacity: 1 }}
-              transition={{ duration: 0.6, delay: 1.2, type: 'spring', stiffness: 200 }}
-              className="absolute left-3 top-3 inline-flex items-center gap-1 rounded-full bg-emerald-500 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider text-white sm:left-4 sm:top-4 sm:px-2.5 sm:py-1 sm:text-[10px]"
-            >
-              −25%
-            </motion.div>
-            <motion.div
-              initial={{ y: -30, opacity: 0 }}
-              animate={{ y: 0, opacity: 1 }}
-              transition={{ duration: 0.6, delay: 1.4, type: 'spring', stiffness: 200 }}
-              className="absolute right-3 top-3 inline-flex items-center gap-1 rounded-full bg-card/90 px-2 py-0.5 text-[9px] font-semibold backdrop-blur sm:right-4 sm:top-4 sm:px-2.5 sm:py-1 sm:text-[10px]"
-            >
-              <Wallet className="h-2.5 w-2.5 sm:h-3 sm:w-3" /> {t('landing.heroMock.cash')}
-            </motion.div>
-            <div className="absolute inset-x-4 bottom-4 grid grid-cols-4 gap-1 sm:inset-x-6 sm:bottom-6 sm:gap-1.5">
-              {EXAMPLE_CAFTAN.slice(1).map((src, i) => (
-                <motion.div
-                  key={src}
-                  initial={{ opacity: 0, scale: 0.7 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  transition={{ duration: 0.35, delay: 1.6 + i * 0.08 }}
-                  className="aspect-square overflow-hidden rounded-md bg-card/70 ring-1 ring-white/70 backdrop-blur"
-                >
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src={src} alt="" className="h-full w-full object-cover" />
-                </motion.div>
-              ))}
+        <div className="space-y-4 p-4 sm:p-5">
+          <div className="flex items-end justify-between gap-3">
+            <p className="text-xs text-muted-foreground">{t('landing.heroMock.desc')}</p>
+            <div className="shrink-0 text-end">
+              <div className="text-lg font-semibold tracking-tight text-foreground">45 000</div>
+              <div className="text-[11px] text-muted-foreground line-through">60 000 F CFA</div>
             </div>
           </div>
-
-          {/* Mock product details + tiny form */}
-          <div className="space-y-3 sm:space-y-4">
-            <div>
-              <div className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">{t('landing.heroMock.category')}</div>
-              <div className="mt-1.5 text-xl font-bold tracking-tight sm:mt-2 sm:text-3xl">{t('landing.heroMock.name')}</div>
-              <div className="mt-1.5 text-[11px] text-muted-foreground sm:mt-2 sm:text-xs">{t('landing.heroMock.desc')}</div>
-            </div>
-            <div className="flex items-baseline gap-2">
-              {/* Pulsing price — draws the eye */}
-              <motion.span
-                animate={reduceMotion ? undefined : { scale: [1, 1.04, 1] }}
-                transition={{ duration: 2.5, repeat: Infinity, ease: 'easeInOut', delay: 2 }}
-                className="text-2xl font-extrabold text-orange-600 sm:text-3xl"
-              >
-                45 000 F CFA
-              </motion.span>
-              <span className="text-xs text-muted-foreground line-through sm:text-sm">60 000</span>
-            </div>
-            <div className="space-y-2 rounded-xl border border-border/60 bg-background/40 p-3 text-xs">
-              <div className="font-semibold">{t('landing.heroMock.formTitle')}</div>
-              <div className="grid grid-cols-2 gap-2">
-                <div className="h-7 rounded-md border border-border/60 bg-card sm:h-8" />
-                <div className="h-7 rounded-md border border-border/60 bg-card sm:h-8" />
+          <div className="flex gap-2">
+            {EXAMPLE_CAFTAN.slice(1).map((src) => (
+              <div key={src} className="h-12 w-12 overflow-hidden rounded-xl ring-1 ring-border">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={src} alt="" className="h-full w-full object-cover" />
               </div>
-              <div className="h-7 rounded-md border border-border/60 bg-card sm:h-8" />
-              <motion.div
-                animate={reduceMotion ? undefined : { boxShadow: [
-                  '0 0 0 0 rgba(217, 70, 239, 0.4)',
-                  '0 0 0 8px rgba(217, 70, 239, 0)',
-                  '0 0 0 0 rgba(217, 70, 239, 0)',
-                ] }}
-                transition={{ duration: 2, repeat: Infinity, ease: 'easeOut', delay: 2.5 }}
-                className="grid h-9 place-items-center rounded-md bg-gradient-to-r from-amber-500 to-orange-600 text-xs font-bold text-white"
-              >
-                {t('landing.heroMock.cta')}
-              </motion.div>
+            ))}
+          </div>
+          <div className="space-y-2 rounded-2xl bg-muted/60 p-3">
+            <div className="text-xs font-semibold">{t('landing.heroMock.formTitle')}</div>
+            <div className="grid grid-cols-2 gap-2">
+              <div className="h-8 rounded-lg bg-card ring-1 ring-border/70" />
+              <div className="h-8 rounded-lg bg-card ring-1 ring-border/70" />
             </div>
+            <motion.div
+              animate={reduceMotion ? undefined : { boxShadow: [
+                '0 0 0 0 rgba(249, 115, 22, 0.35)',
+                '0 0 0 8px rgba(249, 115, 22, 0)',
+              ] }}
+              transition={{ duration: 2.2, repeat: Infinity, ease: 'easeOut', delay: 1.2 }}
+              className="grid h-10 place-items-center rounded-xl bg-gradient-to-r from-amber-500 to-orange-600 text-sm font-semibold text-white"
+            >
+              {t('landing.heroMock.cta')}
+            </motion.div>
           </div>
         </div>
       </div>

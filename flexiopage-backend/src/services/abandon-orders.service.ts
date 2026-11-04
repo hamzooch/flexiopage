@@ -40,15 +40,24 @@ export async function sweepAbandonedOrders(): Promise<{ scanned: number; flipped
     paymentMethod: { $ne: 'cod' as const },
     createdAt: { $lt: cutoff },
   };
-  const scanned = await Order.countDocuments(filter);
-  if (scanned === 0) return { scanned: 0, flipped: 0 };
+  // Anciens « Échoué » : le client a ouvert Wave / Orange Money puis annulé
+  // ou n'avait pas le solde. Même nature qu'un abandon, on les reclasse.
+  const reclassified = await Order.updateMany(
+    { paymentStatus: 'failed' as const },
+    { $set: { paymentStatus: 'abandoned' as const } },
+  );
 
-  const res = await Order.updateMany(filter, {
-    $set: { paymentStatus: 'abandoned' as const },
-  });
-  const flipped = res.modifiedCount ?? 0;
+  const scanned = await Order.countDocuments(filter);
+  const pendingFlips = scanned === 0
+    ? 0
+    : (await Order.updateMany(filter, { $set: { paymentStatus: 'abandoned' as const } })).modifiedCount ?? 0;
+  const flipped = pendingFlips + (reclassified.modifiedCount ?? 0);
+  if (scanned === 0 && flipped === 0) return { scanned: 0, flipped: 0 };
   if (flipped > 0) {
-    logger.info({ scanned, flipped, cutoff }, '[abandon] swept pending → abandoned');
+    logger.info(
+      { scanned, flipped, reclassified: reclassified.modifiedCount ?? 0, cutoff },
+      '[abandon] pending et paiements non aboutis → abandoned',
+    );
   }
   return { scanned, flipped };
 }

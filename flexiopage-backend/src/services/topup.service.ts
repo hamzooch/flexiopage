@@ -15,12 +15,23 @@ import { randomUUID } from 'crypto';
 import type { IUser } from '../models/User.model';
 import { Store } from '../models/Store.model';
 import { WalletTopUp, type TopUpBucket, type TopUpGateway } from '../models/WalletTopUp.model';
+import { getSettings, DEFAULT_AI_PRICING } from '../models/Settings.model';
 import { credit, usdToTokens, usdToTokensRate } from './wallet.service';
 import { createStripeCheckoutSession, isStripeEnabled } from './payment.service';
 import { CinetPayProvider } from './payment/cinetpay.service';
 
-/** Pays où CinetPay est disponible pour les top-ups (Mobile Money CFA). */
-const CINETPAY_ELIGIBLE = new Set(['CI', 'BF', 'SN', 'ML', 'BJ', 'TG', 'NE', 'CM']);
+/** Devises acceptées par l'API CinetPay. */
+const CINETPAY_CURRENCIES = new Set(['XOF', 'XAF', 'GNF', 'CDF', 'USD']);
+/** Pays pour lesquels le SDK a des identifiants. Hors zone, on encaisse via CI. */
+const CINETPAY_COUNTRIES = new Set(['CI', 'BF', 'ML', 'SN', 'TG', 'GN', 'CM', 'BJ', 'CD', 'NE']);
+const CFA_CURRENCIES = new Set(['XOF', 'XAF']);
+const CINETPAY_MIN = 100;
+const CINETPAY_MAX = 2_500_000;
+/**
+ * Barème du solde principal : 0,1 = 800 XOF = 3 TND,
+ * donc 1 de solde = 8 000 XOF = 30 TND.
+ */
+const SOLDE_UNITS: Record<string, number> = { XOF: 8000, TND: 30 };
 
 export type TopUpGatewayChoice = 'auto' | TopUpGateway;
 
@@ -45,21 +56,81 @@ export interface InitiateTopUpResult {
   gateway: TopUpGateway;
   amount: number;
   currency: string;
+  usdAmount?: number;
+  tokens?: number;
+}
+
+export interface CinetPayQuote {
+  inputAmount: number;
+  inputCurrency: string;
+  chargeAmount: number;
+  chargeCurrency: string;
+  country: string;
+  usdAmount: number;
+  tokens?: number;
 }
 
 /**
- * Retourne la liste des gateways que le vendeur peut utiliser. Toujours au
- * moins un — Stripe est le fallback universel (si configuré).
+ * Ce que le vendeur paie sur CinetPay, et ce que son solde reçoit.
+ * Le montant saisi est dans la devise de sa boutique. Si CinetPay ne
+ * l'accepte pas (ex. TND), on convertit en XOF. Le solde principal est
+ * crédité en USD ; le solde IA reçoit les tokens correspondants.
  */
-export async function availableGatewaysForUser(user: IUser): Promise<TopUpGateway[]> {
-  const country = await primaryCountry(user);
-  const gateways: TopUpGateway[] = [];
-
-  if (country && CINETPAY_ELIGIBLE.has(country.toUpperCase())) {
-    if (new CinetPayProvider().isConfigured()) gateways.push('cinetpay');
+export async function quoteCinetPayTopUp(
+  user: IUser,
+  amount: number,
+  bucket: TopUpBucket,
+): Promise<CinetPayQuote> {
+  if (!Number.isFinite(amount) || amount <= 0) throw new Error('Montant invalide');
+  if (!new CinetPayProvider().isConfigured()) {
+    throw new Error('CinetPay n\'est pas activé sur la plateforme');
   }
-  if (isStripeEnabled()) gateways.push('stripe');
 
+  const inputCurrency = (await primaryCurrency(user)).toUpperCase();
+  const rates = await fxRates();
+  const unitsRaw = toSoldeUnits(amount, inputCurrency, rates);
+
+  const chargeCurrency = CINETPAY_CURRENCIES.has(inputCurrency) ? inputCurrency : 'XOF';
+  const chargeRaw = chargeCurrency === inputCurrency
+    ? amount
+    : fromSoldeUnits(unitsRaw, chargeCurrency, rates);
+  const chargeAmount = roundCharge(chargeRaw, chargeCurrency);
+
+  if (chargeAmount < CINETPAY_MIN) {
+    throw new Error(`Le minimum CinetPay est ${CINETPAY_MIN} ${chargeCurrency}`);
+  }
+  if (chargeAmount > CINETPAY_MAX) {
+    throw new Error(`Le maximum CinetPay est ${CINETPAY_MAX.toLocaleString('fr-FR')} ${chargeCurrency}`);
+  }
+
+  const usdAmount = Math.round(toSoldeUnits(chargeAmount, chargeCurrency, rates) * 100) / 100;
+  if (usdAmount <= 0) throw new Error('Montant trop faible après conversion');
+
+  const country = cinetpayCountry(await primaryCountry(user));
+  const quote: CinetPayQuote = {
+    inputAmount: amount,
+    inputCurrency,
+    chargeAmount,
+    chargeCurrency,
+    country,
+    usdAmount,
+  };
+  if (bucket === 'ai') {
+    const tokens = await usdToTokens(usdAmount);
+    if (tokens <= 0) throw new Error('Montant trop faible pour créditer un token IA');
+    quote.tokens = tokens;
+  }
+  return quote;
+}
+
+/**
+ * Retourne la liste des gateways que le vendeur peut utiliser.
+ * CinetPay est proposé à chaque vendeur dès que la plateforme est configurée.
+ */
+export async function availableGatewaysForUser(_user: IUser): Promise<TopUpGateway[]> {
+  const gateways: TopUpGateway[] = [];
+  if (new CinetPayProvider().isConfigured()) gateways.push('cinetpay');
+  if (isStripeEnabled()) gateways.push('stripe');
   return gateways;
 }
 
@@ -68,30 +139,23 @@ export async function initiateTopUp(args: InitiateTopUpArgs): Promise<InitiateTo
   if (args.amount <= 0) throw new Error('Montant invalide');
 
   const currency = (args.currency || (await primaryCurrency(user)) || 'USD').toUpperCase();
-  const country = (args.country || (await primaryCountry(user)) || '').toUpperCase();
 
-  // Résolution du gateway.
+  // Résolution du gateway. CinetPay d'abord : c'est le rail de recharge.
   let gateway: TopUpGateway;
   if (args.gateway === 'auto') {
     const available = await availableGatewaysForUser(user);
     if (available.length === 0) {
       throw new Error('Aucun gateway de paiement disponible pour ce compte');
     }
-    // Préférer CinetPay en zone CFA (paiement local moins de friction).
     gateway = available[0];
   } else {
     gateway = args.gateway;
   }
 
-  // Garde-fou : le vendeur ne peut pas forcer CinetPay hors zone éligible.
-  if (gateway === 'cinetpay') {
-    if (!CINETPAY_ELIGIBLE.has(country)) {
-      throw new Error(`CinetPay n'est pas disponible dans votre pays (${country || '?'})`);
-    }
-    if (!new CinetPayProvider().isConfigured()) {
-      throw new Error('CinetPay n\'est pas configuré côté plateforme');
-    }
-  }
+  const cinetpayQuote = gateway === 'cinetpay'
+    ? await quoteCinetPayTopUp(user, args.amount, args.bucket)
+    : null;
+
   if (gateway === 'stripe' && !isStripeEnabled()) {
     throw new Error('Stripe n\'est pas configuré côté plateforme');
   }
@@ -105,8 +169,10 @@ export async function initiateTopUp(args: InitiateTopUpArgs): Promise<InitiateTo
   // le pending qui expirera via TTL).
   const topUp = await WalletTopUp.create({
     userId: user._id,
-    amount: args.amount,
-    currency,
+    amount: cinetpayQuote ? cinetpayQuote.chargeAmount : args.amount,
+    currency: cinetpayQuote ? cinetpayQuote.chargeCurrency : currency,
+    usdAmount: cinetpayQuote?.usdAmount,
+    paymentCountry: cinetpayQuote?.country,
     bucket: args.bucket,
     gateway,
     gatewayReference,
@@ -141,9 +207,9 @@ export async function initiateTopUp(args: InitiateTopUpArgs): Promise<InitiateTo
       // cinetpay
       const result = await new CinetPayProvider().initTopUpPayment({
         merchantReference: gatewayReference,
-        amount: args.amount,
-        currency,
-        country,
+        amount: cinetpayQuote!.chargeAmount,
+        currency: cinetpayQuote!.chargeCurrency,
+        country: cinetpayQuote!.country,
         vendorEmail: user.email,
         vendorName: user.name,
         successUrl,
@@ -164,8 +230,10 @@ export async function initiateTopUp(args: InitiateTopUpArgs): Promise<InitiateTo
     topUpId: String(topUp._id),
     checkoutUrl: topUp.checkoutUrl!,
     gateway,
-    amount: args.amount,
-    currency,
+    amount: cinetpayQuote ? cinetpayQuote.chargeAmount : args.amount,
+    currency: cinetpayQuote ? cinetpayQuote.chargeCurrency : currency,
+    usdAmount: cinetpayQuote?.usdAmount,
+    tokens: cinetpayQuote?.tokens,
   };
 }
 
@@ -181,15 +249,20 @@ export async function settleTopUp(topUpId: string): Promise<boolean> {
   if (!topUp) return false;
   if (topUp.status === 'paid') return false;
 
-  // Pour bucket AI : convertit le montant (en USD/devise) en tokens selon
-  // le ratio configuré. Le bucket main est crédité 1:1.
-  let creditAmount = topUp.amount;
-  let note = 'Recharge';
+  // Les recharges CinetPay stockent l'équivalent USD. Les anciens top-ups
+  // (sans usdAmount) restent crédités 1:1, comme avant.
+  const usd = typeof topUp.usdAmount === 'number' && topUp.usdAmount > 0
+    ? topUp.usdAmount
+    : topUp.amount;
+  let creditAmount = usd;
+  let note = `Recharge solde · ${topUp.amount} ${topUp.currency}`;
   if (topUp.bucket === 'ai') {
-    const tokens = await usdToTokens(topUp.amount);
+    const tokens = await usdToTokens(usd);
     creditAmount = tokens;
     const rate = await usdToTokensRate();
     note = `Recharge solde IA · ${topUp.amount} ${topUp.currency} → ${tokens} tokens (ratio ${rate})`;
+  } else if (typeof topUp.usdAmount === 'number' && topUp.usdAmount > 0) {
+    note = `Recharge solde · ${topUp.amount} ${topUp.currency} → ${usd} USD`;
   }
 
   await credit({
@@ -229,4 +302,45 @@ async function primaryCountry(user: IUser): Promise<string> {
 async function primaryCurrency(user: IUser): Promise<string> {
   const store = await primaryStore(user);
   return (store?.settings?.currency || 'USD').toUpperCase();
+}
+
+async function fxRates(): Promise<Record<string, number>> {
+  const settings = await getSettings();
+  return {
+    ...DEFAULT_AI_PRICING.rates,
+    ...(settings.aiPricing?.rates || {}),
+  };
+}
+
+function toSoldeUnits(amount: number, currency: string, rates: Record<string, number>): number {
+  const perUnit = SOLDE_UNITS[currency];
+  if (perUnit) return amount / perUnit;
+  if (currency === 'USD') return amount;
+  return amount / rateOf(rates, currency);
+}
+
+function fromSoldeUnits(units: number, currency: string, rates: Record<string, number>): number {
+  const perUnit = SOLDE_UNITS[currency];
+  if (perUnit) return units * perUnit;
+  if (currency === 'USD') return units;
+  return units * rateOf(rates, currency);
+}
+
+function rateOf(rates: Record<string, number>, currency: string): number {
+  if (currency === 'USD') return 1;
+  const rate = Number(rates[currency]);
+  if (!Number.isFinite(rate) || rate <= 0) {
+    throw new Error(`Pas de taux de change pour ${currency}`);
+  }
+  return rate;
+}
+
+function roundCharge(amount: number, currency: string): number {
+  if (CFA_CURRENCIES.has(currency)) return Math.round(amount / 5) * 5;
+  return Math.round(amount);
+}
+
+function cinetpayCountry(storeCountry: string): string {
+  const cc = storeCountry.toUpperCase();
+  return CINETPAY_COUNTRIES.has(cc) ? cc : 'CI';
 }

@@ -341,7 +341,7 @@ export default function DashboardAnalyticsPage() {
                 <p className="text-xs text-muted-foreground">Sur la période sélectionnée</p>
               </CardHeader>
               <CardContent>
-                <RecentOrdersPanel orders={data.recentOrders} />
+                <RecentOrdersPanel orders={data.recentOrders} unpaidCheckouts={data.unpaidCheckouts} />
               </CardContent>
             </Card>
           </div>

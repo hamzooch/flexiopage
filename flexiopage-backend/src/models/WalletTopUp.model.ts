@@ -22,10 +22,17 @@ export type TopUpBucket = 'main' | 'ai';
 
 export interface IWalletTopUp extends Document {
   userId: mongoose.Types.ObjectId;
-  /** Montant EN DEVISE DU WALLET (pas en cents). Le service convertit
-   *  en cents au moment de l'appel Stripe. */
+  /** Montant encaissé par le gateway (devise `currency`, pas en cents). */
   amount: number;
   currency: string;
+  /**
+   * Équivalent USD crédité sur le solde principal, ou base de conversion
+   * en tokens pour le solde IA. Absent sur les anciens top-ups : on crédite
+   * alors `amount` tel quel.
+   */
+  usdAmount?: number;
+  /** Pays CinetPay utilisé pour l'appel API (repli CI si le vendeur est hors zone). */
+  paymentCountry?: string;
   /** Quel sous-solde recharger. Pour 'ai', on convertit USD→tokens au settle. */
   bucket: TopUpBucket;
   gateway: TopUpGateway;
@@ -49,6 +56,8 @@ const WalletTopUpSchema = new Schema<IWalletTopUp>(
     userId: { type: Schema.Types.ObjectId, ref: 'User', required: true, index: true },
     amount: { type: Number, required: true, min: 0.01 },
     currency: { type: String, required: true, trim: true, uppercase: true },
+    usdAmount: { type: Number, min: 0 },
+    paymentCountry: { type: String, trim: true, uppercase: true },
     bucket: { type: String, enum: ['main', 'ai'], required: true, default: 'main' },
     gateway: { type: String, enum: ['stripe', 'cinetpay'], required: true },
     status: {

@@ -673,6 +673,16 @@ export interface IStore extends Document {
     monthlyRevenue?: number;
   };
   /**
+   * Commission des boutiques physiques : on n'encaisse pas à chaque commande.
+   * `deliveredRevenue` cumule le CA livré/payé. Chaque fois qu'il franchit
+   * un palier (2 000 000 XOF, 10 000 TND…), on prélève 10 % de ce palier.
+   */
+  physicalBilling?: {
+    deliveredRevenue: number;
+    tranchesBilled: number;
+    currency?: string;
+  };
+  /**
    * Snapshot des modifications en cours dans l'éditeur boutique — le vendeur
    * les VOIT (via ?preview=1 dans l'iframe d'aperçu) mais elles ne remplacent
    * PAS le live tant qu'il ne clique pas « Enregistrer ». Auto-écrit à chaque
@@ -1101,9 +1111,14 @@ const StoreSchema = new Schema<IStore>(
       rate: { type: Number, min: 0, max: 1 },
       cap: { type: Number, min: 0 },
     },
-    goals: {
-      monthlyRevenue: { type: Number, min: 0 },
-    },
+  goals: {
+    monthlyRevenue: { type: Number, min: 0 },
+  },
+  physicalBilling: {
+    deliveredRevenue: { type: Number, default: 0, min: 0 },
+    tranchesBilled: { type: Number, default: 0, min: 0 },
+    currency: { type: String },
+  },
     // Draft "modifs en cours" — sous-doc mixte pour rester tolérant à
     // l'évolution du shape settings sans migration. Non exposé aux routes
     // publiques ; seul le propriétaire authentifié le lit via ?preview=1.

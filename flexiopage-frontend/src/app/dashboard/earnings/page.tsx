@@ -73,7 +73,8 @@ const METHOD_LABELS: Record<PayoutMethod, string> = {
   wave: 'Wave',
   orange_money: 'Orange Money',
   mtn_momo: 'MTN Mobile Money',
-  bank_transfer: 'Virement bancaire',
+  bank_transfer: 'RIB bancaire',
+  redotpay: 'RedotPay',
 };
 
 export default function EarningsPage() {
@@ -84,11 +85,13 @@ export default function EarningsPage() {
   const [showRequestForm, setShowRequestForm] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
+  const [success, setSuccess] = useState('');
 
   // Form state
   const [amount, setAmount] = useState('');
-  const [method, setMethod] = useState<PayoutMethod>('wave');
+  const [method, setMethod] = useState<PayoutMethod>('redotpay');
   const [phone, setPhone] = useState('');
+  const [redotpayId, setRedotpayId] = useState('');
   const [accountName, setAccountName] = useState('');
   const [iban, setIban] = useState('');
   const [bankName, setBankName] = useState('');
@@ -127,6 +130,7 @@ export default function EarningsPage() {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError('');
+    setSuccess('');
     const value = Number(amount);
     if (!value || value <= 0) {
       setError('Le montant doit être positif.');
@@ -145,15 +149,22 @@ export default function EarningsPage() {
     const destination: Record<string, string> = {};
     if (method === 'bank_transfer') {
       if (!accountName.trim() || !iban.trim()) {
-        setError('Nom et IBAN requis pour le virement bancaire.');
+        setError('Nom du titulaire et RIB requis.');
         return;
       }
       destination.accountName = accountName.trim();
+      destination.rib = iban.trim();
       destination.iban = iban.trim();
       if (bankName.trim()) destination.bankName = bankName.trim();
+    } else if (method === 'redotpay') {
+      if (!redotpayId.trim()) {
+        setError('Indique ton identifiant RedotPay. L’admin fera le transfert.');
+        return;
+      }
+      destination.redotpayId = redotpayId.trim();
     } else {
       if (!phone.trim()) {
-        setError('Numéro de téléphone requis.');
+        setError('Indique le numéro Mobile Money.');
         return;
       }
       destination.phone = phone.trim();
@@ -168,7 +179,8 @@ export default function EarningsPage() {
         sellerNote: sellerNote.trim() || undefined,
       });
       setShowRequestForm(false);
-      setAmount(''); setPhone(''); setAccountName(''); setIban(''); setBankName(''); setSellerNote('');
+      setAmount(''); setPhone(''); setRedotpayId(''); setAccountName(''); setIban(''); setBankName(''); setSellerNote('');
+      setSuccess('Demande envoyée. Le montant est réservé, et les admins ainsi que le owner ont été notifiés.');
       await load();
     } catch (err: unknown) {
       const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error
@@ -198,7 +210,9 @@ export default function EarningsPage() {
         </div>
         <div>
           <h1 className="text-lg font-bold sm:text-xl">Mes revenus</h1>
-          <p className="text-xs text-muted-foreground">Ventes en ligne + demandes de versement</p>
+          <p className="text-xs text-muted-foreground">
+            Solde de tes ventes de produits digitaux, et demandes de retrait
+          </p>
         </div>
         <Button variant="outline" size="sm" className="ml-auto gap-2" onClick={load}>
           <RefreshCw className="h-3.5 w-3.5" /> Actualiser
@@ -242,6 +256,11 @@ export default function EarningsPage() {
               </Button>
             </div>
           </div>
+          {success && (
+            <div className="mt-3 rounded-lg border border-emerald-500/40 bg-emerald-500/5 p-3 text-xs text-emerald-800">
+              {success}
+            </div>
+          )}
           {!canRequest && wallet.payoutBalance > 0 && (
             <div className="mt-3 flex items-start gap-2 rounded-lg border border-amber-500/40 bg-amber-500/5 p-3 text-xs text-amber-800">
               <Info className="mt-0.5 h-3.5 w-3.5 shrink-0" />
@@ -271,7 +290,7 @@ export default function EarningsPage() {
           <CardHeader>
             <CardTitle className="text-base">Nouvelle demande de versement</CardTitle>
             <CardDescription className="text-xs">
-              Nous versons manuellement sous 72h. Vérifie bien tes coordonnées.
+              Le montant quitte ton solde dès l’envoi. Indique ton identifiant RedotPay, ton RIB, ou ton numéro Mobile Money. L’admin fait le transfert. Un refus remet le montant sur ton solde.
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -292,8 +311,8 @@ export default function EarningsPage() {
               </div>
               <div>
                 <Label>Méthode de versement</Label>
-                <div className="mt-1.5 grid grid-cols-2 gap-2 sm:grid-cols-4">
-                  {(['wave', 'orange_money', 'mtn_momo', 'bank_transfer'] as PayoutMethod[]).map((m) => (
+                <div className="mt-1.5 grid grid-cols-2 gap-2 sm:grid-cols-5">
+                  {(['redotpay', 'bank_transfer', 'wave', 'orange_money', 'mtn_momo'] as PayoutMethod[]).map((m) => (
                     <button
                       key={m}
                       type="button"
@@ -317,14 +336,26 @@ export default function EarningsPage() {
                     <Input id="accountName" value={accountName} onChange={(e) => setAccountName(e.target.value)} required />
                   </div>
                   <div>
-                    <Label htmlFor="iban">IBAN / Numéro de compte</Label>
-                    <Input id="iban" value={iban} onChange={(e) => setIban(e.target.value)} required />
+                    <Label htmlFor="iban">RIB</Label>
+                    <Input id="iban" value={iban} onChange={(e) => setIban(e.target.value)} placeholder="Relevé d'identité bancaire" required />
                   </div>
                   <div>
                     <Label htmlFor="bankName">Banque (optionnel)</Label>
                     <Input id="bankName" value={bankName} onChange={(e) => setBankName(e.target.value)} />
                   </div>
                 </>
+              ) : method === 'redotpay' ? (
+                <div>
+                  <Label htmlFor="redotpayId">Identifiant RedotPay</Label>
+                  <Input
+                    id="redotpayId"
+                    value={redotpayId}
+                    onChange={(e) => setRedotpayId(e.target.value)}
+                    placeholder="ID du compte RedotPay"
+                    required
+                  />
+                  <p className="mt-1 text-[11px] text-muted-foreground">L’admin envoie le montant sur cet identifiant.</p>
+                </div>
               ) : (
                 <div>
                   <Label htmlFor="phone">Numéro {METHOD_LABELS[method]}</Label>
@@ -391,7 +422,10 @@ export default function EarningsPage() {
                       <div className="mt-0.5 font-mono text-[10px] text-muted-foreground">→ {p.destination.phone}</div>
                     )}
                     {p.destination.iban && (
-                      <div className="mt-0.5 font-mono text-[10px] text-muted-foreground">→ {p.destination.iban}</div>
+                      <div className="mt-0.5 font-mono text-[10px] text-muted-foreground">→ RIB {p.destination.rib || p.destination.iban}</div>
+                    )}
+                    {p.destination.redotpayId && (
+                      <div className="mt-0.5 font-mono text-[10px] text-muted-foreground">→ RedotPay {p.destination.redotpayId}</div>
                     )}
                     {p.adminNote && (
                       <div className="mt-1 rounded bg-muted/30 px-2 py-1 text-[11px] text-muted-foreground">

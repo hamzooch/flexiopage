@@ -67,7 +67,7 @@ async function tryHandleTopUpWebhook(
   const { CinetPayProvider } = await import('../services/payment/cinetpay.service');
   const status = await new CinetPayProvider().verifyTopUpTransaction({
     merchantReference: topUp.gatewayReference,
-    country: (payload.cpm_country as string) || 'CI',
+    country: topUp.paymentCountry || (payload.cpm_country as string) || 'CI',
   });
   if (status === 'paid') {
     await settleTopUp(String(topUp._id));

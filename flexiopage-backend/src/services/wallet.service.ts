@@ -144,7 +144,8 @@ export async function credit(args: CreditArgs): Promise<{ wallet: IWallet; trans
   }
 
   const current = bucket === 'ai' ? wallet.aiBalance : wallet.balance;
-  const newBalance = current + args.amount;
+  const rawBalance = current + args.amount;
+  const newBalance = bucket === 'ai' ? rawBalance : Math.round(rawBalance * 100) / 100;
   const tx: IWalletTransaction = {
     id: genId(),
     kind: args.kind || (bucket === 'ai' ? 'top_up_ai' : 'top_up'),
@@ -172,6 +173,8 @@ interface DebitArgs {
   orderId?: mongoose.Types.ObjectId;
   orderNumber?: string;
   note?: string;
+  /** Idempotence : un même palier de commission ne peut pas être prélevé deux fois. */
+  paymentReference?: string;
   /**
    * When true, refuse the debit if the targeted balance is below `amount`.
    * Used for AI generation (we want to block the call), NOT for commission
@@ -189,6 +192,15 @@ export async function debit(args: DebitArgs): Promise<{ wallet: IWallet; transac
   const wallet = await getOrCreateWallet(args.userId);
   const bucket: WalletBucket = args.bucket || 'main';
 
+  if (args.paymentReference) {
+    const existing = wallet.transactions.find(
+      (t) => t.paymentReference && t.paymentReference === args.paymentReference && t.bucket === bucket,
+    );
+    if (existing) {
+      return { wallet, transaction: existing, alreadyApplied: true };
+    }
+  }
+
   if (args.orderId && args.kind) {
     const existing = wallet.transactions.find(
       (t) => t.kind === args.kind && t.orderId?.toString() === args.orderId!.toString()
@@ -205,7 +217,9 @@ export async function debit(args: DebitArgs): Promise<{ wallet: IWallet; transac
     err.code = bucket === 'ai' ? 'insufficient_ai_balance' : 'insufficient_balance';
     throw err;
   }
-  const newBalance = current - args.amount;
+  const rawBalance = current - args.amount;
+  // Le solde principal se lit au dixième (3 → 2,9). On évite 2.9000000000000004.
+  const newBalance = bucket === 'ai' ? rawBalance : Math.round(rawBalance * 100) / 100;
   const tx: IWalletTransaction = {
     id: genId(),
     kind: args.kind || (bucket === 'ai' ? 'ai_generation' : 'commission'),
@@ -214,6 +228,7 @@ export async function debit(args: DebitArgs): Promise<{ wallet: IWallet; transac
     balanceAfter: newBalance,
     orderId: args.orderId,
     orderNumber: args.orderNumber,
+    paymentReference: args.paymentReference,
     note: args.note,
     createdAt: new Date(),
   };

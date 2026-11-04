@@ -634,6 +634,7 @@ export default function DashboardOverviewPage() {
           />
           <RecentOrdersCard
             items={analytics?.recentOrders || []}
+            unpaidCheckouts={analytics?.unpaidCheckouts || 0}
             currency={currency}
             loading={loadingAnalytics && !analytics}
             storeId={activeStoreId!}
@@ -1292,9 +1293,10 @@ const PAYMENT_LABEL_FR: Record<string, string> = {
 };
 
 function RecentOrdersCard({
-  items, currency, loading, storeId,
+  items, unpaidCheckouts = 0, currency, loading, storeId,
 }: {
   items: StoreAnalyticsRich['recentOrders'];
+  unpaidCheckouts?: number;
   currency: string;
   loading?: boolean;
   storeId: string;
@@ -1304,7 +1306,10 @@ function RecentOrdersCard({
       <div className="flex items-center justify-between border-b border-border/60 px-4 py-3">
         <div>
           <h3 className="text-sm font-bold">Commandes récentes</h3>
-          <p className="text-[10px] text-muted-foreground">Les dernières de la période — clique pour gérer</p>
+          <p className="text-[10px] text-muted-foreground">
+            Les ventes de la période
+            {unpaidCheckouts > 0 ? ` · ${unpaidCheckouts} paiement${unpaidCheckouts > 1 ? 's' : ''} non abouti${unpaidCheckouts > 1 ? 's' : ''}` : ''}
+          </p>
         </div>
         <Link href={`/dashboard/orders?storeId=${storeId}`}>
           <Button variant="ghost" size="sm" className="gap-1 rounded-lg text-xs">

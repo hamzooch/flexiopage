@@ -93,10 +93,11 @@ async function main() {
 
   if (cinetpayConfigured) {
     check('Vendor CI a CinetPay dispo', gwCI.includes('cinetpay'));
+    check('Vendor US a aussi CinetPay (tous les vendeurs)', gwUS.includes('cinetpay'));
   } else {
     check('Vendor CI n\'a PAS CinetPay (non configuré)', !gwCI.includes('cinetpay'));
+    check('Vendor US n\'a PAS CinetPay (non configuré)', !gwUS.includes('cinetpay'));
   }
-  check('Vendor US n\'a JAMAIS CinetPay (hors zone CFA)', !gwUS.includes('cinetpay'));
   if (stripeConfigured) {
     check('Vendor CI a Stripe dispo', gwCI.includes('stripe'));
     check('Vendor US a Stripe dispo', gwUS.includes('stripe'));

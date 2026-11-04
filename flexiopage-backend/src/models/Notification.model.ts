@@ -23,6 +23,9 @@ export type NotificationType =
   | 'bot.conv_warning'
   | 'bot.conv_capped'
   | 'delivery.dispatch_storm'
+  | 'payout.requested'
+  | 'payout.paid'
+  | 'payout.rejected'
   | 'system.test';
 
 export interface INotification extends Document {
@@ -49,7 +52,7 @@ const NotificationSchema = new Schema<INotification>(
     storeId: { type: Schema.Types.ObjectId, ref: 'Store' },
     type: {
       type: String,
-      enum: ['order.created', 'order.status_changed', 'team.member_added', 'team.member_removed', 'bot.limit_reached', 'bot.balance_empty', 'bot.conv_warning', 'bot.conv_capped', 'delivery.dispatch_storm', 'system.test'],
+      enum: ['order.created', 'order.status_changed', 'team.member_added', 'team.member_removed', 'bot.limit_reached', 'bot.balance_empty', 'bot.conv_warning', 'bot.conv_capped', 'delivery.dispatch_storm', 'payout.requested', 'payout.paid', 'payout.rejected', 'system.test'],
       required: true,
     },
     title: { type: String, required: true },

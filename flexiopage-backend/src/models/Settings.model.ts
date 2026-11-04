@@ -77,8 +77,21 @@ export interface IPlatformSettings {
   /**
    * Commission spécifique aux commandes physiques (COD dropshipping). Si non
    * défini, on retombe sur `commissionRate`. 0.05 = 5%.
+   * Conservé pour l'historique. Le prélèvement physique réel retire
+   * `physicalBalanceDebit` du solde principal une fois le palier de CA atteint.
    */
   commissionRatePhysical?: number;
+  /**
+   * Montant fixe retiré du solde principal (navbar), pas du solde IA,
+   * à chaque palier de CA d'une boutique physique. 0.1 sur un solde de 3
+   * laisse 2.9. Ce 0.1 vaut 800 CFA, ou 3 dinars tunisiens.
+   */
+  physicalBalanceDebit?: number;
+  /**
+   * Chiffre d'affaires à atteindre, par devise, avant de retirer
+   * `physicalBalanceDebit` du solde. 2 000 000 XOF = 10 000 TND.
+   */
+  physicalRevenueThresholds?: Record<string, number>;
   /** Minimum payout amount per currency. Seller can't withdraw below this. */
   payoutMinimums: Record<string, number>;
   /**
@@ -114,6 +127,11 @@ export const DEFAULT_PLATFORM_SETTINGS: IPlatformSettings = {
   commissionRate: 0.15,
   commissionRateDigital: 0.15,
   commissionRatePhysical: 0.05,
+  physicalBalanceDebit: 0.1,
+  physicalRevenueThresholds: {
+    XOF: 2_000_000,
+    TND: 10_000,
+  },
   payoutMinimums: {
     XOF: 5000,
     USD: 8,
@@ -200,6 +218,11 @@ const SettingsSchema = new Schema<ISettings>(
       commissionRate: { type: Number, default: DEFAULT_PLATFORM_SETTINGS.commissionRate, min: 0, max: 1 },
       commissionRateDigital: { type: Number, min: 0, max: 1 },
       commissionRatePhysical: { type: Number, min: 0, max: 1 },
+      physicalBalanceDebit: { type: Number, min: 0, default: 0.1 },
+      physicalRevenueThresholds: {
+        type: Schema.Types.Mixed,
+        default: () => ({ ...DEFAULT_PLATFORM_SETTINGS.physicalRevenueThresholds }),
+      },
       payoutMinimums: { type: Schema.Types.Mixed, default: () => ({ ...DEFAULT_PLATFORM_SETTINGS.payoutMinimums }) },
       defaultBotConversationsLimit: { type: Number, default: DEFAULT_PLATFORM_SETTINGS.defaultBotConversationsLimit, min: 0, max: 1_000_000 },
       defaultBotMessagesLimitMax: { type: Number, default: DEFAULT_PLATFORM_SETTINGS.defaultBotMessagesLimitMax, min: 0, max: 1_000_000 },

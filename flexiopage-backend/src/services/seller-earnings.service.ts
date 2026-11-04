@@ -57,7 +57,7 @@ export function holdsPlatformFunds(provider: string | undefined | null): boolean
 export async function creditSellerForPaidOrder(order: IOrder): Promise<number> {
   if (!isOnlineProvider(order.paymentProvider)) return 0;
 
-  const store = await Store.findById(order.storeId).select('ownerId').lean();
+  const store = await Store.findById(order.storeId).select('ownerId storeType').lean();
   if (!store?.ownerId) return 0;
 
   const wallet = await Wallet.findOne({ userId: store.ownerId });
@@ -82,7 +82,11 @@ export async function creditSellerForPaidOrder(order: IOrder): Promise<number> {
 
   const settings = await getSettings();
   const orderType = await inferOrderType(order);
-  const rate = commissionRateForOrderType(settings.platform, orderType);
+  // Boutique physique : le vendeur est payé en entier. La commission (10 %
+  // du palier) est prélevée plus tard sur son solde, une fois le CA atteint.
+  const rate = store.storeType === 'physical'
+    ? 0
+    : commissionRateForOrderType(settings.platform, orderType);
   const commission = Math.round(order.total * rate);
   const netAmount = Math.max(0, order.total - commission);
 
@@ -107,6 +111,15 @@ export async function creditSellerForPaidOrder(order: IOrder): Promise<number> {
   await settleMarketplaceDebits(order, targetWallet);
 
   await targetWallet.save();
+
+  if (store.storeType === 'physical') {
+    try {
+      const { recordPhysicalRevenue } = await import('./physical-commission.service');
+      await recordPhysicalRevenue(order._id.toString());
+    } catch (err) {
+      console.error('[physical-commission] CA non compté:', (err as Error).message);
+    }
+  }
 
   return netAmount;
 }

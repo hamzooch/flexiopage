@@ -165,7 +165,12 @@ export interface StoreAnalyticsRich {
     /** Refund / decliné. */
     refunded: number;
   };
-  /** Recent activity for the side panel. */
+  /**
+   * Clients qui ont ouvert le paiement en ligne sans le terminer (échec
+   * passerelle ou abandon). Comptés à part : ce ne sont pas des ventes.
+   */
+  unpaidCheckouts: number;
+  /** Recent activity for the side panel. Real orders only — paid, COD pending, refunded. */
   recentOrders: Array<{
     id: string;
     orderNumber: string;
@@ -227,7 +232,7 @@ async function computeMonthlyGoal(
   const now = new Date();
   const month = monthlyGoalWindow(now, timeZone);
   const agg = await Order.aggregate([
-    { $match: { storeId: storeObjectId, createdAt: { $gte: month.from }, paymentStatus: { $ne: 'abandoned' } } },
+    { $match: { storeId: storeObjectId, createdAt: { $gte: month.from }, paymentStatus: { $nin: ['abandoned', 'failed'] } } },
     { $group: { _id: null, sales: { $sum: '$total' } } },
   ]);
   const current = agg[0]?.sales || 0;
@@ -250,7 +255,7 @@ export async function getStoreAnalytics(storeId: string): Promise<StoreAnalytics
 
   const [total, thisMonth, store, viewsTotal, viewsMonth] = await Promise.all([
     Order.aggregate([
-      { $match: { storeId: storeObjectId, paymentStatus: { $ne: 'abandoned' } } },
+      { $match: { storeId: storeObjectId, paymentStatus: { $nin: ['abandoned', 'failed'] } } },
       {
         $group: {
           _id: null,
@@ -261,7 +266,7 @@ export async function getStoreAnalytics(storeId: string): Promise<StoreAnalytics
       },
     ]),
     Order.aggregate([
-      { $match: { storeId: storeObjectId, createdAt: { $gte: startOfMonth }, paymentStatus: { $ne: 'abandoned' } } },
+      { $match: { storeId: storeObjectId, createdAt: { $gte: startOfMonth }, paymentStatus: { $nin: ['abandoned', 'failed'] } } },
       {
         $group: {
           _id: null,
@@ -330,12 +335,11 @@ export async function getStoreAnalyticsRich(
     w = resolveRange(range, new Date(), range === 'custom' ? custom : undefined, timeZone);
   }
 
-  // Analytics never include cart-abandoned orders — they'd inflate the order
-  // count without corresponding revenue, and the seller already sees them
-  // separately in /admin/orders under the "Abandons" toggle. The abandonment
-  // rate itself lives on the payments dashboard, computed from the raw
-  // `abandoned` bucket rather than mixed in with real orders here.
-  const baseMatch = { storeId: storeObjectId, paymentStatus: { $ne: 'abandoned' } };
+  // A buyer who opens Wave / Orange Money and then cancels, or whose
+  // payment is refused (no balance), is not a sale. `abandoned` (left the
+  // page) and `failed` (gateway refused) stay out of every seller KPI and
+  // out of "commandes récentes". They are counted once as unpaidCheckouts.
+  const baseMatch = { storeId: storeObjectId, paymentStatus: { $nin: ['abandoned', 'failed'] } };
   const inWindow = { ...baseMatch, createdAt: { $gte: w.from, $lte: w.to } };
   const inPrev = { ...baseMatch, createdAt: { $gte: w.prevFrom, $lte: w.prevTo } };
   const dateBucket = w.bucket === 'day'
@@ -360,6 +364,7 @@ export async function getStoreAnalyticsRich(
     cancelReasonsRaw,
     byCountryRaw,
     byCityRaw,
+    unpaidCheckouts,
   ] = await Promise.all([
     // All-time totals (any status).
     Order.aggregate([
@@ -484,7 +489,9 @@ export async function getStoreAnalyticsRich(
       },
       { $sort: { revenue: -1 } },
     ]),
-    // Recent orders in the selected window (not all-time).
+    // Recent real orders in the selected window. Failed/abandoned checkouts
+    // are excluded by baseMatch so a burst of unpaid attempts cannot push
+    // actual sales out of this list.
     Order.find(inWindow)
       .sort({ createdAt: -1 })
       .limit(8)
@@ -582,6 +589,11 @@ export async function getStoreAnalyticsRich(
       },
       { $sort: { orders: -1 } },
     ]),
+    Order.countDocuments({
+      storeId: storeObjectId,
+      createdAt: { $gte: w.from, $lte: w.to },
+      paymentStatus: { $in: ['failed', 'abandoned'] },
+    }),
   ]);
 
   const t = totals[0] || { orders: 0, revenue: 0, sales: 0, customers: 0, currency: storeCurrency };
@@ -720,6 +732,7 @@ export async function getStoreAnalyticsRich(
       fulfilled: a.fulfilled,
       refunded: a.refunded,
     },
+    unpaidCheckouts,
     recentOrders: (recentRaw as Array<{
       _id: mongoose.Types.ObjectId; orderNumber: string; email: string; customerName?: string;
       total: number; currency: string; paymentStatus: string; fulfillmentStatus: string; createdAt: Date;

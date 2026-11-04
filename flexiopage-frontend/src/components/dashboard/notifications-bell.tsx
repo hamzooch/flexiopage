@@ -14,7 +14,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Bell, CheckCheck, Loader2, Package, ShoppingCart, Truck, UsersRound } from 'lucide-react';
+import { Banknote, Bell, CheckCheck, Loader2, Package, ShoppingCart, Truck, UsersRound, XCircle } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import {
   notificationsApi,
@@ -31,6 +31,9 @@ const TYPE_ICON: Record<NotificationType, React.ComponentType<{ className?: stri
   'order.status_changed': Truck,
   'team.member_added': UsersRound,
   'team.member_removed': UsersRound,
+  'payout.requested': Banknote,
+  'payout.paid': Banknote,
+  'payout.rejected': XCircle,
   'system.test': Bell,
 };
 
@@ -39,6 +42,9 @@ const TYPE_TINT: Record<NotificationType, string> = {
   'order.status_changed': 'bg-indigo-500/15 text-indigo-600',
   'team.member_added': 'bg-fuchsia-500/15 text-fuchsia-600',
   'team.member_removed': 'bg-amber-500/15 text-amber-700',
+  'payout.requested': 'bg-amber-500/15 text-amber-700',
+  'payout.paid': 'bg-emerald-500/15 text-emerald-600',
+  'payout.rejected': 'bg-rose-500/15 text-rose-600',
   'system.test': 'bg-sky-500/15 text-sky-600',
 };
 

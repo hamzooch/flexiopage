@@ -1586,6 +1586,29 @@ export async function updatePlatformSettings(req: AuthRequest, res: Response): P
     }
     update['platform.commissionRatePhysical'] = body.commissionRatePhysical;
   }
+  if (typeof body.physicalBalanceDebit === 'number') {
+    if (body.physicalBalanceDebit < 0 || body.physicalBalanceDebit > 1000) {
+      res.status(400).json({ error: 'physicalBalanceDebit must be between 0 and 1000' });
+      return;
+    }
+    update['platform.physicalBalanceDebit'] = Math.round(body.physicalBalanceDebit * 100) / 100;
+  }
+  if (body.physicalRevenueThresholds && typeof body.physicalRevenueThresholds === 'object') {
+    const current = await getSettings();
+    const merged: Record<string, number> = {
+      ...(DEFAULT_PLATFORM_SETTINGS.physicalRevenueThresholds || {}),
+      ...(current.platform?.physicalRevenueThresholds || {}),
+    };
+    for (const [cur, val] of Object.entries(body.physicalRevenueThresholds)) {
+      const n = Number(val);
+      if (!Number.isFinite(n) || n < 0) {
+        res.status(400).json({ error: `Invalid revenue threshold for ${cur}` });
+        return;
+      }
+      merged[cur.toUpperCase()] = Math.round(n);
+    }
+    update['platform.physicalRevenueThresholds'] = merged;
+  }
 
   if (body.payoutMinimums && typeof body.payoutMinimums === 'object') {
     // Merge par devise — on ne remplace pas tout le mapping, on met à jour

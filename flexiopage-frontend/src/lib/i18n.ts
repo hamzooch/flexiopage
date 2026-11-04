@@ -134,11 +134,6 @@ const DICTIONARY = {
   },
 
   // Hero
-  'landing.hero.badge': {
-    fr: 'Sans abonnement · Tes 30 premières commandes sont gratuites',
-    en: 'No subscription · Your first 30 orders are free',
-    ar: 'بدون اشتراك · أول 30 طلبًا مجانية',
-  },
   'landing.hero.title1': {
     fr: 'Crée ta boutique en ligne.',
     en: 'Create your online store.',

@@ -26,14 +26,22 @@ import {
 } from 'lucide-react';
 import { walletApi, type WalletState, type WalletTransaction, type WalletBucket, type TopUpGateway } from '@/lib/api';
 import { useWalletStore } from '@/stores/wallet-store';
+import { useAuthStore } from '@/stores/auth-store';
 import { cn } from '@/lib/utils';
 import { CreditCard, Smartphone, ExternalLink, CheckCircle2, XCircle } from 'lucide-react';
 
 function fmt(amount: number, currency: string): string {
+  const rounded = Math.round(amount * 10) / 10;
+  const tenths = Math.abs(rounded - Math.trunc(rounded)) > 0.001;
   try {
-    return new Intl.NumberFormat(undefined, { style: 'currency', currency, maximumFractionDigits: 0 }).format(amount);
+    return new Intl.NumberFormat(undefined, {
+      style: 'currency',
+      currency,
+      minimumFractionDigits: tenths ? 1 : 0,
+      maximumFractionDigits: tenths ? 1 : 0,
+    }).format(rounded);
   } catch {
-    return `${amount} ${currency}`;
+    return tenths ? `${rounded.toFixed(1)} ${currency}` : `${Math.round(rounded)} ${currency}`;
   }
 }
 
@@ -79,10 +87,22 @@ export default function WalletPage() {
 
   // Gateway top-up (Stripe / CinetPay) — flow séparé du manuel ci-dessus.
   const [gateways, setGateways] = useState<TopUpGateway[]>([]);
+  const [cinetpayReady, setCinetpayReady] = useState(false);
+  const [inputCurrency, setInputCurrency] = useState('XOF');
   const [gwAmount, setGwAmount] = useState('');
-  const [gwGateway, setGwGateway] = useState<'auto' | TopUpGateway>('auto');
+  const [gwGateway, setGwGateway] = useState<'auto' | TopUpGateway>('cinetpay');
   const [gwInitiating, setGwInitiating] = useState(false);
   const [gwMessage, setGwMessage] = useState<{ tone: 'ok' | 'err' | 'info'; text: string } | null>(null);
+  const [quote, setQuote] = useState<{
+    chargeAmount: number;
+    chargeCurrency: string;
+    usdAmount: number;
+    tokens?: number;
+    inputCurrency: string;
+  } | null>(null);
+  const [quoteError, setQuoteError] = useState('');
+  const role = useAuthStore((s) => s.user?.role);
+  const canManualTopUp = ['owner', 'superadmin', 'admin', 'supervisor'].includes(String(role));
 
   const setStoreWallet = useWalletStore((s) => s.setWallet);
 
@@ -103,9 +123,43 @@ export default function WalletPage() {
   // Fetch les gateways disponibles pour ce vendeur (auto selon pays).
   useEffect(() => {
     walletApi.topUpGateways()
-      .then((r) => setGateways(r.data.gateways))
+      .then((r) => {
+        setGateways(r.data.gateways);
+        setCinetpayReady(r.data.cinetpayReady);
+        setInputCurrency(r.data.inputCurrency || 'XOF');
+        if (r.data.gateways.includes('cinetpay')) setGwGateway('cinetpay');
+      })
       .catch(() => setGateways([]));
   }, []);
+
+  useEffect(() => {
+    const value = Number(gwAmount);
+    const bucket: 'main' | 'ai' = target === 'ai' ? 'ai' : 'main';
+    if (!cinetpayReady || gwGateway === 'stripe' || !value || value <= 0) {
+      setQuote(null);
+      setQuoteError('');
+      return;
+    }
+    let cancelled = false;
+    const timer = window.setTimeout(() => {
+      walletApi.topUpQuote({ amount: value, bucket })
+        .then((r) => {
+          if (cancelled) return;
+          setQuote(r.data);
+          setQuoteError('');
+        })
+        .catch((e) => {
+          if (cancelled) return;
+          setQuote(null);
+          const err = (e as { response?: { data?: { error?: string } } })?.response?.data?.error;
+          setQuoteError(err || 'Montant impossible à convertir');
+        });
+    }, 300);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [gwAmount, target, cinetpayReady, gwGateway]);
 
   // Retour de checkout ?topup=success&id=... — polling pour attendre le webhook.
   useEffect(() => {
@@ -127,9 +181,12 @@ export default function WalletPage() {
       try {
         const { data } = await walletApi.topUpStatus(topupId);
         if (data.topUp.status === 'paid') {
+          const credited = data.topUp.bucket === 'ai'
+            ? `les tokens sont sur le solde IA`
+            : `+${data.topUp.usdAmount ?? data.topUp.amount} sur le solde`;
           setGwMessage({
             tone: 'ok',
-            text: `Recharge confirmée : +${data.topUp.amount} ${data.topUp.currency} sur le solde ${data.topUp.bucket === 'ai' ? 'IA' : 'principal'}.`,
+            text: `Paiement confirmé (${data.topUp.amount} ${data.topUp.currency}). ${credited}.`,
           });
           await load();
           return;
@@ -221,6 +278,8 @@ export default function WalletPage() {
   }
 
   const ratePct = (wallet.commissionRate * 100).toFixed(0);
+  const soldeDebit = wallet.physicalBalanceDebit ?? 0.1;
+  const soldeDebitLabel = String(soldeDebit).replace('.', ',');
   const lowMain = wallet.balance < 1500;
   const lowAi = wallet.aiBalance < (wallet.aiCosts?.landing || 500);
   const visibleTx = filter === 'all' ? wallet.transactions : wallet.transactions.filter((t) => t.bucket === filter);
@@ -230,8 +289,21 @@ export default function WalletPage() {
       <div>
         <h1 className="text-3xl font-bold">Solde</h1>
         <p className="text-muted-foreground">
-          Deux soldes séparés : le <strong>principal</strong> sert à payer la commission de {ratePct}% par commande livrée,
-          le <strong>solde IA</strong> sert à générer les landing pages et pages produits avec l&apos;IA.
+          {wallet.storeType === 'physical' ? (
+            <>
+              Boutique physique : après chaque palier de chiffre d&apos;affaires
+              {wallet.physicalRevenueThreshold
+                ? <> ({fmt(wallet.physicalRevenueThreshold, wallet.payoutCurrency)})</>
+                : null}
+              , on retire <strong>{soldeDebitLabel}</strong> du solde (pas du solde IA). Un solde de 3 devient 2,9.
+              Ce 0,1 vaut 800 CFA, ou 3 dinars. Le <strong>solde IA</strong> sert aux générations.
+            </>
+          ) : (
+            <>
+              Deux soldes séparés : le <strong>principal</strong> sert à payer la commission de {ratePct}% par commande livrée,
+              le <strong>solde IA</strong> sert à générer les landing pages et pages produits avec l&apos;IA.
+            </>
+          )}
         </p>
       </div>
 
@@ -241,7 +313,11 @@ export default function WalletPage() {
           tone="emerald"
           icon={<Wallet className="h-4 w-4" />}
           label="Solde principal"
-          subline={`Commission ${ratePct}% par commande livrée · plafond ${fmt(wallet.commissionCap, wallet.currency)}`}
+          subline={
+            wallet.storeType === 'physical'
+              ? `−${soldeDebitLabel} sur le solde à chaque palier${wallet.physicalRevenueThreshold ? ` de ${fmt(wallet.physicalRevenueThreshold, wallet.payoutCurrency)}` : ''} · 0,1 = 800 CFA = 3 DT`
+              : `Commission ${ratePct}% par commande livrée · plafond ${fmt(wallet.commissionCap, wallet.currency)}`
+          }
           amount={wallet.balance}
           currency={wallet.currency}
           unit="currency"
@@ -266,9 +342,9 @@ export default function WalletPage() {
       {/* Top-up form */}
       <Card>
         <CardHeader>
-          <CardTitle>Recharger</CardTitle>
+          <CardTitle>Recharger avec CinetPay</CardTitle>
           <CardDescription>
-            Wave, Orange Money, MTN MoMo ou virement. Le solde est crédité dès confirmation du paiement.
+            Mobile Money (Wave, Orange Money, MTN, Moov). Choisis le solde, paie, et il est crédité dès confirmation.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -294,31 +370,48 @@ export default function WalletPage() {
               <Sparkles className="h-3.5 w-3.5" /> Solde IA
             </button>
           </div>
-          {/* ── Payer en ligne (Stripe / CinetPay) ─────────────────── */}
-          {gateways.length > 0 && (
-            <div className="mb-6 rounded-xl border border-orange-500/30 bg-gradient-to-br from-orange-50/60 to-amber-50/40 p-4 dark:from-orange-950/20 dark:to-amber-950/20">
+          {/* ── CinetPay : les deux soldes ─────────────────────────── */}
+          <div className="mb-6 rounded-xl border border-orange-500/30 bg-gradient-to-br from-orange-50/60 to-amber-50/40 p-4 dark:from-orange-950/20 dark:to-amber-950/20">
               <div className="mb-3 flex items-center gap-2">
-                <CreditCard className="h-4 w-4 text-orange-600" />
-                <span className="text-sm font-semibold">Payer en ligne</span>
-                <span className="text-xs text-muted-foreground">
-                  Redirection sécurisée vers {gateways.includes('cinetpay') ? 'CinetPay ou Stripe' : 'Stripe'}
+                <Smartphone className="h-4 w-4 text-orange-600" />
+                <span className="text-sm font-semibold">
+                  {target === 'ai' ? 'Recharger le solde IA' : 'Recharger le solde'}
                 </span>
+                <span className="text-xs text-muted-foreground">CinetPay</span>
               </div>
               <div className="grid gap-3 sm:grid-cols-[1fr_auto_auto]">
                 <div>
                   <Label htmlFor="gwAmount">
-                    Montant ({target === 'ai' ? 'USD' : wallet.currency})
+                    Montant ({gwGateway === 'stripe' ? 'USD' : inputCurrency})
                   </Label>
                   <Input
                     id="gwAmount"
                     type="number"
                     inputMode="numeric"
                     min={1}
-                    placeholder={target === 'ai' ? 'Ex: 10' : 'Ex: 10000'}
+                    placeholder={inputCurrency === 'XOF' ? 'Ex: 5000' : 'Ex: 10'}
                     value={gwAmount}
                     onChange={(e) => setGwAmount(e.target.value)}
                     className="mt-1"
+                    disabled={!cinetpayReady && gwGateway !== 'stripe'}
                   />
+                  {gwGateway !== 'stripe' && quote && (
+                    <p className="mt-1 text-[11px] text-muted-foreground">
+                      CinetPay encaisse <strong>{quote.chargeAmount.toLocaleString('fr-FR')} {quote.chargeCurrency}</strong>
+                      {' · '}
+                      {target === 'ai'
+                        ? <>solde IA <strong>+{quote.tokens ?? 0} tokens</strong></>
+                        : <>solde <strong>+{String(quote.usdAmount).replace('.', ',')}</strong></>}
+                    </p>
+                  )}
+                  {gwGateway !== 'stripe' && quoteError && (
+                    <p className="mt-1 text-[11px] text-destructive">{quoteError}</p>
+                  )}
+                  {!cinetpayReady && gwGateway !== 'stripe' && (
+                    <p className="mt-1 text-[11px] text-amber-700 dark:text-amber-300">
+                      CinetPay n&apos;est pas encore activé sur la plateforme.
+                    </p>
+                  )}
                 </div>
                 <div>
                   <Label htmlFor="gwGateway">Méthode</Label>
@@ -328,10 +421,7 @@ export default function WalletPage() {
                     value={gwGateway}
                     onChange={(e) => setGwGateway(e.target.value as 'auto' | TopUpGateway)}
                   >
-                    <option value="auto">Auto (recommandé)</option>
-                    {gateways.includes('cinetpay') && (
-                      <option value="cinetpay">Mobile Money (CinetPay)</option>
-                    )}
+                    <option value="cinetpay">Mobile Money (CinetPay)</option>
                     {gateways.includes('stripe') && (
                       <option value="stripe">Carte bancaire (Stripe)</option>
                     )}
@@ -341,7 +431,7 @@ export default function WalletPage() {
                   <Button
                     type="button"
                     onClick={handleGatewayInitiate}
-                    disabled={gwInitiating || !gwAmount}
+                    disabled={gwInitiating || !gwAmount || (gwGateway !== 'stripe' && !cinetpayReady)}
                     className="h-10 gap-2"
                   >
                     {gwInitiating ? (
@@ -373,12 +463,14 @@ export default function WalletPage() {
                 </div>
               )}
               <p className="mt-2 text-[11px] text-muted-foreground">
-                Le solde est crédité automatiquement après confirmation du paiement (quelques secondes).
+                Le solde choisi est crédité après confirmation. 0,1 de solde = 800 CFA = 3 DT.
+                Le solde IA reçoit les tokens correspondants.
               </p>
             </div>
-          )}
 
-          {/* ── Recharge manuelle (référence virement/mobile money) ─── */}
+          {canManualTopUp && (
+          <>
+          {/* Recharge manuelle — staff seulement, sans passage par CinetPay. */}
           <div className="mb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
             Ou saisir une référence de paiement manuelle
           </div>
@@ -426,6 +518,8 @@ export default function WalletPage() {
           </form>
           {error && <p className="mt-3 text-sm text-destructive">{error}</p>}
           {success && <p className="mt-3 text-sm text-emerald-600">{success}</p>}
+          </>
+          )}
         </CardContent>
       </Card>
 

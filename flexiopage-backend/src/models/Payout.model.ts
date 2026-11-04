@@ -15,7 +15,7 @@
  */
 import mongoose, { Document, Schema } from 'mongoose';
 
-export type PayoutMethod = 'wave' | 'orange_money' | 'mtn_momo' | 'bank_transfer';
+export type PayoutMethod = 'wave' | 'orange_money' | 'mtn_momo' | 'bank_transfer' | 'redotpay';
 
 export type PayoutStatus =
   | 'pending'   // seller requested, awaiting admin action
@@ -32,7 +32,8 @@ export interface IPayout extends Document {
   /**
    * Destination coordinates. Structure depends on `method`:
    *   - mobile money: { phone: '+221...' }
-   *   - bank: { bankName, accountName, iban, swift }
+   *   - bank: { bankName, accountName, rib, iban }
+   *   - redotpay: { redotpayId }
    */
   destination: Record<string, string>;
   status: PayoutStatus;
@@ -55,7 +56,7 @@ const PayoutSchema = new Schema<IPayout>(
     amount: { type: Number, required: true, min: 0 },
     method: {
       type: String,
-      enum: ['wave', 'orange_money', 'mtn_momo', 'bank_transfer'],
+      enum: ['wave', 'orange_money', 'mtn_momo', 'bank_transfer', 'redotpay'],
       required: true,
     },
     destination: { type: Schema.Types.Mixed, required: true },

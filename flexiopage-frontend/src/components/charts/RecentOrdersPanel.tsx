@@ -19,6 +19,8 @@ interface Order {
 
 interface Props {
   orders: Order[];
+  /** Paiements ouverts puis non terminés sur la période. Pas des ventes. */
+  unpaidCheckouts?: number;
 }
 
 const PAY_STATUS: Record<string, { label: string; cls: string }> = {
@@ -42,15 +44,29 @@ function timeAgo(iso: string): string {
   return d.toLocaleDateString('fr-FR', { day: '2-digit', month: 'short' });
 }
 
-export function RecentOrdersPanel({ orders }: Props) {
+function UnpaidNote({ count }: { count: number }) {
+  if (count <= 0) return null;
+  return (
+    <p className="px-1 pt-3 text-[11px] leading-relaxed text-muted-foreground">
+      {count} client{count > 1 ? 's ont' : ' a'} ouvert le paiement sans le terminer
+      (solde insuffisant ou annulation). Ce n’est pas une vente.
+    </p>
+  );
+}
+
+export function RecentOrdersPanel({ orders, unpaidCheckouts = 0 }: Props) {
   if (orders.length === 0) {
     return (
-      <div className="grid h-full min-h-[200px] place-items-center text-sm text-muted-foreground">
-        Aucune commande sur cette période.
+      <div className="grid min-h-[200px] place-items-center px-4 text-center">
+        <div>
+          <p className="text-sm text-muted-foreground">Aucune vente sur cette période.</p>
+          <UnpaidNote count={unpaidCheckouts} />
+        </div>
       </div>
     );
   }
   return (
+    <div>
     <ul className="divide-y divide-border/50">
       {orders.map((o) => {
         const pay = PAY_STATUS[o.paymentStatus] || { label: o.paymentStatus, cls: 'bg-muted text-muted-foreground' };
@@ -80,5 +96,7 @@ export function RecentOrdersPanel({ orders }: Props) {
         );
       })}
     </ul>
+    <UnpaidNote count={unpaidCheckouts} />
+    </div>
   );
 }

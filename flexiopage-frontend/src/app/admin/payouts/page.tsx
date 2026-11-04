@@ -35,7 +35,8 @@ const METHOD_LABELS: Record<string, string> = {
   wave: 'Wave',
   orange_money: 'Orange Money',
   mtn_momo: 'MTN Mobile Money',
-  bank_transfer: 'Virement bancaire',
+  bank_transfer: 'RIB bancaire',
+  redotpay: 'RedotPay',
 };
 
 function fmt(amount: number, currency: string): string {
@@ -113,7 +114,7 @@ export default function AdminPayoutsPage() {
   }
 
   function copyDestination(p: PayoutWithUser) {
-    const dest = p.destination.phone || p.destination.iban || '';
+    const dest = p.destination.redotpayId || p.destination.phone || p.destination.rib || p.destination.iban || '';
     if (!dest) return;
     navigator.clipboard.writeText(dest);
     setCopiedId(p._id);
@@ -234,6 +235,17 @@ export default function AdminPayoutsPage() {
                         <div className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-1">
                           Destinataire
                         </div>
+                        {p.destination.redotpayId && (
+                          <div className="flex items-center gap-2 font-mono text-xs">
+                            RedotPay {p.destination.redotpayId}
+                            <button
+                              onClick={() => copyDestination(p)}
+                              className="ml-auto rounded p-1 hover:bg-background"
+                            >
+                              {copiedId === p._id ? <Check className="h-3 w-3 text-emerald-600" /> : <Copy className="h-3 w-3" />}
+                            </button>
+                          </div>
+                        )}
                         {p.destination.phone && (
                           <div className="flex items-center gap-2 font-mono text-xs">
                             📱 {p.destination.phone}

@@ -20,10 +20,17 @@ import { Sparkles, Wallet as WalletIcon } from 'lucide-react';
 import { useWalletStore } from '@/stores/wallet-store';
 
 function fmt(amount: number, currency: string): string {
+  const rounded = Math.round(amount * 10) / 10;
+  const tenths = Math.abs(rounded - Math.trunc(rounded)) > 0.001;
   try {
-    return new Intl.NumberFormat(undefined, { style: 'currency', currency, maximumFractionDigits: 0 }).format(amount);
+    return new Intl.NumberFormat(undefined, {
+      style: 'currency',
+      currency,
+      minimumFractionDigits: tenths ? 1 : 0,
+      maximumFractionDigits: tenths ? 1 : 0,
+    }).format(rounded);
   } catch {
-    return `${amount} ${currency}`;
+    return tenths ? `${rounded.toFixed(1)} ${currency}` : `${Math.round(rounded)} ${currency}`;
   }
 }
 
@@ -85,7 +92,11 @@ export function WalletBadges() {
         className={`group hidden h-10 items-center gap-2 rounded-xl border px-3 transition-colors lg:inline-flex ${
           lowMain ? 'border-amber-500/40 bg-amber-500/10 hover:bg-amber-500/15' : 'border-sidebar-border bg-sidebar-muted/50 hover:bg-sidebar-muted'
         }`}
-        title="Solde principal — débité 3% par commande livrée"
+        title={
+          wallet.storeType === 'physical'
+            ? 'Solde — on retire 0,1 à chaque palier de chiffre d’affaires (0,1 = 800 CFA = 3 DT). Le solde IA n’est pas touché.'
+            : 'Solde principal — débité 3% par commande livrée'
+        }
       >
         <span className={`grid h-6 w-6 place-items-center rounded-md ${lowMain ? 'bg-amber-500/25 text-amber-300' : 'bg-emerald-500/20 text-emerald-300'}`}>
           <WalletIcon className="h-3.5 w-3.5" />

@@ -85,6 +85,11 @@ export interface StoreAnalyticsRich {
     fulfilled: number;
     refunded: number;
   };
+  /**
+   * Clients qui ont ouvert le paiement sans le terminer (échec ou abandon).
+   * Affichés en une ligne, pas comme des commandes.
+   */
+  unpaidCheckouts?: number;
   recentOrders: Array<{
     id: string;
     orderNumber: string;

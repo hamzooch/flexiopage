@@ -9,6 +9,7 @@ import type { AuthRequest } from '../middleware/auth.middleware';
 import { Payout } from '../models/Payout.model';
 import { Wallet } from '../models/Wallet.model';
 import { User } from '../models/User.model';
+import { notifySellerPayoutProcessed } from '../services/notification.service';
 
 /** GET /api/admin/payouts — list payout requests. */
 export async function listPayouts(req: AuthRequest, res: Response): Promise<void> {
@@ -99,6 +100,19 @@ export async function updatePayout(req: AuthRequest, res: Response): Promise<voi
     if (adminNote) payout.adminNote = adminNote;
     if (externalRef) payout.externalRef = externalRef;
     await payout.save();
+
+    try {
+      await notifySellerPayoutProcessed({
+        userId: payout.userId,
+        payoutId: String(payout._id),
+        amount: payout.amount,
+        currency: payout.currency,
+        status,
+        adminNote,
+      });
+    } catch (notifyErr) {
+      console.error('[payouts-admin] seller notification failed:', notifyErr);
+    }
 
     res.json({ ok: true, payout });
   } catch (err) {

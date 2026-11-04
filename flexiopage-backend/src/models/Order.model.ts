@@ -129,6 +129,11 @@ export interface IOrder extends Document {
   paymentPhone?: string;
   /** Last webhook payload (for debugging). */
   paymentWebhookData?: Record<string, unknown>;
+  /**
+   * Chiffre d'affaires déjà compté dans le palier de commission d'une
+   * boutique physique. Empêche de compter deux fois la même commande.
+   */
+  billingCounted?: boolean;
   stripePaymentIntentId?: string;
   fulfillmentStatus: FulfillmentStatus;
   trackingNumber?: string;
@@ -258,6 +263,7 @@ const OrderSchema = new Schema<IOrder>(
     paymentReference: { type: String, index: true },
     paymentPhone: { type: String },
     paymentWebhookData: { type: Schema.Types.Mixed },
+    billingCounted: { type: Boolean, default: false },
     stripePaymentIntentId: { type: String },
     fulfillmentStatus: { type: String, enum: ['unfulfilled', 'partial', 'fulfilled', 'cancelled'], default: 'unfulfilled' },
     trackingNumber: { type: String },

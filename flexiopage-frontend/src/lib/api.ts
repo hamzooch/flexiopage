@@ -226,8 +226,17 @@ export interface WalletState {
   payoutCurrency: string;
   commissionRate: number;
   commissionCap: number;
-  /** Taux de commission plateforme sur les paiements en ligne (0.15 = 15%). */
+  /** Taux de commission plateforme sur les ventes digitales. */
   platformCommissionRate: number;
+  /** Boutique principale du vendeur. */
+  storeType?: 'digital' | 'physical';
+  /**
+   * Boutique physique : chiffre d'affaires à atteindre (dans payoutCurrency)
+   * avant de retirer physicalBalanceDebit du solde principal.
+   */
+  physicalRevenueThreshold?: number | null;
+  /** Montant fixe retiré du solde navbar à chaque palier. Défaut 0,1. */
+  physicalBalanceDebit?: number;
   /** Montant minimum pour demander un versement (dans la payoutCurrency). */
   payoutMinimum: number;
   /** Coût par génération, en tokens. */
@@ -240,7 +249,7 @@ export interface WalletState {
   updatedAt: string;
 }
 
-export type PayoutMethod = 'wave' | 'orange_money' | 'mtn_momo' | 'bank_transfer';
+export type PayoutMethod = 'wave' | 'orange_money' | 'mtn_momo' | 'bank_transfer' | 'redotpay';
 export type PayoutStatus = 'pending' | 'paid' | 'rejected';
 
 export interface Payout {
@@ -271,6 +280,7 @@ export interface WalletTopUpDoc {
   status: TopUpStatus;
   gatewayTxId?: string;
   gatewayReference: string;
+  usdAmount?: number;
   checkoutUrl?: string;
   failureReason?: string;
   paidAt?: string;
@@ -305,7 +315,23 @@ export const walletApi = {
   listPayouts: () => api.get<{ payouts: Payout[] }>('/wallet/payouts'),
   /** Recharge via gateway (Stripe / CinetPay). Renvoie l'URL de checkout à ouvrir. */
   topUpGateways: () =>
-    api.get<{ gateways: TopUpGateway[] }>('/wallet/top-up/gateways'),
+    api.get<{
+      gateways: TopUpGateway[];
+      inputCurrency: string;
+      cinetpayReady: boolean;
+      minAmount: number;
+      maxAmount: number;
+    }>('/wallet/top-up/gateways'),
+  topUpQuote: (params: { amount: number; bucket: 'main' | 'ai' }) =>
+    api.get<{
+      inputAmount: number;
+      inputCurrency: string;
+      chargeAmount: number;
+      chargeCurrency: string;
+      country: string;
+      usdAmount: number;
+      tokens?: number;
+    }>('/wallet/top-up/quote', { params }),
   topUpInitiate: (data: { amount: number; bucket?: 'main' | 'ai'; gateway?: 'auto' | TopUpGateway }) =>
     api.post<{
       topUpId: string;
@@ -313,6 +339,8 @@ export const walletApi = {
       gateway: TopUpGateway;
       amount: number;
       currency: string;
+      usdAmount?: number;
+      tokens?: number;
     }>('/wallet/top-up/initiate', data),
   topUpStatus: (id: string) => api.get<{ topUp: WalletTopUpDoc }>(`/wallet/top-up/${id}`),
   topUpHistory: () => api.get<{ items: WalletTopUpDoc[] }>('/wallet/top-up'),
@@ -902,12 +930,16 @@ export const adminApi = {
         commissionRate: number;
         commissionRateDigital?: number;
         commissionRatePhysical?: number;
+        physicalBalanceDebit?: number;
+        physicalRevenueThresholds?: Record<string, number>;
         payoutMinimums: Record<string, number>;
       };
       defaults: {
         commissionRate: number;
         commissionRateDigital?: number;
         commissionRatePhysical?: number;
+        physicalBalanceDebit?: number;
+        physicalRevenueThresholds?: Record<string, number>;
         payoutMinimums: Record<string, number>;
       };
       updatedAt: string;
@@ -916,6 +948,8 @@ export const adminApi = {
     commissionRate?: number;
     commissionRateDigital?: number;
     commissionRatePhysical?: number;
+    physicalBalanceDebit?: number;
+    physicalRevenueThresholds?: Record<string, number>;
     payoutMinimums?: Record<string, number>;
   }) =>
     api.patch<{
@@ -923,6 +957,8 @@ export const adminApi = {
         commissionRate: number;
         commissionRateDigital?: number;
         commissionRatePhysical?: number;
+        physicalBalanceDebit?: number;
+        physicalRevenueThresholds?: Record<string, number>;
         payoutMinimums: Record<string, number>;
       };
       updatedAt: string;
@@ -2312,6 +2348,9 @@ export type NotificationType =
   | 'order.status_changed'
   | 'team.member_added'
   | 'team.member_removed'
+  | 'payout.requested'
+  | 'payout.paid'
+  | 'payout.rejected'
   | 'system.test';
 
 export interface NotificationDoc {

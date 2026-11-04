@@ -268,6 +268,12 @@ export async function getOrdersByStore(
   }
 
   const q = options?.search?.trim();
+  // Default list is the seller's working queue. A checkout the buyer opened
+  // and didn't pay (failed gateway or abandoned) is not a command to handle.
+  // Search still finds them, so support can look up a specific attempt.
+  if (!q && (!options?.status || options.status === 'all')) {
+    and.push({ paymentStatus: { $nin: ['abandoned', 'failed'] } });
+  }
   if (q) {
     const re = new RegExp(q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
     and.push({
@@ -301,7 +307,7 @@ export async function countNewOrders(storeId: string, since: Date): Promise<numb
   return Order.countDocuments({
     storeId,
     createdAt: { $gt: since },
-    paymentStatus: { $ne: 'abandoned' },
+    paymentStatus: { $nin: ['abandoned', 'failed'] },
   });
 }
 

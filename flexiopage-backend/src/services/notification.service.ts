@@ -10,6 +10,7 @@
 
 import mongoose from 'mongoose';
 import { Notification, type NotificationType } from '../models/Notification.model';
+import { User } from '../models/User.model';
 
 interface CreateArgs {
   userId: mongoose.Types.ObjectId | string;
@@ -279,5 +280,92 @@ export async function notifyDispatchStorm(args: {
     body: `Beaucoup de commandes n'ont pas pu être envoyées${args.provider ? ' à ' + args.provider : ''} sur la dernière heure. Top erreurs :\n${topText}`,
     link: '/dashboard/orders?status=pending',
     meta: { count: args.count, topErrors: args.topErrors.slice(0, 3), provider: args.provider },
+  });
+}
+
+const PAYOUT_METHOD_LABELS: Record<string, string> = {
+  wave: 'Wave',
+  orange_money: 'Orange Money',
+  mtn_momo: 'MTN Mobile Money',
+  bank_transfer: 'virement bancaire (RIB)',
+  redotpay: 'RedotPay',
+};
+
+/**
+ * A seller froze part of their digital-sales balance and asked to be paid
+ * out. Every platform admin, superadmin and owner gets an in-app notification
+ * (plus the usual Telegram / Web Push fan-out). The requester is skipped
+ * when they also hold a staff role.
+ */
+export async function notifyStaffPayoutRequested(args: {
+  payoutId: string;
+  sellerId: string;
+  sellerName: string;
+  storeName?: string;
+  amount: number;
+  currency: string;
+  method: string;
+}): Promise<number> {
+  const staff = await User.find({
+    role: { $in: ['admin', 'superadmin', 'owner'] },
+    _id: { $ne: args.sellerId },
+  })
+    .select('_id')
+    .lean();
+  if (staff.length === 0) return 0;
+
+  const method = PAYOUT_METHOD_LABELS[args.method] || args.method;
+  const who = args.storeName
+    ? `${args.sellerName} · ${args.storeName}`
+    : args.sellerName;
+  const title = 'Demande de retrait';
+  const body = `${who} demande ${args.amount} ${args.currency} via ${method}.`;
+
+  await Promise.all(
+    staff.map((member) =>
+      createNotification({
+        userId: member._id,
+        type: 'payout.requested',
+        title,
+        body,
+        link: '/admin/payouts',
+        meta: {
+          payoutId: args.payoutId,
+          sellerId: args.sellerId,
+          amount: args.amount,
+          currency: args.currency,
+          method: args.method,
+        },
+      }),
+    ),
+  );
+  return staff.length;
+}
+
+/** Tell the seller their withdrawal was sent or refused. */
+export async function notifySellerPayoutProcessed(args: {
+  userId: mongoose.Types.ObjectId | string;
+  payoutId: string;
+  amount: number;
+  currency: string;
+  status: 'paid' | 'rejected';
+  adminNote?: string;
+}): Promise<void> {
+  const paid = args.status === 'paid';
+  const note = args.adminNote?.trim();
+  await createNotification({
+    userId: args.userId,
+    type: paid ? 'payout.paid' : 'payout.rejected',
+    title: paid ? 'Retrait envoyé' : 'Retrait refusé',
+    body: paid
+      ? `Ton retrait de ${args.amount} ${args.currency} a été envoyé.${note ? ` ${note}` : ''}`
+      : `Ton retrait de ${args.amount} ${args.currency} a été refusé. Le montant est de retour sur ton solde.${note ? ` ${note}` : ''}`,
+    link: '/dashboard/earnings',
+    meta: {
+      payoutId: args.payoutId,
+      amount: args.amount,
+      currency: args.currency,
+      status: args.status,
+    },
   });
 }

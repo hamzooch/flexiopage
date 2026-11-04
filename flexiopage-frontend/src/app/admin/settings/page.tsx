@@ -184,6 +184,8 @@ interface PlatformState {
   commissionRate: number;
   commissionRateDigital?: number;
   commissionRatePhysical?: number;
+  physicalBalanceDebit?: number;
+  physicalRevenueThresholds?: Record<string, number>;
   payoutMinimums: Record<string, number>;
 }
 
@@ -198,8 +200,9 @@ function PlatformSettingsCard({ isSuperAdmin }: { isSuperAdmin: boolean }) {
   const [platform, setPlatform] = useState<PlatformState | null>(null);
   const [loading, setLoading] = useState(true);
   const [digitalPct, setDigitalPct] = useState('15');
-  const [physicalPct, setPhysicalPct] = useState('5');
+  const [physicalDebit, setPhysicalDebit] = useState('0.1');
   const [minimums, setMinimums] = useState<Record<string, string>>({});
+  const [thresholds, setThresholds] = useState<Record<string, string>>({ XOF: '2000000', TND: '10000' });
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState('');
@@ -213,7 +216,12 @@ function PlatformSettingsCard({ isSuperAdmin }: { isSuperAdmin: boolean }) {
         // n'existe pas encore (upgrade path — les anciens Settings n'avaient
         // qu'un seul taux global).
         setDigitalPct(toPct(res.data.platform.commissionRateDigital, res.data.platform.commissionRate));
-        setPhysicalPct(toPct(res.data.platform.commissionRatePhysical, res.data.platform.commissionRate));
+        const debit = res.data.platform.physicalBalanceDebit;
+        setPhysicalDebit(String(typeof debit === 'number' && Number.isFinite(debit) ? debit : 0.1));
+        const thresholdSrc = res.data.platform.physicalRevenueThresholds || { XOF: 2_000_000, TND: 10_000 };
+        const thresholdStrings: Record<string, string> = {};
+        for (const [cur, val] of Object.entries(thresholdSrc)) thresholdStrings[cur] = String(val);
+        setThresholds(thresholdStrings);
         const asStrings: Record<string, string> = {};
         for (const [cur, val] of Object.entries(res.data.platform.payoutMinimums)) {
           asStrings[cur] = String(val);
@@ -230,14 +238,23 @@ function PlatformSettingsCard({ isSuperAdmin }: { isSuperAdmin: boolean }) {
     setSaved(false);
 
     const dPct = Number(digitalPct);
-    const pPct = Number(physicalPct);
+    const debit = Number(physicalDebit);
     if (!Number.isFinite(dPct) || dPct < 0 || dPct > 100) {
       setError('La commission digitale doit être entre 0 et 100.');
       return;
     }
-    if (!Number.isFinite(pPct) || pPct < 0 || pPct > 100) {
-      setError('La commission physique doit être entre 0 et 100.');
+    if (!Number.isFinite(debit) || debit < 0 || debit > 1000) {
+      setError('Le prélèvement sur le solde doit être entre 0 et 1000.');
       return;
+    }
+    const physicalRevenueThresholds: Record<string, number> = {};
+    for (const [cur, val] of Object.entries(thresholds)) {
+      const n = Number(val);
+      if (!Number.isFinite(n) || n < 0) {
+        setError(`Palier ${cur} invalide.`);
+        return;
+      }
+      physicalRevenueThresholds[cur] = n;
     }
     const payoutMinimums: Record<string, number> = {};
     for (const [cur, val] of Object.entries(minimums)) {
@@ -256,7 +273,8 @@ function PlatformSettingsCard({ isSuperAdmin }: { isSuperAdmin: boolean }) {
         // (anciens Settings sans champ dédié). Le backend accepte les deux.
         commissionRate: dPct / 100,
         commissionRateDigital: dPct / 100,
-        commissionRatePhysical: pPct / 100,
+        physicalBalanceDebit: Math.round(debit * 100) / 100,
+        physicalRevenueThresholds,
         payoutMinimums,
       });
       setPlatform(res.data.platform);
@@ -283,7 +301,8 @@ function PlatformSettingsCard({ isSuperAdmin }: { isSuperAdmin: boolean }) {
 
   const currencies = Array.from(new Set([...CURRENCY_ORDER, ...Object.keys(platform.payoutMinimums)]));
   const digitalNet = Math.round(10000 * (1 - Number(digitalPct) / 100));
-  const physicalNet = Math.round(10000 * (1 - Number(physicalPct) / 100));
+  const debitShown = Number(physicalDebit);
+  const debitLabel = Number.isFinite(debitShown) ? String(debitShown).replace('.', ',') : '0,1';
 
   return (
     <Card>
@@ -325,28 +344,50 @@ function PlatformSettingsCard({ isSuperAdmin }: { isSuperAdmin: boolean }) {
           </div>
 
           <div>
-            <Label htmlFor="physicalPct" className="text-xs font-semibold">
-              🚚 Commission — produits physiques (%)
+            <Label htmlFor="physicalDebit" className="text-xs font-semibold">
+              🚚 Physique — montant retiré du solde
             </Label>
             <div className="mt-1.5 flex items-center gap-2">
               <Input
-                id="physicalPct"
+                id="physicalDebit"
                 type="number"
                 min={0}
-                max={100}
                 step="0.1"
-                value={physicalPct}
-                onChange={(e) => setPhysicalPct(e.target.value)}
+                value={physicalDebit}
+                onChange={(e) => setPhysicalDebit(e.target.value)}
                 disabled={!isSuperAdmin}
                 className="max-w-[110px]"
               />
               <span className="text-xs text-muted-foreground">
-                → Vendeur reçoit <strong>{physicalNet} XOF</strong> / 10 000
+                Solde 3 → <strong>{Number.isFinite(3 - debitShown) ? String(Math.round((3 - debitShown) * 10) / 10).replace('.', ',') : '2,9'}</strong>
               </span>
             </div>
             <p className="mt-1 text-[11px] text-muted-foreground">
-              Dropshipping / stock — livrés par MogaDelivery ou coursier.
+              Pas un pourcentage. On retire {debitLabel} du solde (pas du solde IA). 0,1 = 800 CFA = 3 DT.
             </p>
+          </div>
+        </div>
+
+        <div>
+          <Label>Paliers de chiffre d&apos;affaires — boutiques physiques</Label>
+          <p className="mt-1 text-[11px] text-muted-foreground">
+            2 000 000 CFA et 10 000 dinars tunisiens sont le même palier. Au franchissement, on retire le montant ci-dessus du solde.
+          </p>
+          <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-4">
+            {Object.keys(thresholds).map((cur) => (
+              <div key={cur} className="flex flex-col gap-1">
+                <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">{cur}</span>
+                <Input
+                  type="number"
+                  min={0}
+                  step="1"
+                  value={thresholds[cur] ?? ''}
+                  onChange={(e) => setThresholds({ ...thresholds, [cur]: e.target.value })}
+                  disabled={!isSuperAdmin}
+                  className="text-sm"
+                />
+              </div>
+            ))}
           </div>
         </div>
 

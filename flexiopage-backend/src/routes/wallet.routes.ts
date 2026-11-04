@@ -10,7 +10,7 @@ import mongoose from 'mongoose';
 import { authMiddleware, type AuthRequest } from '../middleware/auth.middleware';
 import { sanitizeMiddleware } from '../middleware/validate';
 import { getOrCreateWallet, credit, commissionFor, aiCostTokens, usdToTokensRate, usdToTokens } from '../services/wallet.service';
-import { getSettings, type AiKind } from '../models/Settings.model';
+import { getSettings, DEFAULT_PLATFORM_SETTINGS, type AiKind } from '../models/Settings.model';
 import { Payout, type PayoutMethod } from '../models/Payout.model';
 import { Store } from '../models/Store.model';
 import { Order } from '../models/Order.model';
@@ -19,10 +19,13 @@ import { WalletTopUp } from '../models/WalletTopUp.model';
 import {
   initiateTopUp,
   availableGatewaysForUser,
+  quoteCinetPayTopUp,
   settleTopUp,
   type TopUpGatewayChoice,
 } from '../services/topup.service';
 import { CinetPayProvider } from '../services/payment/cinetpay.service';
+import { notifyStaffPayoutRequested } from '../services/notification.service';
+import { Wallet } from '../models/Wallet.model';
 
 const router = Router();
 router.use(authMiddleware);
@@ -69,10 +72,14 @@ router.get('/', async (req: AuthRequest, res: Response): Promise<void> => {
   // Commission affichée selon le type du store principal (digital / physical).
   // Fallback : commissionRate legacy si le taux type-spécifique n'est pas défini.
   const storeType: 'digital' | 'physical' = primaryStore?.storeType === 'physical' ? 'physical' : 'digital';
+  const physicalThresholds = {
+    ...(DEFAULT_PLATFORM_SETTINGS.physicalRevenueThresholds || {}),
+    ...(settings.platform?.physicalRevenueThresholds || {}),
+  };
   const displayedCommissionRate =
-    storeType === 'digital'
-      ? settings.platform?.commissionRateDigital ?? settings.platform?.commissionRate ?? 0.15
-      : settings.platform?.commissionRatePhysical ?? settings.platform?.commissionRate ?? 0.05;
+    settings.platform?.commissionRateDigital ?? settings.platform?.commissionRate ?? 0.15;
+  const physicalBalanceDebit = settings.platform?.physicalBalanceDebit ?? DEFAULT_PLATFORM_SETTINGS.physicalBalanceDebit ?? 0.1;
+  const physicalRevenueThreshold = physicalThresholds[payoutCurrency] ?? null;
   res.json({
     wallet: {
       balance: wallet.balance,
@@ -91,6 +98,13 @@ router.get('/', async (req: AuthRequest, res: Response): Promise<void> => {
       platformCommissionRate: displayedCommissionRate,
       /** Type du store principal — utile pour l'UI (ex: mention "digital"). */
       storeType,
+      /**
+       * Boutique physique : CA à atteindre avant de retirer
+       * `physicalBalanceDebit` du solde principal (pas le solde IA).
+       */
+      physicalRevenueThreshold,
+      /** Montant fixe retiré du solde navbar à chaque palier. Défaut 0,1. */
+      physicalBalanceDebit,
       /** Min amount required to request a payout in the payout currency. */
       payoutMinimum: minForCur,
       aiCosts,
@@ -273,61 +287,119 @@ router.post('/payouts', async (req: AuthRequest, res: Response): Promise<void> =
     res.status(400).json({ error: 'amount must be positive' });
     return;
   }
-  const allowedMethods: PayoutMethod[] = ['wave', 'orange_money', 'mtn_momo', 'bank_transfer'];
+  const allowedMethods: PayoutMethod[] = ['wave', 'orange_money', 'mtn_momo', 'bank_transfer', 'redotpay'];
   if (!method || !allowedMethods.includes(method)) {
     res.status(400).json({ error: 'method must be one of ' + allowedMethods.join(', ') });
     return;
   }
   if (!destination || Object.keys(destination).length === 0) {
-    res.status(400).json({ error: 'destination required' });
+    res.status(400).json({ error: 'Indique un identifiant RedotPay, un RIB, ou un numéro Mobile Money.' });
     return;
   }
-  // Mobile money → require phone; bank transfer → require accountName + iban
+  // L'admin fait le virement vers l'une de ces trois destinations.
   if (method === 'bank_transfer') {
-    if (!destination.accountName || !destination.iban) {
-      res.status(400).json({ error: 'bank_transfer requires accountName and iban' });
+    const rib = (destination.rib || destination.iban || '').trim();
+    if (!destination.accountName?.trim() || !rib) {
+      res.status(400).json({ error: 'Le virement demande le nom du titulaire et le RIB.' });
       return;
     }
-  } else if (!destination.phone) {
-    res.status(400).json({ error: 'mobile money requires phone' });
+    destination.accountName = destination.accountName.trim();
+    destination.rib = rib;
+    destination.iban = rib;
+  } else if (method === 'redotpay') {
+    const redotpayId = (destination.redotpayId || '').trim();
+    if (!redotpayId) {
+      res.status(400).json({ error: 'Indique ton identifiant RedotPay.' });
+      return;
+    }
+    destination.redotpayId = redotpayId;
+  } else if (!destination.phone?.trim()) {
+    res.status(400).json({ error: 'Indique le numéro Mobile Money.' });
     return;
+  } else {
+    destination.phone = destination.phone.trim();
   }
 
-  const wallet = await getOrCreateWallet(userId);
+  await getOrCreateWallet(userId);
   const settings = await getSettings();
-  const minForCur = settings.platform?.payoutMinimums?.[wallet.currency] ?? 0;
+  // Le solde des ventes est dans la devise de la boutique (XOF, etc.), pas
+  // dans la devise USD du wallet principal. Le minimum et le snapshot du
+  // payout doivent utiliser cette même devise.
+  const primaryStore = await Store.findOne({ ownerId: userId })
+    .sort({ createdAt: 1 })
+    .select('name settings.currency')
+    .lean();
+  const wallet = await Wallet.findOne({ userId }).select('currency payoutBalance');
+  const payoutCurrency = primaryStore?.settings?.currency || wallet?.currency || 'XOF';
+  const available = wallet?.payoutBalance || 0;
+  const minForCur = settings.platform?.payoutMinimums?.[payoutCurrency] ?? 0;
   if (value < minForCur) {
     res.status(400).json({
-      error: `Minimum de retrait: ${minForCur} ${wallet.currency}`,
+      error: `Minimum de retrait: ${minForCur} ${payoutCurrency}`,
       code: 'below_minimum',
       minimum: minForCur,
+      currency: payoutCurrency,
     });
     return;
   }
-  if (value > (wallet.payoutBalance || 0)) {
+  if (available <= 0 || value > available) {
     res.status(400).json({
       error: 'Solde insuffisant',
       code: 'insufficient_balance',
-      available: wallet.payoutBalance || 0,
+      available,
+      currency: payoutCurrency,
     });
     return;
   }
 
-  // Freeze the amount now — subtract from payoutBalance so the seller can't
-  // double-spend it. If admin rejects later, we refund.
-  wallet.payoutBalance = (wallet.payoutBalance || 0) - value;
-  await wallet.save();
+  // Gel atomique : deux demandes simultanées ne peuvent pas dépenser le
+  // même solde. Un refus admin recrédite ce montant plus tard.
+  const frozen = await Wallet.findOneAndUpdate(
+    { userId, payoutBalance: { $gte: value } },
+    { $inc: { payoutBalance: -value } },
+    { new: true },
+  );
+  if (!frozen) {
+    res.status(400).json({
+      error: 'Solde insuffisant',
+      code: 'insufficient_balance',
+      available,
+      currency: payoutCurrency,
+    });
+    return;
+  }
 
-  const payout = await Payout.create({
-    userId,
-    currency: wallet.currency,
-    amount: value,
-    method,
-    destination,
-    sellerNote: sellerNote?.trim() || undefined,
-    status: 'pending',
-    requestedAt: new Date(),
-  });
+  let payout;
+  try {
+    payout = await Payout.create({
+      userId,
+      currency: payoutCurrency,
+      amount: value,
+      method,
+      destination,
+      sellerNote: sellerNote?.trim() || undefined,
+      status: 'pending',
+      requestedAt: new Date(),
+    });
+  } catch (err) {
+    await Wallet.updateOne({ userId }, { $inc: { payoutBalance: value } });
+    throw err;
+  }
+
+  const sellerName = req.user?.name?.trim() || req.user?.email || 'Un vendeur';
+  try {
+    await notifyStaffPayoutRequested({
+      payoutId: String(payout._id),
+      sellerId: userId,
+      sellerName,
+      storeName: primaryStore?.name,
+      amount: value,
+      currency: payoutCurrency,
+      method,
+    });
+  } catch (err) {
+    console.error('[wallet] payout notification failed:', err);
+  }
 
   res.json({ ok: true, payout });
 });
@@ -350,6 +422,11 @@ router.post('/top-up', async (req: AuthRequest, res: Response): Promise<void> =>
   const userId = req.user?._id?.toString();
   if (!userId) {
     res.status(401).json({ error: 'Unauthorized' });
+    return;
+  }
+  const staff = new Set(['owner', 'superadmin', 'admin', 'supervisor']);
+  if (!staff.has(String(req.user?.role))) {
+    res.status(403).json({ error: 'La recharge sans paiement est réservée au staff. Utilise CinetPay.' });
     return;
   }
   const { amount, paymentReference, note, target } = (req.body || {}) as {
@@ -412,7 +489,31 @@ router.get('/top-up/gateways', async (req: AuthRequest, res: Response): Promise<
   const user = req.user;
   if (!user) { res.status(401).json({ error: 'Unauthorized' }); return; }
   const gateways = await availableGatewaysForUser(user);
-  res.json({ gateways });
+  const store = await Store.findOne({ ownerId: user._id }).sort({ createdAt: 1 }).select('settings.currency').lean();
+  res.json({
+    gateways,
+    inputCurrency: (store?.settings?.currency || 'USD').toUpperCase(),
+    cinetpayReady: gateways.includes('cinetpay'),
+    minAmount: 100,
+    maxAmount: 2_500_000,
+  });
+});
+
+/**
+ * GET /api/wallet/top-up/quote?amount=&bucket=
+ * Aperçu : montant saisi (devise boutique) → encaissement CinetPay → crédit solde.
+ */
+router.get('/top-up/quote', async (req: AuthRequest, res: Response): Promise<void> => {
+  const user = req.user;
+  if (!user) { res.status(401).json({ error: 'Unauthorized' }); return; }
+  const amount = Number(req.query.amount);
+  const bucket = req.query.bucket === 'ai' ? 'ai' : 'main';
+  try {
+    const quote = await quoteCinetPayTopUp(user, amount, bucket);
+    res.json(quote);
+  } catch (err) {
+    res.status(400).json({ error: (err as Error).message || 'Devis impossible' });
+  }
 });
 
 /**
@@ -467,7 +568,7 @@ router.get('/top-up/:id', async (req: AuthRequest, res: Response): Promise<void>
   // (utile si le webhook a été raté ou est en retard).
   if (topUp.status === 'pending' && topUp.gateway === 'cinetpay') {
     const store = await Store.findOne({ ownerId: user._id }).sort({ createdAt: 1 }).lean();
-    const country = (store?.settings?.country || 'CI').toUpperCase();
+    const country = (topUp.paymentCountry || store?.settings?.country || 'CI').toUpperCase();
     const status = await new CinetPayProvider().verifyTopUpTransaction({
       merchantReference: topUp.gatewayReference,
       country,

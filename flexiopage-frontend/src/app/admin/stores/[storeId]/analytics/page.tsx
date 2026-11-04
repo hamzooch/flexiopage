@@ -328,7 +328,7 @@ export default function AdminStoreDrilldownPage() {
             <CardTitle className="text-sm sm:text-base">Commandes récentes</CardTitle>
           </CardHeader>
           <CardContent>
-            <RecentOrdersPanel orders={analytics.recentOrders} />
+            <RecentOrdersPanel orders={analytics.recentOrders} unpaidCheckouts={analytics.unpaidCheckouts} />
           </CardContent>
         </Card>
       </div>
