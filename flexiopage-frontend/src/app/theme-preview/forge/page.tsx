@@ -109,7 +109,7 @@ export default function ForgeThemePreviewPage() {
         subheading="Performance meets style. Engineered for athletes and everyday movers. From the gym to the streets, Forge has you covered."
         ctaText="Explore Collection"
         ctaUrl="#new-collection"
-        backgroundImage="https://images.unsplash.com/photo-1506126613408-eca07ce68773?w=1200&q=80"
+        backgroundImage="/demo-products/forge-4.jpg"
         overlayGradient="from-black/60 via-black/40 to-transparent"
         minHeight="600px"
         theme={theme}

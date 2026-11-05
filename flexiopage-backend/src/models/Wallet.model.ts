@@ -54,7 +54,11 @@ export interface IWallet extends Document {
   userId: mongoose.Types.ObjectId;
   /** Currency the balances are denominated in. Pinned at first activity. */
   currency: string;
-  /** Main balance — debited 3% on every order delivery. */
+  /**
+   * Solde principal, en unités affichées en dollars (0,1 = 800 CFA = 3 DT).
+   * Peut passer négatif : un palier de 2 000 000 CFA prélevé sur un solde à 0
+   * le laisse à −0,1, soit −800 CFA.
+   */
   balance: number;
   /** AI balance — debited per AI generation (landing pages, product pages, images). */
   aiBalance: number;
@@ -121,7 +125,8 @@ const WalletSchema = new Schema<IWallet>(
   {
     userId: { type: Schema.Types.ObjectId, ref: 'User', required: true, unique: true },
     currency: { type: String, default: 'USD' },
-    balance: { type: Number, default: 0, min: 0 },
+    // Pas de min : un palier peut laisser une dette (−800 CFA = −0,1).
+    balance: { type: Number, default: 0 },
     aiBalance: { type: Number, default: 0, min: 0 },
     aiBalanceUnit: { type: String, enum: ['usd', 'tokens'], default: 'tokens' },
     // Pas de min:0 — la dette marketplace peut faire passer le solde en négatif.

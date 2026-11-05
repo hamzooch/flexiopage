@@ -2,7 +2,7 @@
 
 /**
  * Two compact balance pills shown in the dashboard top-bar:
- *   • main solde — what 3% commission is debited from
+ *   • main solde — 800 CFA retirés à chaque palier de 2 000 000 CFA
  *   • solde IA  — what AI generations are debited from
  *
  * Click either one to navigate to /dashboard/wallet (top-up or audit).
@@ -32,6 +32,15 @@ function fmt(amount: number, currency: string): string {
   } catch {
     return tenths ? `${rounded.toFixed(1)} ${currency}` : `${Math.round(rounded)} ${currency}`;
   }
+}
+
+/** 0,1 $US de solde = 800 CFA = 3 DT. */
+function soldeDebt(units: number, currency: string): string {
+  if (currency === 'TND') {
+    const dt = Math.round(units * 30 * 10) / 10;
+    return `${String(dt).replace('.', ',')} DT`;
+  }
+  return `${Math.round(units * 8000).toLocaleString('fr-FR')} CFA`;
 }
 
 /** Solde IA = compteur de tokens (depuis juin 2026). */
@@ -78,7 +87,7 @@ export function WalletBadges() {
     );
   }
 
-  const lowMain = wallet.balance < 1500;
+  const lowMain = wallet.balance < (wallet.physicalBalanceDebit ?? 0.1);
   // Solde IA bas si on n'a plus de quoi payer une landing (compteur de tokens).
   // Fallback 3 = défaut DEFAULT_AI_PRICING.prices.landing au backend.
   const lowAi = wallet.aiBalance < (wallet.aiCosts?.landing || 3);
@@ -93,9 +102,9 @@ export function WalletBadges() {
           lowMain ? 'border-amber-500/40 bg-amber-500/10 hover:bg-amber-500/15' : 'border-sidebar-border bg-sidebar-muted/50 hover:bg-sidebar-muted'
         }`}
         title={
-          wallet.storeType === 'physical'
-            ? 'Solde — on retire 0,1 à chaque palier de chiffre d’affaires (0,1 = 800 CFA = 3 DT). Le solde IA n’est pas touché.'
-            : 'Solde principal — débité 3% par commande livrée'
+          wallet.balance < 0
+            ? `Solde négatif : ${fmt(wallet.balance, wallet.currency)}, soit ${soldeDebt(wallet.balance, wallet.payoutCurrency)}. Un palier est prélevé même si le solde était à 0.`
+            : 'Solde principal — 800 CFA (soit 0,1 $US) retirés à chaque palier de 2 000 000 CFA, même si le solde est à 0.'
         }
       >
         <span className={`grid h-6 w-6 place-items-center rounded-md ${lowMain ? 'bg-amber-500/25 text-amber-300' : 'bg-emerald-500/20 text-emerald-300'}`}>

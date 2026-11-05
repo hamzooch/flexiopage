@@ -129,7 +129,14 @@ export const supportApi = {
 // Users
 export const usersApi = {
   getProfile: () => api.get<{ user: unknown; subscription: unknown }>('/users/profile'),
-  updateProfile: (data: { name?: string; avatar?: string; country?: string; currency?: string; whatsapp?: string }) =>
+  updateProfile: (data: {
+    name?: string;
+    avatar?: string;
+    country?: string;
+    currency?: string;
+    whatsapp?: string;
+    payoutAccount?: PayoutAccount | null;
+  }) =>
     api.patch<{ user: unknown; walletCurrencyUpdated?: boolean; walletCurrencyPinned?: boolean }>('/users/profile', data),
   changePassword: (data: { currentPassword: string; newPassword: string }) =>
     api.post<{ ok: boolean }>('/users/change-password', data),
@@ -250,6 +257,68 @@ export interface WalletState {
 }
 
 export type PayoutMethod = 'wave' | 'orange_money' | 'mtn_momo' | 'bank_transfer' | 'redotpay';
+
+/** Moyen de réception enregistré sur le profil vendeur. */
+export type PayoutAccountKind = 'rib' | 'bank_transfer' | 'mobile_money' | 'redotpay';
+export interface PayoutAccount {
+  kind: PayoutAccountKind;
+  accountName?: string;
+  rib?: string;
+  iban?: string;
+  bankName?: string;
+  operator?: 'wave' | 'orange_money' | 'mtn_momo';
+  phone?: string;
+  redotpayId?: string;
+}
+
+const PAYOUT_OPERATOR_LABEL: Record<NonNullable<PayoutAccount['operator']>, string> = {
+  wave: 'Wave',
+  orange_money: 'Orange Money',
+  mtn_momo: 'MTN MoMo',
+};
+
+/** Libellé court du moyen enregistré, pour le profil et la demande de versement. */
+export function describePayoutAccount(account: PayoutAccount | null | undefined): string | null {
+  if (!account) return null;
+  if (account.kind === 'redotpay' && account.redotpayId) {
+    return `RedotPay · ${account.redotpayId}`;
+  }
+  if (account.kind === 'mobile_money' && account.phone) {
+    const op = account.operator ? PAYOUT_OPERATOR_LABEL[account.operator] : 'Mobile Money';
+    return `${op} · ${account.phone}`;
+  }
+  if ((account.kind === 'rib' || account.kind === 'bank_transfer') && (account.rib || account.iban)) {
+    const rib = account.rib || account.iban;
+    return account.accountName ? `RIB · ${account.accountName} · ${rib}` : `RIB · ${rib}`;
+  }
+  return null;
+}
+
+/** Traduit le moyen du profil vers la demande de versement (méthode + destination). */
+export function payoutRequestFromAccount(
+  account: PayoutAccount | null | undefined,
+): { method: PayoutMethod; destination: Record<string, string> } | null {
+  if (!account) return null;
+  if (account.kind === 'redotpay' && account.redotpayId?.trim()) {
+    return { method: 'redotpay', destination: { redotpayId: account.redotpayId.trim() } };
+  }
+  if (account.kind === 'mobile_money' && account.operator && account.phone?.trim()) {
+    return { method: account.operator, destination: { phone: account.phone.trim() } };
+  }
+  const rib = (account.rib || account.iban || '').trim();
+  if ((account.kind === 'rib' || account.kind === 'bank_transfer') && account.accountName?.trim() && rib) {
+    return {
+      method: 'bank_transfer',
+      destination: {
+        accountName: account.accountName.trim(),
+        rib,
+        iban: rib,
+        ...(account.bankName?.trim() ? { bankName: account.bankName.trim() } : {}),
+      },
+    };
+  }
+  return null;
+}
 export type PayoutStatus = 'pending' | 'paid' | 'rejected';
 
 export interface Payout {
@@ -609,6 +678,7 @@ export interface AdminUser {
   createdAt?: string;
   storeCount?: number;
   whatsapp?: string;
+  payoutAccount?: PayoutAccount;
 }
 export interface AdminUserDetail {
   user: AdminUser;

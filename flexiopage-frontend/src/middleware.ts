@@ -60,6 +60,7 @@ const RESERVED_TOP_LEVEL = new Set([
   'brand',
   'brands',
   'uploads',
+  'demo-products', // photos d'exemple des thèmes (public/demo-products)
   'integrations',
   'avatars',   // bibliothèque UGC (public/avatars/manifest.json)
 ]);

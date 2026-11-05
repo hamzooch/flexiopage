@@ -931,28 +931,12 @@ export async function applyDeliveryWebhook(args: {
     }
   }
 
-  // Boutique physique : pas de commission à la livraison. Le CA livré
-  // alimente un palier (ex. 2 000 000 XOF) et on prélève 10 % du palier.
-  // Les autres boutiques gardent la commission par commande livrée.
+  // Le CA livré et payé alimente un palier (2 000 000 XOF). À chaque palier
+  // franchi, on retire 800 CFA (0,1) du solde principal, pas 3 % de la commande.
   if (parsedNoCheck.status === 'delivered' && store?.ownerId) {
     try {
-      if (store.storeType === 'physical') {
-        const { recordPhysicalRevenue } = await import('./physical-commission.service');
-        await recordPhysicalRevenue(order._id.toString());
-      } else {
-        const { chargeCommissionForOrder } = await import('./wallet.service');
-        const result = await chargeCommissionForOrder({
-          userId: store.ownerId,
-          orderId: order._id,
-          orderNumber: order.orderNumber,
-          orderTotal: order.total,
-          orderCurrency: order.currency,
-          storeId: store._id,
-        });
-        if (!result.alreadyApplied && result.amount > 0) {
-          console.log(`[wallet] commission ${result.amount} ${order.currency} charged for ${order.orderNumber}, balance now ${result.balanceAfter}`);
-        }
-      }
+      const { recordPhysicalRevenue } = await import('./physical-commission.service');
+      await recordPhysicalRevenue(order._id.toString());
     } catch (err) {
       // Never block the webhook — wallet errors are non-fatal.
       console.error('[wallet] commission charge failed:', (err as Error).message);

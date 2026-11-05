@@ -388,10 +388,120 @@ const DICTIONARY = {
     en: 'Customer orders, you get paid',
     ar: 'يطلب العميل، وأنت تستلم المال',
   },
+  'landing.kinds.badge': {
+    fr: 'Une seule plateforme',
+    en: 'One platform',
+    ar: 'منصة واحدة',
+  },
+  'landing.kinds.titleA': {
+    fr: 'Vends un fichier.',
+    en: 'Sell a file.',
+    ar: 'بِع ملفًا.',
+  },
+  'landing.kinds.titleB': {
+    fr: 'Ou livre un produit.',
+    en: 'Or deliver a product.',
+    ar: 'أو سلّم منتجًا.',
+  },
+  'landing.kinds.lead': {
+    fr: 'Tu ouvres une boutique digitale, une boutique physique, ou les deux. Même compte, chacun avec son paiement.',
+    en: 'Open a digital store, a physical store, or both. One account, each with its own checkout.',
+    ar: 'تفتح متجرًا رقميًا أو متجرًا ماديًا أو الاثنين. حساب واحد، ولكل متجر طريقة دفعه.',
+  },
+  'landing.kinds.or': {
+    fr: 'ou les deux',
+    en: 'or both',
+    ar: 'أو الاثنان',
+  },
+  'landing.kinds.digitalTitle': {
+    fr: 'Produits digitaux',
+    en: 'Digital products',
+    ar: 'منتجات رقمية',
+  },
+  'landing.kinds.digitalLead': {
+    fr: 'Le client paie en ligne et reçoit son fichier tout de suite.',
+    en: 'The customer pays online and gets the file right away.',
+    ar: 'يدفع الزبون عبر الإنترنت ويستلم ملفه فورًا.',
+  },
+  'landing.kinds.digital1': {
+    fr: 'Ebooks, formations, templates, licences',
+    en: 'Ebooks, courses, templates, licenses',
+    ar: 'كتب، دورات، قوالب، تراخيص',
+  },
+  'landing.kinds.digital2': {
+    fr: 'Wave, Orange Money ou carte',
+    en: 'Wave, Orange Money or card',
+    ar: 'Wave أو Orange Money أو بطاقة',
+  },
+  'landing.kinds.digital3': {
+    fr: 'Aucun stock, aucune livraison',
+    en: 'No stock, no shipping',
+    ar: 'بدون مخزون وبدون توصيل',
+  },
+  'landing.kinds.digitalFile': {
+    fr: 'Guide du freelance.pdf',
+    en: 'Freelance guide.pdf',
+    ar: 'دليل العمل الحر.pdf',
+  },
+  'landing.kinds.digitalCourse': {
+    fr: 'Formation · 12 modules',
+    en: 'Course · 12 modules',
+    ar: 'دورة · 12 وحدة',
+  },
+  'landing.kinds.digitalCta': {
+    fr: 'Recevoir le fichier',
+    en: 'Get the file',
+    ar: 'استلام الملف',
+  },
+  'landing.kinds.physicalTitle': {
+    fr: 'Produits physiques',
+    en: 'Physical products',
+    ar: 'منتجات مادية',
+  },
+  'landing.kinds.physicalLead': {
+    fr: 'Le client commande. Tu livres. Il paie à la réception.',
+    en: 'The customer orders. You ship. They pay on delivery.',
+    ar: 'يطلب الزبون. أنت تشحن. ويدفع عند الاستلام.',
+  },
+  'landing.kinds.physical1': {
+    fr: 'Mode, beauté, électronique, maison',
+    en: 'Fashion, beauty, electronics, home',
+    ar: 'أزياء، تجميل، إلكترونيات، منزل',
+  },
+  'landing.kinds.physical2': {
+    fr: 'Paiement à la livraison',
+    en: 'Cash on delivery',
+    ar: 'الدفع عند الاستلام',
+  },
+  'landing.kinds.physical3': {
+    fr: 'Dispatch MogaDelivery inclus',
+    en: 'MogaDelivery dispatch included',
+    ar: 'توزيع MogaDelivery مشمول',
+  },
+  'landing.kinds.physicalItem': {
+    fr: 'Manteau en laine',
+    en: 'Wool coat',
+    ar: 'معطف صوف',
+  },
+  'landing.kinds.physicalPrice': {
+    fr: '45 000 F',
+    en: '45,000 F',
+    ar: '45 000 ف',
+  },
+  'landing.kinds.physicalMeta': {
+    fr: 'Livraison sous 48 h',
+    en: 'Delivered within 48 h',
+    ar: 'التوصيل خلال 48 ساعة',
+  },
+  'landing.kinds.cta': {
+    fr: 'Créer ma boutique',
+    en: 'Create my store',
+    ar: 'أنشئ متجري',
+  },
   'landing.how.step3Desc': {
-    fr: 'Commande à la livraison, MogaDelivery prend le relais, tu encaisses ton paiement. 30 premières livraisons gratuites, ensuite une petite commission seulement.',
-    en: 'Cash on delivery, MogaDelivery takes over, you collect your payment. First 30 deliveries free, then only a small commission.',
-    ar: 'الدفع عند الاستلام، تتولى MogaDelivery العملية، وتستلم أنت مبلغك. أول 30 عملية توصيل مجانية، ثم عمولة صغيرة فقط.',
+    fr: 'Commande à la livraison, MogaDelivery prend le relais, tu encaisses ton paiement. 800 CFA quittent le solde principal tous les 2 000 000 CFA.',
+    en: 'Cash on delivery, MogaDelivery takes over, you collect your payment. 800 CFA leaves your main balance on every 2,000,000 CFA.',
+    ar: 'الدفع عند الاستلام، تتولى MogaDelivery العملية، وتستلم أنت مبلغك. يُخصم 800 فرنك من الرصيد الرئيسي كل 2 مليون فرنك.',
   },
 
   // Commission panel
@@ -400,36 +510,21 @@ const DICTIONARY = {
     en: 'Fair pricing',
     ar: 'تسعير عادل',
   },
-  'landing.commission.titleA': { fr: 'Tes', en: 'Your', ar: 'أول' },
+  'landing.commission.titleA': { fr: 'Tu paies', en: 'You pay', ar: 'تدفع' },
   'landing.commission.titleHighlight': {
-    fr: '30 premières commandes',
-    en: 'first 30 orders',
-    ar: '30 طلبًا لك',
+    fr: '800 CFA',
+    en: '800 CFA',
+    ar: '800 فرنك',
   },
   'landing.commission.titleB': {
-    fr: 'sont gratuites.',
-    en: 'are free.',
-    ar: 'مجانية بالكامل.',
+    fr: 'tous les 2 millions.',
+    en: 'on every 2 million.',
+    ar: 'كل 2 مليون.',
   },
   'landing.commission.paragraphStart': {
-    fr: "Pas d'abonnement, pas de carte bancaire à la création, pas de frais cachés. Tu lances ta boutique et tu vends sans payer un centime — une petite commission ne s'applique qu'à partir de la",
-    en: 'No subscription, no credit card to create your store, no hidden fees. You launch and sell without paying a cent — a small commission only applies starting from the',
-    ar: 'بدون اشتراك، بدون بطاقة بنكية عند الإنشاء، بدون أي رسوم خفية. تُطلق متجرك وتبيع دون أن تدفع سنتًا واحدًا — تُطبَّق عمولة صغيرة فقط بدءًا من',
-  },
-  'landing.commission.paragraphStrong': {
-    fr: '31e commande livrée',
-    en: '31st delivered order',
-    ar: 'الطلب رقم 31 المُسلَّم',
-  },
-  'landing.commission.badge30Main': {
-    fr: 'premières commandes livrées',
-    en: 'first delivered orders',
-    ar: 'أول طلبات مُسلَّمة',
-  },
-  'landing.commission.badge30Sub': {
-    fr: '100% gratuites · sans frais cachés',
-    en: '100% free · no hidden fees',
-    ar: 'مجانية 100% · بدون رسوم خفية',
+    fr: "Pas d'abonnement, pas de carte bancaire à la création. À chaque 2 000 000 CFA de chiffre d'affaires, 800 CFA quittent le solde principal.",
+    en: 'No subscription, and no card to open your store. Every 2,000,000 CFA of revenue, 800 CFA leaves your main balance.',
+    ar: 'بدون اشتراك، وبدون بطاقة بنكية عند الإنشاء. كل 2 مليون فرنك من رقم الأعمال، يُخصم 800 فرنك من الرصيد الرئيسي.',
   },
   'landing.commission.cta': {
     fr: 'Créer ma boutique',
@@ -452,9 +547,9 @@ const DICTIONARY = {
     ar: 'صفحات هبوط غير محدودة',
   },
   'landing.commission.perk3': {
-    fr: 'Génération IA des landings',
-    en: 'AI landing generation',
-    ar: 'توليد صفحات الهبوط بالذكاء الاصطناعي',
+    fr: 'Générations IA via le solde IA',
+    en: 'AI generations from the AI balance',
+    ar: 'توليد الصفحات من رصيد الذكاء الاصطناعي',
   },
   'landing.commission.perk4': {
     fr: 'Commandes illimitées',
@@ -484,9 +579,9 @@ const DICTIONARY = {
     ar: 'كيف يعمل الرصيد؟',
   },
   'landing.faq.a1': {
-    fr: 'Tes 30 premières commandes livrées sont 100% gratuites — aucun frais ne sort de ton solde. À partir de la 31e commande, une petite commission s’applique sur chaque livraison confirmée par le transporteur. Tu recharges ton solde via Wave, Orange Money, MTN MoMo ou virement quand tu veux.',
-    en: 'Your first 30 delivered orders are 100% free — no fee is charged from your balance. Starting with the 31st order, a small commission applies to each delivery confirmed by the courier. You top up your balance via Wave, Orange Money, MTN MoMo or bank transfer whenever you want.',
-    ar: 'أول 30 طلبًا مُسلَّمًا لك مجانية 100% — لا تُخصم أي رسوم من رصيدك. ابتداءً من الطلب 31، تُطبَّق عمولة صغيرة على كل عملية تسليم يؤكّدها الناقل. يمكنك شحن رصيدك عبر Wave أو Orange Money أو MTN MoMo أو التحويل البنكي متى شئت.',
+    fr: 'Le solde principal est prélevé de 800 CFA, soit 0,1 $US, à chaque palier de 2 000 000 CFA de chiffre d’affaires. S’il est à 0, il passe à −800 CFA. Tu le recharges via Wave, Orange Money, MTN MoMo ou virement. Le solde IA, à part, sert aux générations.',
+    en: 'The main balance is charged 800 CFA, or 0.1 USD, on every 2,000,000 CFA of revenue. At 0, it becomes −800 CFA. You top it up via Wave, Orange Money, MTN MoMo or bank transfer. The AI balance, separate, pays for generations.',
+    ar: 'يُخصم من الرصيد الرئيسي 800 فرنك، أي 0.1 دولار، كل 2 مليون فرنك من رقم الأعمال. إذا كان صفرًا، يصبح −800 فرنك. تشحنه عبر Wave أو Orange Money أو MTN MoMo أو التحويل البنكي. رصيد الذكاء الاصطناعي منفصل ويُستخدم للتوليد.',
   },
   'landing.faq.q2': {
     fr: 'Que se passe-t-il si une commande n’est pas livrée ?',
@@ -494,9 +589,9 @@ const DICTIONARY = {
     ar: 'ماذا يحدث إذا لم يتم تسليم الطلب؟',
   },
   'landing.faq.a2': {
-    fr: 'Aucun frais. La commission ne s’applique qu’aux commandes livrées ET payées (transporteur confirme la collecte). Annulation, retour, refus → 0 frais. Les 30 premières livraisons restent gratuites de toute façon.',
-    en: 'No fee. The commission only applies to orders that are delivered AND paid (the courier confirms collection). Cancellation, return, refusal → 0 fees. The first 30 deliveries stay free anyway.',
-    ar: 'لا رسوم إطلاقًا. تُطبَّق العمولة فقط على الطلبات المُسلَّمة والمدفوعة (يؤكّد الناقل استلام المبلغ). الإلغاء والإرجاع والرفض ← 0 رسوم. أول 30 عملية تسليم مجانية في جميع الأحوال.',
+    fr: 'Le palier ne compte que le chiffre d’affaires encaissé. Une annulation, un retour ou un refus non payé ne retire rien du solde.',
+    en: 'The step only counts revenue that was actually collected. A cancellation, return or unpaid refusal takes nothing from the balance.',
+    ar: 'يحتسب الشريحة فقط رقم الأعمال المحصَّل. الإلغاء أو الإرجاع أو الرفض غير المدفوع لا يخصم شيئًا من الرصيد.',
   },
   'landing.faq.q3': {
     fr: 'Dans quels pays vous opérez ?',
@@ -514,9 +609,9 @@ const DICTIONARY = {
     ar: 'هل يمكنني بيع منتجات رقمية؟',
   },
   'landing.faq.a4': {
-    fr: 'Oui. Pour les produits digitaux le client paie en ligne (Wave, Orange Money, carte) et reçoit son fichier instantanément. Les 30 premières ventes sont gratuites comme pour les produits physiques.',
-    en: 'Yes. For digital products the customer pays online (Wave, Orange Money, card) and receives the file instantly. The first 30 sales are free, just like for physical products.',
-    ar: 'نعم. بالنسبة للمنتجات الرقمية، يدفع العميل عبر الإنترنت (Wave، Orange Money، بطاقة) ويستلم ملفه فوريًا. أول 30 عملية بيع مجانية كما هو الحال مع المنتجات المادية.',
+    fr: 'Oui. Pour les produits digitaux le client paie en ligne (Wave, Orange Money, carte) et reçoit son fichier instantanément. Le même palier s’applique : 800 CFA tous les 2 000 000 CFA.',
+    en: 'Yes. For digital products the customer pays online (Wave, Orange Money, card) and receives the file instantly. The same step applies: 800 CFA on every 2,000,000 CFA.',
+    ar: 'نعم. للمنتجات الرقمية يدفع العميل عبر الإنترنت (Wave، Orange Money، بطاقة) ويستلم ملفه فورًا. تُطبَّق نفس الشريحة: 800 فرنك كل 2 مليون فرنك.',
   },
 
   // Final CTA

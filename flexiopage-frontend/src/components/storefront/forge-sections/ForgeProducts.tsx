@@ -29,25 +29,25 @@ export function ForgeProducts({
     {
       id: '1',
       name: 'Performance Leggings',
-      image: 'https://images.unsplash.com/photo-1506629082632-ee94b2e2d5ca?w=500&q=80',
+      image: '/demo-products/forge-1.jpg',
       price: 129,
     },
     {
       id: '2',
       name: 'Athlete Sports Bra',
-      image: 'https://images.unsplash.com/photo-1515886657613-9f3515b0c78f?w=500&q=80',
+      image: '/demo-products/forge-3.jpg',
       price: 79,
     },
     {
       id: '3',
       name: 'Premium Hoodie',
-      image: 'https://images.unsplash.com/photo-1556821552-8c40c1b24895?w=500&q=80',
+      image: '/demo-products/forge-4.jpg',
       price: 99,
     },
     {
       id: '4',
       name: 'Training Shorts',
-      image: 'https://images.unsplash.com/photo-1511491437671-cf52139fc359?w=500&q=80',
+      image: '/demo-products/forge-2.jpg',
       price: 69,
     },
   ];

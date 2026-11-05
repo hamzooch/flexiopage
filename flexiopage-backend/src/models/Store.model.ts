@@ -673,9 +673,9 @@ export interface IStore extends Document {
     monthlyRevenue?: number;
   };
   /**
-   * Commission des boutiques physiques : on n'encaisse pas à chaque commande.
-   * `deliveredRevenue` cumule le CA livré/payé. Chaque fois qu'il franchit
-   * un palier (2 000 000 XOF, 10 000 TND…), on prélève 10 % de ce palier.
+   * Frais du solde principal : on n'encaisse pas à chaque commande.
+   * `deliveredRevenue` cumule le CA livré/payé. Chaque palier
+   * (2 000 000 XOF, 10 000 TND…) retire 800 CFA, soit 0,1 de solde.
    */
   physicalBilling?: {
     deliveredRevenue: number;

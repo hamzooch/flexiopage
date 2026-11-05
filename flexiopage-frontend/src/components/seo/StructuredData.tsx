@@ -55,7 +55,7 @@ export function StructuredData({
       '@type': 'Offer',
       price: '0',
       priceCurrency: 'USD',
-      description: "Sans abonnement — les 30 premières commandes livrées sont gratuites, petite commission ensuite",
+      description: "Sans abonnement — 800 CFA prélevés du solde principal tous les 2 000 000 CFA, soit 0,1 $US",
     },
     aggregateRating: {
       '@type': 'AggregateRating',

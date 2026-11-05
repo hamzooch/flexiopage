@@ -207,13 +207,13 @@ export default function AdminOverviewPage() {
               {loading && data ? ' Mise à jour…' : ''}
             </p>
           </div>
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:flex-wrap sm:items-center">
             <RangeSwitcher value={range} onChange={setRange} />
             <button
               type="button"
               onClick={() => void load('manual')}
               disabled={refreshing}
-              className="inline-flex h-9 items-center gap-1.5 rounded-xl border border-border/60 bg-card px-2.5 text-xs font-semibold shadow-sm transition-colors hover:bg-muted disabled:opacity-50 sm:px-3"
+              className="inline-flex h-9 w-fit items-center gap-1.5 self-start rounded-xl border border-border/60 bg-card px-2.5 text-xs font-semibold shadow-sm transition-colors hover:bg-muted disabled:opacity-50 sm:px-3"
             >
               <RefreshCcw className={`h-3.5 w-3.5 ${refreshing ? 'animate-spin' : ''}`} />
               <span className="hidden sm:inline">Actualiser</span>

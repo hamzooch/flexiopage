@@ -20,7 +20,7 @@ interface Props {
 
 export function RangeSwitcher({ value, onChange }: Props) {
   return (
-    <div className="inline-flex items-center gap-0.5 rounded-xl border border-border/60 bg-card p-1 shadow-sm sm:gap-1">
+    <div className="flex w-full flex-wrap items-center gap-0.5 rounded-xl border border-border/60 bg-card p-1 shadow-sm sm:inline-flex sm:w-auto sm:gap-1">
       {RANGES.map((r) => (
         <button
           key={r.id}

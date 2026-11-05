@@ -29,11 +29,11 @@ import { isStaff } from '@/lib/is-staff';
 const FAQ_ITEMS = [
   {
     q: 'Comment fonctionne le solde ?',
-    a: "Tes 30 premières commandes livrées sont 100% gratuites — aucun frais ne sort de ton solde. À partir de la 31e commande, une petite commission s'applique sur chaque livraison confirmée par le transporteur. Tu recharges ton solde via Wave, Orange Money, MTN MoMo ou virement quand tu veux.",
+    a: "Le solde principal est prélevé de 800 CFA, soit 0,1 $US, à chaque palier de 2 000 000 CFA de chiffre d'affaires. S'il est à 0, il passe à −800 CFA. Tu le recharges via Wave, Orange Money, MTN MoMo ou virement. Le solde IA, à part, sert aux générations.",
   },
   {
     q: "Que se passe-t-il si une commande n'est pas livrée ?",
-    a: "Aucun frais. La commission ne s'applique qu'aux commandes livrées ET payées (transporteur confirme la collecte). Annulation, retour, refus → 0 frais. Les 30 premières livraisons restent gratuites de toute façon.",
+    a: "Le palier ne compte que le chiffre d'affaires encaissé. Une annulation, un retour ou un refus non payé ne retire rien du solde.",
   },
   {
     q: 'Dans quels pays opérez-vous ?',
@@ -41,7 +41,7 @@ const FAQ_ITEMS = [
   },
   {
     q: 'Puis-je vendre des produits digitaux ?',
-    a: 'Oui. Pour les produits digitaux le client paie en ligne (Wave, Orange Money, carte) et reçoit son fichier instantanément. Les 30 premières ventes sont gratuites comme pour les produits physiques.',
+    a: 'Oui. Pour les produits digitaux le client paie en ligne (Wave, Orange Money, carte) et reçoit son fichier instantanément. Le même palier s’applique : 800 CFA tous les 2 000 000 CFA.',
   },
 ];
 import {
@@ -55,6 +55,9 @@ import {
   LayoutTemplate,
   Smartphone,
   CheckCircle2,
+  Download,
+  Package,
+  BookOpen,
   Globe,
   Mail,
   CreditCard,
@@ -149,6 +152,7 @@ export default function HomePage() {
         <Features />
         <HowItWorks />
         <FlexioPay />
+        <StoreKinds />
         <CommissionPanel />
         <Faq />
         <FinalCta />
@@ -1230,6 +1234,157 @@ function HowItWorks() {
 }
 
 // ─────────────────────────────────────────────────────────────────────
+// TWO STORE KINDS — digital files and physical goods, one platform
+// ─────────────────────────────────────────────────────────────────────
+function StoreKinds() {
+  const { t } = useT();
+  const digitalPoints = [
+    t('landing.kinds.digital1'),
+    t('landing.kinds.digital2'),
+    t('landing.kinds.digital3'),
+  ];
+  const physicalPoints = [
+    t('landing.kinds.physical1'),
+    t('landing.kinds.physical2'),
+    t('landing.kinds.physical3'),
+  ];
+
+  return (
+    <section id="boutiques" className="mx-auto max-w-6xl px-4 py-16 sm:px-6 sm:py-24 lg:py-28">
+      <motion.div
+        initial="hidden"
+        whileInView="show"
+        viewport={{ once: true, margin: '-80px' }}
+        variants={staggerContainer}
+        className="mx-auto mb-10 max-w-2xl text-center sm:mb-12"
+      >
+        <motion.div
+          variants={fadeUp}
+          className="mb-3 inline-flex items-center gap-1.5 rounded-full bg-violet-500/10 px-3 py-1 text-xs font-semibold text-violet-700"
+        >
+          <Sparkles className="h-3 w-3" />
+          {t('landing.kinds.badge')}
+        </motion.div>
+        <motion.h2
+          variants={fadeUp}
+          className="text-balance text-2xl font-bold tracking-tight sm:text-3xl md:text-4xl lg:text-5xl"
+        >
+          {t('landing.kinds.titleA')}{' '}
+          <span className="bg-gradient-to-r from-violet-600 to-amber-500 bg-clip-text text-transparent">
+            {t('landing.kinds.titleB')}
+          </span>
+        </motion.h2>
+        <motion.p variants={fadeUp} className="mt-4 text-sm leading-relaxed text-muted-foreground sm:text-base lg:text-lg">
+          {t('landing.kinds.lead')}
+        </motion.p>
+        <motion.div variants={fadeUp} className="mt-5">
+          <span className="rounded-full border border-border bg-background px-3 py-1 text-xs font-semibold text-foreground shadow-sm">
+            {t('landing.kinds.or')}
+          </span>
+        </motion.div>
+      </motion.div>
+
+      <div className="relative grid gap-4 lg:grid-cols-2 lg:gap-5">
+        <motion.article
+          initial={{ opacity: 0, y: 28 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          viewport={{ once: true, margin: '-60px' }}
+          transition={{ duration: 0.55 }}
+          className="flex flex-col overflow-hidden rounded-3xl border border-violet-500/20 bg-gradient-to-b from-violet-500/10 via-card to-card p-5 sm:p-7"
+        >
+          <div className="flex items-center gap-3">
+            <span className="grid h-11 w-11 place-items-center rounded-2xl bg-violet-600 text-white shadow-lg shadow-violet-600/25">
+              <BookOpen className="h-5 w-5" />
+            </span>
+            <div>
+              <h3 className="text-lg font-bold tracking-tight sm:text-xl">{t('landing.kinds.digitalTitle')}</h3>
+              <p className="text-xs text-muted-foreground sm:text-sm">{t('landing.kinds.digitalLead')}</p>
+            </div>
+          </div>
+          <ul className="mb-6 mt-5 space-y-2.5">
+            {digitalPoints.map((point) => (
+              <li key={point} className="flex items-center gap-2.5 text-sm">
+                <span className="grid h-5 w-5 shrink-0 place-items-center rounded-full bg-violet-500/15">
+                  <CheckCircle2 className="h-3.5 w-3.5 text-violet-600" />
+                </span>
+                {point}
+              </li>
+            ))}
+          </ul>
+          <div className="mt-auto rounded-2xl border border-violet-500/15 bg-background/80 p-4">
+            <div className="flex items-center gap-3 rounded-xl bg-violet-500/5 px-3 py-2.5">
+              <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-violet-600 text-white">
+                <Download className="h-4 w-4" />
+              </span>
+              <div className="min-w-0">
+                <div className="truncate text-sm font-semibold">{t('landing.kinds.digitalFile')}</div>
+                <div className="text-[11px] text-muted-foreground">{t('landing.kinds.digitalCourse')}</div>
+              </div>
+            </div>
+            <div className="mt-3 grid h-10 place-items-center rounded-xl bg-violet-600 text-sm font-semibold text-white">
+              {t('landing.kinds.digitalCta')}
+            </div>
+          </div>
+        </motion.article>
+
+        <motion.article
+          initial={{ opacity: 0, y: 28 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          viewport={{ once: true, margin: '-60px' }}
+          transition={{ duration: 0.55, delay: 0.08 }}
+          className="flex flex-col overflow-hidden rounded-3xl border border-amber-500/25 bg-gradient-to-b from-amber-500/10 via-card to-card p-5 sm:p-7"
+        >
+          <div className="flex items-center gap-3">
+            <span className="grid h-11 w-11 place-items-center rounded-2xl bg-gradient-to-br from-amber-500 to-orange-600 text-white shadow-lg shadow-orange-500/25">
+              <Package className="h-5 w-5" />
+            </span>
+            <div>
+              <h3 className="text-lg font-bold tracking-tight sm:text-xl">{t('landing.kinds.physicalTitle')}</h3>
+              <p className="text-xs text-muted-foreground sm:text-sm">{t('landing.kinds.physicalLead')}</p>
+            </div>
+          </div>
+          <ul className="mb-6 mt-5 space-y-2.5">
+            {physicalPoints.map((point) => (
+              <li key={point} className="flex items-center gap-2.5 text-sm">
+                <span className="grid h-5 w-5 shrink-0 place-items-center rounded-full bg-amber-500/15">
+                  <CheckCircle2 className="h-3.5 w-3.5 text-amber-600" />
+                </span>
+                {point}
+              </li>
+            ))}
+          </ul>
+          <div className="mt-auto rounded-2xl border border-amber-500/20 bg-background/80 p-4">
+            <div className="flex items-center gap-3">
+              <span className="h-14 w-14 shrink-0 rounded-xl bg-gradient-to-br from-amber-200 via-orange-300 to-orange-500" />
+              <div className="min-w-0">
+                <div className="truncate text-sm font-semibold">{t('landing.kinds.physicalItem')}</div>
+                <div className="text-sm font-bold text-foreground">{t('landing.kinds.physicalPrice')}</div>
+                <div className="mt-0.5 inline-flex items-center gap-1 text-[11px] text-muted-foreground">
+                  <Truck className="h-3 w-3" />
+                  {t('landing.kinds.physicalMeta')}
+                </div>
+              </div>
+            </div>
+            <div className="mt-3 grid h-10 place-items-center rounded-xl bg-gradient-to-r from-amber-500 to-orange-600 text-sm font-semibold text-white">
+              {t('landing.heroMock.cta')}
+            </div>
+          </div>
+        </motion.article>
+      </div>
+
+      <div className="mt-8 flex justify-center">
+        <Link href="/register">
+          <Button size="lg" className="h-12 gap-2 bg-gradient-to-r from-violet-600 to-orange-500 px-7 font-semibold text-white">
+            {t('landing.kinds.cta')}
+            <DirArrow className="h-4 w-4" />
+          </Button>
+        </Link>
+      </div>
+    </section>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────
 // COMMISSION PANEL
 // ─────────────────────────────────────────────────────────────────────
 function CommissionPanel() {
@@ -1237,7 +1392,6 @@ function CommissionPanel() {
   const perks = [
     t('landing.commission.perk1'),
     t('landing.commission.perk2'),
-    t('landing.commission.perk3'),
     t('landing.commission.perk4'),
     t('landing.commission.perk5'),
     t('landing.commission.perk6'),
@@ -1263,22 +1417,7 @@ function CommissionPanel() {
             </h2>
             <p className="mt-4 text-sm leading-relaxed text-muted-foreground sm:mt-5 sm:text-base lg:text-lg">
               {t('landing.commission.paragraphStart')}
-              {' '}<strong className="text-foreground">{t('landing.commission.paragraphStrong')}</strong>.
             </p>
-
-            <motion.div
-              initial={{ scale: 0.92, opacity: 0 }}
-              whileInView={{ scale: 1, opacity: 1 }}
-              viewport={{ once: true }}
-              transition={{ duration: 0.5, delay: 0.2, type: 'spring', stiffness: 200 }}
-              className="mt-6 inline-flex items-baseline gap-3 rounded-2xl border border-emerald-500/30 bg-emerald-500/5 px-5 py-3.5 backdrop-blur sm:mt-8 sm:px-6 sm:py-4"
-            >
-              <span className="text-4xl font-black tracking-tight text-emerald-700 sm:text-5xl">30</span>
-              <div className="text-start">
-                <div className="text-xs font-semibold sm:text-sm">{t('landing.commission.badge30Main')}</div>
-                <div className="text-[11px] text-muted-foreground sm:text-xs">{t('landing.commission.badge30Sub')}</div>
-              </div>
-            </motion.div>
 
             <div className="mt-6 flex flex-wrap gap-3">
               <Link href="/register">

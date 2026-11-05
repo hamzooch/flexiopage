@@ -19,7 +19,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useConfirm } from '@/components/ui/confirm-dialog';
-import { adminApi, type AdminUserDetail } from '@/lib/api';
+import { adminApi, describePayoutAccount, type AdminUserDetail } from '@/lib/api';
 import { storeAbsoluteUrl } from '@/lib/utils';
 import {
   ArrowLeft,
@@ -310,6 +310,11 @@ export default function AdminUserDetailPage() {
                 >
                   <Phone className="h-3.5 w-3.5" />{u.whatsapp}
                 </a>
+              )}
+              {describePayoutAccount(u.payoutAccount) && (
+                <span className="inline-flex items-center gap-1.5">
+                  <Banknote className="h-3.5 w-3.5" />{describePayoutAccount(u.payoutAccount)}
+                </span>
               )}
               {u.createdAt && <span className="inline-flex items-center gap-1.5"><Calendar className="h-3.5 w-3.5" />Inscrit {new Date(u.createdAt).toLocaleDateString()}</span>}
               {u.lastLoginAt && <span className="inline-flex items-center gap-1.5"><Clock className="h-3.5 w-3.5" />Dernière connexion {new Date(u.lastLoginAt).toLocaleString()}</span>}

@@ -3,6 +3,7 @@
 /**
  * Profil — vue de compte du vendeur. C'est le hub central où le seller :
  *   • voit/édite ses infos (nom, email, mot de passe, pays & devise)
+ *   • enregistre le moyen où recevoir ses versements (RedotPay, Mobile Money, RIB)
  *   • gère TOUTES ses boutiques (liste, sélection active, création)
  *
  * La création vit ici (CreateStoreWizard) parce qu'on a centralisé toutes
@@ -20,7 +21,7 @@ import { Label } from '@/components/ui/label';
 import { useAuthStore } from '@/stores/auth-store';
 import { useWalletStore } from '@/stores/wallet-store';
 import { useStoreStore } from '@/stores/store-store';
-import { usersApi, storesApi } from '@/lib/api';
+import { usersApi, storesApi, type PayoutAccount } from '@/lib/api';
 import { CreateStoreWizard } from '@/components/dashboard/create-store-wizard';
 import {
   User as UserIcon,
@@ -45,6 +46,7 @@ import {
   CheckCircle2,
   Copy,
   Check as CheckIcon,
+  Banknote,
 } from 'lucide-react';
 import { COUNTRIES, COUNTRY_GROUPS, currencyForCountry } from '@/data/countries';
 import { cn, publicStoreUrl, mediaUrl } from '@/lib/utils';
@@ -59,6 +61,7 @@ interface UserDoc {
   country?: string;
   currency?: string;
   whatsapp?: string;
+  payoutAccount?: PayoutAccount;
 }
 
 interface StoreDoc {
@@ -116,6 +119,15 @@ export default function ProfilePage() {
   // Profile save
   const [savingName, setSavingName] = useState(false);
   const [nameSaved, setNameSaved] = useState(false);
+  const [payKind, setPayKind] = useState<PayoutAccount['kind']>('mobile_money');
+  const [payName, setPayName] = useState('');
+  const [payRib, setPayRib] = useState('');
+  const [payBank, setPayBank] = useState('');
+  const [payOperator, setPayOperator] = useState<'wave' | 'orange_money' | 'mtn_momo'>('wave');
+  const [payPhone, setPayPhone] = useState('');
+  const [payRedotpayId, setPayRedotpayId] = useState('');
+  const [savingPayout, setSavingPayout] = useState(false);
+  const [payoutMsg, setPayoutMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [savingRegion, setSavingRegion] = useState(false);
   const [regionMsg, setRegionMsg] = useState<{ type: 'success' | 'warn' | 'error'; text: string } | null>(null);
 
@@ -161,6 +173,16 @@ export default function ProfilePage() {
         setAvatar(u.avatar || '');
         setCountry(u.country || '');
         setCurrency(u.currency || '');
+        const pay = u.payoutAccount;
+        if (pay?.kind) {
+          setPayKind(pay.kind === 'bank_transfer' ? 'rib' : pay.kind);
+          setPayName(pay.accountName || '');
+          setPayRib(pay.rib || pay.iban || '');
+          setPayBank(pay.bankName || '');
+          if (pay.operator) setPayOperator(pay.operator);
+          setPayPhone(pay.phone || '');
+          setPayRedotpayId(pay.redotpayId || '');
+        }
       })
       .finally(() => setLoading(false));
     refreshWallet();
@@ -285,6 +307,66 @@ export default function ProfilePage() {
       window.setTimeout(() => setNameSaved(false), 2200);
     } finally {
       setSavingName(false);
+    }
+  }
+
+  function applySavedPayout(pay: PayoutAccount | undefined) {
+    if (!pay?.kind) return;
+    setPayKind(pay.kind === 'bank_transfer' ? 'rib' : pay.kind);
+    setPayName(pay.accountName || '');
+    setPayRib(pay.rib || pay.iban || '');
+    setPayBank(pay.bankName || '');
+    if (pay.operator) setPayOperator(pay.operator);
+    setPayPhone(pay.phone || '');
+    setPayRedotpayId(pay.redotpayId || '');
+  }
+
+  async function handleSavePayout(e: React.FormEvent) {
+    e.preventDefault();
+    setSavingPayout(true);
+    setPayoutMsg(null);
+    const account: PayoutAccount = payKind === 'redotpay'
+      ? { kind: 'redotpay', redotpayId: payRedotpayId.trim() }
+      : payKind === 'rib'
+        ? {
+            kind: 'rib',
+            accountName: payName.trim(),
+            rib: payRib.replace(/\s+/g, ''),
+            ...(payBank.trim() ? { bankName: payBank.trim() } : {}),
+          }
+        : { kind: 'mobile_money', operator: payOperator, phone: payPhone.trim() };
+    try {
+      const res = await usersApi.updateProfile({ payoutAccount: account });
+      const saved = (res.data as { user: UserDoc }).user;
+      setUser(saved);
+      applySavedPayout(saved.payoutAccount);
+      setPayoutMsg({ type: 'success', text: 'Moyen de versement enregistré. Les prochains retraits iront ici.' });
+    } catch (err) {
+      const e = err as { response?: { data?: { error?: string } } };
+      setPayoutMsg({ type: 'error', text: e.response?.data?.error || 'Impossible d’enregistrer ce moyen.' });
+    } finally {
+      setSavingPayout(false);
+    }
+  }
+
+  async function handleClearPayout() {
+    setSavingPayout(true);
+    setPayoutMsg(null);
+    try {
+      const res = await usersApi.updateProfile({ payoutAccount: null });
+      const saved = (res.data as { user: UserDoc }).user;
+      setUser(saved);
+      setPayName('');
+      setPayRib('');
+      setPayBank('');
+      setPayPhone('');
+      setPayRedotpayId('');
+      setPayoutMsg({ type: 'success', text: 'Moyen de versement retiré.' });
+    } catch (err) {
+      const e = err as { response?: { data?: { error?: string } } };
+      setPayoutMsg({ type: 'error', text: e.response?.data?.error || 'Impossible de retirer ce moyen.' });
+    } finally {
+      setSavingPayout(false);
     }
   }
 
@@ -961,6 +1043,165 @@ export default function ProfilePage() {
                 </form>
               )}
             </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Banknote className="h-4 w-4" /> Moyen de versement
+            </CardTitle>
+            <CardDescription>
+              Choisis où recevoir tes retraits : RedotPay, Mobile Money ou RIB. L’admin envoie l’argent sur ce compte.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <form onSubmit={handleSavePayout} className="space-y-4">
+              <div className="grid gap-2 sm:grid-cols-3">
+                {([
+                  { id: 'redotpay' as const, label: 'RedotPay', hint: 'Identifiant du compte' },
+                  { id: 'mobile_money' as const, label: 'Mobile Money', hint: 'Wave, Orange ou MTN' },
+                  { id: 'rib' as const, label: 'RIB', hint: 'Compte bancaire' },
+                ]).map((choice) => {
+                  const active = payKind === choice.id;
+                  return (
+                    <button
+                      key={choice.id}
+                      type="button"
+                      onClick={() => setPayKind(choice.id)}
+                      className={cn(
+                        'rounded-xl border px-3 py-3 text-left transition-colors',
+                        active
+                          ? 'border-primary bg-primary/10 text-primary'
+                          : 'border-border/60 hover:border-border'
+                      )}
+                    >
+                      <span className="block text-sm font-semibold">{choice.label}</span>
+                      <span className={cn('mt-0.5 block text-[11px]', active ? 'text-primary/80' : 'text-muted-foreground')}>
+                        {choice.hint}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+
+              {payKind === 'redotpay' && (
+                <div>
+                  <Label htmlFor="redotpayId">Identifiant RedotPay</Label>
+                  <Input
+                    id="redotpayId"
+                    value={payRedotpayId}
+                    onChange={(e) => setPayRedotpayId(e.target.value)}
+                    placeholder="ID du compte RedotPay"
+                    className="mt-1"
+                    required
+                  />
+                  <p className="mt-1 text-[11px] text-muted-foreground">
+                    L’admin envoie le montant sur cet identifiant.
+                  </p>
+                </div>
+              )}
+
+              {payKind === 'mobile_money' && (
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <div>
+                    <Label htmlFor="pay-operator">Opérateur</Label>
+                    <select
+                      id="pay-operator"
+                      value={payOperator}
+                      onChange={(e) => setPayOperator(e.target.value as 'wave' | 'orange_money' | 'mtn_momo')}
+                      className="mt-1 h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+                    >
+                      <option value="wave">Wave</option>
+                      <option value="orange_money">Orange Money</option>
+                      <option value="mtn_momo">MTN MoMo</option>
+                    </select>
+                  </div>
+                  <div>
+                    <Label htmlFor="pay-phone">Numéro</Label>
+                    <Input
+                      id="pay-phone"
+                      type="tel"
+                      value={payPhone}
+                      onChange={(e) => setPayPhone(e.target.value)}
+                      placeholder="+221 77 123 45 67"
+                      className="mt-1"
+                      required
+                    />
+                  </div>
+                </div>
+              )}
+
+              {payKind === 'rib' && (
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <div className="sm:col-span-2">
+                    <Label htmlFor="pay-name">Nom du titulaire</Label>
+                    <Input
+                      id="pay-name"
+                      value={payName}
+                      onChange={(e) => setPayName(e.target.value)}
+                      placeholder="Nom sur le compte"
+                      className="mt-1"
+                      required
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor="pay-rib">RIB</Label>
+                    <Input
+                      id="pay-rib"
+                      value={payRib}
+                      onChange={(e) => setPayRib(e.target.value)}
+                      placeholder="Relevé d'identité bancaire"
+                      className="mt-1 font-mono"
+                      required
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor="pay-bank">Banque (optionnel)</Label>
+                    <Input
+                      id="pay-bank"
+                      value={payBank}
+                      onChange={(e) => setPayBank(e.target.value)}
+                      placeholder="Nom de la banque"
+                      className="mt-1"
+                    />
+                  </div>
+                </div>
+              )}
+
+              {payoutMsg && (
+                <div
+                  className={cn(
+                    'flex items-start gap-2 rounded-lg border p-3 text-sm',
+                    payoutMsg.type === 'success'
+                      ? 'border-emerald-500/30 bg-emerald-500/5 text-emerald-700'
+                      : 'border-destructive/30 bg-destructive/5 text-destructive'
+                  )}
+                >
+                  {payoutMsg.type === 'success'
+                    ? <Check className="mt-0.5 h-4 w-4 shrink-0" />
+                    : <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />}
+                  {payoutMsg.text}
+                </div>
+              )}
+
+              <div className="flex flex-wrap items-center gap-3">
+                <Button type="submit" disabled={savingPayout} className="gap-2">
+                  {savingPayout ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
+                  Enregistrer le moyen
+                </Button>
+                {user?.payoutAccount && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    disabled={savingPayout}
+                    onClick={() => void handleClearPayout()}
+                  >
+                    Retirer
+                  </Button>
+                )}
+              </div>
+            </form>
           </CardContent>
         </Card>
       </div>

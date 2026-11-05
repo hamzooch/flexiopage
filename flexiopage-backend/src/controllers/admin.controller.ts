@@ -1070,7 +1070,7 @@ export async function creditWallet(req: AuthRequest, res: Response): Promise<voi
 export async function getUserDetail(req: AuthRequest, res: Response): Promise<void> {
   const { userId } = req.params;
   const user = await User.findById(userId)
-    .select('email name role avatar emailVerified suspended suspendedReason suspendedAt lastLoginAt lastLoginIp passwordResetAt createdAt updatedAt whatsapp')
+    .select('email name role avatar emailVerified suspended suspendedReason suspendedAt lastLoginAt lastLoginIp passwordResetAt createdAt updatedAt whatsapp payoutAccount')
     .lean();
   if (!user) {
     res.status(404).json({ error: 'User not found' });

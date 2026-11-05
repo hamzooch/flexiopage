@@ -9,6 +9,77 @@ import { currencyForCountry, isKnownCountry } from '../data/countries';
 import { effectiveOwnerId } from '../lib/owner';
 import { logger } from '../lib/logger';
 
+type IUserPayoutAccount = {
+  kind: 'rib' | 'bank_transfer' | 'mobile_money' | 'redotpay';
+  accountName?: string;
+  rib?: string;
+  iban?: string;
+  bankName?: string;
+  operator?: 'wave' | 'orange_money' | 'mtn_momo';
+  phone?: string;
+  redotpayId?: string;
+};
+
+function parsePayoutAccount(
+  raw: unknown,
+): { ok: true; value: IUserPayoutAccount } | { ok: false; error: string } {
+  if (!raw || typeof raw !== 'object') {
+    return { ok: false, error: 'Indique un RedotPay, un Mobile Money ou un RIB.' };
+  }
+  const body = raw as Record<string, unknown>;
+  const kind = body.kind;
+  const clean = (value: unknown, max: number) =>
+    typeof value === 'string' ? value.replace(/\s+/g, ' ').trim().slice(0, max) : '';
+
+  if (kind === 'rib') {
+    const accountName = clean(body.accountName, 120);
+    const rib = clean(body.rib, 64).replace(/\s+/g, '');
+    const bankName = clean(body.bankName, 120);
+    if (accountName.length < 2 || rib.length < 8) {
+      return { ok: false, error: 'Nom du titulaire et RIB requis.' };
+    }
+    return {
+      ok: true,
+      value: { kind: 'rib', accountName, rib, ...(bankName ? { bankName } : {}) },
+    };
+  }
+
+  if (kind === 'bank_transfer') {
+    const accountName = clean(body.accountName, 120);
+    const iban = clean(body.iban, 64).replace(/\s+/g, '').toUpperCase();
+    const bankName = clean(body.bankName, 120);
+    if (accountName.length < 2 || iban.length < 8) {
+      return { ok: false, error: 'Nom du titulaire et IBAN requis pour le virement.' };
+    }
+    return {
+      ok: true,
+      value: { kind: 'bank_transfer', accountName, iban, ...(bankName ? { bankName } : {}) },
+    };
+  }
+
+  if (kind === 'mobile_money') {
+    const operator = body.operator;
+    const phone = clean(body.phone, 24).replace(/[^\d+]/g, '');
+    if (operator !== 'wave' && operator !== 'orange_money' && operator !== 'mtn_momo') {
+      return { ok: false, error: 'Choisis l’opérateur Mobile Money.' };
+    }
+    if (phone.replace(/\D/g, '').length < 8) {
+      return { ok: false, error: 'Indique le numéro Mobile Money.' };
+    }
+    return { ok: true, value: { kind: 'mobile_money', operator, phone } };
+  }
+
+  if (kind === 'redotpay') {
+    const redotpayId = clean(body.redotpayId, 80);
+    if (redotpayId.length < 3) {
+      return { ok: false, error: 'Indique ton identifiant RedotPay.' };
+    }
+    return { ok: true, value: { kind: 'redotpay', redotpayId } };
+  }
+
+  return { ok: false, error: 'Choisis un RedotPay, un Mobile Money ou un RIB.' };
+}
+
 export async function getProfile(req: AuthRequest, res: Response): Promise<void> {
   if (!req.user) {
     res.status(401).json({ error: 'Not authenticated' });
@@ -35,15 +106,24 @@ export async function updateProfile(req: AuthRequest, res: Response): Promise<vo
     res.status(401).json({ error: 'Not authenticated' });
     return;
   }
-  const { name, avatar, country, currency, whatsapp } = req.body as {
+  const { name, avatar, country, currency, whatsapp, payoutAccount } = req.body as {
     name?: string;
     avatar?: string;
     country?: string;
     currency?: string;
     whatsapp?: string;
+    payoutAccount?: unknown;
   };
 
-  const updates: { name?: string; avatar?: string; country?: string; currency?: string; whatsapp?: string } = {};
+  const updates: {
+    name?: string;
+    avatar?: string;
+    country?: string;
+    currency?: string;
+    whatsapp?: string;
+    payoutAccount?: IUserPayoutAccount;
+  } = {};
+  let clearPayoutAccount = false;
   if (typeof name === 'string') updates.name = name.trim();
   if (typeof avatar === 'string') updates.avatar = avatar;
 
@@ -82,7 +162,26 @@ export async function updateProfile(req: AuthRequest, res: Response): Promise<vo
     updates.currency = cur || undefined;
   }
 
-  const user = await User.findByIdAndUpdate(req.user._id, { $set: updates }, { new: true })
+  if (payoutAccount === null) {
+    clearPayoutAccount = true;
+  } else if (payoutAccount !== undefined) {
+    const parsed = parsePayoutAccount(payoutAccount);
+    if (!parsed.ok) {
+      res.status(400).json({ error: parsed.error });
+      return;
+    }
+    updates.payoutAccount = parsed.value;
+  }
+
+  const mongoUpdate: { $set?: typeof updates; $unset?: { payoutAccount: 1 } } = {};
+  if (Object.keys(updates).length > 0) mongoUpdate.$set = updates;
+  if (clearPayoutAccount) mongoUpdate.$unset = { payoutAccount: 1 };
+
+  const user = await User.findByIdAndUpdate(
+    req.user._id,
+    Object.keys(mongoUpdate).length > 0 ? mongoUpdate : {},
+    { new: true },
+  )
     .select('-password');
   if (!user) {
     res.status(404).json({ error: 'User not found' });

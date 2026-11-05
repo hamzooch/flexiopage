@@ -29,7 +29,7 @@ export const forgeLandingTemplate = {
         subheading: 'Performance meets style. Engineered for athletes and everyday movers.',
         ctaText: 'Explore Collection',
         ctaUrl: '#products',
-        backgroundImage: 'https://images.unsplash.com/photo-1506126613408-eca07ce68773?w=1200&q=80', // athlete in gym
+        backgroundImage: '/demo-products/forge-4.jpg',
         overlayGradient: 'from-black/60 via-black/40 to-transparent',
         textPosition: 'center',
         minHeight: '600px',
@@ -97,7 +97,7 @@ export const forgeLandingTemplate = {
       type: 'split',
       config: {
         layout: 'image-right', // image on right
-        image: 'https://images.unsplash.com/photo-1520854221256-17451cc331d7?w=600&q=80', // model in athleisure
+        image: '/demo-products/forge-1.jpg',
         title: 'From Studio to Street',
         description:
           'Our collection transcends the gym. Designed for the moments between—transitioning from workout to workday, streetwear to social.',

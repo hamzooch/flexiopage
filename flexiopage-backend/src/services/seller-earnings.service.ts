@@ -82,8 +82,8 @@ export async function creditSellerForPaidOrder(order: IOrder): Promise<number> {
 
   const settings = await getSettings();
   const orderType = await inferOrderType(order);
-  // Boutique physique : le vendeur est payé en entier. La commission (10 %
-  // du palier) est prélevée plus tard sur son solde, une fois le CA atteint.
+  // Boutique physique : le vendeur est payé en entier. Le solde principal
+  // est prélevé à part, 800 CFA par palier de 2 000 000 CFA.
   const rate = store.storeType === 'physical'
     ? 0
     : commissionRateForOrderType(settings.platform, orderType);
@@ -112,13 +112,11 @@ export async function creditSellerForPaidOrder(order: IOrder): Promise<number> {
 
   await targetWallet.save();
 
-  if (store.storeType === 'physical') {
-    try {
-      const { recordPhysicalRevenue } = await import('./physical-commission.service');
-      await recordPhysicalRevenue(order._id.toString());
-    } catch (err) {
-      console.error('[physical-commission] CA non compté:', (err as Error).message);
-    }
+  try {
+    const { recordPhysicalRevenue } = await import('./physical-commission.service');
+    await recordPhysicalRevenue(order._id.toString());
+  } catch (err) {
+    console.error('[physical-commission] CA non compté:', (err as Error).message);
   }
 
   return netAmount;

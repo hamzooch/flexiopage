@@ -171,6 +171,8 @@ export function mediaUrl(url?: string | null, opts?: MediaOptOpts): string | und
   if (/^(https?:)?\/\//.test(repaired) || repaired.startsWith('data:') || repaired.startsWith('blob:')) {
     return applyCloudinaryOpts(repaired, opts);
   }
+  // Photos d'exemple servies par Next (`public/demo-products`), pas par l'API.
+  if (repaired.startsWith('/demo-products/')) return repaired;
   const apiBase = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000').replace(/\/$/, '');
   return `${apiBase}${repaired.startsWith('/') ? '' : '/'}${repaired}`;
 }

@@ -3,6 +3,7 @@ import { LandingPage } from '../models/LandingPage.model';
 import { Product } from '../models/Product.model';
 import mongoose from 'mongoose';
 import { slugify } from '../lib/slugify';
+import { examplesForTheme } from '../data/theme-example-products';
 import { timezoneForCountry, resolveStoreTimeZone } from '../utils/store-timezone';
 
 /**
@@ -159,47 +160,45 @@ async function seedInfoPages(storeId: mongoose.Types.ObjectId, language?: string
  * ait l'air d'une vraie boutique dès l'ouverture (storefront non vide, aperçu
  * de thème réaliste). Ce sont de VRAIS produits : le vendeur les modifie (nom,
  * prix, images, description) ou les supprime depuis la page Produits.
- * Nommés « Produit 1 … N » pour être clairement identifiables comme du test.
+ * Le nom, la photo et le type suivent le thème choisi (digital ≠ physique).
  */
-const DEMO_PRODUCT_COUNT = 6;
-const DEMO_PRICES = [25, 35, 45, 30, 60, 40];
-const DEMO_COMPARE_AT = [0, 49, 0, 0, 79, 0];
-// Vraies photos produit e-commerce (Unsplash) — mix universel mode + tech
-// + beauté qui marche pour toutes les niches. Remplace `picsum.photos`
-// qui renvoyait des images aléatoires (souvent paysages / fleurs / arbres).
-const DEMO_PRODUCT_IMAGES = [
-  'https://images.unsplash.com/photo-1521572163474-6864f9cf17ab?w=900&q=80', // t-shirt blanc
-  'https://images.unsplash.com/photo-1542291026-7eec264c27ff?w=900&q=80',   // sneakers modernes
-  'https://images.unsplash.com/photo-1546868871-7041f2a55e12?w=900&q=80',   // montre connectée
-  'https://images.unsplash.com/photo-1590658268037-6bf12165a8df?w=900&q=80', // écouteurs sans-fil
-  'https://images.unsplash.com/photo-1553062407-98eeb64c6a62?w=900&q=80',   // sac à dos
-  'https://images.unsplash.com/photo-1585386959984-a4155224a1ad?w=900&q=80', // flacon cosmétique
-];
+function slugPart(name: string, index: number): string {
+  const base = name
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-|-$/g, '')
+    .slice(0, 48);
+  return `exemple-${index + 1}-${base || 'produit'}`;
+}
 
 async function seedDemoProducts(
   storeId: mongoose.Types.ObjectId,
   storeType: StoreType,
   currency?: string,
+  theme?: Record<string, unknown>,
 ) {
   const type: StoreType = storeType === 'digital' ? 'digital' : 'physical';
-  const docs = Array.from({ length: DEMO_PRODUCT_COUNT }, (_, idx) => {
-    const i = idx + 1;
-    const compareAt = DEMO_COMPARE_AT[idx];
+  const templateId = typeof theme?.templateId === 'string' ? theme.templateId : undefined;
+  const examples = examplesForTheme(templateId, type);
+  const docs = examples.map((example, idx) => {
+    const digital = type === 'digital';
     return {
       storeId,
-      name: `Produit ${i}`,
-      slug: `produit-${i}`,
-      description:
-        'Produit de démonstration. Modifie son nom, sa description, son prix et ses images — ou supprime-le quand tu ajoutes tes vrais produits.',
+      name: example.name,
+      slug: slugPart(example.name, idx),
+      description: example.description,
       type,
-      price: DEMO_PRICES[idx] ?? 30,
-      compareAtPrice: compareAt && compareAt > 0 ? compareAt : undefined,
+      digitalKind: digital ? example.digitalKind || 'download' : undefined,
+      price: example.price,
+      compareAtPrice: example.compareAtPrice,
       currency: currency?.trim().toUpperCase() || undefined,
-      sku: `DEMO-${i}`,
-      stock: 50,
-      trackInventory: true,
+      sku: `DEMO-${idx + 1}`,
+      stock: digital ? 0 : 50,
+      trackInventory: !digital,
       allowBackorder: false,
-      images: [DEMO_PRODUCT_IMAGES[idx % DEMO_PRODUCT_IMAGES.length]],
+      images: [example.image],
       isPublished: true,
     };
   });
@@ -271,7 +270,7 @@ export async function createStore(input: CreateStoreInput): Promise<IStore> {
   // Best-effort seeding — failure here doesn't roll back the store creation.
   await seedInfoPages(store._id, lang, dir);
   // Produits de démo « Produit 1..N » → boutique non vide dès l'ouverture.
-  await seedDemoProducts(store._id, input.storeType, store.settings?.currency);
+  await seedDemoProducts(store._id, input.storeType, store.settings?.currency, input.theme);
   return store;
 }
 

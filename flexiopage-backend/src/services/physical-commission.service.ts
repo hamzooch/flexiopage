@@ -1,11 +1,10 @@
 /**
- * Commission des boutiques physiques — par palier de chiffre d'affaires,
- * pas à la commande.
+ * Frais du solde principal — par palier de chiffre d'affaires, pas à la commande.
  *
- * Exemple : après 2 000 000 XOF de CA (équivalent 10 000 TND), on retire
- * 0,1 du solde principal affiché dans la navbar — pas du solde IA.
- * Un solde de 3 devient 2,9. Ce 0,1 vaut 800 CFA, ou 3 dinars tunisiens.
- * Le palier suivant retire encore 0,1. Une commande ne compte qu'une fois.
+ * Après 2 000 000 XOF de CA (équivalent 10 000 TND), on retire 0,1 du solde
+ * principal — pas du solde IA. Un solde de 3 devient 2,9. Ce 0,1 vaut 800 CFA,
+ * ou 3 dinars tunisiens. Le palier suivant retire encore 800 CFA.
+ * Une commande ne compte qu'une fois.
  */
 import mongoose from 'mongoose';
 import { Order } from '../models/Order.model';
@@ -24,8 +23,8 @@ export async function recordPhysicalRevenue(orderId: string): Promise<void> {
   ).select('storeId total currency');
   if (!order) return;
 
-  const store = await Store.findById(order.storeId).select('ownerId storeType settings.currency');
-  if (!store || store.storeType !== 'physical' || !store.ownerId) return;
+  const store = await Store.findById(order.storeId).select('ownerId settings.currency');
+  if (!store || !store.ownerId) return;
 
   const amount = Number(order.total) || 0;
   if (amount <= 0) return;
@@ -93,6 +92,18 @@ export async function recordPhysicalRevenue(orderId: string): Promise<void> {
   }
 }
 
+/** 0,1 de solde = 800 CFA = 3 DT. Le libellé parle en monnaie, pas en fraction de solde. */
+function trancheNote(debitEach: number, threshold: number, currency: string): string {
+  const steps = Math.round(debitEach / 0.1);
+  const fee = currency === 'XOF' || currency === 'XAF'
+    ? `${(steps * 800).toLocaleString('fr-FR')} CFA`
+    : currency === 'TND'
+      ? `${steps * 3} DT`
+      : `${String(debitEach).replace('.', ',')} de solde`;
+  const unit = currency === 'XOF' || currency === 'XAF' ? 'CFA' : currency;
+  return `Palier · −${fee} sur le solde principal · chaque ${threshold.toLocaleString('fr-FR')} ${unit} de chiffre d'affaires`;
+}
+
 async function chargeTranche(args: {
   userId: mongoose.Types.ObjectId;
   storeId: string;
@@ -109,7 +120,7 @@ async function chargeTranche(args: {
     bucket: 'main',
     kind: 'commission',
     paymentReference: `physical-tranche:${args.storeId}:${args.fromTranche}->${args.toTranche}`,
-    note: `Palier physique · −${args.debitEach} sur le solde (pas le solde IA) · après ${args.threshold.toLocaleString('fr-FR')} ${args.currency} de CA · 0,1 = 800 CFA = 3 DT`,
+    note: trancheNote(args.amount, args.threshold, args.currency),
   });
   if (!result.alreadyApplied) {
     logger.info(

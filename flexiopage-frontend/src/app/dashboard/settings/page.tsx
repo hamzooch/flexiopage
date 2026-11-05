@@ -161,12 +161,12 @@ export default function SettingsPage() {
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2"><Wallet className="h-4 w-4" /> Modèle de tarification</CardTitle>
-          <CardDescription>0 € d&apos;abonnement. Tes 30 premières commandes livrées sont gratuites — petite commission seulement ensuite.</CardDescription>
+          <CardDescription>0 € d&apos;abonnement. 800 CFA (0,1 $US) sont prélevés du solde principal tous les 2 000 000 CFA, même si le solde est à 0.</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="grid gap-3 sm:grid-cols-2">
-            <FactPill icon={<Wallet className="h-4 w-4 text-emerald-600" />} title="30 commandes gratuites" desc="100% gratuit jusqu'à la 30e livraison. Au-delà, petite commission par commande livrée." />
-            <FactPill icon={<Sparkles className="h-4 w-4 text-fuchsia-600" />} title="Génération AI" desc="Landing page / page produit ≈ 500 par génération." />
+            <FactPill icon={<Wallet className="h-4 w-4 text-emerald-600" />} title="800 CFA / 2 000 000 CFA" desc="Prélevés du solde principal à chaque palier. Un solde à 0 devient −800 CFA, soit −0,1 $US." />
+            <FactPill icon={<Sparkles className="h-4 w-4 text-fuchsia-600" />} title="Génération IA" desc="Prélevée du solde IA : 3 tokens pour une landing, 1 token pour le texte seul." />
           </div>
           <Link
             href="/dashboard/wallet"

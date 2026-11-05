@@ -17,7 +17,6 @@ import {
 } from '@/data/store-themes';
 import {
   getDemoProductsByTheme,
-  type DemoThemeId,
   type DemoProduct,
 } from '@/data/theme-demo-products';
 import { MarketingPixels, type MarketingConfig } from '@/components/storefront/MarketingPixels';
@@ -116,18 +115,12 @@ interface ProductDoc {
 }
 
 /**
- * IDs des thèmes qui exposent des produits demo dans `theme-demo-products.ts`.
- * Sert de garde-fou pour ne charger des demos que pour les thèmes couverts.
- */
-const DEMO_THEME_IDS: DemoThemeId[] = ['volt', 'atelier', 'bloom', 'pulse', 'sage', 'studio', 'lumen'];
-
-/**
- * Convertit un produit demo (data statique Unsplash) au format ProductDoc
- * attendu par `<ProductCard>`. Le slug commence par `__demo-` pour qu'on
- * puisse détecter à tout moment qu'il s'agit d'un exemple (non-cliquable).
+ * Convertit un produit demo au format ProductDoc attendu par `<ProductCard>`.
+ * Le slug commence par `__demo-` pour qu'on détecte qu'il s'agit d'un exemple.
  */
 function demoToProductDoc(demo: DemoProduct, isDigital: boolean): ProductDoc {
   const images = [demo.image, ...(demo.images || [])].filter(Boolean);
+  const digital = isDigital || !!demo.digitalKind;
   return {
     _id: `demo-${demo.id}`,
     name: demo.name,
@@ -136,20 +129,17 @@ function demoToProductDoc(demo: DemoProduct, isDigital: boolean): ProductDoc {
     slug: `__demo-${demo.id}`,
     images,
     description: demo.description,
-    type: isDigital ? 'digital' : 'physical',
+    type: digital ? 'digital' : 'physical',
+    digitalKind: digital ? demo.digitalKind || 'download' : undefined,
   };
 }
 
 /**
- * Retourne les demos à afficher pour un store vide. Se base sur le
- * `templateId` du thème sauvegardé — si le store est sur un thème sans
- * demos (ex. thème custom ou Forge), renvoie [] pour retomber sur le
- * message « Aucun produit ».
+ * Vitrine encore vide : exemples du thème, du même type que la boutique.
  */
 function getStoreDemoProducts(store: StoreDoc, isDigital: boolean): ProductDoc[] {
   const templateId = (store.theme as { templateId?: string } | undefined)?.templateId;
-  if (!templateId || !DEMO_THEME_IDS.includes(templateId as DemoThemeId)) return [];
-  const demos = getDemoProductsByTheme(templateId as DemoThemeId);
+  const demos = getDemoProductsByTheme(templateId || '', isDigital ? 'digital' : 'physical');
   return demos.map((d) => demoToProductDoc(d, isDigital));
 }
 

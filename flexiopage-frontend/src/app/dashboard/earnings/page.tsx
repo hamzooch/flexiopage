@@ -12,6 +12,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import Link from 'next/link';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -28,7 +29,16 @@ import {
   ArrowDownToLine,
   ArrowUpRight,
 } from 'lucide-react';
-import { walletApi, type WalletState, type Payout, type PayoutMethod } from '@/lib/api';
+import {
+  usersApi,
+  walletApi,
+  describePayoutAccount,
+  payoutRequestFromAccount,
+  type WalletState,
+  type Payout,
+  type PayoutAccount,
+  type PayoutMethod,
+} from '@/lib/api';
 
 type SalesBreakdown = Awaited<ReturnType<typeof walletApi.salesBreakdown>>['data'];
 
@@ -86,28 +96,26 @@ export default function EarningsPage() {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
+  const [payoutAccount, setPayoutAccount] = useState<PayoutAccount | null>(null);
 
-  // Form state
+  // Form state — le destinataire vient du profil (RedotPay, Mobile Money ou RIB).
   const [amount, setAmount] = useState('');
-  const [method, setMethod] = useState<PayoutMethod>('redotpay');
-  const [phone, setPhone] = useState('');
-  const [redotpayId, setRedotpayId] = useState('');
-  const [accountName, setAccountName] = useState('');
-  const [iban, setIban] = useState('');
-  const [bankName, setBankName] = useState('');
   const [sellerNote, setSellerNote] = useState('');
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [w, p, b] = await Promise.all([
+      const [w, p, b, profile] = await Promise.all([
         walletApi.get(),
         walletApi.listPayouts(),
         walletApi.salesBreakdown().catch(() => null),
+        usersApi.getProfile().catch(() => null),
       ]);
       setWallet(w.data.wallet);
       setPayouts(p.data.payouts);
       if (b) setBreakdown(b.data);
+      const saved = (profile?.data as { user?: { payoutAccount?: PayoutAccount } } | undefined)?.user?.payoutAccount;
+      setPayoutAccount(saved || null);
     } finally {
       setLoading(false);
     }
@@ -146,40 +154,22 @@ export default function EarningsPage() {
       return;
     }
 
-    const destination: Record<string, string> = {};
-    if (method === 'bank_transfer') {
-      if (!accountName.trim() || !iban.trim()) {
-        setError('Nom du titulaire et RIB requis.');
-        return;
-      }
-      destination.accountName = accountName.trim();
-      destination.rib = iban.trim();
-      destination.iban = iban.trim();
-      if (bankName.trim()) destination.bankName = bankName.trim();
-    } else if (method === 'redotpay') {
-      if (!redotpayId.trim()) {
-        setError('Indique ton identifiant RedotPay. L’admin fera le transfert.');
-        return;
-      }
-      destination.redotpayId = redotpayId.trim();
-    } else {
-      if (!phone.trim()) {
-        setError('Indique le numéro Mobile Money.');
-        return;
-      }
-      destination.phone = phone.trim();
+    const target = payoutRequestFromAccount(payoutAccount);
+    if (!target) {
+      setError('Ajoute d’abord un moyen de versement sur ton profil.');
+      return;
     }
 
     setSubmitting(true);
     try {
       await walletApi.requestPayout({
         amount: value,
-        method,
-        destination,
+        method: target.method,
+        destination: target.destination,
         sellerNote: sellerNote.trim() || undefined,
       });
       setShowRequestForm(false);
-      setAmount(''); setPhone(''); setRedotpayId(''); setAccountName(''); setIban(''); setBankName(''); setSellerNote('');
+      setAmount(''); setSellerNote('');
       setSuccess('Demande envoyée. Le montant est réservé, et les admins ainsi que le owner ont été notifiés.');
       await load();
     } catch (err: unknown) {
@@ -200,6 +190,7 @@ export default function EarningsPage() {
   }
 
   const canRequest = wallet.payoutBalance >= wallet.payoutMinimum;
+  const savedPayoutLabel = describePayoutAccount(payoutAccount);
 
   return (
     <div className="space-y-4">
@@ -290,7 +281,7 @@ export default function EarningsPage() {
           <CardHeader>
             <CardTitle className="text-base">Nouvelle demande de versement</CardTitle>
             <CardDescription className="text-xs">
-              Le montant quitte ton solde dès l’envoi. Indique ton identifiant RedotPay, ton RIB, ou ton numéro Mobile Money. L’admin fait le transfert. Un refus remet le montant sur ton solde.
+              Le montant quitte ton solde dès l’envoi et part sur le moyen enregistré dans ton profil. Un refus remet le montant sur ton solde.
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -309,64 +300,19 @@ export default function EarningsPage() {
                   required
                 />
               </div>
-              <div>
-                <Label>Méthode de versement</Label>
-                <div className="mt-1.5 grid grid-cols-2 gap-2 sm:grid-cols-5">
-                  {(['redotpay', 'bank_transfer', 'wave', 'orange_money', 'mtn_momo'] as PayoutMethod[]).map((m) => (
-                    <button
-                      key={m}
-                      type="button"
-                      onClick={() => setMethod(m)}
-                      className={cn(
-                        'rounded-lg border px-2 py-2 text-xs font-medium transition-colors',
-                        method === m
-                          ? 'border-primary bg-primary/10 text-primary'
-                          : 'border-border/60 hover:border-border',
-                      )}
-                    >
-                      {METHOD_LABELS[m]}
-                    </button>
-                  ))}
-                </div>
-              </div>
-              {method === 'bank_transfer' ? (
-                <>
-                  <div>
-                    <Label htmlFor="accountName">Nom du titulaire</Label>
-                    <Input id="accountName" value={accountName} onChange={(e) => setAccountName(e.target.value)} required />
-                  </div>
-                  <div>
-                    <Label htmlFor="iban">RIB</Label>
-                    <Input id="iban" value={iban} onChange={(e) => setIban(e.target.value)} placeholder="Relevé d'identité bancaire" required />
-                  </div>
-                  <div>
-                    <Label htmlFor="bankName">Banque (optionnel)</Label>
-                    <Input id="bankName" value={bankName} onChange={(e) => setBankName(e.target.value)} />
-                  </div>
-                </>
-              ) : method === 'redotpay' ? (
-                <div>
-                  <Label htmlFor="redotpayId">Identifiant RedotPay</Label>
-                  <Input
-                    id="redotpayId"
-                    value={redotpayId}
-                    onChange={(e) => setRedotpayId(e.target.value)}
-                    placeholder="ID du compte RedotPay"
-                    required
-                  />
-                  <p className="mt-1 text-[11px] text-muted-foreground">L’admin envoie le montant sur cet identifiant.</p>
+              {savedPayoutLabel ? (
+                <div className="rounded-lg border border-border/60 bg-muted/30 p-3 text-xs">
+                  <div className="font-semibold text-foreground">Versement vers {savedPayoutLabel}</div>
+                  <Link href="/dashboard/profile" className="mt-1 inline-block text-primary hover:underline">
+                    Modifier le moyen sur le profil
+                  </Link>
                 </div>
               ) : (
-                <div>
-                  <Label htmlFor="phone">Numéro {METHOD_LABELS[method]}</Label>
-                  <Input
-                    id="phone"
-                    type="tel"
-                    value={phone}
-                    onChange={(e) => setPhone(e.target.value)}
-                    placeholder="+221 77 123 45 67"
-                    required
-                  />
+                <div className="rounded-lg border border-amber-500/40 bg-amber-500/5 p-3 text-xs text-amber-800">
+                  Aucun moyen de versement. Ajoute un RedotPay, un Mobile Money ou un RIB sur ton profil avant de demander un retrait.
+                  <Link href="/dashboard/profile" className="mt-1 block font-semibold text-primary hover:underline">
+                    Aller au profil
+                  </Link>
                 </div>
               )}
               <div>
@@ -384,7 +330,7 @@ export default function EarningsPage() {
                 </div>
               )}
               <div className="flex gap-2 pt-1">
-                <Button type="submit" disabled={submitting} className="gap-2">
+                <Button type="submit" disabled={submitting || !savedPayoutLabel} className="gap-2">
                   {submitting && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
                   Envoyer la demande
                 </Button>

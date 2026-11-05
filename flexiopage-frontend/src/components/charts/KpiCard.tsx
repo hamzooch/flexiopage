@@ -55,7 +55,7 @@ export function KpiCard({ label, value, delta, invertDelta, hint, icon: Icon, ac
       </div>
 
       {(hasDelta || delta === null || hint) && (
-        <div className="flex items-center gap-1.5">
+        <div className="flex flex-wrap items-center gap-x-1.5 gap-y-1">
           {hasDelta ? (
             <span
               className={cn(
@@ -71,7 +71,7 @@ export function KpiCard({ label, value, delta, invertDelta, hint, icon: Icon, ac
           ) : delta === null ? (
             <span className="text-xs text-muted-foreground">—</span>
           ) : null}
-          {hint && <span className="truncate text-xs text-muted-foreground">{hint}</span>}
+          {hint && <span className="text-xs leading-snug text-muted-foreground">{hint}</span>}
         </div>
       )}
     </div>

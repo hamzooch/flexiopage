@@ -2,8 +2,8 @@
 
 /**
  * Solde — two-balance wallet:
- *   • Solde principal — debited 3% per delivered order (commission)
- *   • Solde IA       — debited per AI landing/product page generation
+ *   • Solde principal — 800 CFA retirés à chaque palier de 2 000 000 CFA
+ *   • Solde IA       — débité à chaque génération de landing / page produit
  *
  * Backend: GET /api/wallet · POST /api/wallet/top-up { target: 'main'|'ai' }
  */
@@ -43,6 +43,38 @@ function fmt(amount: number, currency: string): string {
   } catch {
     return tenths ? `${rounded.toFixed(1)} ${currency}` : `${Math.round(rounded)} ${currency}`;
   }
+}
+
+/** 0,1 de solde = 800 CFA = 3 DT. On affiche le prélèvement en monnaie du vendeur. */
+function trancheFeeLabel(debitUnits: number, currency: string): string {
+  const steps = Math.max(1, Math.round(debitUnits / 0.1));
+  if (currency === 'XOF' || currency === 'XAF') {
+    return `${(steps * 800).toLocaleString('fr-FR')} CFA`;
+  }
+  if (currency === 'TND') {
+    return `${steps * 3} DT`;
+  }
+  return `${String(debitUnits).replace('.', ',')} de solde`;
+}
+
+/** Le solde est stocké en dollars-unité. 1 = 8 000 CFA = 30 DT, donc 0,1 = 800 CFA. */
+function soldeEquivalent(units: number, currency: string): string | null {
+  const sign = units < 0 ? '−' : '';
+  const abs = Math.abs(units);
+  if (currency === 'XOF' || currency === 'XAF') {
+    return `${sign}${Math.round(abs * 8000).toLocaleString('fr-FR')} CFA`;
+  }
+  if (currency === 'TND') {
+    const dt = Math.round(abs * 30 * 10) / 10;
+    return `${sign}${String(dt).replace('.', ',')} DT`;
+  }
+  return null;
+}
+
+function trancheSizeLabel(threshold: number, currency: string): string {
+  const amount = threshold.toLocaleString('fr-FR');
+  if (currency === 'XOF' || currency === 'XAF') return `${amount} CFA`;
+  return `${amount} ${currency}`;
 }
 
 /** Affichage solde IA : on n'utilise plus la monnaie, juste un compteur. */
@@ -277,10 +309,12 @@ export default function WalletPage() {
     return <p className="text-sm text-destructive">{error || 'Wallet indisponible'}</p>;
   }
 
-  const ratePct = (wallet.commissionRate * 100).toFixed(0);
   const soldeDebit = wallet.physicalBalanceDebit ?? 0.1;
-  const soldeDebitLabel = String(soldeDebit).replace('.', ',');
-  const lowMain = wallet.balance < 1500;
+  const feeLabel = trancheFeeLabel(soldeDebit, wallet.payoutCurrency);
+  const palierLabel = wallet.physicalRevenueThreshold
+    ? trancheSizeLabel(wallet.physicalRevenueThreshold, wallet.payoutCurrency)
+    : null;
+  const lowMain = wallet.balance < soldeDebit;
   const lowAi = wallet.aiBalance < (wallet.aiCosts?.landing || 500);
   const visibleTx = filter === 'all' ? wallet.transactions : wallet.transactions.filter((t) => t.bucket === filter);
 
@@ -289,21 +323,8 @@ export default function WalletPage() {
       <div>
         <h1 className="text-3xl font-bold">Solde</h1>
         <p className="text-muted-foreground">
-          {wallet.storeType === 'physical' ? (
-            <>
-              Boutique physique : après chaque palier de chiffre d&apos;affaires
-              {wallet.physicalRevenueThreshold
-                ? <> ({fmt(wallet.physicalRevenueThreshold, wallet.payoutCurrency)})</>
-                : null}
-              , on retire <strong>{soldeDebitLabel}</strong> du solde (pas du solde IA). Un solde de 3 devient 2,9.
-              Ce 0,1 vaut 800 CFA, ou 3 dinars. Le <strong>solde IA</strong> sert aux générations.
-            </>
-          ) : (
-            <>
-              Deux soldes séparés : le <strong>principal</strong> sert à payer la commission de {ratePct}% par commande livrée,
-              le <strong>solde IA</strong> sert à générer les landing pages et pages produits avec l&apos;IA.
-            </>
-          )}
+          Deux soldes séparés : le <strong>principal</strong> est prélevé de {feeLabel} pour chaque {palierLabel || 'palier de chiffre d’affaires'},
+          le <strong>solde IA</strong> sert à générer les landing pages et pages produits avec l&apos;IA.
         </p>
       </div>
 
@@ -314,14 +335,20 @@ export default function WalletPage() {
           icon={<Wallet className="h-4 w-4" />}
           label="Solde principal"
           subline={
-            wallet.storeType === 'physical'
-              ? `−${soldeDebitLabel} sur le solde à chaque palier${wallet.physicalRevenueThreshold ? ` de ${fmt(wallet.physicalRevenueThreshold, wallet.payoutCurrency)}` : ''} · 0,1 = 800 CFA = 3 DT`
-              : `Commission ${ratePct}% par commande livrée · plafond ${fmt(wallet.commissionCap, wallet.currency)}`
+            palierLabel
+              ? `${feeLabel} retirés du solde principal à chaque palier de ${palierLabel}`
+              : `${feeLabel} retirés du solde principal à chaque palier de chiffre d’affaires`
           }
           amount={wallet.balance}
           currency={wallet.currency}
+          equivalent={soldeEquivalent(wallet.balance, wallet.payoutCurrency)}
           unit="currency"
           low={lowMain}
+          lowMessage={
+            wallet.balance < 0
+              ? `Solde négatif : ${soldeEquivalent(wallet.balance, wallet.payoutCurrency)} (équivalent ${fmt(wallet.balance, wallet.currency)}). Le palier est prélevé même si le solde était à 0.`
+              : 'Solde bas — pense à recharger.'
+          }
           onTopUp={() => setTarget('main')}
           isActive={target === 'main'}
         />
@@ -619,8 +646,10 @@ function BalanceCard({
   subline,
   amount,
   currency,
+  equivalent,
   unit,
   low,
+  lowMessage,
   onTopUp,
   isActive,
 }: {
@@ -630,9 +659,12 @@ function BalanceCard({
   subline: string;
   amount: number;
   currency: string;
+  /** Équivalent CFA ou DT du solde principal (0,1 $US = 800 CFA). */
+  equivalent?: string | null;
   /** 'currency' → format Intl avec la monnaie. 'tokens' → compteur. */
   unit: 'currency' | 'tokens';
   low: boolean;
+  lowMessage?: string;
   onTopUp: () => void;
   isActive: boolean;
 }) {
@@ -660,14 +692,22 @@ function BalanceCard({
           Recharger
         </button>
       </div>
-      <div className="relative mt-5 text-4xl font-black tracking-tight sm:text-5xl">
+      <div className={cn(
+        'relative mt-5 text-4xl font-black tracking-tight sm:text-5xl',
+        amount < 0 && unit === 'currency' && 'text-rose-600',
+      )}>
         {unit === 'tokens' ? fmtTokens(amount) : fmt(amount, currency)}
       </div>
+      {equivalent && (
+        <p className={cn('relative mt-1 text-sm font-semibold', amount < 0 ? 'text-rose-600' : 'text-foreground/80')}>
+          {equivalent}
+        </p>
+      )}
       <p className="relative mt-2 text-xs text-muted-foreground">{subline}</p>
       {low && (
         <div className="relative mt-4 flex items-start gap-2 rounded-xl border border-amber-500/40 bg-amber-500/10 p-2.5 text-xs text-amber-900 dark:text-amber-200">
           <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-          Solde bas — pense à recharger.
+          {lowMessage || 'Solde bas — pense à recharger.'}
         </div>
       )}
     </div>

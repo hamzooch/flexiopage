@@ -91,6 +91,21 @@ export interface IUser extends Document {
    */
   whatsapp?: string;
   /**
+   * Coordonnées où le vendeur veut recevoir ses retraits.
+   * RedotPay, Mobile Money ou RIB. `bank_transfer` reste accepté
+   * pour les comptes enregistrés avant le choix RIB unique.
+   */
+  payoutAccount?: {
+    kind: 'rib' | 'bank_transfer' | 'mobile_money' | 'redotpay';
+    accountName?: string;
+    rib?: string;
+    iban?: string;
+    bankName?: string;
+    operator?: 'wave' | 'orange_money' | 'mtn_momo';
+    phone?: string;
+    redotpayId?: string;
+  };
+  /**
    * Liaison au bot Telegram vendeur (notifications). Renseigné quand le vendeur
    * fait `/start <token>` sur le bot plateforme. `enabled=false` = notifications
    * coupées via /stop sans délier le compte.
@@ -170,6 +185,16 @@ const UserSchema = new Schema<IUser>(
     country: { type: String, trim: true, uppercase: true, maxlength: 2 },
     currency: { type: String, trim: true, uppercase: true, maxlength: 3 },
     whatsapp: { type: String, trim: true, maxlength: 20 },
+    payoutAccount: {
+      kind: { type: String, enum: ['rib', 'bank_transfer', 'mobile_money', 'redotpay'] },
+      accountName: { type: String, trim: true, maxlength: 120 },
+      rib: { type: String, trim: true, maxlength: 64 },
+      iban: { type: String, trim: true, maxlength: 64 },
+      bankName: { type: String, trim: true, maxlength: 120 },
+      operator: { type: String, enum: ['wave', 'orange_money', 'mtn_momo'] },
+      phone: { type: String, trim: true, maxlength: 24 },
+      redotpayId: { type: String, trim: true, maxlength: 80 },
+    },
     // Pas de `default` dans ce sous-doc : sinon Mongoose matérialiserait
     // `telegram: {}` sur tous les users. `enabled` est posé à la liaison.
     telegram: {
