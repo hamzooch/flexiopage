@@ -7,10 +7,10 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { storesApi } from '@/lib/api';
+import { storesApi, extractApiError } from '@/lib/api';
 import { useScopedStoreId } from '@/lib/use-scoped-store';
 import { cn, formatCurrency, mediaUrl } from '@/lib/utils';
-import { Package, Plus, ImageIcon, Cloud, Search, ExternalLink, Beaker, FlaskConical, Save, X } from 'lucide-react';
+import { Package, Plus, ImageIcon, Cloud, Search, ExternalLink, Beaker, FlaskConical, Save, X, Link2, Loader2, Trophy } from 'lucide-react';
 import { Pagination } from '@/components/ui/pagination';
 
 interface StoreType {
@@ -43,7 +43,17 @@ interface ProductType {
   isTestCandidate?: boolean;
   testStatus?: TestStatus;
   wowEffect?: number;
+  problemSolving?: number;
+  /** Score calculé côté API (pipeline test) — optionnel. */
+  winningScore?: number;
   suppliers?: ProductSupplierLite[];
+}
+
+function winningPotential(p: Pick<ProductType, 'wowEffect' | 'problemSolving' | 'winningScore'>): number {
+  if (typeof p.winningScore === 'number') return Math.round(p.winningScore);
+  const wow = p.wowEffect ?? 0;
+  const solve = p.problemSolving ?? 0;
+  return Math.round(wow * 0.55 + solve * 0.45);
 }
 
 const TEST_STATUS_BADGE: Record<TestStatus, { label: string; cls: string; dot: string }> = {
@@ -135,9 +145,31 @@ export default function DashboardProductsPage() {
     router.replace(`${pathname}?${sp.toString()}`, { scroll: false });
   }
 
-  // Patch local du produit modifié — évite un refetch complet à chaque save.
+  // Patch local — upsert / retrait du pipeline test sans refetch complet.
+  // Sur l'onglet test on re-trie par potentiel winning pour refléter Wow%/Problem%.
   function replaceProduct(updated: ProductType) {
-    setProducts((prev) => prev.map((p) => (p._id === updated._id ? { ...p, ...updated } : p)));
+    setProducts((prev) => {
+      const exists = prev.some((p) => p._id === updated._id);
+      let next: ProductType[];
+      if (activeTab === 'test' && updated.isTestCandidate === false) {
+        if (exists) setTotal((t) => Math.max(0, t - 1));
+        return prev.filter((p) => p._id !== updated._id);
+      }
+      if (!exists) {
+        if (activeTab === 'test' && updated.isTestCandidate) {
+          setTotal((t) => t + 1);
+          next = [updated, ...prev];
+        } else {
+          return prev;
+        }
+      } else {
+        next = prev.map((p) => (p._id === updated._id ? { ...p, ...updated } : p));
+      }
+      if (activeTab === 'test') {
+        next = [...next].sort((a, b) => winningPotential(b) - winningPotential(a));
+      }
+      return next;
+    });
   }
 
   return (
@@ -418,9 +450,18 @@ function TestProductsPanel({
   onProductUpdated,
 }: TestPanelProps) {
   const [promoteOpen, setPromoteOpen] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
 
   return (
     <div className="space-y-4">
+      <div className="rounded-xl border border-amber-500/20 bg-amber-500/5 px-4 py-3 text-sm text-amber-950/80 dark:text-amber-100/90">
+        <p className="font-medium">Pipeline winning products</p>
+        <p className="mt-0.5 text-xs opacity-80">
+          Colle un lien AliExpress / Alibaba (1 image). Note le <strong>Wow%</strong> et le{' '}
+          <strong>Problem%</strong> — les meilleurs scores remontent automatiquement en tête.
+        </p>
+      </div>
+
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="relative max-w-md flex-1">
           <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
@@ -431,10 +472,16 @@ function TestProductsPanel({
             className="pl-9"
           />
         </div>
-        <Button size="sm" variant="outline" onClick={() => setPromoteOpen(true)}>
-          <Plus className="mr-1.5 h-4 w-4" />
-          Ajouter au test
-        </Button>
+        <div className="flex flex-wrap gap-2">
+          <Button size="sm" onClick={() => setImportOpen(true)}>
+            <Link2 className="mr-1.5 h-4 w-4" />
+            Depuis un lien
+          </Button>
+          <Button size="sm" variant="outline" onClick={() => setPromoteOpen(true)}>
+            <Plus className="mr-1.5 h-4 w-4" />
+            Depuis le catalogue
+          </Button>
+        </div>
       </div>
 
       {loading ? (
@@ -445,13 +492,19 @@ function TestProductsPanel({
             <FlaskConical className="h-12 w-12 text-muted-foreground" />
             <p className="mt-4 font-medium">Aucun produit en test</p>
             <p className="mt-1 max-w-md text-sm text-muted-foreground">
-              Marque un produit comme candidat au test pour le suivre ici : wow effect, lien fournisseur,
-              prix en gros et statut de campagne (en attente, en cours, testé…).
+              Importe un produit AliExpress / Alibaba via son lien (1 image) ou ajoute un produit
+              du catalogue. Classe ensuite avec Wow% + Problem% pour faire remonter les winners.
             </p>
-            <Button className="mt-4" size="sm" variant="outline" onClick={() => setPromoteOpen(true)}>
-              <Plus className="mr-1.5 h-4 w-4" />
-              Ajouter un produit au test
-            </Button>
+            <div className="mt-4 flex flex-wrap justify-center gap-2">
+              <Button size="sm" onClick={() => setImportOpen(true)}>
+                <Link2 className="mr-1.5 h-4 w-4" />
+                Ajouter depuis un lien
+              </Button>
+              <Button size="sm" variant="outline" onClick={() => setPromoteOpen(true)}>
+                <Plus className="mr-1.5 h-4 w-4" />
+                Depuis le catalogue
+              </Button>
+            </div>
           </CardContent>
         </Card>
       ) : (
@@ -461,8 +514,11 @@ function TestProductsPanel({
               <table className="w-full text-sm">
                 <thead className="bg-muted/40 text-left text-xs uppercase tracking-wide text-muted-foreground">
                   <tr>
+                    <th className="px-3 py-2.5 font-semibold">#</th>
                     <th className="px-3 py-2.5 font-semibold">Produit</th>
+                    <th className="px-3 py-2.5 font-semibold">Potentiel</th>
                     <th className="px-3 py-2.5 font-semibold">Wow%</th>
+                    <th className="px-3 py-2.5 font-semibold">Problem%</th>
                     <th className="px-3 py-2.5 font-semibold">Lien produit</th>
                     <th className="px-3 py-2.5 font-semibold">N° fournisseur</th>
                     <th className="px-3 py-2.5 font-semibold">Prix en gros</th>
@@ -471,9 +527,10 @@ function TestProductsPanel({
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border/60">
-                  {products.map((p) => (
+                  {products.map((p, idx) => (
                     <TestRow
                       key={p._id}
+                      rank={(page - 1) * pageSize + idx + 1}
                       storeId={storeId}
                       product={p}
                       currency={currency}
@@ -507,6 +564,18 @@ function TestProductsPanel({
           }}
         />
       )}
+
+      {importOpen && (
+        <ImportToTestDialog
+          storeId={storeId}
+          currency={currency}
+          onClose={() => setImportOpen(false)}
+          onImported={(p) => {
+            onProductUpdated(p);
+            setImportOpen(false);
+          }}
+        />
+      )}
     </div>
   );
 }
@@ -516,22 +585,25 @@ function TestProductsPanel({
 /* ────────────────────────────────────────────────────────────────────────── */
 
 interface TestRowProps {
+  rank: number;
   storeId: string;
   product: ProductType;
   currency: string;
   onUpdated: (p: ProductType) => void;
 }
 
-function TestRow({ storeId, product, currency, onUpdated }: TestRowProps) {
+function TestRow({ rank, storeId, product, currency, onUpdated }: TestRowProps) {
   const primary = product.suppliers?.find((s) => s.isPrimary) || product.suppliers?.[0];
   const initialSku = primary?.supplierSku || '';
   const initialUrl = primary?.productUrl || '';
   const initialCost = primary?.costPrice ?? '';
   const initialWow = product.wowEffect ?? '';
+  const initialSolve = product.problemSolving ?? '';
   const initialStatus: TestStatus = product.testStatus || 'pending';
 
   const [editing, setEditing] = useState(false);
   const [wow, setWow] = useState<number | ''>(initialWow);
+  const [solve, setSolve] = useState<number | ''>(initialSolve);
   const [productUrl, setProductUrl] = useState<string>(initialUrl);
   const [supplierSku, setSupplierSku] = useState<string>(initialSku);
   const [costPrice, setCostPrice] = useState<number | ''>(initialCost);
@@ -540,9 +612,15 @@ function TestRow({ storeId, product, currency, onUpdated }: TestRowProps) {
 
   const badge = TEST_STATUS_BADGE[status];
   const cover = mediaUrl(product.images?.[0]);
+  const potential = winningPotential({
+    wowEffect: wow === '' ? product.wowEffect : Number(wow),
+    problemSolving: solve === '' ? product.problemSolving : Number(solve),
+    winningScore: product.winningScore,
+  });
 
   function reset() {
     setWow(initialWow);
+    setSolve(initialSolve);
     setProductUrl(initialUrl);
     setSupplierSku(initialSku);
     setCostPrice(initialCost);
@@ -567,6 +645,7 @@ function TestRow({ storeId, product, currency, onUpdated }: TestRowProps) {
 
       const res = await storesApi.updateProduct(storeId, product._id, {
         wowEffect: wow === '' ? undefined : Number(wow),
+        problemSolving: solve === '' ? undefined : Number(solve),
         testStatus: status,
         isTestCandidate: true,
         suppliers,
@@ -595,6 +674,13 @@ function TestRow({ storeId, product, currency, onUpdated }: TestRowProps) {
 
   return (
     <tr className="hover:bg-muted/30">
+      {/* Rank */}
+      <td className="px-3 py-2.5 tabular-nums text-muted-foreground">
+        <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-muted/60 text-[11px] font-semibold">
+          {rank}
+        </span>
+      </td>
+
       {/* Produit */}
       <td className="px-3 py-2.5">
         <Link
@@ -620,6 +706,25 @@ function TestRow({ storeId, product, currency, onUpdated }: TestRowProps) {
         </Link>
       </td>
 
+      {/* Potentiel winning */}
+      <td className="px-3 py-2.5 tabular-nums">
+        {(product.wowEffect != null || product.problemSolving != null || editing) ? (
+          <span className={cn(
+            'inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold ring-1 ring-inset',
+            potential >= 70
+              ? 'bg-emerald-500/10 text-emerald-700 ring-emerald-500/20'
+              : potential >= 45
+                ? 'bg-blue-500/10 text-blue-700 ring-blue-500/20'
+                : 'bg-slate-500/10 text-slate-700 ring-slate-500/20',
+          )}>
+            {potential >= 70 && <Trophy className="h-3 w-3" />}
+            {potential}%
+          </span>
+        ) : (
+          <span className="text-muted-foreground">—</span>
+        )}
+      </td>
+
       {/* Wow */}
       <td className="px-3 py-2.5 tabular-nums">
         {editing ? (
@@ -631,9 +736,30 @@ function TestRow({ storeId, product, currency, onUpdated }: TestRowProps) {
             value={wow}
             onChange={(e) => setWow(e.target.value === '' ? '' : Number(e.target.value))}
             className="h-8 w-20"
+            title="Wow effect"
           />
         ) : product.wowEffect != null ? (
           <WowPill value={product.wowEffect} />
+        ) : (
+          <span className="text-muted-foreground">—</span>
+        )}
+      </td>
+
+      {/* Problem solving */}
+      <td className="px-3 py-2.5 tabular-nums">
+        {editing ? (
+          <Input
+            type="number"
+            min={0}
+            max={100}
+            step={1}
+            value={solve}
+            onChange={(e) => setSolve(e.target.value === '' ? '' : Number(e.target.value))}
+            className="h-8 w-20"
+            title="Problem solving %"
+          />
+        ) : product.problemSolving != null ? (
+          <WowPill value={product.problemSolving} />
         ) : (
           <span className="text-muted-foreground">—</span>
         )}
@@ -782,6 +908,219 @@ function prettyHost(url: string): string {
   } catch {
     return url;
   }
+}
+
+/* ────────────────────────────────────────────────────────────────────────── */
+/* Dialog : import AliExpress / Alibaba → pipeline de test (1 image)           */
+/* ────────────────────────────────────────────────────────────────────────── */
+
+function ImportToTestDialog({
+  storeId,
+  currency,
+  onClose,
+  onImported,
+}: {
+  storeId: string;
+  currency: string;
+  onClose: () => void;
+  onImported: (p: ProductType) => void;
+}) {
+  const [url, setUrl] = useState('');
+  const [fetching, setFetching] = useState(false);
+  const [creating, setCreating] = useState(false);
+  const [error, setError] = useState('');
+  const [source, setSource] = useState<'aliexpress' | 'alibaba' | 'amazon' | 'other' | null>(null);
+  const [sourceUrl, setSourceUrl] = useState('');
+  const [name, setName] = useState('');
+  const [price, setPrice] = useState('');
+  const [image, setImage] = useState<string | null>(null);
+  const [wow, setWow] = useState<number | ''>('');
+  const [solve, setSolve] = useState<number | ''>('');
+  const [ready, setReady] = useState(false);
+
+  async function handleFetch() {
+    const trimmed = url.trim();
+    if (!trimmed) return;
+    setFetching(true);
+    setError('');
+    setReady(false);
+    try {
+      const res = await storesApi.importProductPreview(storeId, trimmed);
+      const p = res.data.preview;
+      setSource(p.source);
+      setSourceUrl(p.sourceUrl || trimmed);
+      setName(p.title || '');
+      setPrice(p.price != null ? String(p.price) : '');
+      // Une seule image — la principale (première du scrape).
+      setImage(p.images?.[0] || null);
+      setReady(true);
+    } catch (err) {
+      setError(extractApiError(err, "Impossible d'extraire ce lien. Vérifie que c'est bien une page produit AliExpress / Alibaba."));
+    } finally {
+      setFetching(false);
+    }
+  }
+
+  async function handleCreate() {
+    if (!name.trim()) {
+      setError('Le nom du produit est requis.');
+      return;
+    }
+    const priceNum = Number(price);
+    if (!Number.isFinite(priceNum) || priceNum < 0) {
+      setError('Indique un prix de vente valide (0 accepté, tu pourras le changer après).');
+      return;
+    }
+    setCreating(true);
+    setError('');
+    try {
+      const res = await storesApi.importCreateProduct(storeId, {
+        name: name.trim(),
+        price: priceNum,
+        images: image ? [image] : [],
+        asTestCandidate: true,
+        sourceUrl: sourceUrl || url.trim(),
+        isPublished: false,
+        wowEffect: wow === '' ? undefined : Number(wow),
+        problemSolving: solve === '' ? undefined : Number(solve),
+      });
+      const product = (res.data as { product: ProductType }).product;
+      onImported({ ...product, isTestCandidate: true, testStatus: 'pending' });
+    } catch (err) {
+      setError(extractApiError(err, "Échec de l'ajout au pipeline de test."));
+    } finally {
+      setCreating(false);
+    }
+  }
+
+  const sourceLabel =
+    source === 'aliexpress' ? 'AliExpress' :
+    source === 'alibaba' ? 'Alibaba' :
+    source === 'amazon' ? 'Amazon' :
+    source ? 'Boutique' : null;
+
+  return (
+    <div className="fixed inset-0 z-50 grid place-items-center bg-black/40 p-4" onClick={onClose}>
+      <div
+        className="w-full max-w-lg overflow-hidden rounded-2xl border border-border/60 bg-card shadow-xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between border-b border-border/60 px-4 py-3">
+          <div>
+            <h3 className="text-sm font-semibold">Ajouter depuis un lien</h3>
+            <p className="text-[11px] text-muted-foreground">AliExpress · Alibaba · 1 image uniquement</p>
+          </div>
+          <Button size="sm" variant="ghost" onClick={onClose} className="h-8 w-8 p-0">
+            <X className="h-4 w-4" />
+          </Button>
+        </div>
+
+        <div className="space-y-4 p-4">
+          <div className="flex gap-2">
+            <Input
+              autoFocus
+              type="url"
+              value={url}
+              onChange={(e) => setUrl(e.target.value)}
+              placeholder="https://www.aliexpress.com/item/… ou alibaba.com/…"
+              onKeyDown={(e) => { if (e.key === 'Enter') void handleFetch(); }}
+            />
+            <Button onClick={handleFetch} disabled={fetching || !url.trim()} className="shrink-0">
+              {fetching ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Récupérer'}
+            </Button>
+          </div>
+
+          {error && (
+            <p className="rounded-lg bg-destructive/10 px-3 py-2 text-xs text-destructive">{error}</p>
+          )}
+
+          {ready && (
+            <div className="space-y-3 rounded-xl border border-border/60 bg-muted/20 p-3">
+              <div className="flex gap-3">
+                <div className="h-20 w-20 shrink-0 overflow-hidden rounded-lg bg-muted/60">
+                  {image ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={image} alt="" className="h-full w-full object-cover" />
+                  ) : (
+                    <div className="grid h-full place-items-center text-muted-foreground">
+                      <ImageIcon className="h-5 w-5" />
+                    </div>
+                  )}
+                </div>
+                <div className="min-w-0 flex-1 space-y-2">
+                  {sourceLabel && (
+                    <span className="inline-flex rounded-full bg-orange-500/10 px-2 py-0.5 text-[10px] font-semibold text-orange-700 ring-1 ring-inset ring-orange-500/20">
+                      {sourceLabel}
+                    </span>
+                  )}
+                  <Input
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    placeholder="Nom du produit"
+                    className="h-8"
+                  />
+                  <div className="flex items-center gap-2">
+                    <Input
+                      type="number"
+                      min={0}
+                      step="0.01"
+                      value={price}
+                      onChange={(e) => setPrice(e.target.value)}
+                      placeholder="Prix de vente"
+                      className="h-8"
+                    />
+                    <span className="text-xs text-muted-foreground">{currency}</span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="mb-1 block text-[11px] font-medium text-muted-foreground">Wow effect %</label>
+                  <Input
+                    type="number"
+                    min={0}
+                    max={100}
+                    value={wow}
+                    onChange={(e) => setWow(e.target.value === '' ? '' : Number(e.target.value))}
+                    placeholder="0–100"
+                    className="h-8"
+                  />
+                </div>
+                <div>
+                  <label className="mb-1 block text-[11px] font-medium text-muted-foreground">Problem solving %</label>
+                  <Input
+                    type="number"
+                    min={0}
+                    max={100}
+                    value={solve}
+                    onChange={(e) => setSolve(e.target.value === '' ? '' : Number(e.target.value))}
+                    placeholder="0–100"
+                    className="h-8"
+                  />
+                </div>
+              </div>
+
+              <p className="text-[11px] text-muted-foreground">
+                Une seule image est prise depuis le lien. Tu pourras ajuster Wow% / Problem% plus tard —
+                le classement priorise les potentiels winners.
+              </p>
+            </div>
+          )}
+        </div>
+
+        <div className="flex justify-end gap-2 border-t border-border/60 px-4 py-3">
+          <Button size="sm" variant="ghost" onClick={onClose} disabled={creating}>
+            Annuler
+          </Button>
+          <Button size="sm" onClick={handleCreate} disabled={!ready || creating}>
+            {creating ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <Beaker className="mr-1.5 h-3.5 w-3.5" />}
+            Ajouter au test
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 /* ────────────────────────────────────────────────────────────────────────── */

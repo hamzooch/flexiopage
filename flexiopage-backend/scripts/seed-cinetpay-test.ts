@@ -41,7 +41,7 @@ async function main(): Promise<void> {
       email: SELLER_EMAIL,
       password: hash,
       name: 'CinetPay Test Seller',
-      role: 'seller',
+      role: 'user',
       emailVerified: true,
     });
     console.log(`✓ Created seller ${SELLER_EMAIL}`);

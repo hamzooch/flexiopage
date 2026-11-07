@@ -87,6 +87,7 @@ export interface CreateProductInput {
   isTestCandidate?: boolean;
   testStatus?: ProductTestStatus;
   wowEffect?: number;
+  problemSolving?: number;
   testNotes?: string;
 }
 
@@ -142,11 +143,53 @@ export async function getProductsByStore(
     const re = new RegExp(options.search.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
     q.$or = [{ name: re }, { slug: re }];
   }
+  const limit = options?.limit ?? 1000; // legacy callers : pas de limite stricte
+  const skip = options?.skip ?? 0;
+
+  // Pipeline de test : les potentiels winning products (wow + problem solving
+  // élevés) remontent en tête pour guider le vendeur sur quoi tester en premier.
+  if (options?.testCandidatesOnly) {
+    // Aggregation ne caste pas les strings → ObjectId comme find() : on force.
+    const match: Record<string, unknown> = {
+      ...q,
+      storeId: mongoose.isValidObjectId(storeId)
+        ? new mongoose.Types.ObjectId(storeId)
+        : storeId,
+    };
+    const facet = await Product.aggregate<{
+      products: IProduct[];
+      total: Array<{ n: number }>;
+    }>([
+      { $match: match },
+      {
+        $addFields: {
+          winningScore: {
+            $add: [
+              { $multiply: [{ $ifNull: ['$wowEffect', 0] }, 0.55] },
+              { $multiply: [{ $ifNull: ['$problemSolving', 0] }, 0.45] },
+            ],
+          },
+        },
+      },
+      { $sort: { winningScore: -1, wowEffect: -1, problemSolving: -1, updatedAt: -1 } },
+      {
+        $facet: {
+          products: [{ $skip: skip }, { $limit: limit }],
+          total: [{ $count: 'n' }],
+        },
+      },
+    ]);
+    const products = (facet[0]?.products || []) as IProduct[];
+    const total = facet[0]?.total?.[0]?.n ?? 0;
+    for (const p of products) decodeDisplayText(p);
+    return { products, total };
+  }
+
   const [products, total] = await Promise.all([
     Product.find(q)
       .sort({ updatedAt: -1 })
-      .limit(options?.limit ?? 1000) // legacy callers : pas de limite stricte
-      .skip(options?.skip ?? 0)
+      .limit(limit)
+      .skip(skip)
       .lean<IProduct[]>(),
     Product.countDocuments(q),
   ]);

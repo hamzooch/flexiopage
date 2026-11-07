@@ -320,6 +320,7 @@ async function main() {
           name: product.name,
           quantity: 1,
           price: product.price,
+          total: product.price,
         }],
         subtotal: product.price,
         shippingCost: 0,

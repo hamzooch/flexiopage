@@ -91,7 +91,12 @@ export interface IProductPricing {
  * désigne celui utilisé par défaut quand on crée une importation.
  */
 export interface IProductSupplier {
-  supplierId: mongoose.Types.ObjectId;
+  /**
+   * Optionnel : un lien AliExpress/Alibaba collé dans le pipeline de test
+   * n'a pas forcément de fiche Supplier encore. Le champ devient requis
+   * dès qu'on rattache un vrai fournisseur du carnet d'adresses.
+   */
+  supplierId?: mongoose.Types.ObjectId;
   /** Référence/SKU côté fournisseur. */
   supplierSku?: string;
   /** Prix d'achat unitaire chez ce fournisseur. */
@@ -196,6 +201,12 @@ export interface IProduct extends Document {
   testStatus?: ProductTestStatus;
   /** Score "wow effect" perçu (0-100) — utilisé pour prioriser les candidats. */
   wowEffect?: number;
+  /**
+   * Score "problem solving" perçu (0-100) — à quel point le produit résout
+   * un vrai problème client. Combiné avec wowEffect pour classer les
+   * potentiels winning products en tête du tableau de test.
+   */
+  problemSolving?: number;
   /** Notes libres du vendeur sur le test (ex: résultats, hypothèses). */
   testNotes?: string;
   /**
@@ -382,7 +393,7 @@ export interface IRelatedOffer {
 
 const ProductSupplierSchema = new Schema<IProductSupplier>(
   {
-    supplierId: { type: Schema.Types.ObjectId, ref: 'Supplier', required: true },
+    supplierId: { type: Schema.Types.ObjectId, ref: 'Supplier' },
     supplierSku: { type: String, trim: true },
     costPrice: { type: Number, min: 0 },
     currency: { type: String, trim: true, uppercase: true },
@@ -600,6 +611,7 @@ const ProductSchema = new Schema<IProduct>(
       default: 'pending',
     },
     wowEffect: { type: Number, min: 0, max: 100 },
+    problemSolving: { type: Number, min: 0, max: 100 },
     testNotes: { type: String, trim: true, maxlength: 2000 },
     sourceMarketplaceId: { type: Schema.Types.ObjectId, ref: 'MarketplaceProduct' },
     sourceAcquisitionId: { type: Schema.Types.ObjectId, ref: 'VendorAcquisition' },
@@ -611,8 +623,8 @@ ProductSchema.index({ storeId: 1 });
 ProductSchema.index({ storeId: 1, slug: 1 }, { unique: true });
 // Tag-based lookups for auto-collections + tag filters.
 ProductSchema.index({ storeId: 1, tags: 1 });
-// Sub-index dédié à l'onglet "Produit test" — sort DESC par updatedAt.
-ProductSchema.index({ storeId: 1, isTestCandidate: 1, updatedAt: -1 });
+// Sub-index dédié à l'onglet "Produit test" — ranking wow / problem-solving.
+ProductSchema.index({ storeId: 1, isTestCandidate: 1, wowEffect: -1, problemSolving: -1, updatedAt: -1 });
 // Résolution rapide "quel(s) produit(s) vendeur pour ce produit marketplace ?".
 ProductSchema.index({ sourceMarketplaceId: 1 });
 // Hook de vente : retrouve l'acquisition depuis le Product en 1 lookup.

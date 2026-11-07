@@ -229,6 +229,11 @@ export async function importProductPreview(req: AuthRequest, res: Response): Pro
  * POST /api/stores/:storeId/products/import
  * Crée le produit à partir de l'aperçu édité par le vendeur. Les images
  * externes (http) sont rapatriées dans notre stockage (pas de hotlink).
+ *
+ * Body optionnel :
+ *   - asTestCandidate: true → produit ajouté directement au pipeline "Produit test"
+ *     (non publié, 1 seule image, lien source stocké comme productUrl fournisseur).
+ *   - sourceUrl: URL AliExpress/Alibaba d'origine (si absente, on tente body.url).
  */
 export async function importCreateProduct(req: AuthRequest, res: Response): Promise<void> {
   const store = req.store!;
@@ -243,9 +248,13 @@ export async function importCreateProduct(req: AuthRequest, res: Response): Prom
     return;
   }
 
+  const asTestCandidate = body.asTestCandidate === true || body.asTestCandidate === 'true';
+  // Pipeline de test : une seule image (la principale) suffit pour juger le wow.
+  const maxImages = asTestCandidate ? 1 : MAX_IMPORT_IMAGES;
+
   const skuError = validateLogisticsSku(store, {
     type: body.type === 'digital' ? 'digital' : 'physical',
-    isPublished: body.isPublished ?? false,
+    isPublished: asTestCandidate ? false : (body.isPublished ?? false),
     sku: body.sku,
     variants: body.variants,
   });
@@ -261,13 +270,19 @@ export async function importCreateProduct(req: AuthRequest, res: Response): Prom
         .map((u: string) => validator.unescape(u)) // dé-escape (sanitizeMiddleware)
     : [];
   const images: string[] = [];
-  for (const url of rawImages.slice(0, MAX_IMPORT_IMAGES)) {
+  for (const url of rawImages.slice(0, maxImages)) {
     try {
       images.push(await persistRemoteImage(url, `products/${storeId}`));
     } catch (err) {
       logger.warn({ err: (err as Error).message, url }, '[product-import] image non rapatriée — ignorée');
     }
   }
+
+  const sourceUrlRaw = (body.sourceUrl ?? body.url ?? '').toString();
+  const sourceUrl = validator.unescape(sourceUrlRaw).trim();
+  const suppliers = asTestCandidate && sourceUrl
+    ? [{ productUrl: sourceUrl, isPrimary: true as const }]
+    : undefined;
 
   const product = await productService.createProduct({
     storeId,
@@ -279,12 +294,23 @@ export async function importCreateProduct(req: AuthRequest, res: Response): Prom
     sku: body.sku,
     stock: body.stock ?? 0,
     images,
-    isPublished: body.isPublished ?? false,
+    isPublished: asTestCandidate ? false : (body.isPublished ?? false),
     tags: Array.isArray(body.tags)
       ? body.tags.map((t: unknown) => String(t).trim().toLowerCase()).filter(Boolean)
       : undefined,
     seoTitle: unescapeText(body.seoTitle),
     seoDescription: unescapeText(body.seoDescription),
+    isTestCandidate: asTestCandidate || undefined,
+    testStatus: asTestCandidate ? 'pending' : undefined,
+    wowEffect:
+      typeof body.wowEffect === 'number'
+        ? Math.max(0, Math.min(100, body.wowEffect))
+        : undefined,
+    problemSolving:
+      typeof body.problemSolving === 'number'
+        ? Math.max(0, Math.min(100, body.problemSolving))
+        : undefined,
+    suppliers,
   });
   notifyRevalidate([`store:${store.slug}`, `store:${store.slug}:products`]);
   res.status(201).json({ product });
@@ -388,6 +414,10 @@ export async function updateProduct(req: AuthRequest, res: Response): Promise<vo
       typeof body.wowEffect === 'number'
         ? Math.max(0, Math.min(100, body.wowEffect))
         : body.wowEffect,
+    problemSolving:
+      typeof body.problemSolving === 'number'
+        ? Math.max(0, Math.min(100, body.problemSolving))
+        : body.problemSolving,
     testNotes: body.testNotes,
   });
   if (!updated) {
