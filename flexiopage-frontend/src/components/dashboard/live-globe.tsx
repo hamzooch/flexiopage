@@ -251,7 +251,7 @@ export function LiveGlobe({ storeId, fallbackCountry, className }: LiveGlobeProp
       byCountry.set(key, cur);
     };
     markers.forEach(touch);
-    return [...byCountry.values()]
+    return Array.from(byCountry.values())
       .sort((a, b) => b.orders + b.visitors - (a.orders + a.visitors))
       .slice(0, 8);
   }, [markers]);
