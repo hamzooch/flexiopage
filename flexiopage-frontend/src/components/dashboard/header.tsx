@@ -195,7 +195,7 @@ export function Header({ onToggleNav, mobileOpen = false, desktopOpen = true }: 
         </button>
         <nav aria-label="Fil d'Ariane" className="flex min-w-0 items-center gap-1.5 text-sm">
           {segments.length <= 1 ? (
-            <span className="hidden truncate font-medium text-sidebar-strong lg:inline">{t('header.dashboard')}</span>
+            <span className="hidden truncate font-medium text-sidebar-strong sm:inline">{t('header.dashboard')}</span>
           ) : (
             <>
               <span className="hidden truncate text-sidebar-foreground/70 lg:inline">{t('header.dashboard')}</span>

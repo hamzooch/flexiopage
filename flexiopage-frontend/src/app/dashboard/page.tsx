@@ -78,6 +78,7 @@ import type { StoreAnalyticsRich, RangeKey } from '@/types/analytics';
 import { Button } from '@/components/ui/button';
 import { PageHeader } from '@/components/dashboard/page-header';
 import { EarningsWidget } from '@/components/dashboard/earnings-widget';
+import { LiveGlobe } from '@/components/dashboard/live-globe';
 import { TodoCallbacksWidget } from '@/components/dashboard/todo-callbacks-widget';
 
 interface StoreType {
@@ -86,7 +87,7 @@ interface StoreType {
   slug: string;
   isPublished?: boolean;
   storeType?: 'physical' | 'digital';
-  settings?: { currency?: string; timezone?: string };
+  settings?: { currency?: string; timezone?: string; country?: string };
   goals?: { monthlyRevenue?: number };
 }
 
@@ -312,7 +313,7 @@ export default function DashboardOverviewPage() {
   };
 
   return (
-    <div className="min-w-0 space-y-6">
+    <div className="min-w-0 space-y-4 sm:space-y-6">
       {/* ── Header ─────────────────────────────────────────────── */}
       <PageHeader
         title={
@@ -341,22 +342,22 @@ export default function DashboardOverviewPage() {
           )
         }
         actions={
-          <>
+          <div className="grid w-full grid-cols-2 gap-2 sm:flex sm:w-auto">
             {activeStore && (
-              <Link href={`/dashboard/stores/${activeStore.slug || activeStore._id}`}>
-                <Button variant="outline" size="sm" className="h-9 gap-1.5 rounded-xl">
+              <Link href={`/dashboard/stores/${activeStore.slug || activeStore._id}`} className="min-w-0">
+                <Button variant="outline" size="sm" className="h-9 w-full gap-1.5 rounded-xl sm:w-auto">
                   <SettingsIcon className="h-3.5 w-3.5" />
                   Configurer
                 </Button>
               </Link>
             )}
-            <Link href="/dashboard/profile?create=1">
-              <Button size="sm" className="h-9 gap-1.5 rounded-xl gradient-brand text-white shadow-md shadow-primary/25">
-                <Plus className="h-3.5 w-3.5" />
-                Nouvelle boutique
+            <Link href="/dashboard/profile?create=1" className="min-w-0">
+              <Button size="sm" className="h-9 w-full gap-1.5 rounded-xl gradient-brand text-white shadow-md shadow-primary/25 sm:w-auto">
+                <Plus className="h-3.5 w-3.5 shrink-0" />
+                <span className="truncate">Nouvelle boutique</span>
               </Button>
             </Link>
-          </>
+          </div>
         }
       />
 
@@ -546,15 +547,17 @@ export default function DashboardOverviewPage() {
             tone="indigo"
             loading={loadingAnalytics && !analytics}
           />
-          <KpiCard
-            label="Taux de conversion"
-            value={`${(k?.conversionRate.value ?? 0).toFixed(2)}%`}
-            deltaPct={k?.conversionRate.deltaPct ?? null}
-            previousValue={`${(k?.conversionRate.previous ?? 0).toFixed(2)}%`}
-            icon={Percent}
-            tone="rose"
-            loading={loadingAnalytics && !analytics}
-          />
+          <div className="col-span-2 lg:col-span-1">
+            <KpiCard
+              label="Taux de conversion"
+              value={`${(k?.conversionRate.value ?? 0).toFixed(2)}%`}
+              deltaPct={k?.conversionRate.deltaPct ?? null}
+              previousValue={`${(k?.conversionRate.previous ?? 0).toFixed(2)}%`}
+              icon={Percent}
+              tone="rose"
+              loading={loadingAnalytics && !analytics}
+            />
+          </div>
         </section>
       )}
 
@@ -577,31 +580,39 @@ export default function DashboardOverviewPage() {
         />
       )}
 
-      {/* ── Goal + COD funnel — 2 colonnes desktop pour aligner la
-            jauge d'objectif à côté du triage COD, qui sont les 2
-            leviers principaux pour scaler en dropshipping. ── */}
+      {/* ── Live globe + Monthly goal — rangée "ambiance + objectif".
+            Le globe tourne à gauche (points oranges = visiteurs live,
+            points verts = commandes fraîches), la jauge d'objectif
+            du mois reste à droite. Sur mobile, les deux s'empilent. ── */}
       {activeStore && analytics && (
-        <section className="grid gap-4 lg:grid-cols-[minmax(0,360px)_minmax(0,1fr)]">
+        <section className="grid items-start gap-4 lg:grid-cols-[minmax(0,360px)_minmax(0,1fr)]">
+          <LiveGlobe storeId={activeStoreId} fallbackCountry={activeStore.settings?.country} />
           <MonthlyGoalCard
             store={activeStore}
             goal={analytics.monthlyGoal}
             currency={currency}
             onSaved={loadActiveStoreData}
           />
-          <CodFunnelCard
-            confirmationRate={k?.codConfirmationRate.value ?? 0}
-            deliveryRate={k?.codDeliveryRate.value ?? 0}
-            created={analytics.funnel.created}
-            confirmed={analytics.funnel.confirmed}
-            delivered={analytics.funnel.delivered}
-            fulfilled={analytics.funnel.fulfilled}
-          />
         </section>
+      )}
+
+      {/* ── COD funnel — déplacé sur sa propre ligne depuis l'intégration
+            du globe, pour garder la hiérarchie "visuel contexte → chiffres
+            actionnables" sans surcharger la rangée au-dessus. ── */}
+      {activeStore && analytics && (
+        <CodFunnelCard
+          confirmationRate={k?.codConfirmationRate.value ?? 0}
+          deliveryRate={k?.codDeliveryRate.value ?? 0}
+          created={analytics.funnel.created}
+          confirmed={analytics.funnel.confirmed}
+          delivered={analytics.funnel.delivered}
+          fulfilled={analytics.funnel.fulfilled}
+        />
       )}
 
       {/* ── Action panel + sparkline ─────────────────────────── */}
       {activeStore && (
-        <section className="grid gap-4 lg:grid-cols-[minmax(0,360px)_minmax(0,1fr)]">
+        <section className="grid min-w-0 gap-4 lg:grid-cols-[minmax(0,360px)_minmax(0,1fr)]">
           {/* Action items */}
           <ActionPanel
             storeId={activeStoreId!}
@@ -625,7 +636,7 @@ export default function DashboardOverviewPage() {
 
       {/* ── Top products + Recent orders ────────────────────── */}
       {activeStore && (
-        <section className="grid gap-4 lg:grid-cols-2">
+        <section className="grid min-w-0 gap-4 lg:grid-cols-2">
           <TopProductsCard
             items={analytics?.topProducts || []}
             currency={currency}
@@ -670,7 +681,7 @@ export default function DashboardOverviewPage() {
             Deux blocs "d'où viennent tes clients" + "à quelle
             heure ils achètent" — indispensables pour cibler la pub. ── */}
       {activeStore && analytics && (
-        <section className="grid gap-4 lg:grid-cols-2">
+        <section className="grid min-w-0 gap-4 lg:grid-cols-2">
           <TrafficSourcesCard items={analytics.trafficSources} />
           <SalesByHourCard items={analytics.hourlySales} currency={currency} />
         </section>
@@ -732,7 +743,7 @@ export default function DashboardOverviewPage() {
       {/* ── Stores list (slim) ──────────────────────────────── */}
       {stores.length > 0 && (
         <section className="overflow-hidden rounded-2xl border border-border/60 bg-card">
-          <div className="flex items-center justify-between border-b border-border/60 px-5 py-3">
+          <div className="flex items-center justify-between gap-2 border-b border-border/60 px-3 py-3 sm:px-5">
             <div>
               <h2 className="text-sm font-bold">Mes boutiques</h2>
               <p className="text-[11px] text-muted-foreground">{stores.length} boutique{stores.length > 1 ? 's' : ''} au total · clique pour basculer</p>
@@ -755,7 +766,7 @@ export default function DashboardOverviewPage() {
                     type="button"
                     onClick={() => setCurrentStore(s._id)}
                     className={cn(
-                      'group flex w-full items-center gap-3 px-5 py-3 text-left transition-colors',
+                      'group flex w-full items-center gap-3 px-3 py-3 text-left transition-colors sm:px-5',
                       isActive ? 'bg-primary/5' : 'hover:bg-muted/40'
                     )}
                   >
@@ -768,19 +779,19 @@ export default function DashboardOverviewPage() {
                       <TypeIcon className="h-4 w-4" />
                     </div>
                     <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-1.5 text-sm font-semibold">
-                        {s.name}
+                      <div className="flex min-w-0 items-center gap-1.5 text-sm font-semibold">
+                        <span className="truncate">{s.name}</span>
                         {isActive && (
                           <span className="rounded-full bg-primary/15 px-1.5 py-0.5 text-[9px] font-bold text-primary">
                             Active
                           </span>
                         )}
                       </div>
-                      <div className="text-[11px] text-muted-foreground">/{s.slug} · {isDigital ? 'Digital' : 'Physique'}</div>
+                      <div className="truncate text-[11px] text-muted-foreground">/{s.slug} · {isDigital ? 'Digital' : 'Physique'}</div>
                     </div>
                     <span
                       className={cn(
-                        'rounded-full px-2 py-0.5 text-[10px] font-semibold',
+                        'shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold',
                         s.isPublished ? 'bg-emerald-500/10 text-emerald-700' : 'bg-amber-500/10 text-amber-700'
                       )}
                     >
@@ -1068,10 +1079,10 @@ function RevenueChart({
     formatYmdLabel(v, monthly ? { month: 'short' } : { day: '2-digit', month: 'short' });
 
   return (
-    <div className="overflow-hidden rounded-2xl border border-border/60 bg-card">
-      <div className="flex items-center justify-between gap-3 border-b border-border/60 px-4 py-3">
+    <div className="min-w-0 overflow-hidden rounded-2xl border border-border/60 bg-card">
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border/60 px-4 py-3">
         <div className="min-w-0">
-          <div className="flex items-baseline gap-2">
+          <div className="flex flex-wrap items-baseline gap-2">
             <h3 className="text-sm font-bold">
               {metric === 'sales' ? 'Ventes sur la période' : 'Commandes sur la période'}
             </h3>
