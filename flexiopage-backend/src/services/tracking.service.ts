@@ -1,4 +1,5 @@
 import mongoose from 'mongoose';
+import geoip from 'geoip-lite';
 import { StoreEvent, type StoreEventType, type StoreEventSource } from '../models/StoreEvent.model';
 import { Product } from '../models/Product.model';
 
@@ -21,6 +22,35 @@ export interface RecordEventInput {
   currency?: string;
   device?: 'mobile' | 'desktop';
   source?: StoreEventSource;
+  /**
+   * IP brute du visiteur (ex: `req.ip`). Jamais stockée — on la convertit
+   * immédiatement en pays + lat/lng via geoip-lite puis on la jette.
+   */
+  ip?: string;
+}
+
+/**
+ * Résout une IP en pays + lat/lng approximatifs via geoip-lite (base locale,
+ * pas d'appel réseau). Renvoie `null` si l'IP est privée, IPv6 inconnue, ou
+ * introuvable dans la base. Le centroïde géoip-lite est volontairement "flou"
+ * (centre pays/ville), parfait pour un globe — jamais pour tracer qui que ce soit.
+ */
+export function resolveGeo(
+  ip?: string,
+): { country: string; lat: number; lng: number } | null {
+  if (!ip || typeof ip !== 'string') return null;
+  // Strip possible "::ffff:" IPv4-mapped prefix.
+  const clean = ip.replace(/^::ffff:/, '').trim();
+  if (!clean) return null;
+  try {
+    const hit = geoip.lookup(clean);
+    if (!hit || !hit.country || !Array.isArray(hit.ll) || hit.ll.length < 2) return null;
+    const [lat, lng] = hit.ll;
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+    return { country: hit.country, lat, lng };
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -75,10 +105,119 @@ export async function getLiveVisitors(
   return { count: (sessions as string[]).length, windowMin };
 }
 
+export interface GlobePoint {
+  /** Anonymous, stable ID so React can key points without flicker. */
+  id: string;
+  lat: number;
+  lng: number;
+  /** ISO 3166-1 alpha-2 when geoip resolved a country. */
+  country?: string;
+  /** ISO timestamp — frontend uses it to drive pulse animations. */
+  ts: string;
+}
+
+export interface LiveGlobePayload {
+  /** Points oranges : visiteurs présents dans la fenêtre `visitorsWindowMin`. */
+  visitors: GlobePoint[];
+  /** Points verts : commandes fraîches sur la fenêtre `ordersWindowMin`. */
+  orders: GlobePoint[];
+  visitorsWindowMin: number;
+  ordersWindowMin: number;
+}
+
+/**
+ * Feeds the dashboard "live globe" widget. One aggregation per call, only
+ * the tiny indexed slice (last ~30 min) — safe to poll every 15-30s.
+ *
+ * Deux séries séparées :
+ *  - visitors : une ligne par session active avec géo connue
+ *    (last-known lat/lng pour cette session dans la fenêtre)
+ *  - orders   : chaque event `purchase` géolocalisé de la fenêtre commandes
+ *
+ * On jette silencieusement les events sans lat/lng (visiteurs locaux /
+ * IP privée / bases geoip-lite avant cette feature) — on ne devine pas
+ * une position pour afficher quand même un point.
+ */
+export async function getLiveGlobe(
+  storeId: string,
+  opts: { visitorsWindowMin?: number; ordersWindowMin?: number } = {},
+): Promise<LiveGlobePayload> {
+  const visitorsWindowMin = opts.visitorsWindowMin ?? 5;
+  const ordersWindowMin = opts.ordersWindowMin ?? 30;
+  const oid = new mongoose.Types.ObjectId(storeId);
+  const sinceVisitors = new Date(Date.now() - visitorsWindowMin * 60 * 1000);
+  const sinceOrders = new Date(Date.now() - ordersWindowMin * 60 * 1000);
+
+  // Visitors: dédoublonne par sessionId, garde le dernier event géolocalisé.
+  // On prend le plus récent pour que le point suive si la session a navigué.
+  const visitorsAgg = await StoreEvent.aggregate<{
+    _id: string;
+    lat: number;
+    lng: number;
+    country?: string;
+    ts: Date;
+  }>([
+    {
+      $match: {
+        storeId: oid,
+        createdAt: { $gte: sinceVisitors },
+        type: { $in: ['page_view', 'product_view', 'add_to_cart'] },
+        lat: { $ne: null, $exists: true },
+        lng: { $ne: null, $exists: true },
+      },
+    },
+    { $sort: { createdAt: -1 } },
+    {
+      $group: {
+        _id: '$sessionId',
+        lat: { $first: '$lat' },
+        lng: { $first: '$lng' },
+        country: { $first: '$country' },
+        ts: { $first: '$createdAt' },
+      },
+    },
+    { $limit: 250 },
+  ]);
+
+  const ordersAgg = await StoreEvent.find({
+    storeId: oid,
+    type: 'purchase',
+    createdAt: { $gte: sinceOrders },
+    lat: { $ne: null, $exists: true },
+    lng: { $ne: null, $exists: true },
+  })
+    .sort({ createdAt: -1 })
+    .limit(100)
+    .select('_id lat lng country createdAt')
+    .lean();
+
+  return {
+    visitors: visitorsAgg.map((v) => ({
+      id: v._id,
+      lat: v.lat,
+      lng: v.lng,
+      country: v.country || undefined,
+      ts: v.ts.toISOString(),
+    })),
+    orders: ordersAgg
+      .filter((o) => typeof o.lat === 'number' && typeof o.lng === 'number')
+      .map((o) => ({
+        id: o._id.toString(),
+        lat: o.lat as number,
+        lng: o.lng as number,
+        country: o.country || undefined,
+        ts: (o.createdAt as Date).toISOString(),
+      })),
+    visitorsWindowMin,
+    ordersWindowMin,
+  };
+}
+
 /** Fire-and-forget event ingest — never throws into the request path. */
 export async function recordEvent(input: RecordEventInput): Promise<void> {
   if (!input.storeId || !input.sessionId || !input.type) return;
   try {
+    const geo = resolveGeo(input.ip);
     await StoreEvent.create({
       storeId: input.storeId,
       productId: input.productId || undefined,
@@ -86,6 +225,9 @@ export async function recordEvent(input: RecordEventInput): Promise<void> {
       sessionId: String(input.sessionId).slice(0, 64),
       device: input.device,
       source: input.source,
+      country: geo?.country,
+      lat: geo?.lat,
+      lng: geo?.lng,
       value: typeof input.value === 'number' ? input.value : undefined,
       currency: input.currency,
     });

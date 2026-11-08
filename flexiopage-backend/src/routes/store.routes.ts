@@ -38,6 +38,7 @@ router.get('/:storeId/analytics', storeController.getStoreAnalyticsController);
 router.get('/:storeId/analytics/rich', storeController.getStoreAnalyticsRichController);
 router.get('/:storeId/tracking', storeController.getStoreTrackingController);
 router.get('/:storeId/visitors/live', storeController.getLiveVisitorsController);
+router.get('/:storeId/visitors/live-globe', storeController.getLiveGlobeController);
 
 // Custom domain
 router.get('/:storeId/domain-target', storeController.getDomainTargetController);

@@ -2116,6 +2116,23 @@ export const storesApi = {
     api.get<{ count: number; windowMin: number }>(`/stores/${storeId}/visitors/live`, {
       params: windowMin ? { window: windowMin } : undefined,
     }),
+  /**
+   * Globe live du dashboard : points géolocalisés des visiteurs (oranges)
+   * et des commandes fraîches (verts). Résolu côté serveur depuis l'IP via
+   * geoip-lite — jamais d'IP brute côté client.
+   */
+  getLiveGlobe: (
+    storeId: string,
+    opts?: { visitorsWindow?: number; ordersWindow?: number },
+  ) =>
+    api.get<{
+      visitors: Array<{ id: string; lat: number; lng: number; country?: string; ts: string }>;
+      orders: Array<{ id: string; lat: number; lng: number; country?: string; ts: string }>;
+      visitorsWindowMin: number;
+      ordersWindowMin: number;
+    }>(`/stores/${storeId}/visitors/live-globe`, {
+      params: opts && (opts.visitorsWindow || opts.ordersWindow) ? opts : undefined,
+    }),
   getSectionsFromTemplate: (storeId: string, templateId: string) =>
     api.post<{ sections: unknown[] }>(`/stores/${storeId}/pages/from-template`, { templateId }),
   createPage: (storeId: string, data: Record<string, unknown>) =>

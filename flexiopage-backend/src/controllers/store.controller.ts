@@ -4,7 +4,7 @@ import { AuthRequest } from '../middleware/auth.middleware';
 import * as storeService from '../services/store.service';
 import { getStoreAnalytics, getStoreAnalyticsRich, type RangeKey } from '../services/analytics.service';
 import { calendarDaysInclusive, isYmd } from '../utils/store-timezone';
-import { getTrackingStats, getLiveVisitors, type TrackingRange } from '../services/tracking.service';
+import { getTrackingStats, getLiveVisitors, getLiveGlobe, type TrackingRange } from '../services/tracking.service';
 import { verifyAndSaveDomain, getDomainTarget, checkDomain, normalizeDomain, isValidDomain } from '../services/domain.service';
 import { testSheetsWebhook } from '../services/sheets.service';
 import { effectiveOwnerId, isTeamMember } from '../lib/owner';
@@ -257,6 +257,21 @@ export async function getLiveVisitorsController(req: AuthRequest, res: Response)
   const windowMin = Number.isFinite(raw) && raw >= 1 && raw <= 60 ? Math.round(raw) : 5;
   const stats = await getLiveVisitors(store._id.toString(), windowMin);
   res.json(stats);
+}
+
+/**
+ * GET /api/stores/:storeId/visitors/live-globe — points géolocalisés pour le
+ * widget "globe live" du dashboard : visiteurs orange (last 5 min) + commandes
+ * vertes (last 30 min). Sûr à poller toutes les 15-30s.
+ */
+export async function getLiveGlobeController(req: AuthRequest, res: Response): Promise<void> {
+  const store = req.store!;
+  const vRaw = Number(req.query.visitorsWindow);
+  const oRaw = Number(req.query.ordersWindow);
+  const visitorsWindowMin = Number.isFinite(vRaw) && vRaw >= 1 && vRaw <= 60 ? Math.round(vRaw) : 5;
+  const ordersWindowMin = Number.isFinite(oRaw) && oRaw >= 5 && oRaw <= 240 ? Math.round(oRaw) : 30;
+  const payload = await getLiveGlobe(store._id.toString(), { visitorsWindowMin, ordersWindowMin });
+  res.json(payload);
 }
 
 /** GET /api/stores/:storeId/domain-target — DNS values the seller must configure. */

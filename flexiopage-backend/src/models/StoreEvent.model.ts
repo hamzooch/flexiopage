@@ -47,6 +47,16 @@ export interface IStoreEvent extends Document {
   device?: 'mobile' | 'desktop';
   /** Origine du trafic (classée côté serveur — pas d'URL brute stockée). */
   source?: StoreEventSource;
+  /**
+   * Pays ISO 3166-1 alpha-2 (ex: 'FR', 'SN', 'TN'), résolu côté serveur
+   * depuis l'IP au moment de l'ingestion. L'IP brute n'est jamais stockée.
+   * Alimente le globe live du dashboard (points géolocalisés).
+   */
+  country?: string;
+  /** Latitude approximative du centroïde pays/ville (pour le globe). */
+  lat?: number;
+  /** Longitude approximative du centroïde pays/ville (pour le globe). */
+  lng?: number;
   /** Order value — only set on `purchase`. */
   value?: number;
   currency?: string;
@@ -64,6 +74,9 @@ const StoreEventSchema = new Schema<IStoreEvent>(
       type: String,
       enum: ['facebook', 'instagram', 'tiktok', 'google', 'youtube', 'twitter', 'snapchat', 'whatsapp', 'direct', 'other'],
     },
+    country: { type: String, trim: true, uppercase: true, maxlength: 2 },
+    lat: { type: Number },
+    lng: { type: Number },
     value: { type: Number },
     currency: { type: String },
   },

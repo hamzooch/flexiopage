@@ -194,6 +194,9 @@ router.post('/track', (req: Request, res: Response): void => {
       // la classe mobile/desktop pour le split visiteurs de la vue d'ensemble.
       device: deviceFromUserAgent(req.headers['user-agent']),
       source,
+      // IP résolue en pays+lat/lng via geoip-lite puis jetée — alimente le
+      // globe live du dashboard. Jamais stockée telle quelle.
+      ip: req.ip,
     });
   }
   res.status(204).end();
@@ -1587,6 +1590,8 @@ router.post('/checkout/cod', async (req: Request, res: Response): Promise<void> 
       value: subtotal,
       currency: store.settings?.currency || 'USD',
       device: deviceFromUserAgent(req.headers['user-agent']),
+      // IP du client COD → point vert sur le globe du dashboard.
+      ip: req.ip,
     });
   }
 
