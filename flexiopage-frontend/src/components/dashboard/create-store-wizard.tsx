@@ -358,7 +358,9 @@ export function CreateStoreWizard({ onCreated, triggerLabel = 'Créer une boutiq
           total={3}
           back={() => setStep('choose-type')}
           title="Choisis un thème"
-          subtitle={`Sélectionne un design adapté à ton ${selectedType === 'physical' ? 'commerce physique' : 'produit digital'}. Tu pourras le changer plus tard.`}
+          subtitle={selectedType === 'physical'
+            ? 'Le look de la vitrine. Le client paie toujours à la livraison, et tu pourras changer le thème plus tard.'
+            : 'Le look de la page de vente. Tu pourras changer le thème plus tard.'}
         />
         <ThemePreviewGrid
           templates={themesForStoreType(selectedType, { founder: isFounderView })}

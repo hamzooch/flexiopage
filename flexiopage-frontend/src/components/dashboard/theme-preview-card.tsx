@@ -7,14 +7,13 @@
  *   ThemePreviewCard    — one card (mini storefront mock + 2 actions)
  *   ThemePreviewModal   — fullscreen mock storefront for "Voir"
  */
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import type { StoreThemeTemplate, ThemeTokens } from '@/data/store-themes';
 import { RADIUS_PX, googleFontsHref, tokensToCssVars } from '@/data/store-themes';
 import { Button } from '@/components/ui/button';
 import {
   Check,
-  Cpu,
-  Shirt,
   Sparkles,
   Eye,
   X,
@@ -23,11 +22,6 @@ import {
   Truck,
   Heart,
   ArrowRight,
-  Code2,
-  GraduationCap,
-  Palette,
-  BookOpen,
-  Download,
   Zap,
   Clock,
   Play,
@@ -44,252 +38,370 @@ interface CardProps {
   onPreview: () => void;
 }
 
-const NICHE_ICON: Record<string, typeof Cpu> = {
-  electronics: Cpu,
-  fashion: Shirt,
-  beauty: Sparkles,
-  general: Sparkles,
-  saas: Code2,
-  coaching: GraduationCap,
-  creators: Palette,
-  ebooks: BookOpen,
+function shot(t: ThemeTokens, i: number): string {
+  const pairs = [
+    [t.gradientFrom, t.gradientTo],
+    [t.primary, t.accent],
+    [t.accent, t.primary],
+    [t.foreground, t.gradientTo],
+  ];
+  const [a, b] = pairs[i % pairs.length];
+  return `linear-gradient(160deg, ${a} 0%, ${b} 100%)`;
+}
+
+function ShopBar({ t, name, links = true }: { t: ThemeTokens; name: string; links?: boolean }) {
+  const bold = t.layout?.nav === 'bold';
+  const editorial = t.layout?.nav === 'editorial';
+  return (
+    <div className="flex items-center gap-3 px-3 py-2" style={{ borderBottom: `1px solid ${t.border}` }}>
+      <span
+        className={cn('truncate font-semibold', editorial ? 'text-[13px]' : 'text-[11px]', (bold || editorial) && 'uppercase')}
+        style={{ fontFamily: t.fontHeading, letterSpacing: bold ? '0.16em' : editorial ? '0.12em' : '-0.01em', color: bold ? t.primary : t.foreground }}
+      >
+        {name}
+      </span>
+      {links && (
+        <span className="ml-auto flex shrink-0 gap-2 text-[8px] font-medium" style={{ color: t.muted }}>
+          <span>Boutique</span>
+          <span>Contact</span>
+        </span>
+      )}
+    </div>
+  );
+}
+
+type ShowcaseKind =
+  | 'catalog' | 'offer' | 'editorial' | 'coast' | 'tech' | 'sport' | 'beauty'
+  | 'course' | 'split' | 'saas' | 'quiet' | 'workshop' | 'jewel' | 'wine' | 'market';
+
+const SHOWCASE: Record<string, ShowcaseKind> = {
+  comptoir: 'catalog',
+  lumen: 'catalog',
+  halle: 'offer',
+  atelier: 'editorial',
+  carthago: 'coast',
+  volt: 'tech',
+  forge: 'sport',
+  bloom: 'beauty',
+  sage: 'course',
+  nova: 'split',
+  pulse: 'saas',
+  maison: 'quiet',
+  studio: 'quiet',
+  prima: 'workshop',
+  aurum: 'jewel',
+  vinum: 'wine',
+  prism: 'market',
 };
+
+function ThemeShowcase({ template }: { template: StoreThemeTemplate }) {
+  const t = template.theme;
+  const kind = SHOWCASE[template.id] || 'split';
+  const radius = RADIUS_PX[t.borderRadius];
+  const lead = template.tagline.split('·')[0].trim();
+  const cta = template.forStoreTypes.includes('digital') && !template.forStoreTypes.includes('physical') ? 'Découvrir' : 'Commander';
+
+  if (kind === 'catalog') {
+    const digital = !template.forStoreTypes.includes('physical');
+    const labels = digital ? ['Pack', 'Guide', 'Kit', 'Cours'] : ['Caftan', 'Sac', 'Montre', 'Huile'];
+    return (
+      <div className="flex min-h-0 flex-1 flex-col">
+        <div className="px-3 py-1 text-center text-[8px] font-semibold uppercase tracking-[0.14em]" style={{ backgroundColor: t.foreground, color: t.background }}>
+          {digital ? 'Téléchargement immédiat' : 'Paiement à la livraison'}
+        </div>
+        <ShopBar t={t} name={template.name} />
+        <div className="grid min-h-0 flex-1 grid-cols-4 gap-1.5 p-2">
+          {labels.map((label, i) => (
+            <div key={label} className="flex flex-col overflow-hidden" style={{ backgroundColor: t.surface, borderRadius: radius, border: `1px solid ${t.border}` }}>
+              <div className="min-h-0 flex-1" style={{ background: shot(t, i), minHeight: 52 }} />
+              <div className="px-1 py-1">
+                <div className="truncate text-[8px] font-medium" style={{ color: t.foreground }}>{label}</div>
+                <div className="text-[8px] font-semibold" style={{ color: t.primary }}>45 000</div>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  if (kind === 'offer') {
+    return (
+      <div className="grid min-h-0 flex-1 grid-cols-2">
+        <div className="relative" style={{ background: shot(t, 0) }}>
+          <span className="absolute bottom-2 left-2 px-1.5 py-0.5 text-[8px] font-bold" style={{ backgroundColor: t.surface, color: t.foreground, borderRadius: radius }}>45 000</span>
+        </div>
+        <div className="flex flex-col justify-center px-3" style={{ backgroundColor: t.background }}>
+          <p className="text-[8px] font-semibold uppercase tracking-[0.16em]" style={{ color: t.accent }}>Offre du jour</p>
+          <p className="mt-1 text-[15px] font-semibold leading-[1.05]" style={{ fontFamily: t.fontHeading }}>{lead}</p>
+          <p className="mt-1 text-[8px] leading-snug" style={{ color: t.muted }}>Tu paies le livreur. Aucune avance.</p>
+          <span className="mt-2 inline-flex w-fit px-2.5 py-1 text-[9px] font-semibold" style={{ backgroundColor: t.primary, color: t.primaryFg, borderRadius: radius }}>{cta}</span>
+        </div>
+      </div>
+    );
+  }
+
+  if (kind === 'coast') {
+    return (
+      <div className="grid min-h-0 flex-1 grid-cols-5" style={{ backgroundColor: t.background }}>
+        <div className="col-span-2 flex flex-col justify-between px-3 py-3">
+          <p className="text-[8px] uppercase tracking-[0.22em]" style={{ color: t.primary }}>Méditerranée</p>
+          <p className="text-[20px] leading-none" style={{ fontFamily: t.fontHeading }}>{template.name}</p>
+          <span className="inline-flex w-fit border px-2 py-1 text-[8px] uppercase tracking-[0.14em]" style={{ borderColor: t.foreground }}>Voir</span>
+        </div>
+        <div className="relative col-span-3" style={{ background: shot(t, 0) }}>
+          <span className="absolute bottom-2 right-2 px-1.5 py-0.5 text-[8px]" style={{ backgroundColor: t.background, color: t.foreground }}>Lin & or</span>
+        </div>
+      </div>
+    );
+  }
+
+  if (kind === 'editorial') {
+    return (
+      <div className="flex min-h-0 flex-1 flex-col" style={{ backgroundColor: t.background }}>
+        <div className="px-3 pt-3 text-center">
+          <p className="text-[18px] font-semibold uppercase leading-none tracking-[0.18em]" style={{ fontFamily: t.fontHeading }}>{template.name}</p>
+          <p className="mt-1 text-[8px] uppercase tracking-[0.22em]" style={{ color: t.muted }}>{lead}</p>
+        </div>
+        <div className="mt-3 grid min-h-0 flex-1 grid-cols-2 gap-1.5 px-3 pb-3">
+          {[0, 1].map((i) => (
+            <div key={i} className="flex flex-col">
+              <div className="min-h-0 flex-1" style={{ background: shot(t, i), minHeight: 88 }} />
+              <p className="mt-1 text-[8px]" style={{ fontFamily: t.fontHeading, color: t.foreground }}>{i === 0 ? 'Nouvelle saison' : 'Pièce signature'}</p>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  if (kind === 'tech') {
+    return (
+      <div className="relative flex min-h-0 flex-1 flex-col" style={{ backgroundColor: t.background }}>
+        <div className="pointer-events-none absolute inset-0 opacity-30" style={{ backgroundImage: `linear-gradient(${t.border} 1px, transparent 1px), linear-gradient(90deg, ${t.border} 1px, transparent 1px)`, backgroundSize: '22px 22px' }} aria-hidden />
+        <ShopBar t={t} name={template.name} />
+        <div className="relative px-3 pt-3">
+          <p className="text-[22px] font-bold uppercase leading-none" style={{ fontFamily: t.fontHeading, color: t.primary }}>{template.name}</p>
+          <p className="mt-1 text-[9px]" style={{ color: t.muted }}>{lead}</p>
+        </div>
+        <div className="relative mt-auto grid grid-cols-3 gap-1.5 p-3">
+          {['Casque', 'Montre', 'Son'].map((label, i) => (
+            <div key={label} className="relative h-16 overflow-hidden" style={{ background: shot(t, i), borderRadius: radius }}>
+              <span className="absolute inset-x-0 bottom-0 px-1 py-1 text-[8px] font-semibold" style={{ color: t.primaryFg, background: 'linear-gradient(transparent, rgba(0,0,0,.55))' }}>{label}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  if (kind === 'sport') {
+    return (
+      <div className="flex min-h-0 flex-1 flex-col" style={{ backgroundColor: t.background }}>
+        <ShopBar t={t} name={template.name} />
+        <div className="relative mx-3 mt-3 overflow-hidden px-3 py-4" style={{ background: shot(t, 0), borderRadius: radius }}>
+          <p className="text-[16px] font-bold uppercase leading-none text-black" style={{ fontFamily: t.fontHeading }}>Move.</p>
+          <p className="mt-1 text-[8px] font-semibold text-black/70">Athleisure</p>
+        </div>
+        <div className="mt-auto grid grid-cols-2 gap-1.5 p-3">
+          {['Veste', 'Run'].map((label, i) => (
+            <div key={label} className="overflow-hidden" style={{ backgroundColor: t.surface, borderRadius: radius }}>
+              <div className="h-10" style={{ background: shot(t, i + 1) }} />
+              <p className="px-1.5 py-1 text-[8px] font-semibold">{label}</p>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  if (kind === 'beauty') {
+    return (
+      <div className="flex min-h-0 flex-1 flex-col items-center px-4 pt-4 text-center" style={{ backgroundColor: t.background }}>
+        <p className="text-[9px] font-semibold uppercase tracking-[0.22em]" style={{ color: t.primary }}>{template.name}</p>
+        <p className="mt-1 text-[16px] leading-tight" style={{ fontFamily: t.fontHeading }}>{lead}</p>
+        <span className="mt-2 rounded-full px-3 py-1 text-[9px] font-semibold" style={{ backgroundColor: t.primary, color: t.primaryFg }}>{cta}</span>
+        <div className="mt-auto grid w-full grid-cols-3 gap-1.5 pb-3 pt-3">
+          {['Sérum', 'Parfum', 'Soin'].map((label, i) => (
+            <div key={label}>
+              <div className="mx-auto h-12 w-12 rounded-full" style={{ background: shot(t, i) }} />
+              <p className="mt-1 truncate text-[8px]" style={{ color: t.muted }}>{label}</p>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  if (kind === 'course') {
+    return (
+      <div className="flex min-h-0 flex-1 flex-col px-4 pt-5" style={{ backgroundColor: t.background }}>
+        <p className="text-[10px] uppercase tracking-[0.2em]" style={{ color: t.primary }}>{template.name}</p>
+        <p className="mt-2 max-w-[92%] text-[18px] leading-[1.05]" style={{ fontFamily: t.fontHeading }}>{lead}</p>
+        <span className="mt-3 inline-flex w-fit px-2.5 py-1 text-[9px] font-semibold" style={{ backgroundColor: t.primary, color: t.primaryFg, borderRadius: radius }}>{cta}</span>
+        <div className="mt-auto grid grid-cols-2 gap-1.5 pb-3">
+          {['Module 01', 'Module 02'].map((label, i) => (
+            <div key={label} className="border p-2" style={{ borderColor: t.border, backgroundColor: t.surface, borderRadius: radius }}>
+              <div className="h-1 w-8" style={{ backgroundColor: t.accent }} />
+              <p className="mt-1.5 text-[9px] font-medium">{label}</p>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  if (kind === 'split' || kind === 'saas') {
+    return (
+      <div className="grid min-h-0 flex-1 grid-cols-5">
+        <div className="col-span-3 flex flex-col justify-center px-3">
+          <p className="text-[8px] font-semibold uppercase tracking-[0.16em]" style={{ color: t.primary }}>{template.nicheLabel}</p>
+          <p className="mt-1 text-[15px] font-semibold leading-tight" style={{ fontFamily: t.fontHeading }}>{lead}</p>
+          <span className="mt-2 inline-flex w-fit px-2.5 py-1 text-[9px] font-semibold" style={{ backgroundColor: t.primary, color: t.primaryFg, borderRadius: kind === 'saas' ? 999 : radius }}>{cta}</span>
+        </div>
+        <div className="relative col-span-2" style={{ background: shot(t, 0) }}>
+          {kind === 'saas' && <div className="absolute inset-3 border border-white/30 bg-white/10" />}
+        </div>
+      </div>
+    );
+  }
+
+  if (kind === 'quiet') {
+    return (
+      <div className="flex min-h-0 flex-1 flex-col justify-between px-4 py-4" style={{ backgroundColor: t.background }}>
+        <p className="text-[9px] uppercase tracking-[0.28em]" style={{ color: t.muted }}>{template.nicheLabel}</p>
+        <p className="text-[26px] leading-none" style={{ fontFamily: t.fontHeading }}>{template.name}</p>
+        <div className="h-16 w-full" style={{ background: shot(t, 0) }} />
+      </div>
+    );
+  }
+
+  if (kind === 'workshop') {
+    return (
+      <div className="flex min-h-0 flex-1 flex-col" style={{ backgroundColor: t.background }}>
+        <ShopBar t={t} name={template.name} links={false} />
+        <p className="px-3 pt-3 text-[14px] font-medium" style={{ fontFamily: t.fontHeading }}>Atelier. Pièce par pièce.</p>
+        <div className="mt-auto grid grid-cols-3 gap-1.5 p-3">
+          {[0, 1, 2].map((i) => (
+            <div key={i} className="aspect-square" style={{ background: shot(t, i), border: `1px solid ${t.border}` }} />
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  if (kind === 'jewel') {
+    return (
+      <div className="flex min-h-0 flex-1 flex-col items-center justify-center px-4 text-center" style={{ backgroundColor: t.background }}>
+        <p className="text-[9px] uppercase tracking-[0.32em]" style={{ color: t.accent }}>{template.name}</p>
+        <div className="mt-3 h-24 w-24" style={{ background: shot(t, 0), border: `1px solid ${t.accent}` }} />
+        <p className="mt-2 text-[11px]" style={{ fontFamily: t.fontHeading }}>Bague signature</p>
+        <p className="text-[8px]" style={{ color: t.muted }}>Or champagne</p>
+      </div>
+    );
+  }
+
+  if (kind === 'wine') {
+    return (
+      <div className="relative flex min-h-0 flex-1 flex-col items-center justify-center text-center" style={{ background: shot(t, 0), color: t.primaryFg }}>
+        <p className="text-[9px] uppercase tracking-[0.34em]" style={{ color: t.accent }}>Domaine</p>
+        <p className="mt-1 text-[22px] uppercase leading-none tracking-[0.14em]" style={{ fontFamily: t.fontHeading }}>{template.name}</p>
+        <div className="mt-3 h-px w-8" style={{ backgroundColor: t.accent }} />
+        <p className="mt-2 text-[8px] uppercase tracking-[0.18em]">Millésime</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex min-h-0 flex-1 flex-col" style={{ backgroundColor: t.background }}>
+      <ShopBar t={t} name={template.name} />
+      <div className="grid min-h-0 flex-1 grid-cols-2 gap-1.5 p-2.5">
+        {['Drop 01', 'Drop 02'].map((label, i) => (
+          <div key={label} className="relative overflow-hidden" style={{ background: shot(t, i), borderRadius: radius }}>
+            <span className="absolute left-1.5 top-1.5 px-1 text-[8px] font-bold" style={{ backgroundColor: t.primary, color: t.primaryFg }}>{label}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 
 export function ThemePreviewCard({ template, selected, onUse, onPreview }: CardProps) {
   const t = template.theme;
-  const NicheIcon = NICHE_ICON[template.niche] || Sparkles;
-  const radius = RADIUS_PX[t.borderRadius];
   const fontsUrl = googleFontsHref(t);
 
+  const swatches = [t.primary, t.accent, t.background, t.foreground];
+
   return (
-    <div
+    <article
       className={cn(
-        'group relative flex flex-col overflow-hidden rounded-3xl border bg-card transition-all duration-500',
-        'hover:-translate-y-1 hover:shadow-[0_24px_60px_-20px_rgba(0,0,0,0.18)]',
+        'flex flex-col overflow-hidden rounded-2xl border bg-card transition-shadow duration-300',
         selected
-          ? 'border-primary ring-4 ring-primary/15 shadow-[0_20px_50px_-20px_rgba(124,92,255,0.45)]'
-          : 'border-border/60 hover:border-primary/40'
+          ? 'border-primary ring-2 ring-primary/25'
+          : 'border-border/70 hover:shadow-[0_16px_40px_-24px_rgba(0,0,0,0.35)]'
       )}
     >
       {fontsUrl && <link rel="stylesheet" href={fontsUrl} />}
 
-      {/* Floating selected badge */}
-      {selected && (
-        <span className="absolute right-3 top-3 z-20 inline-flex items-center gap-1 rounded-full bg-primary px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-white shadow-lg">
-          <Check className="h-3 w-3" strokeWidth={3} />
-          Actif
-        </span>
-      )}
-
-      {/* ── Polished mini-mockup — feels like a real design preview ── */}
-      <div
-        className="relative h-56 overflow-hidden border-b border-border/40"
-        style={{
-          backgroundColor: t.background,
-          color: t.foreground,
-          fontFamily: t.fontBody,
-        }}
+      <button
+        type="button"
+        onClick={onPreview}
+        className="relative flex h-[300px] flex-col overflow-hidden text-left"
+        style={{ backgroundColor: t.background, color: t.foreground, fontFamily: t.fontBody }}
+        aria-label={`Aperçu du thème ${template.name}`}
       >
-        {t.pattern === 'grid' && (
-          <div
-            className="absolute inset-0 opacity-25"
-            style={{
-              backgroundImage: `linear-gradient(${t.border} 1px, transparent 1px), linear-gradient(90deg, ${t.border} 1px, transparent 1px)`,
-              backgroundSize: '28px 28px',
-              maskImage: 'radial-gradient(ellipse at center, black 40%, transparent 80%)',
-            }}
-            aria-hidden
-          />
-        )}
-        {t.pattern === 'mesh' && (
-          <>
-            <div
-              className="pointer-events-none absolute -left-12 -top-10 h-44 w-44 rounded-full blur-3xl opacity-55"
-              style={{ backgroundColor: t.gradientFrom }}
-              aria-hidden
-            />
-            <div
-              className="pointer-events-none absolute -right-10 bottom-0 h-44 w-44 rounded-full blur-3xl opacity-45"
-              style={{ backgroundColor: t.gradientTo }}
-              aria-hidden
-            />
-          </>
-        )}
+        <ThemeShowcase template={template} />
+      </button>
 
-        {/* Tiny navbar with brand mark */}
-        <div
-          className="relative flex items-center justify-between border-b px-4 py-2"
-          style={{ borderColor: t.border }}
-        >
-          <span
-            className="text-[11px] font-bold tracking-tight"
-            style={{ fontFamily: t.fontHeading, color: t.foreground, letterSpacing: t.layout?.nav === 'bold' ? '0.12em' : '0' }}
-          >
-            {(STORE_NAMES[template.niche] || STORE_NAMES.general).toUpperCase()}
-          </span>
-          <div className="flex items-center gap-2">
-            <span className="h-1 w-5 rounded" style={{ backgroundColor: t.muted, opacity: 0.5 }} />
-            <span className="h-1 w-5 rounded" style={{ backgroundColor: t.muted, opacity: 0.5 }} />
-            <span className="grid h-4 w-4 place-items-center rounded-full" style={{ backgroundColor: t.primary, color: t.primaryFg }}>
-              <span className="text-[7px] font-bold">2</span>
-            </span>
+      <div className="flex flex-1 flex-col gap-4 border-t border-border/60 p-4">
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <p className="text-[11px] font-medium uppercase tracking-[0.14em] text-muted-foreground">{template.nicheLabel}</p>
+            <div className="mt-0.5 flex items-center gap-2">
+              <h3 className="truncate text-base font-semibold tracking-tight">{template.name}</h3>
+              {selected && (
+                <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-semibold text-primary">
+                  <Check className="h-3 w-3" strokeWidth={3} />
+                  Actuel
+                </span>
+              )}
+            </div>
+          </div>
+          <div className="flex shrink-0 pt-0.5" aria-hidden>
+            {swatches.map((color, i) => (
+              <span
+                key={`${color}-${i}`}
+                className="-ml-1 h-4 w-4 rounded-full ring-2 ring-card first:ml-0"
+                style={{ backgroundColor: color }}
+              />
+            ))}
           </div>
         </div>
 
-        {/* Hero pill + headline + sub */}
-        <div className="relative px-4 pt-3">
-          <span
-            className="inline-block rounded-full px-2 py-0.5 text-[8px] font-bold uppercase tracking-[0.15em]"
-            style={{
-              backgroundColor: t.primary,
-              color: t.primaryFg,
-              borderRadius: t.borderRadius === 'none' ? '0' : '999px',
-            }}
-          >
-            Nouveau
-          </span>
-          <div
-            className="mt-1.5 text-[16px] font-bold leading-[1.1] tracking-tight"
-            style={{ fontFamily: t.fontHeading, color: t.foreground }}
-          >
-            {nicheHeadline(template.niche)}
-          </div>
-          <div className="mt-0.5 line-clamp-1 text-[9px] leading-snug" style={{ color: t.muted }}>
-            {nicheSub(template.niche)}
-          </div>
-        </div>
-
-        {/* 3-card product strip — denser preview */}
-        <div className="absolute inset-x-3 bottom-3 grid grid-cols-3 gap-1.5">
-          {[0, 1, 2].map((i) => {
-            const fillBg = i === 0
-              ? `linear-gradient(135deg, ${t.gradientFrom}, ${t.gradientTo})`
-              : i === 1
-                ? t.surfaceMuted
-                : t.primary;
-            return (
-              <div
-                key={i}
-                className="flex flex-col overflow-hidden border"
-                style={{
-                  backgroundColor: t.surface,
-                  borderColor: t.border,
-                  borderRadius: radius,
-                  boxShadow:
-                    t.shadow === 'glow'
-                      ? `0 0 12px ${withAlpha(t.primary, 0.25)}`
-                      : t.shadow === 'soft'
-                        ? '0 4px 12px rgba(0,0,0,0.05)'
-                        : '0 1px 0 rgba(0,0,0,0.05)',
-                }}
-              >
-                <div className="h-12 w-full" style={{ background: fillBg }} />
-                <div className="px-1.5 py-1">
-                  <div className="h-1 w-3/4 rounded" style={{ backgroundColor: t.muted, opacity: 0.55 }} />
-                  <div className="mt-1 flex items-center justify-between">
-                    <div className="h-1 w-1/2 rounded" style={{ backgroundColor: t.primary }} />
-                    {i === 0 && (
-                      <span
-                        className="rounded px-1 text-[7px] font-bold"
-                        style={{
-                          backgroundColor: t.primary,
-                          color: t.primaryFg,
-                          borderRadius: t.borderRadius === 'none' ? '0' : '4px',
-                        }}
-                      >
-                        −30%
-                      </span>
-                    )}
-                  </div>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      </div>
-
-      {/* Card body — cleaner hierarchy */}
-      <div className="flex flex-1 flex-col gap-3 p-5">
-        {/* Niche chip + radius hint */}
-        <div className="flex items-center gap-2">
-          <span
-            className="grid h-6 w-6 place-items-center rounded-md text-white"
-            style={{ background: `linear-gradient(135deg, ${t.gradientFrom}, ${t.gradientTo})` }}
-          >
-            <NicheIcon className="h-3 w-3" />
-          </span>
-          <span className="text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
-            {template.nicheLabel}
-          </span>
-          <span className="ml-auto inline-flex items-center gap-1 rounded-md bg-muted/60 px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-wider text-muted-foreground">
-            {t.dark ? '◑ Dark' : '◐ Light'}
-          </span>
-        </div>
-
-        {/* Theme name + tagline */}
-        <div>
-          <h3 className="text-lg font-bold tracking-tight" style={{ fontFamily: t.fontHeading }}>
-            {template.name}
-          </h3>
-          <p className="text-xs text-muted-foreground">{template.tagline}</p>
-        </div>
-
-        {/* Description */}
-        <p className="line-clamp-2 text-[11px] leading-relaxed text-muted-foreground">
-          {template.description}
-        </p>
-
-        {/* Palette swatches + style chip */}
-        <div className="flex items-center justify-between gap-2 rounded-xl border border-border/40 bg-muted/20 px-2.5 py-1.5">
-          <div className="flex items-center gap-1.5">
-            <span className="h-4 w-4 rounded-full ring-1 ring-black/5" style={{ backgroundColor: t.primary }} />
-            <span className="h-4 w-4 rounded-full ring-1 ring-black/5" style={{ backgroundColor: t.accent }} />
-            <span className="h-4 w-4 rounded-full ring-1 ring-black/5" style={{ backgroundColor: t.background }} />
-            <span className="h-4 w-4 rounded-full ring-1 ring-black/5" style={{ backgroundColor: t.foreground }} />
-          </div>
-          <span className="text-[9px] font-semibold uppercase tracking-wider text-muted-foreground">
-            {t.borderRadius === 'none' ? 'Sharp' : t.borderRadius === 'xl' ? 'Round XL' : t.borderRadius === 'large' ? 'Round L' : 'Soft'}
-            <span className="mx-1 opacity-40">·</span>
-            {t.layout?.gridColumns || 3} cols
-          </span>
-        </div>
-
-        {/* Actions */}
-        <div className="mt-auto flex gap-2 pt-1">
+        <div className="mt-auto grid grid-cols-2 gap-2">
           <Button
             type="button"
             variant="outline"
             size="sm"
-            onClick={(e) => { e.stopPropagation(); onPreview(); }}
-            className="h-9 flex-1 gap-1.5 rounded-lg border-border/60"
+            onClick={onPreview}
+            className="h-9 gap-1.5 rounded-lg"
           >
             <Eye className="h-3.5 w-3.5" />
-            Voir en grand
+            Aperçu
           </Button>
           <Button
             type="button"
             size="sm"
-            onClick={(e) => { e.stopPropagation(); onUse(); }}
-            className={cn(
-              'h-9 flex-1 gap-1.5 rounded-lg gradient-brand text-white shadow-md shadow-primary/20',
-              selected && 'opacity-90'
-            )}
+            onClick={onUse}
+            className="h-9 gap-1.5 rounded-lg gradient-brand text-white"
           >
-            {selected ? (
-              <>
-                <Check className="h-3.5 w-3.5" strokeWidth={3} />
-                Actif
-              </>
-            ) : (
-              <>
-                Choisir
-                <ArrowRight className="h-3.5 w-3.5" />
-              </>
-            )}
+            {selected ? 'Garder' : 'Choisir'}
+            <ArrowRight className="h-3.5 w-3.5" />
           </Button>
         </div>
       </div>
-    </div>
+    </article>
   );
 }
 
@@ -480,14 +592,14 @@ function ModalHero({ template }: { template: StoreThemeTemplate }) {
   const sub = nicheLongSub(template.niche);
   const radius = RADIUS_PX[t.borderRadius];
   const titleSize =
-    t.fontDisplaySize === 'xlarge' ? 'text-5xl sm:text-7xl' :
-    t.fontDisplaySize === 'large'  ? 'text-4xl sm:text-6xl' : 'text-3xl sm:text-5xl';
+    t.fontDisplaySize === 'xlarge' ? 'text-4xl sm:text-5xl' :
+    t.fontDisplaySize === 'large'  ? 'text-3xl sm:text-5xl' : 'text-3xl sm:text-4xl';
 
   if (hl === 'fullbleed') {
     return (
       <section className="relative overflow-hidden" style={{ backgroundColor: t.surfaceMuted }}>
         <ModalHeroPattern t={t} />
-        <div className="relative mx-auto max-w-5xl px-6 py-16 sm:py-24">
+        <div className="relative mx-auto max-w-5xl px-6 py-8 sm:py-10">
           <div className="mb-5 inline-flex items-center gap-2 px-3 py-1 text-[11px] font-bold uppercase tracking-[0.2em]" style={{ backgroundColor: t.primary, color: t.primaryFg }}>
             Nouvelle collection
           </div>
@@ -504,7 +616,7 @@ function ModalHero({ template }: { template: StoreThemeTemplate }) {
   if (hl === 'editorial') {
     return (
       <section className="relative overflow-hidden" style={{ backgroundColor: t.background }}>
-        <div className="relative mx-auto max-w-5xl px-6 py-16 sm:py-24">
+        <div className="relative mx-auto max-w-5xl px-6 py-8 sm:py-10">
           <div className="grid gap-8 lg:grid-cols-[1.4fr_1fr] lg:items-end">
             <div>
               <div className="mb-4 flex items-center gap-3 text-[11px] font-semibold uppercase tracking-[0.3em]" style={{ color: t.accent }}>
@@ -530,7 +642,7 @@ function ModalHero({ template }: { template: StoreThemeTemplate }) {
     return (
       <section className="relative overflow-hidden" style={{ backgroundColor: t.background }}>
         <ModalHeroPattern t={t} />
-        <div className="relative mx-auto grid max-w-5xl gap-8 px-6 py-14 sm:py-20 lg:grid-cols-2 lg:items-center">
+        <div className="relative mx-auto grid max-w-5xl gap-8 px-6 py-8 lg:grid-cols-2 lg:items-center">
           <div>
             <div className="mb-5 inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-semibold" style={{ borderColor: t.border, color: t.primary, backgroundColor: hexA(t.surface, 0.6) }}>
               <Sparkles className="h-3 w-3" />
@@ -543,7 +655,7 @@ function ModalHero({ template }: { template: StoreThemeTemplate }) {
             <div className="mt-7"><ModalCta t={t} label="Découvrir" /></div>
           </div>
           <div
-            className="relative aspect-square overflow-hidden"
+            className="relative aspect-[5/3] overflow-hidden"
             style={{ borderRadius: radius, background: `linear-gradient(135deg, ${t.gradientFrom}, ${t.gradientTo})` }}
           >
             <div className="absolute left-6 top-6 h-20 w-20 rounded-2xl" style={{ backgroundColor: hexA(t.surface, 0.55) }} aria-hidden />
@@ -561,7 +673,7 @@ function ModalHero({ template }: { template: StoreThemeTemplate }) {
   if (hl === 'minimal') {
     return (
       <section className="relative" style={{ backgroundColor: t.background }}>
-        <div className="mx-auto max-w-5xl px-6 py-20 sm:py-28">
+        <div className="mx-auto max-w-5xl px-6 py-8 sm:py-10">
           <div className="mb-6 text-[11px] font-bold uppercase tracking-[0.35em]" style={{ color: t.muted }}>
             Nouvelle collection
           </div>
@@ -606,7 +718,7 @@ function ModalHero({ template }: { template: StoreThemeTemplate }) {
             <p className="mt-4 text-[11px] font-semibold" style={{ color: t.foreground }}>Paiement à la livraison · Livraison à domicile · Service client</p>
           </div>
           <div className="overflow-hidden border" style={{ borderColor: t.border, borderRadius: radius, backgroundColor: t.surface }}>
-            <div className="aspect-[4/5]" style={{ background: `linear-gradient(160deg, ${t.gradientFrom}, ${t.gradientTo})` }} />
+            <div className="aspect-[5/3]" style={{ background: `linear-gradient(160deg, ${t.gradientFrom}, ${t.gradientTo})` }} />
             <div className="flex items-center justify-between p-4">
               <div className="h-2 w-1/2 rounded" style={{ backgroundColor: t.foreground, opacity: 0.7 }} />
               <div className="h-2 w-16 rounded" style={{ backgroundColor: t.primary }} />
@@ -621,7 +733,7 @@ function ModalHero({ template }: { template: StoreThemeTemplate }) {
   return (
     <section className="relative overflow-hidden" style={{ backgroundColor: t.background }}>
       <ModalHeroPattern t={t} />
-      <div className="relative mx-auto max-w-5xl px-6 py-14 sm:py-20">
+      <div className="relative mx-auto max-w-5xl px-6 py-8 sm:py-10">
         <div className="mx-auto max-w-3xl text-center">
           <div className="mb-5 inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-semibold" style={{ borderColor: t.border, color: t.foreground, backgroundColor: hexA(t.surface, 0.6) }}>
             <Sparkles className="h-3 w-3" />
@@ -1165,6 +1277,13 @@ function ModalFooter({ template, storeName }: { template: StoreThemeTemplate; st
 }
 
 export function ThemePreviewModal({ template, onClose, onUse }: ModalProps) {
+  const scrollerRef = useRef<HTMLDivElement>(null);
+  const [portalRoot, setPortalRoot] = useState<HTMLElement | null>(null);
+
+  useEffect(() => {
+    setPortalRoot(document.body);
+  }, []);
+
   // Lock scroll via gestionnaire partagé + Escape pour fermer.
   useEffect(() => {
     if (!template) return;
@@ -1179,22 +1298,30 @@ export function ThemePreviewModal({ template, onClose, onUse }: ModalProps) {
     };
   }, [template, onClose]);
 
-  if (!template) return null;
+  // The wizard sits inside an animated parent (transform), so a nested
+  // `fixed` modal lands in the page and the seller has to scroll to find it.
+  // Reset the storefront to the top every time a theme opens.
+  useEffect(() => {
+    scrollerRef.current?.scrollTo(0, 0);
+  }, [template?.id]);
+
+  if (!template || !portalRoot) return null;
   const t = template.theme;
   const fontsUrl = googleFontsHref(t);
   const storeName = STORE_NAMES[template.niche] || STORE_NAMES.general;
 
-  return (
+  return createPortal(
     <>
       {fontsUrl && <link rel="stylesheet" href={fontsUrl} />}
       <div
-        className="fixed inset-0 z-[60] flex items-center justify-center bg-black/70 p-3 backdrop-blur-sm sm:p-6"
+        className="fixed inset-0 z-[80] flex items-center justify-center bg-black/70 p-3 backdrop-blur-sm sm:p-5"
         onClick={onClose}
         role="dialog"
         aria-modal="true"
+        aria-label={`Aperçu du thème ${template.name}`}
       >
         <div
-          className="relative flex h-full max-h-[95vh] w-full max-w-6xl flex-col overflow-hidden rounded-2xl bg-card shadow-2xl"
+          className="relative flex h-[min(900px,calc(100dvh-1.5rem))] w-full max-w-6xl flex-col overflow-hidden rounded-2xl bg-card shadow-2xl"
           onClick={(e) => e.stopPropagation()}
           // The preview is a mock storefront in French — force LTR so the
           // toolbar and content render consistently even when the seller's
@@ -1235,7 +1362,8 @@ export function ThemePreviewModal({ template, onClose, onUse }: ModalProps) {
               iOS le geste UP ne « chaîne » vers le body (verrouillé via
               `lockBodyScroll()`) — ce qui bloquait le scroll de la preview. */}
           <div
-            className="flex-1 overflow-y-auto overscroll-contain touch-pan-y"
+            ref={scrollerRef}
+            className="min-h-0 flex-1 overflow-y-auto overscroll-contain touch-pan-y"
             style={tokensToCssVars(t)}
             dir="ltr"
           >
@@ -1327,7 +1455,8 @@ export function ThemePreviewModal({ template, onClose, onUse }: ModalProps) {
           </div>
         </div>
       </div>
-    </>
+    </>,
+    portalRoot,
   );
 }
 
@@ -1345,7 +1474,7 @@ export function ThemePreviewGrid({ templates, selectedId, onSelect }: GridProps)
   const [previewing, setPreviewing] = useState<StoreThemeTemplate | null>(null);
   return (
     <>
-      <div className="grid gap-5 md:grid-cols-2 lg:grid-cols-3">
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
         {templates.map((tpl) => (
           <ThemePreviewCard
             key={tpl.id}

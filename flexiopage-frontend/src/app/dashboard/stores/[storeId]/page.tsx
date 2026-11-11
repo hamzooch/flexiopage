@@ -172,49 +172,43 @@ interface BlockDef {
 }
 
 const BLOCKS: BlockDef[] = [
-  // Identité
-  { id: 'identity',  label: 'Identité',     icon: SettingsIcon, group: 'identity', mode: 'inline', hint: 'Nom, description, statut.' },
-  { id: 'theme',     label: 'Thème',        icon: Palette,      group: 'identity', mode: 'inline', hint: 'Palette + structure visuelle.' },
-  { id: 'branding',  label: 'Logo & favicon', icon: ImageIcon,  group: 'identity', mode: 'inline', hint: 'L\'image qui te représente.' },
-  // Header
-  { id: 'announce',  label: 'Bandeau annonce', icon: Megaphone, group: 'header', mode: 'inline', hint: 'Petits messages au-dessus du header.' },
-  { id: 'navbar',    label: 'Navbar',       icon: PanelTop,     group: 'header', mode: 'inline', hint: 'Menu, logo, recherche.' },
-  // Accueil
-  { id: 'hero',      label: 'Hero',         icon: GalleryHorizontal, group: 'home', mode: 'inline', hint: 'Titre, sous-titre, image principale.' },
-  { id: 'slider',    label: 'Slider',       icon: GalleryHorizontal, group: 'home', mode: 'inline', hint: 'Carousel auto-play avec images.' },
-  { id: 'products',  label: 'Grille produits', icon: Package,   group: 'home', mode: 'inline', hint: 'Affichage de la grille sur l\'accueil.' },
-  { id: 'testimonials', label: 'Témoignages', icon: Quote,      group: 'home', mode: 'inline', hint: 'Avis clients avec avatar et note.' },
-  { id: 'video',     label: 'Vidéo',         icon: GalleryHorizontal, group: 'home', mode: 'inline', hint: 'YouTube, Vimeo ou mp4 avec paragraphe.' },
-  { id: 'faq',       label: 'FAQ',           icon: MessageCircle, group: 'home', mode: 'inline', hint: 'Questions fréquentes en accordéon.' },
-  { id: 'rich-text', label: 'Texte libre',   icon: FileText,      group: 'home', mode: 'inline', hint: 'Bloc markdown : histoire de marque, SEO.' },
-  { id: 'section-order', label: 'Ordre des sections', icon: Layers, group: 'home', mode: 'inline', hint: 'Glisser hero/slider/produits/témoignages/vidéo/FAQ/texte.' },
-  // Conversion
-  { id: 'cod',       label: 'Formulaire COD', icon: Wallet,     group: 'conversion', mode: 'inline', hint: 'Champs du paiement à la livraison.', physicalOnly: true },
-  { id: 'whatsapp',  label: 'Bouton WhatsApp', icon: MessageCircle, group: 'conversion', mode: 'inline', hint: 'Bulle flottante à droite.' },
-  { id: 'product-page', label: 'Page produit', icon: Tag,       group: 'conversion', mode: 'inline', hint: 'Toggles + ordre des sections produit.' },
-  { id: 'cart-page', label: 'Page Panier',   icon: ShoppingBag,   group: 'conversion', mode: 'inline', hint: 'Textes de la page panier — titre, vide, CTA.' },
-  { id: 'checkout-page', label: 'Page Checkout', icon: Receipt,   group: 'conversion', mode: 'inline', hint: 'Titre, réassurance et libellé du bouton final.' },
-  { id: 'thanks-page', label: 'Page Merci',  icon: PartyPopper,   group: 'conversion', mode: 'inline', hint: 'Message post-achat + toggles récap/étapes.' },
-  // Footer
-  { id: 'footer',    label: 'Footer',       icon: PanelBottom,  group: 'footer', mode: 'inline', hint: 'Contact, colonnes, signature.' },
-  { id: 'info-pages', label: 'Pages d\'information', icon: FileText, group: 'footer', mode: 'inline', hint: 'CGV, FAQ, Contact, Confidentialité.' },
-  // Avancé
-  { id: 'collections', label: 'Collections', icon: Layers,      group: 'advanced', mode: 'inline', hint: 'Regroupements de produits.' },
-  { id: 'coupons',   label: 'Codes promo',  icon: BadgePercent, group: 'advanced', mode: 'inline', hint: 'Réductions saisies au checkout.' },
-  { id: 'marketing', label: 'Marketing & pixels', icon: TrendingUp, group: 'advanced', mode: 'inline', hint: 'Meta, TikTok, Snap, GA4.' },
-  { id: 'newsletter', label: 'Newsletter & popup', icon: Mail,   group: 'advanced', mode: 'inline', hint: 'Popup welcome, liste emails.' },
-  { id: 'delivery',  label: 'Livraison',     icon: Truck,        group: 'advanced', mode: 'inline', hint: 'MogaDelivery, adresse expéditeur.', physicalOnly: true },
+  { id: 'identity',  label: 'Identité',     icon: SettingsIcon, group: 'identity', mode: 'inline', hint: 'Nom, description, en ligne ou non.' },
+  { id: 'theme',     label: 'Thème',        icon: Palette,      group: 'identity', mode: 'inline', hint: 'Couleurs et look de la vitrine.' },
+  { id: 'branding',  label: 'Logo',         icon: ImageIcon,    group: 'identity', mode: 'inline', hint: 'Logo et icône du navigateur.' },
+  { id: 'cod',       label: 'Paiement à la livraison', icon: Wallet, group: 'conversion', mode: 'inline', hint: 'Champs que le client remplit.', physicalOnly: true },
+  { id: 'whatsapp',  label: 'WhatsApp',     icon: MessageCircle, group: 'conversion', mode: 'inline', hint: 'Bouton pour écrire à la boutique.' },
+  { id: 'delivery',  label: 'Livraison',    icon: Truck,        group: 'conversion', mode: 'inline', hint: 'Livreur et adresse d\'expédition.', physicalOnly: true },
+  { id: 'product-page', label: 'Fiche produit', icon: Tag,      group: 'conversion', mode: 'inline', hint: 'Ce que le client voit sur un produit.' },
+  { id: 'cart-page', label: 'Panier',       icon: ShoppingBag,  group: 'conversion', mode: 'inline', hint: 'Textes de la page panier.' },
+  { id: 'checkout-page', label: 'Commande', icon: Receipt,      group: 'conversion', mode: 'inline', hint: 'Dernière étape avant d\'envoyer la commande.' },
+  { id: 'thanks-page', label: 'Page merci', icon: PartyPopper,  group: 'conversion', mode: 'inline', hint: 'Message après la commande.' },
+  { id: 'hero',      label: 'Bannière',     icon: GalleryHorizontal, group: 'home', mode: 'inline', hint: 'Grand titre en haut de l\'accueil.' },
+  { id: 'slider',    label: 'Carrousel',    icon: GalleryHorizontal, group: 'home', mode: 'inline', hint: 'Images qui défilent.' },
+  { id: 'products',  label: 'Produits',     icon: Package,      group: 'home', mode: 'inline', hint: 'Grille de produits sur l\'accueil.' },
+  { id: 'testimonials', label: 'Avis clients', icon: Quote,     group: 'home', mode: 'inline', hint: 'Témoignages, photo et note.' },
+  { id: 'video',     label: 'Vidéo',        icon: GalleryHorizontal, group: 'home', mode: 'inline', hint: 'YouTube, Vimeo ou fichier vidéo.' },
+  { id: 'faq',       label: 'Questions',    icon: MessageCircle, group: 'home', mode: 'inline', hint: 'Questions fréquentes.' },
+  { id: 'rich-text', label: 'Texte',        icon: FileText,     group: 'home', mode: 'inline', hint: 'Histoire de la marque, texte libre.' },
+  { id: 'section-order', label: 'Ordre des blocs', icon: Layers, group: 'home', mode: 'inline', hint: 'Déplacer les blocs de l\'accueil.' },
+  { id: 'announce',  label: 'Bandeau',      icon: Megaphone,    group: 'header', mode: 'inline', hint: 'Message tout en haut de la page.' },
+  { id: 'navbar',    label: 'Menu',         icon: PanelTop,     group: 'header', mode: 'inline', hint: 'Liens, logo, recherche.' },
+  { id: 'footer',    label: 'Pied de page', icon: PanelBottom,  group: 'footer', mode: 'inline', hint: 'Contact, colonnes, signature.' },
+  { id: 'info-pages', label: 'Pages légales', icon: FileText,   group: 'footer', mode: 'inline', hint: 'CGV, contact, confidentialité.' },
+  { id: 'collections', label: 'Collections', icon: Layers,      group: 'advanced', mode: 'inline', hint: 'Regrouper des produits.' },
+  { id: 'coupons',   label: 'Codes promo',  icon: BadgePercent, group: 'advanced', mode: 'inline', hint: 'Réductions à la commande.' },
+  { id: 'marketing', label: 'Publicité',    icon: TrendingUp,   group: 'advanced', mode: 'inline', hint: 'Meta, TikTok, Snap, Google.' },
+  { id: 'newsletter', label: 'Newsletter',  icon: Mail,         group: 'advanced', mode: 'inline', hint: 'Popup et liste d\'emails.' },
   { id: 'abandoned', label: 'Paniers abandonnés', icon: ShoppingCart, group: 'advanced', mode: 'inline', hint: 'Relances WhatsApp.', physicalOnly: true },
-  { id: 'apps',      label: 'Apps & intégrations', icon: Sparkles, group: 'advanced', mode: 'inline', hint: 'Vue d\'ensemble des modules.' },
+  { id: 'apps',      label: 'Applications', icon: Sparkles,     group: 'advanced', mode: 'inline', hint: 'Modules connectés à la boutique.' },
 ];
 
 const GROUP_LABELS: Record<BlockDef['group'], string> = {
-  identity: 'Identité',
-  header: 'Header',
-  home: 'Page d\'accueil',
-  conversion: 'Conversion',
-  footer: 'Footer & pages',
-  advanced: 'Avancé',
+  identity: 'Boutique',
+  header: 'En-tête',
+  home: 'Accueil',
+  conversion: 'Vente',
+  footer: 'Pages',
+  advanced: 'Plus',
 };
 
 // ─────────────────────────────────────────────────────────────────────
@@ -234,10 +228,10 @@ const PREVIEW_PAGES: PreviewPageDef[] = [
   { id: 'home',     label: 'Accueil',    icon: ImageIcon,   buildPath: ({ slug }) => `/${slug}` },
   { id: 'product',  label: 'Produit',    icon: Package,     buildPath: ({ slug, productSlug }) => productSlug ? `/${slug}/product/${productSlug}` : null },
   { id: 'cart',     label: 'Panier',     icon: ShoppingCart, buildPath: ({ slug }) => `/${slug}/cart` },
-  { id: 'checkout', label: 'Checkout',   icon: Wallet,      buildPath: ({ slug }) => `/${slug}/cart/checkout` },
+  { id: 'checkout', label: 'Commande',   icon: Wallet,      buildPath: ({ slug }) => `/${slug}/cart/checkout` },
   { id: 'thanks',   label: 'Merci',      icon: CheckCircle2, buildPath: ({ orderId }) => orderId ? `/thanks/cod/${orderId}` : null },
   { id: 'collection', label: 'Collection', icon: Layers,    buildPath: ({ slug, collectionSlug }) => collectionSlug ? `/${slug}/c/${collectionSlug}` : null },
-  { id: 'wishlist', label: 'Wishlist',   icon: Quote,       buildPath: ({ slug }) => `/${slug}/wishlist` },
+  { id: 'wishlist', label: 'Favoris',    icon: Quote,       buildPath: ({ slug }) => `/${slug}/wishlist` },
   { id: 'info',     label: 'Page info',  icon: FileText,    buildPath: ({ slug, infoSlug }) => infoSlug ? `/${slug}/p/${infoSlug}` : null },
 ];
 
@@ -298,6 +292,10 @@ export default function StoreEditPage() {
   // vendeur voie le formulaire du block actif dès qu'il ouvre la page.
   type MobileTab = 'blocks' | 'editor' | 'preview';
   const [mobileTab, setMobileTab] = useState<MobileTab>('editor');
+  // Sous xl la colonne aperçu ne tient pas à côté du menu du tableau de
+  // bord. On la garde en panneau, ouverte à la demande, pour que le
+  // formulaire reste visible pendant la modification.
+  const [previewOpen, setPreviewOpen] = useState(false);
 
   // Rail expansion (desktop only). Default: expanded — a first-time seller
   // sees icon + label + hint and can tell what each block does at a glance.
@@ -601,6 +599,17 @@ export default function StoreEditPage() {
           </Link>
           <Button
             type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => setPreviewOpen((v) => !v)}
+            className="hidden h-9 gap-1.5 rounded-lg px-2 md:inline-flex xl:hidden"
+            aria-pressed={previewOpen}
+          >
+            <Eye className="h-3.5 w-3.5" />
+            Aperçu
+          </Button>
+          <Button
+            type="button"
             onClick={handleSave}
             disabled={!dirty || saving}
             className={cn(
@@ -638,10 +647,10 @@ export default function StoreEditPage() {
       {/* ── Mobile tab bar — visible < lg uniquement. Sur desktop les 3
              zones (rail / éditeur / aperçu) sont côte à côte ; sur mobile
              on n'a la place que pour UNE seule à la fois. ─────────────── */}
-      <div className="flex shrink-0 items-center gap-1 border-b border-border/60 bg-card/60 px-2 py-1.5 lg:hidden">
+      <div className="flex shrink-0 items-center gap-1 border-b border-border/60 bg-card/60 px-2 py-1.5 md:hidden">
         {([
-          { id: 'blocks',  label: 'Blocks',  icon: Layers },
-          { id: 'editor',  label: 'Éditer',  icon: SettingsIcon },
+          { id: 'blocks',  label: 'Sections',  icon: Layers },
+          { id: 'editor',  label: 'Modifier',  icon: SettingsIcon },
           { id: 'preview', label: 'Aperçu',  icon: Eye },
         ] as const).map((t) => {
           const Icon = t.icon;
@@ -689,8 +698,8 @@ export default function StoreEditPage() {
             // un swipe vers le haut en fin de scroll chaîne vers le body qui
             // ne peut pas scroller → Safari « accroche » et le scroll UP
             // paraît bugué (le DOWN garde son inertie, l'inverse coince).
-            'flex-col overflow-y-auto overscroll-contain touch-pan-y border-r border-border/60 bg-card/40 lg:flex lg:w-96 lg:shrink-0',
-            mobileTab === 'editor' ? 'flex w-full' : 'hidden',
+            'flex-col overflow-y-auto overscroll-contain touch-pan-y border-r border-border/60 bg-card/40 md:flex md:min-w-0 md:flex-1 xl:w-[420px] xl:max-w-[440px] xl:flex-none',
+            mobileTab === 'editor' ? 'flex w-full' : 'hidden md:flex',
           )}
         >
           {currentBlock ? (
@@ -725,6 +734,8 @@ export default function StoreEditPage() {
           previewBust={previewBust}
           onReload={() => setPreviewBust((n) => n + 1)}
           mobileVisible={mobileTab === 'preview'}
+          overlay={previewOpen}
+          onClose={() => setPreviewOpen(false)}
           path={previewPath}
         />
       </div>
@@ -814,64 +825,65 @@ function BlockList({
     return set;
   }, [dirtyTopKeys, dirtySettingsPaths]);
 
-  const groups: Array<BlockDef['group']> = ['identity', 'header', 'home', 'conversion', 'footer', 'advanced'];
+  const [query, setQuery] = useState('');
+  const q = query.trim().toLowerCase();
+  const groups: Array<BlockDef['group']> = ['identity', 'conversion', 'home', 'header', 'footer', 'advanced'];
 
   return (
     <aside
       className={cn(
-        // Mobile : plein écran quand actif (onglet 'blocks'). Desktop :
-        // largeur = 240px si expanded, 56px si compact. On garde overflow
-        // vertical pour scroller la liste longue. `overscroll-contain` isole
-        // le scroll pour éviter le chaînage vers le body fixe (layout 100dvh).
-        'shrink-0 flex-col overflow-y-auto overscroll-contain touch-pan-y border-r border-border/60 bg-card/60 lg:flex',
+        'shrink-0 flex-col overflow-y-auto overscroll-contain touch-pan-y border-r border-border/60 bg-card/60 md:flex',
         hiddenOnMobile ? 'hidden' : 'flex w-full',
-        expanded ? 'lg:w-60' : 'lg:w-14',
+        expanded ? 'md:w-60' : 'md:w-14',
       )}
     >
-      {/* Toggle rail — desktop only. Placement sticky pour rester visible
-          quand la liste scrolle. Ancré à droite en mode expanded (chic),
-          centré en mode compact (visuellement équilibré). */}
       <div
         className={cn(
-          'sticky top-0 z-10 hidden border-b border-border/60 bg-card/80 py-2 backdrop-blur lg:flex',
-          expanded ? 'items-center justify-between px-3' : 'items-center justify-center px-1.5',
+          'sticky top-0 z-10 border-b border-border/60 bg-card/95 px-2 py-2 backdrop-blur',
+          !expanded && 'md:flex md:justify-center',
         )}
       >
-        {expanded && (
-          <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-            Éditer
-          </span>
-        )}
-        <button
-          type="button"
-          onClick={onToggleExpanded}
-          className="grid h-8 w-8 place-items-center rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-          title={expanded ? 'Réduire le menu' : 'Étendre le menu'}
-          aria-label={expanded ? 'Réduire le menu' : 'Étendre le menu'}
-        >
-          {expanded ? <PanelLeftClose className="h-4 w-4" /> : <PanelLeftOpen className="h-4 w-4" />}
-        </button>
+        <div className={cn('flex items-center gap-2', !expanded && 'md:justify-center')}>
+          <label className={cn('relative min-w-0 flex-1', !expanded && 'md:hidden')}>
+            <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+            <input
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Chercher une section"
+              className="h-8 w-full rounded-lg border border-border/60 bg-background pl-8 pr-2 text-xs outline-none focus:border-primary/40"
+            />
+          </label>
+          <button
+            type="button"
+            onClick={onToggleExpanded}
+            className="hidden h-8 w-8 place-items-center rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground md:grid"
+            title={expanded ? 'Réduire le menu' : 'Étendre le menu'}
+            aria-label={expanded ? 'Réduire le menu' : 'Étendre le menu'}
+          >
+            {expanded ? <PanelLeftClose className="h-4 w-4" /> : <PanelLeftOpen className="h-4 w-4" />}
+          </button>
+        </div>
       </div>
 
-      <div className={cn('flex-1 py-3', expanded ? 'px-2 lg:px-2' : 'px-2 lg:px-1.5 lg:py-2')}>
+      <div className={cn('flex-1 py-3', expanded ? 'px-2' : 'px-2 md:px-1.5 md:py-2')}>
         {groups.map((g, gi) => {
-          const items = blocks.filter((b) => b.group === g);
+          const items = blocks.filter((b) => b.group === g && (!q || `${b.label} ${b.hint}`.toLowerCase().includes(q)));
           if (items.length === 0) return null;
           return (
-            <div key={g} className={cn('mb-4 last:mb-0', !expanded && 'lg:mb-2')}>
+            <div key={g} className={cn('mb-4 last:mb-0', !expanded && 'md:mb-2')}>
               {/* Label du groupe : visible sur mobile ET sur desktop
                  expanded. En mode compact desktop, on ne montre qu'un
                  séparateur fin. */}
               <div
                 className={cn(
                   'mb-1.5 px-2 text-[10px] font-bold uppercase tracking-wider text-muted-foreground',
-                  expanded ? 'lg:block' : 'lg:hidden',
+                  expanded ? 'md:block' : 'md:hidden',
                 )}
               >
                 {GROUP_LABELS[g]}
               </div>
               {gi > 0 && !expanded && (
-                <div className="mx-1 mb-1.5 hidden h-px bg-border/60 lg:block" aria-hidden />
+                <div className="mx-1 mb-1.5 hidden h-px bg-border/60 md:block" aria-hidden />
               )}
               <div className="space-y-0.5">
                 {items.map((b) => {
@@ -890,7 +902,7 @@ function BlockList({
                         // Desktop expanded : idem (largeur ~240px).
                         // Desktop compact : carré 40x40 centré, icône seule.
                         'group relative flex w-full items-start gap-2.5 rounded-lg px-2.5 py-2 text-left transition-colors',
-                        !expanded && 'lg:h-10 lg:w-10 lg:items-center lg:justify-center lg:px-0 lg:py-0 lg:mx-auto',
+                        !expanded && 'md:mx-auto md:h-10 md:w-10 md:items-center md:justify-center md:px-0 md:py-0',
                         active
                           ? 'bg-primary/10 text-primary'
                           : 'text-foreground/80 hover:bg-muted hover:text-foreground',
@@ -899,7 +911,7 @@ function BlockList({
                       <Icon
                         className={cn(
                           'shrink-0',
-                          expanded ? 'mt-0.5 h-[18px] w-[18px]' : 'h-4 w-4 lg:h-[18px] lg:w-[18px]',
+                          expanded ? 'mt-0.5 h-[18px] w-[18px]' : 'h-4 w-4 md:h-[18px] md:w-[18px]',
                           active ? 'text-primary' : 'text-muted-foreground',
                         )}
                       />
@@ -908,7 +920,7 @@ function BlockList({
                       <span
                         className={cn(
                           'min-w-0 flex-1',
-                          !expanded && 'lg:hidden',
+                          !expanded && 'md:hidden',
                         )}
                       >
                         <span className="block truncate text-sm font-medium leading-tight">{b.label}</span>
@@ -923,7 +935,7 @@ function BlockList({
                             'shrink-0 rounded-full bg-amber-500',
                             expanded
                               ? 'mt-1.5 h-2 w-2'
-                              : 'h-1.5 w-1.5 lg:absolute lg:right-1 lg:top-1 lg:h-2 lg:w-2 lg:border lg:border-card',
+                              : 'h-1.5 w-1.5 md:absolute md:right-1 md:top-1 md:h-2 md:w-2 md:border md:border-card',
                           )}
                           title="Modifications non enregistrées"
                         />
@@ -932,7 +944,7 @@ function BlockList({
                         <ChevronRight
                           className={cn(
                             'mt-0.5 h-3.5 w-3.5 shrink-0 text-muted-foreground/60',
-                            !expanded && 'lg:hidden',
+                            !expanded && 'md:hidden',
                           )}
                         />
                       )}
@@ -943,6 +955,9 @@ function BlockList({
             </div>
           );
         })}
+        {q && blocks.every((b) => !`${b.label} ${b.hint}`.toLowerCase().includes(q)) && (
+          <p className="px-2 py-6 text-center text-xs text-muted-foreground">Aucune section pour « {query.trim()} ».</p>
+        )}
       </div>
     </aside>
   );
@@ -1428,7 +1443,7 @@ function HeroEditor({ block, storeId, store, setStore, markDirty }: EditorCtx) {
       <EditorHeader title={block.label} hint={block.hint} />
       <div className="space-y-5 p-5">
         <Toggle
-          label="Afficher le hero"
+          label="Afficher la bannière"
           checked={storefront.showHero !== false}
           onChange={(v) => patchHero({ showHero: v })}
         />
@@ -1453,7 +1468,7 @@ function HeroEditor({ block, storeId, store, setStore, markDirty }: EditorCtx) {
                 storeId={storeId}
                 value={storefront.heroImage}
                 onChange={(url) => patchHero({ heroImage: url || '' })}
-                label="Image hero (desktop)"
+                label="Image de la bannière"
                 shape="wide"
                 helper="Téléverse depuis ton ordi ou pioche dans la médiathèque."
                 imageSizeRecommendation={imageSizes.heroDesktop}
@@ -1464,9 +1479,9 @@ function HeroEditor({ block, storeId, store, setStore, markDirty }: EditorCtx) {
                 storeId={storeId}
                 value={storefront.heroImageMobile}
                 onChange={(url) => patchHero({ heroImageMobile: url || '' })}
-                label="Image hero (mobile, optionnel)"
+                label="Image mobile, optionnelle"
                 shape="square"
-                helper="Si vide, on utilise l'image desktop."
+                helper="Si vide, on utilise l'image de la bannière."
                 imageSizeRecommendation={imageSizes.heroMobile}
               />
             </div>
@@ -1985,13 +2000,13 @@ function DraggableOrderList<T>({
 // ─────────────────────────────────────────────────────────────────────
 
 const SECTION_LABELS: Record<MovableSectionId, string> = {
-  hero:            'Hero',
-  slider:          'Slider',
-  products:        'Grille produits',
-  testimonials:    'Témoignages',
+  hero:            'Bannière',
+  slider:          'Carrousel',
+  products:        'Produits',
+  testimonials:    'Avis clients',
   video:           'Vidéo',
-  faq:             'FAQ',
-  richText:        'Texte libre',
+  faq:             'Questions',
+  richText:        'Texte',
   featuredProduct: 'Produit vedette',
 };
 
@@ -4863,6 +4878,8 @@ function PreviewPane({
   onReload,
   path,
   mobileVisible,
+  overlay,
+  onClose,
 }: {
   previewPages: PreviewPageDef[];
   previewPage: string;
@@ -4872,14 +4889,19 @@ function PreviewPane({
   previewBust: number;
   onReload: () => void;
   path: string | null;
-  /** Sur < lg, ne s'affiche que si l'onglet « Aperçu » est actif. */
+  /** Sur téléphone, ne s'affiche que si l'onglet « Aperçu » est actif. */
   mobileVisible: boolean;
+  /** Entre tablette et grand écran : panneau par-dessus le formulaire. */
+  overlay: boolean;
+  onClose: () => void;
 }) {
   return (
     <section
       className={cn(
-        'min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-muted/40 lg:flex',
-        mobileVisible ? 'flex' : 'hidden',
+        'min-h-0 min-w-0 flex-col overflow-hidden bg-muted/40',
+        'xl:relative xl:flex xl:min-w-0 xl:flex-1 xl:shadow-none',
+        mobileVisible ? 'flex w-full' : 'hidden',
+        overlay && 'md:fixed md:inset-y-0 md:right-0 md:z-40 md:flex md:w-[min(100%,480px)] md:border-l md:border-border/60 md:bg-card md:shadow-2xl xl:static xl:z-auto xl:w-auto xl:border-0',
       )}
     >
       {/* Toolbar — sur petit écran les pages défilent en horizontal pour
@@ -4910,7 +4932,7 @@ function PreviewPane({
           {([
             { id: 'mobile', icon: Smartphone, label: 'Mobile', width: 375 },
             { id: 'tablet', icon: Tablet, label: 'Tablette', width: 768 },
-            { id: 'desktop', icon: Monitor, label: 'Desktop', width: 1280 },
+            { id: 'desktop', icon: Monitor, label: 'Ordinateur', width: 1280 },
           ] as const).map((d) => {
             const Icon = d.icon;
             const active = previewDevice === d.id;
@@ -4943,6 +4965,17 @@ function PreviewPane({
           >
             <RotateCw className="h-4 w-4" />
           </button>
+          {overlay && (
+            <button
+              type="button"
+              onClick={onClose}
+              title="Fermer l'aperçu"
+              aria-label="Fermer l'aperçu"
+              className="ml-0.5 hidden h-8 w-8 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-card hover:text-foreground md:grid xl:hidden"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          )}
         </div>
       </div>
 

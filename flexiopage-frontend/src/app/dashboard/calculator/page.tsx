@@ -236,7 +236,7 @@ export default function CodCalculatorPage() {
 
   async function handleSave() {
     if (inputs.adBudget <= 0 || inputs.sellingPrice <= 0) {
-      flash('Saisis au moins le prix de vente et le budget pub', 'error');
+      flash('Saisis le prix de vente et le budget pub avant de sauvegarder', 'error');
       return;
     }
     const name = await prompt({
@@ -281,14 +281,14 @@ export default function CodCalculatorPage() {
 
   // Empty state — no inputs at all => render a welcoming pitch instead of
   // a bunch of zeroes that look like a broken page.
-  const isEmpty = inputs.sellingPrice === 0 && inputs.adBudget === 0;
+  const isEmpty = inputs.sellingPrice <= 0;
 
   return (
     <div className="space-y-4">
       <PageHeader
         icon={Calculator}
         title="Calculatrice de profit"
-        description="Estime le profit net d’une campagne avant de dépenser en publicité."
+        description="Ce qui te reste sur un colis livré, une fois le produit, le livreur, les retours et la pub retirés."
         actions={
           <>
             <button
@@ -304,12 +304,12 @@ export default function CodCalculatorPage() {
             <button
               type="button"
               onClick={resetAll}
-              aria-label="Réinitialiser"
-              title="Réinitialiser"
+              aria-label="Recommencer"
+              title="Recommencer"
               className="inline-flex h-9 items-center gap-1.5 rounded-xl border border-border/70 bg-card px-2.5 text-xs font-semibold transition-colors hover:bg-muted sm:px-3"
             >
               <X className="h-3.5 w-3.5" />
-              <span className="hidden sm:inline">Reset</span>
+              <span className="hidden sm:inline">Recommencer</span>
             </button>
             <button
               type="button"
@@ -349,10 +349,14 @@ export default function CodCalculatorPage() {
       />
 
       <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_22.5rem]">
-        {/* Left — inputs. Produit & Pub vivent côte à côte sur md+ pour gagner
-            de la hauteur ; Opérations COD reste full-width en dessous (6 champs,
-            besoin d'espace). */}
+        {/* Left — inputs. Le résultat essentiel reste au-dessus tant que la
+            colonne de droite n'a pas la place de s'afficher. */}
         <div className="space-y-4">
+        {!isEmpty && (
+          <div className="xl:hidden">
+            <KpiGrid inputs={inputs} outputs={outputs} currency={currency} />
+          </div>
+        )}
         <div className="grid gap-4 md:grid-cols-2">
           <InputSection icon={Package} title="Produit & vente" tone="violet" defaultOpen>
             <Field
@@ -363,8 +367,8 @@ export default function CodCalculatorPage() {
               onChange={(v) => setField('sellingPrice', v)}
             />
             <Field
-              label="Coût d'achat (COGS)"
-              tooltip="Ce que tu paies par unité au fournisseur."
+              label="Coût du produit"
+              tooltip="Ce que tu paies au fournisseur pour une pièce, emballage compris."
               currency={currency}
               value={inputs.productCost}
               onChange={(v) => setField('productCost', v)}
@@ -378,18 +382,18 @@ export default function CodCalculatorPage() {
             />
           </InputSection>
 
-          <InputSection icon={Megaphone} title="Publicité (Meta / TikTok)" tone="pink" defaultOpen>
+          <InputSection icon={Megaphone} title="Publicité" tone="pink" defaultOpen>
             <Field
-              label="Budget pub total"
-              tooltip="Combien tu vas dépenser sur Meta/TikTok pour cette campagne."
+              label="Budget pub"
+              tooltip="Ce que tu comptes dépenser sur Facebook, Instagram ou TikTok pour cette campagne."
               currency={currency}
               value={inputs.adBudget}
               onChange={(v) => setField('adBudget', v)}
             />
             {!advanced && (
               <Field
-                label="CPL (Cost Per Lead)"
-                tooltip="Combien te coûte une personne qui remplit le formulaire de commande. Mets ton estimation ou regarde un dashboard d'ancienne campagne."
+                label="Coût d'une commande reçue"
+                tooltip="Combien te coûte une personne qui remplit le formulaire. Regarde une ancienne campagne, ou estime."
                 currency={currency}
                 value={inputs.cpl}
                 onChange={(v) => setField('cpl', v)}
@@ -402,83 +406,83 @@ export default function CodCalculatorPage() {
               className="inline-flex items-center gap-1.5 text-xs font-medium text-primary hover:underline"
             >
               <Wand2 className="h-3.5 w-3.5" />
-              {advanced ? 'Mode simple (CPL direct)' : 'Mode avancé (CPM × CTR × conv.)'}
+              {advanced ? 'Je connais le coût d’une commande' : 'Je n’ai que les chiffres de la pub'}
             </button>
 
             {advanced && (
               <div className="grid grid-cols-1 gap-3 rounded-xl border border-border/60 bg-muted/30 p-3 sm:grid-cols-3">
                 <Field
-                  label="CPM"
-                  tooltip="Coût pour 1000 impressions."
+                  label="Coût pour 1 000 vues"
+                  tooltip="Ce que la régie te facture pour 1 000 affichages de la pub."
                   currency={currency}
                   value={inputs.cpm || 0}
                   onChange={(v) => setField('cpm', v)}
                   compact
                 />
                 <Field
-                  label="CTR"
-                  tooltip="Click-through rate — % d'impressions qui cliquent."
+                  label="Taux de clic"
+                  tooltip="Pour 100 personnes qui voient la pub, combien cliquent."
                   value={inputs.ctr || 0}
                   onChange={(v) => setField('ctr', v)}
                   suffix="%"
                   compact
                 />
                 <Field
-                  label="Conv. landing"
-                  tooltip="% de visiteurs landing qui deviennent leads."
+                  label="Visiteurs qui commandent"
+                  tooltip="Pour 100 visiteurs de la page, combien remplissent le formulaire."
                   value={inputs.landingConversionRate || 0}
                   onChange={(v) => setField('landingConversionRate', v)}
                   suffix="%"
                   compact
                 />
                 <p className="col-span-full text-[11px] text-muted-foreground">
-                  CPL calculé : <span className="font-semibold tabular-nums text-foreground">{money(outputs.effectiveCpl, currency)}</span>
+                  Une commande reçue te coûte <span className="font-semibold tabular-nums text-foreground">{money(outputs.effectiveCpl, currency)}</span>
                 </p>
               </div>
             )}
           </InputSection>
         </div>
 
-          <InputSection icon={Truck} title="Opérations COD" tone="emerald" defaultOpen>
+          <InputSection icon={Truck} title="Livraison et retours" tone="emerald" defaultOpen>
             <div className="grid grid-cols-2 gap-3">
               <Field
-                label="Taux de confirmation"
-                tooltip="% de leads qui confirment au téléphone (call center)."
+                label="Commandes confirmées"
+                tooltip="Sur 100 formulaires, combien de clients confirment au téléphone."
                 value={inputs.confirmationRate}
                 onChange={(v) => setField('confirmationRate', v)}
                 suffix="%"
               />
               <Field
-                label="Taux de livraison"
-                tooltip="% de commandes confirmées qui sont effectivement livrées."
+                label="Colis livrés"
+                tooltip="Sur 100 commandes confirmées, combien sont vraiment livrées et payées."
                 value={inputs.deliveryRate}
                 onChange={(v) => setField('deliveryRate', v)}
                 suffix="%"
               />
               <Field
-                label="Coût shipping / livré"
-                tooltip="Frais facturés par la société de livraison par colis livré."
+                label="Frais du livreur"
+                tooltip="Ce que le transporteur te facture pour un colis livré."
                 currency={currency}
                 value={inputs.shippingCost}
                 onChange={(v) => setField('shippingCost', v)}
               />
               <Field
-                label="Coût retour / non livré"
-                tooltip="Frais facturés par colis non livré (retour à l'expéditeur)."
+                label="Frais d'un retour"
+                tooltip="Ce que le transporteur te facture quand le client refuse ou est absent."
                 currency={currency}
                 value={inputs.returnCost}
                 onChange={(v) => setField('returnCost', v)}
               />
               <Field
-                label="Coût call center / lead"
-                tooltip="Optionnel — frais par appel de confirmation."
+                label="Coût d'un appel"
+                tooltip="Laisse 0 si tu appelles toi-même. Sinon, le prix d'une confirmation."
                 currency={currency}
                 value={inputs.callCenterCostPerLead}
                 onChange={(v) => setField('callCenterCostPerLead', v)}
               />
               <Field
-                label="Commission COD"
-                tooltip="Commission prise par la société de livraison sur le cash collecté."
+                label="Commission du livreur"
+                tooltip="Pourcentage que le transporteur garde sur l'argent encaissé."
                 value={inputs.codFeePercent}
                 onChange={(v) => setField('codFeePercent', v)}
                 suffix="%"
@@ -493,7 +497,9 @@ export default function CodCalculatorPage() {
             <EmptyState />
           ) : (
             <>
-              <KpiGrid outputs={outputs} currency={currency} />
+              <div className="hidden xl:block">
+                <KpiGrid inputs={inputs} outputs={outputs} currency={currency} />
+              </div>
               <FunnelCard outputs={outputs} />
               <CostBreakdownCard outputs={outputs} currency={currency} />
               <MetricsTable inputs={inputs} outputs={outputs} currency={currency} />
@@ -529,7 +535,7 @@ export default function CodCalculatorPage() {
                       <div className="truncate text-sm font-semibold">{s.name}</div>
                       <div className="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[11px] text-muted-foreground">
                         <span>Profit : <span className={cn('font-semibold tabular-nums', s.outputs.netProfit >= 0 ? 'text-emerald-700' : 'text-red-700')}>{money(s.outputs.netProfit, currency)}</span></span>
-                        <span>ROAS ×{s.outputs.roas.toFixed(2)}</span>
+                        <span>Retour pub ×{s.outputs.roas.toFixed(2)}</span>
                         <span>{new Date(s.createdAt).toLocaleDateString('fr-FR')}</span>
                       </div>
                     </button>
@@ -607,9 +613,13 @@ function CountryPresets({
           </select>
           <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
         </div>
-        {selected && (
+        {selected ? (
           <p className="text-[11px] text-muted-foreground">
-            Les chiffres repris du produit restent modifiables.
+            Prix, coût et livraison viennent du produit. Tu peux les changer.
+          </p>
+        ) : (
+          <p className="text-[11px] text-muted-foreground">
+            Le pays remplit des frais et des taux moyens. Tout reste modifiable.
           </p>
         )}
       </div>
@@ -792,9 +802,9 @@ function EmptyState() {
         <div className="mx-auto grid h-12 w-12 place-items-center rounded-2xl bg-muted">
           <Calculator className="h-5 w-5 text-muted-foreground" />
         </div>
-        <h3 className="mt-3 text-sm font-semibold">Saisis tes chiffres</h3>
+        <h3 className="mt-3 text-sm font-semibold">Commence par le prix</h3>
         <p className="mt-1 text-xs text-muted-foreground">
-          Renseigne au moins le prix de vente et le budget pub pour voir les estimations.
+          Mets le prix payé à la livraison. La marge du colis s’affiche tout de suite, la campagne dès que tu ajoutes la pub.
         </p>
       </CardContent>
     </Card>
@@ -815,33 +825,49 @@ function AnimatedNumber({ value, format }: { value: number; format: (n: number) 
   );
 }
 
-function KpiGrid({ outputs, currency }: { outputs: ReturnType<typeof calculate>; currency: string }) {
+/** Marge d'un colis réellement livré, avant de répartir la pub et les appels. */
+function parcelMargin(inputs: CalculatorInputs): number {
+  const units = inputs.unitsPerOrder > 0 ? inputs.unitsPerOrder : 1;
+  const revenue = inputs.sellingPrice * units;
+  return revenue
+    - inputs.productCost * units
+    - inputs.shippingCost
+    - revenue * (inputs.codFeePercent / 100);
+}
+
+function KpiGrid({ inputs, outputs, currency }: { inputs: CalculatorInputs; outputs: ReturnType<typeof calculate>; currency: string }) {
   const verdict = roasVerdict(outputs.roas, outputs.adSpend);
-  const profitable = outputs.netProfit >= 0;
+  const hasCampaign = outputs.adSpend > 0 && outputs.leads > 0;
+  const perParcel = hasCampaign ? outputs.profitPerDelivered : parcelMargin(inputs);
+  const profitable = hasCampaign ? outputs.netProfit >= 0 : perParcel >= 0;
   return (
     <Card className="overflow-hidden rounded-2xl">
       <div className={cn('px-4 py-4', profitable ? 'bg-emerald-500/10' : 'bg-red-500/10')}>
-        <div className="text-xs font-medium text-muted-foreground">Profit net</div>
+        <div className="text-xs font-medium text-muted-foreground">
+          {hasCampaign ? 'Il te reste, par colis livré' : 'Marge d’un colis livré'}
+        </div>
         <AutoFitValue className={cn('mt-1 text-3xl font-semibold tracking-tight', profitable ? 'text-emerald-700 dark:text-emerald-400' : 'text-red-700 dark:text-red-400')}>
-          <AnimatedNumber value={outputs.netProfit} format={(n) => `${n >= 0 ? '+' : ''}${money(n, currency)}`} />
+          <AnimatedNumber value={perParcel} format={(n) => `${n >= 0 ? '+' : ''}${money(n, currency)}`} />
         </AutoFitValue>
         <div className="mt-1.5 inline-flex items-center gap-1 text-xs text-muted-foreground">
           {profitable ? <TrendingUp className="h-3.5 w-3.5" /> : <TrendingDown className="h-3.5 w-3.5" />}
-          {profitable ? 'Campagne rentable' : 'Campagne en perte'}
+          {hasCampaign
+            ? (profitable ? 'La campagne laisse de l’argent' : 'La campagne perd de l’argent')
+            : 'Avant la pub et les appels. Ajoute le budget pour voir la campagne.'}
         </div>
       </div>
       <div className="grid grid-cols-3 divide-x divide-border/60 border-t border-border/60">
-        <Metric label="ROAS" hint="revenu / pub">
+        <Metric label="Campagne" hint={hasCampaign ? 'tout compris' : 'ajoute la pub'}>
+          <AnimatedNumber value={outputs.netProfit} format={(n) => money(n, currency)} />
+        </Metric>
+        <Metric label="Retour pub" hint="encaissé / dépensé">
           <span className="flex items-center gap-1.5">
-            <AnimatedNumber value={outputs.roas} format={(n) => `×${n.toFixed(2)}`} />
-            <RoasBadge verdict={verdict} />
+            <AnimatedNumber value={outputs.roas} format={(n) => hasCampaign ? `×${n.toFixed(2)}` : '—'} />
+            {hasCampaign && <RoasBadge verdict={verdict} />}
           </span>
         </Metric>
-        <Metric label="Marge" hint="profit / revenu">
-          <AnimatedNumber value={outputs.marginPercent} format={(n) => `${n.toFixed(1)} %`} />
-        </Metric>
-        <Metric label="Par livraison" hint="colis livré">
-          <AnimatedNumber value={outputs.profitPerDelivered} format={(n) => money(n, currency)} />
+        <Metric label="Marge" hint="profit / encaissé">
+          <AnimatedNumber value={outputs.marginPercent} format={(n) => hasCampaign ? `${n.toFixed(1)} %` : '—'} />
         </Metric>
       </div>
     </Card>
@@ -873,15 +899,15 @@ const FUNNEL_COLORS = ['#a855f7', '#ec4899', '#f97316', '#10b981'];
 
 function FunnelCard({ outputs }: { outputs: ReturnType<typeof calculate> }) {
   const data = [
-    { name: 'Leads', value: Math.round(outputs.leads), fill: FUNNEL_COLORS[0] },
-    { name: 'Confirmés', value: Math.round(outputs.confirmedOrders), fill: FUNNEL_COLORS[1] },
-    { name: 'Livrés', value: Math.round(outputs.deliveredOrders), fill: FUNNEL_COLORS[2] },
+    { name: 'Reçues', value: Math.round(outputs.leads), fill: FUNNEL_COLORS[0] },
+    { name: 'Confirmées', value: Math.round(outputs.confirmedOrders), fill: FUNNEL_COLORS[1] },
+    { name: 'Livrées', value: Math.round(outputs.deliveredOrders), fill: FUNNEL_COLORS[2] },
   ].filter((d) => d.value > 0);
   return (
     <Card className="rounded-2xl">
       <CardContent className="py-4">
-        <div className="mb-1 text-sm font-semibold">Tunnel de conversion</div>
-        <p className="mb-2 text-[10px] text-muted-foreground">Leads → confirmés au call center → livrés</p>
+        <div className="mb-1 text-sm font-semibold">Des formulaires aux colis livrés</div>
+        <p className="mb-2 text-[10px] text-muted-foreground">Commandes reçues, puis confirmées au téléphone, puis livrées</p>
         {data.length === 0 ? (
           <p className="grid h-32 place-items-center text-xs text-muted-foreground">— pas assez de données —</p>
         ) : (
@@ -913,12 +939,12 @@ const PIE_COLORS = ['#3b82f6', '#a855f7', '#10b981', '#f97316', '#ec4899', '#eab
 
 function CostBreakdownCard({ outputs, currency }: { outputs: ReturnType<typeof calculate>; currency: string }) {
   const slices = [
-    { name: 'Ads', value: outputs.adSpend },
+    { name: 'Publicité', value: outputs.adSpend },
     { name: 'Produit', value: outputs.productCostTotal },
-    { name: 'Shipping', value: outputs.shippingCostTotal },
+    { name: 'Livreur', value: outputs.shippingCostTotal },
     { name: 'Retours', value: outputs.returnCostTotal },
-    { name: 'Call center', value: outputs.callCenterTotal },
-    { name: 'Comm. COD', value: outputs.codFeeTotal },
+    { name: 'Appels', value: outputs.callCenterTotal },
+    { name: 'Commission', value: outputs.codFeeTotal },
   ].filter((s) => s.value > 0.01);
   return (
     <Card className="rounded-2xl">
@@ -966,22 +992,22 @@ function MetricsTable({
   currency: string;
 }) {
   const rows: Array<{ label: string; value: string; tone?: 'good' | 'bad' | 'muted'; warn?: string }> = [
-    { label: 'Leads générés', value: Math.round(outputs.leads).toString() },
+    { label: 'Commandes reçues', value: Math.round(outputs.leads).toString() },
     { label: 'Commandes confirmées', value: Math.round(outputs.confirmedOrders).toString() },
-    { label: 'Commandes livrées', value: Math.round(outputs.deliveredOrders).toString(), tone: 'good' },
+    { label: 'Colis livrés', value: Math.round(outputs.deliveredOrders).toString(), tone: 'good' },
     { label: 'Colis retournés', value: Math.round(outputs.returnedOrders).toString(), tone: 'bad' },
-    { label: 'Revenu brut', value: money(outputs.revenue, currency), tone: 'good' },
-    { label: 'Coût ads', value: money(outputs.adSpend, currency), tone: 'muted' },
-    { label: 'Coût produit', value: money(outputs.productCostTotal, currency), tone: 'muted' },
-    { label: 'Coût shipping', value: money(outputs.shippingCostTotal, currency), tone: 'muted' },
-    { label: 'Coût retours', value: money(outputs.returnCostTotal, currency), tone: 'muted' },
-    { label: 'Coût call center', value: money(outputs.callCenterTotal, currency), tone: 'muted' },
-    { label: 'Commission COD', value: money(outputs.codFeeTotal, currency), tone: 'muted' },
-    { label: 'CPA (par livraison)', value: money(outputs.cpa, currency) },
+    { label: 'Argent encaissé', value: money(outputs.revenue, currency), tone: 'good' },
+    { label: 'Publicité', value: money(outputs.adSpend, currency), tone: 'muted' },
+    { label: 'Produits', value: money(outputs.productCostTotal, currency), tone: 'muted' },
+    { label: 'Livreur', value: money(outputs.shippingCostTotal, currency), tone: 'muted' },
+    { label: 'Retours', value: money(outputs.returnCostTotal, currency), tone: 'muted' },
+    { label: 'Appels', value: money(outputs.callCenterTotal, currency), tone: 'muted' },
+    { label: 'Commission du livreur', value: money(outputs.codFeeTotal, currency), tone: 'muted' },
+    { label: 'Coût d’un colis livré', value: money(outputs.cpa, currency) },
     {
-      label: 'Break-even livraisons',
+      label: 'Livraisons pour rentrer dans les frais',
       value: outputs.breakEvenDeliveries > 0 ? Math.ceil(outputs.breakEvenDeliveries).toString() : '—',
-      warn: outputs.breakEvenDeliveries > outputs.deliveredOrders ? `Il manque ${Math.ceil(outputs.breakEvenDeliveries - outputs.deliveredOrders)} livraisons` : undefined,
+      warn: outputs.breakEvenDeliveries > outputs.deliveredOrders ? `Il en manque ${Math.ceil(outputs.breakEvenDeliveries - outputs.deliveredOrders)} pour couvrir les frais` : undefined,
     },
   ];
   return (
@@ -1010,7 +1036,7 @@ function MetricsTable({
           </div>
         )}
         <p className="mt-2 text-[10px] text-muted-foreground">
-          CPL effectif : {money(outputs.effectiveCpl, currency)} · Inputs : prix {money(inputs.sellingPrice, currency)}, COGS {money(inputs.productCost, currency)}
+          Une commande reçue coûte {money(outputs.effectiveCpl, currency)}. Prix client {money(inputs.sellingPrice, currency)}, coût produit {money(inputs.productCost, currency)}.
         </p>
       </CardContent>
     </Card>
