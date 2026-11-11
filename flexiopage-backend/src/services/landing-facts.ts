@@ -188,8 +188,8 @@ function honestReassurance(current: unknown, fallback: string, eta?: string): st
  * offre, preuves, étapes de commande, formulaire, objections.
  * Le délai annoncé vient uniquement de l'ETA du pays, jamais d'un retour inventé.
  */
-export function shapeCodSalesPage<T extends LandingSection>(
-  sections: T[],
+export function shapeCodSalesPage(
+  sections: LandingSection[],
   opts: {
     productName?: string;
     productSlug?: string;
@@ -199,10 +199,10 @@ export function shapeCodSalesPage<T extends LandingSection>(
     language?: string;
     eta?: string;
   },
-): T[] {
+): LandingSection[] {
   const copy = SALES_COPY[salesLang(opts.language)];
   const country = (opts.country || '').toUpperCase();
-  const list = sections.map((s) => ({ ...s, props: { ...(s.props || {}) } }));
+  const list: LandingSection[] = sections.map((s) => ({ ...s, props: { ...(s.props || {}) } }));
 
   for (const sec of list) {
     const p = sec.props;
@@ -256,13 +256,13 @@ export function shapeCodSalesPage<T extends LandingSection>(
         ctaHref: FORM_ANCHOR,
         trustBadges: [copy.trust, copy.noAdvance],
       },
-    } as T);
+    });
   }
   if (!has('steps')) {
-    list.push({ type: 'steps', props: { title: copy.stepsTitle, subtitle: copy.stepsSubtitle, items: copy.steps } } as T);
+    list.push({ type: 'steps', props: { title: copy.stepsTitle, subtitle: copy.stepsSubtitle, items: copy.steps } });
   }
   if (!has('faq')) {
-    list.push({ type: 'faq', props: { title: copy.faqTitle, items: copy.faq } } as T);
+    list.push({ type: 'faq', props: { title: copy.faqTitle, items: copy.faq } });
   }
   if (!has('cod-form')) {
     list.push({
@@ -280,7 +280,7 @@ export function shapeCodSalesPage<T extends LandingSection>(
         showNotes: false,
         showQuantity: true,
       },
-    } as T);
+    });
   }
 
   return list
