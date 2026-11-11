@@ -590,6 +590,8 @@ export interface TrackingStats {
     addToCart: number;
     purchases: number;
   }>;
+  sources?: Array<{ source: string; views: number }>;
+  devices?: { mobile: number; desktop: number; unknown: number };
 }
 
 // ─────────────────────────────────────────────────────────────────────
@@ -1843,6 +1845,7 @@ export const storesApi = {
       search?: string;
       testCandidates?: boolean;
       testStatus?: 'pending' | 'in_progress' | 'tested' | 'test_finished';
+      view?: 'live' | 'draft' | 'low' | 'out' | 'sku';
     },
   ) =>
     api.get<{ products: unknown[]; total: number; limit: number; skip: number }>(`/stores/${storeId}/products`, { params }),
@@ -2151,11 +2154,23 @@ export const storesApi = {
       search?: string;
       status?: 'all' | 'pending' | 'paid' | 'delivered' | 'cancelled';
       confirmation?: string;
+      fulfillment?: 'open';
+      queue?: 'work' | 'to_confirm' | 'callback' | 'callback_due' | 'no_answer' | 'to_ship' | 'dispatch_failed' | 'carrier' | 'delivered' | 'returned' | 'declined' | 'all';
       from?: string;
       to?: string;
     },
   ) =>
-    api.get<{ orders: unknown[]; total: number; limit: number; skip: number }>(`/stores/${storeId}/orders`, { params }),
+    api.get<{
+      orders: unknown[];
+      total: number;
+      limit: number;
+      skip: number;
+      counts?: {
+        work: number; toConfirm: number; callback: number; callbackDue: number;
+        noAnswer: number; toShip: number; dispatchFailed: number; carrier: number;
+        delivered: number; returned: number; declined: number; all: number;
+      };
+    }>(`/stores/${storeId}/orders`, { params }),
   /** Fichier Excel ou CSV (Google Sheets) des commandes filtrées. */
   exportOrders: (
     storeId: string,
@@ -2164,6 +2179,8 @@ export const storesApi = {
       search?: string;
       status?: 'all' | 'pending' | 'paid' | 'delivered' | 'cancelled';
       confirmation?: string;
+      fulfillment?: 'open';
+      queue?: 'work' | 'to_confirm' | 'callback' | 'callback_due' | 'no_answer' | 'to_ship' | 'dispatch_failed' | 'carrier' | 'delivered' | 'returned' | 'declined' | 'all';
       from?: string;
       to?: string;
     },
@@ -2269,8 +2286,15 @@ export const storesApi = {
       }>;
     }>(`/stores/${storeId}/customers/reliability/batch`, { phones }),
   // Suppliers
-  listSuppliers: (storeId: string, params?: { limit?: number; skip?: number; search?: string; includeArchived?: boolean }) =>
-    api.get<{ suppliers: import('@/types/supplier').Supplier[]; total: number; limit: number; skip: number }>(`/stores/${storeId}/suppliers`, { params }),
+  listSuppliers: (storeId: string, params?: { limit?: number; skip?: number; search?: string; includeArchived?: boolean; link?: 'all' | 'with' | 'without' }) =>
+    api.get<{
+      suppliers: import('@/types/supplier').Supplier[];
+      total: number;
+      limit: number;
+      skip: number;
+      counts?: { all: number; with: number; without: number };
+      unlinkedProducts?: number;
+    }>(`/stores/${storeId}/suppliers`, { params }),
   getSupplier: (storeId: string, supplierId: string) =>
     api.get<{ supplier: import('@/types/supplier').Supplier }>(`/stores/${storeId}/suppliers/${supplierId}`),
   createSupplier: (storeId: string, data: Partial<import('@/types/supplier').Supplier>) =>

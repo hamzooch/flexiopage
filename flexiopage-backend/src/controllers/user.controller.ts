@@ -132,7 +132,7 @@ export async function updateProfile(req: AuthRequest, res: Response): Promise<vo
   if (typeof whatsapp === 'string') {
     const wa = whatsapp.replace(/\s+/g, '');
     if (wa && !/^\+[1-9]\d{6,14}$/.test(wa)) {
-      res.status(400).json({ error: 'Numéro WhatsApp invalide. Format international attendu, ex : +212600000000', code: 'invalid_whatsapp' });
+      res.status(400).json({ error: 'Numéro WhatsApp invalide. Format international attendu, ex : +221771234567', code: 'invalid_whatsapp' });
       return;
     }
     updates.whatsapp = wa || undefined;

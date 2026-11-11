@@ -1,15 +1,15 @@
 'use client';
 
 /**
- * Pro dashboard overview. The seller lands here every day and needs to
- * answer three questions in 5 seconds:
+ * Vue d'ensemble vendeur. Quatre zones, dans cet ordre sur desktop :
  *
- *   1. Combien j'ai vendu sur la période ?  → KPI row with vs-previous deltas
- *   2. Qu'est-ce qui exige une action ?     → "À traiter" panel (orders, carts, stock)
- *   3. Qu'est-ce qui marche / qui pue ?     → revenue sparkline + top products + recent orders
+ *   1. Bandeau du jour — ventes, commandes, file d'appels, encaissé
+ *   2. À faire maintenant — rappels, confirmation, expédition, relances
+ *   3. Courbe des ventes, globe live, objectif du mois, santé COD
+ *   4. Top produits et dernières commandes
  *
- * Everything is scoped to the active store (picker in the header). Switching
- * range (today / 7d / 30d / 90d) refreshes the KPIs + chart + lists.
+ * Sur mobile les actions passent avant les chiffres, et la courbe est repliée.
+ * Trafic, appareils, ventes par heure et moyens de paiement vivent sur Analytics.
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
@@ -25,16 +25,10 @@ import {
   Sparkles,
   Plus,
   ChevronRight,
-  Cloud,
-  Eye,
-  AlertTriangle,
   ShoppingBag,
   Truck,
   Wallet,
-  Layers,
-  ExternalLink,
   Receipt,
-  Users,
   Activity,
   Settings as SettingsIcon,
   RefreshCw,
@@ -42,28 +36,19 @@ import {
   CalendarRange,
   Check,
   ChevronDown,
-  Percent,
-  Smartphone,
-  Monitor,
-  CreditCard,
+  Phone,
   Rocket,
-  XCircle,
   Banknote,
   Target,
   PhoneCall,
-  PackageCheck,
   Pencil,
   Globe2,
-  Clock,
 } from 'lucide-react';
 import {
   Area,
   CartesianGrid,
-  Cell,
   ComposedChart,
   Line,
-  Pie,
-  PieChart,
   ResponsiveContainer,
   Tooltip,
   XAxis,
@@ -74,12 +59,11 @@ import { useStoreStore } from '@/stores/store-store';
 import { storesApi } from '@/lib/api';
 import { formatCurrency, cn, mediaUrl, formatYmdLabel } from '@/lib/utils';
 import { timezoneLabel } from '@/lib/store-timezone';
-import type { StoreAnalyticsRich, RangeKey } from '@/types/analytics';
+import { CANCEL_REASON_LABELS, type StoreAnalyticsRich, type RangeKey } from '@/types/analytics';
 import { Button } from '@/components/ui/button';
 import { PageHeader } from '@/components/dashboard/page-header';
 import { EarningsWidget } from '@/components/dashboard/earnings-widget';
 import { LiveGlobe } from '@/components/dashboard/live-globe';
-import { TodoCallbacksWidget } from '@/components/dashboard/todo-callbacks-widget';
 
 interface StoreType {
   _id: string;
@@ -270,8 +254,8 @@ export default function DashboardOverviewPage() {
 
   // ── Derive presentation values ───────────────────────────────────
   const k = analytics?.kpis;
-  const pendingOrders = k?.pendingOrders.value ?? 0;
-  const totalActionItems = pendingOrders + abandoned + lowStock.length;
+  const toConfirm = analytics?.queue?.toConfirm ?? 0;
+  const toShip = analytics?.queue?.toShip ?? 0;
 
   useEffect(() => {
     if (!menuOpen) return;
@@ -313,7 +297,7 @@ export default function DashboardOverviewPage() {
   };
 
   return (
-    <div className="min-w-0 space-y-4 sm:space-y-6">
+    <div className="flex min-w-0 flex-col gap-4 sm:gap-6">
       {/* ── Header ─────────────────────────────────────────────── */}
       <PageHeader
         title={
@@ -507,123 +491,88 @@ export default function DashboardOverviewPage() {
         <DraftBanner storeId={activeStore.slug || activeStore._id} storeName={activeStore.name} />
       )}
 
-      {/* ── KPI cards (5 principaux) — 2 col en mobile pour lire les
-            chiffres, 5 col en desktop pour tout scanner d'un coup. ── */}
+      {/* ── Bandeau du jour. Sur mobile, après la file d'actions. ── */}
       {activeStore && (
-        <section className="grid grid-cols-2 gap-2 sm:gap-3 lg:grid-cols-3 xl:grid-cols-5">
-          <KpiCard
-            label="Revenu créé"
-            value={<KpiMoney amount={k?.sales.value ?? 0} currency={currency} />}
-            deltaPct={k?.sales.deltaPct ?? null}
-            previousValue={formatCurrency(k?.sales.previous ?? 0, currency)}
-            icon={Wallet}
-            tone="emerald"
-            loading={loadingAnalytics && !analytics}
-          />
-          <KpiCard
-            label="Commandes"
-            value={(k?.orders.value ?? 0).toLocaleString('fr-FR')}
-            deltaPct={k?.orders.deltaPct ?? null}
-            previousValue={String(k?.orders.previous ?? 0)}
-            icon={ShoppingCart}
-            tone="amber"
-            loading={loadingAnalytics && !analytics}
-          />
-          <KpiCard
-            label="Panier moyen"
-            value={<KpiMoney amount={k?.averageOrderValue.value ?? 0} currency={currency} />}
-            deltaPct={k?.averageOrderValue.deltaPct ?? null}
-            previousValue={formatCurrency(k?.averageOrderValue.previous ?? 0, currency)}
-            icon={Receipt}
-            tone="violet"
-            loading={loadingAnalytics && !analytics}
-          />
-          <KpiCard
-            label="Vues de pages"
-            value={(k?.pageViews.value ?? 0).toLocaleString('fr-FR')}
-            deltaPct={k?.pageViews.deltaPct ?? null}
-            previousValue={String(k?.pageViews.previous ?? 0)}
-            icon={Eye}
-            tone="indigo"
-            loading={loadingAnalytics && !analytics}
-          />
-          <div className="col-span-2 lg:col-span-1">
+        <div className="order-2 flex flex-col gap-4 lg:order-1">
+          <section className="grid grid-cols-2 gap-2 sm:gap-3 lg:grid-cols-4">
             <KpiCard
-              label="Taux de conversion"
-              value={`${(k?.conversionRate.value ?? 0).toFixed(2)}%`}
-              deltaPct={k?.conversionRate.deltaPct ?? null}
-              previousValue={`${(k?.conversionRate.previous ?? 0).toFixed(2)}%`}
-              icon={Percent}
-              tone="rose"
+              label="Ventes"
+              value={<KpiMoney amount={k?.sales.value ?? 0} currency={currency} />}
+              deltaPct={k?.sales.deltaPct ?? null}
+              previousValue={formatCurrency(k?.sales.previous ?? 0, currency)}
+              icon={Wallet}
+              tone="emerald"
               loading={loadingAnalytics && !analytics}
             />
-          </div>
-        </section>
+            <KpiCard
+              label="Commandes"
+              value={(k?.orders.value ?? 0).toLocaleString('fr-FR')}
+              deltaPct={k?.orders.deltaPct ?? null}
+              previousValue={String(k?.orders.previous ?? 0)}
+              icon={ShoppingCart}
+              tone="amber"
+              loading={loadingAnalytics && !analytics}
+            />
+            <div className="max-lg:hidden">
+              <Link href={`/dashboard/orders?storeId=${activeStoreId}&confirmation=pending`} className="block h-full">
+                <KpiCard
+                  label="À confirmer"
+                  value={toConfirm.toLocaleString('fr-FR')}
+                  deltaPct={null}
+                  previousValue=""
+                  hint="File d'appels, hors période"
+                  icon={PhoneCall}
+                  tone="rose"
+                  loading={loadingAnalytics && !analytics}
+                />
+              </Link>
+            </div>
+            <div className="max-lg:hidden">
+              <KpiCard
+                label="Encaissé"
+                value={<KpiMoney amount={k?.revenue.value ?? 0} currency={currency} />}
+                deltaPct={k?.revenue.deltaPct ?? null}
+                previousValue={formatCurrency(k?.revenue.previous ?? 0, currency)}
+                icon={Banknote}
+                tone="indigo"
+                loading={loadingAnalytics && !analytics}
+              />
+            </div>
+          </section>
+
+          {analytics && (
+            <div className="hidden flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground lg:flex">
+              <span>Panier moyen <strong className="font-semibold text-foreground">{formatCurrency(k?.averageOrderValue.value ?? 0, currency)}</strong></span>
+              <span>Vues <strong className="font-semibold text-foreground">{(k?.pageViews.value ?? 0).toLocaleString('fr-FR')}</strong></span>
+              <span>Conversion <strong className="font-semibold text-foreground">{(k?.conversionRate.value ?? 0).toFixed(2)}%</strong></span>
+              <Link href="/dashboard/analytics" className="font-semibold text-primary hover:underline">
+                Analytics
+              </Link>
+            </div>
+          )}
+
+          <EarningsWidget />
+        </div>
       )}
 
-      {/* ── Earnings widget — solde vendeur des ventes en ligne (chariow).
-            N'apparaît que si le vendeur a des revenus en ligne, sinon la
-            page reste épurée pour les vendeurs COD-only. ── */}
-      {activeStore && <EarningsWidget />}
-
-      {/* ── Quality strip — 4 métriques "santé business" en petit,
-            à côté des KPIs primaires pour ne pas surcharger. Ces
-            données étaient déjà calculées côté backend mais jamais
-            affichées. ── */}
-      {activeStore && analytics && (
-        <QualityStrip
-          revenue={k?.revenue.value ?? 0}
-          uniqueCustomers={k?.uniqueCustomers.value ?? 0}
-          fulfillmentRate={k?.fulfillmentRate.value ?? 0}
-          refundRate={k?.refundRate.value ?? 0}
-          currency={currency}
-        />
-      )}
-
-      {/* ── Live globe + Monthly goal — rangée "ambiance + objectif".
-            Le globe tourne à gauche (points oranges = visiteurs live,
-            points verts = commandes fraîches), la jauge d'objectif
-            du mois reste à droite. Sur mobile, les deux s'empilent. ── */}
-      {activeStore && analytics && (
-        <section className="grid items-start gap-4 lg:grid-cols-[minmax(0,360px)_minmax(0,1fr)]">
-          <LiveGlobe storeId={activeStoreId} fallbackCountry={activeStore.settings?.country} />
-          <MonthlyGoalCard
-            store={activeStore}
-            goal={analytics.monthlyGoal}
-            currency={currency}
-            onSaved={loadActiveStoreData}
-          />
-        </section>
-      )}
-
-      {/* ── COD funnel — déplacé sur sa propre ligne depuis l'intégration
-            du globe, pour garder la hiérarchie "visuel contexte → chiffres
-            actionnables" sans surcharger la rangée au-dessus. ── */}
-      {activeStore && analytics && (
-        <CodFunnelCard
-          confirmationRate={k?.codConfirmationRate.value ?? 0}
-          deliveryRate={k?.codDeliveryRate.value ?? 0}
-          created={analytics.funnel.created}
-          confirmed={analytics.funnel.confirmed}
-          delivered={analytics.funnel.delivered}
-          fulfilled={analytics.funnel.fulfilled}
-        />
-      )}
-
-      {/* ── Action panel + sparkline ─────────────────────────── */}
+      {/* ── À faire maintenant — premier bloc sur mobile. ── */}
       {activeStore && (
-        <section className="grid min-w-0 gap-4 lg:grid-cols-[minmax(0,360px)_minmax(0,1fr)]">
-          {/* Action items */}
-          <ActionPanel
+        <div className="order-1 lg:order-2">
+          <ActionQueue
             storeId={activeStoreId!}
-            pendingOrders={pendingOrders}
+            toConfirm={toConfirm}
+            toShip={toShip}
             abandonedCount={abandoned}
             lowStockCount={lowStock.length}
             lowStockItems={lowStock.slice(0, 3)}
-            totalActions={totalActionItems}
+            unpaidCheckouts={analytics?.unpaidCheckouts ?? 0}
           />
+        </div>
+      )}
 
-          {/* Sparkline */}
+      {/* ── Courbe + objectif + santé COD. ── */}
+      {activeStore && (
+        <section className="order-3 grid min-w-0 items-start gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,360px)]">
           <RevenueChart
             timeseries={analytics?.timeseries || []}
             previousTimeseries={analytics?.previousTimeseries || []}
@@ -631,12 +580,34 @@ export default function DashboardOverviewPage() {
             currency={currency}
             loading={loadingAnalytics && !analytics}
           />
+          <div className="flex min-w-0 flex-col gap-4">
+            <LiveGlobe storeId={activeStoreId ?? null} fallbackCountry={activeStore.settings?.country} />
+            {analytics && (
+              <>
+                <MonthlyGoalCard
+                  store={activeStore}
+                  goal={analytics.monthlyGoal}
+                  currency={currency}
+                  onSaved={loadActiveStoreData}
+                />
+                <PeriodHealthCard
+                  confirmationRate={k?.codConfirmationRate.value ?? 0}
+                  deliveryRate={k?.codDeliveryRate.value ?? 0}
+                  created={analytics.funnel.created}
+                  confirmed={analytics.funnel.confirmed}
+                  delivered={analytics.funnel.delivered}
+                  fulfilled={analytics.funnel.fulfilled}
+                  reasons={analytics.cancelReasons || []}
+                />
+              </>
+            )}
+          </div>
         </section>
       )}
 
-      {/* ── Top products + Recent orders ────────────────────── */}
+      {/* ── Ce qui se vend. ── */}
       {activeStore && (
-        <section className="grid min-w-0 gap-4 lg:grid-cols-2">
+        <section className="order-3 grid min-w-0 gap-4 lg:order-4 lg:grid-cols-2">
           <TopProductsCard
             items={analytics?.topProducts || []}
             currency={currency}
@@ -645,171 +616,10 @@ export default function DashboardOverviewPage() {
           />
           <RecentOrdersCard
             items={analytics?.recentOrders || []}
-            unpaidCheckouts={analytics?.unpaidCheckouts || 0}
             currency={currency}
             loading={loadingAnalytics && !analytics}
             storeId={activeStoreId!}
           />
-        </section>
-      )}
-
-      {/* ── Todo callbacks widget ────────────────────────────
-            Attaque de journée pour l'agent COD : callbacks du jour + no
-            answer récents dans une seule liste actionnable. Placé haut car
-            c'est l'action #1 quotidienne — chaque rappel manqué = commande
-            perdue. */}
-      {activeStore && (
-        <TodoCallbacksWidget storeId={activeStore._id} />
-      )}
-
-      {/* ── Funnel mini ─────────────────────────────────────── */}
-      {activeStore && analytics && (
-        <FunnelStrip funnel={analytics.funnel} pageViews={analytics.kpis.pageViews.value} />
-      )}
-
-      {/* ── Payment methods breakdown ─────────────────────────
-            Data was already computed but never rendered. Utile pour
-            décider où pousser (Wave / Orange / COD / Stripe). ── */}
-      {activeStore && analytics && (
-        <PaymentBreakdownCard
-          items={analytics.paymentBreakdown}
-          currency={currency}
-        />
-      )}
-
-      {/* ── Traffic sources + sales by hour ───────────────────
-            Deux blocs "d'où viennent tes clients" + "à quelle
-            heure ils achètent" — indispensables pour cibler la pub. ── */}
-      {activeStore && analytics && (
-        <section className="grid min-w-0 gap-4 lg:grid-cols-2">
-          <TrafficSourcesCard items={analytics.trafficSources} />
-          <SalesByHourCard items={analytics.hourlySales} currency={currency} />
-        </section>
-      )}
-
-      {/* ── Visiteurs par appareil (mobile vs desktop/web) ──── */}
-      {activeStore && analytics && (
-        <section className="rounded-2xl border border-border/60 bg-card p-4 sm:p-5">
-          <div className="mb-3 flex items-center gap-2">
-            <Activity className="h-4 w-4 text-primary" />
-            <h2 className="text-sm font-semibold">Visiteurs par appareil</h2>
-          </div>
-          {(() => {
-            const d = analytics.devices ?? { mobile: 0, desktop: 0, unknown: 0 };
-            const detected = d.mobile + d.desktop;
-            if (detected === 0) {
-              return (
-                <p className="text-xs text-muted-foreground">
-                  Pas encore de donnée appareil — les visites seront classées mobile / desktop dès le prochain trafic
-                  {d.unknown ? ` (${d.unknown} visite(s) enregistrée(s) avant l’activation de la mesure)` : ''}.
-                </p>
-              );
-            }
-            const mPct = Math.round((d.mobile / detected) * 100);
-            const dPct = 100 - mPct;
-            return (
-              <>
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="rounded-xl border border-border/50 bg-muted/20 p-3">
-                    <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                      <Smartphone className="h-4 w-4 text-emerald-600" /> Mobile
-                    </div>
-                    <div className="mt-1 text-2xl font-bold tabular-nums">{d.mobile}</div>
-                    <div className="text-[11px] text-muted-foreground">{mPct}% des visiteurs</div>
-                  </div>
-                  <div className="rounded-xl border border-border/50 bg-muted/20 p-3">
-                    <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                      <Monitor className="h-4 w-4 text-indigo-600" /> Desktop / Web
-                    </div>
-                    <div className="mt-1 text-2xl font-bold tabular-nums">{d.desktop}</div>
-                    <div className="text-[11px] text-muted-foreground">{dPct}% des visiteurs</div>
-                  </div>
-                </div>
-                <div className="mt-3 flex h-2 overflow-hidden rounded-full bg-muted">
-                  <div className="bg-emerald-500" style={{ width: `${mPct}%` }} />
-                  <div className="bg-indigo-500" style={{ width: `${dPct}%` }} />
-                </div>
-                {d.unknown > 0 && (
-                  <p className="mt-2 text-[11px] text-muted-foreground">
-                    + {d.unknown} non détecté(s) (visites antérieures à la mesure).
-                  </p>
-                )}
-              </>
-            );
-          })()}
-        </section>
-      )}
-
-      {/* ── Stores list (slim) ──────────────────────────────── */}
-      {stores.length > 0 && (
-        <section className="overflow-hidden rounded-2xl border border-border/60 bg-card">
-          <div className="flex items-center justify-between gap-2 border-b border-border/60 px-3 py-3 sm:px-5">
-            <div>
-              <h2 className="text-sm font-bold">Mes boutiques</h2>
-              <p className="text-[11px] text-muted-foreground">{stores.length} boutique{stores.length > 1 ? 's' : ''} au total · clique pour basculer</p>
-            </div>
-            <Link href="/dashboard/stores">
-              <Button variant="ghost" size="sm" className="gap-1 rounded-lg text-xs">
-                Voir tout
-                <ChevronRight className="h-3.5 w-3.5" />
-              </Button>
-            </Link>
-          </div>
-          <ul className="divide-y divide-border/60">
-            {stores.slice(0, 5).map((s) => {
-              const isDigital = s.storeType === 'digital';
-              const TypeIcon = isDigital ? Cloud : Package;
-              const isActive = s._id === activeStoreId;
-              return (
-                <li key={s._id}>
-                  <button
-                    type="button"
-                    onClick={() => setCurrentStore(s._id)}
-                    className={cn(
-                      'group flex w-full items-center gap-3 px-3 py-3 text-left transition-colors sm:px-5',
-                      isActive ? 'bg-primary/5' : 'hover:bg-muted/40'
-                    )}
-                  >
-                    <div
-                      className={cn(
-                        'grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-gradient-to-br text-white shadow-sm',
-                        isDigital ? 'from-fuchsia-500 to-pink-600' : 'from-indigo-500 to-violet-600'
-                      )}
-                    >
-                      <TypeIcon className="h-4 w-4" />
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <div className="flex min-w-0 items-center gap-1.5 text-sm font-semibold">
-                        <span className="truncate">{s.name}</span>
-                        {isActive && (
-                          <span className="rounded-full bg-primary/15 px-1.5 py-0.5 text-[9px] font-bold text-primary">
-                            Active
-                          </span>
-                        )}
-                      </div>
-                      <div className="truncate text-[11px] text-muted-foreground">/{s.slug} · {isDigital ? 'Digital' : 'Physique'}</div>
-                    </div>
-                    <span
-                      className={cn(
-                        'shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold',
-                        s.isPublished ? 'bg-emerald-500/10 text-emerald-700' : 'bg-amber-500/10 text-amber-700'
-                      )}
-                    >
-                      {s.isPublished ? 'Live' : 'Brouillon'}
-                    </span>
-                    <Link
-                      href={`/dashboard/stores/${s.slug || s._id}`}
-                      onClick={(e) => e.stopPropagation()}
-                      className="grid h-7 w-7 place-items-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"
-                      aria-label="Configurer"
-                    >
-                      <ChevronRight className="h-4 w-4" />
-                    </Link>
-                  </button>
-                </li>
-              );
-            })}
-          </ul>
         </section>
       )}
     </div>
@@ -863,7 +673,7 @@ function KpiMoney({ amount, currency }: { amount: number; currency: string }) {
 }
 
 function KpiCard({
-  label, value, deltaPct, previousValue, icon: Icon, tone, loading,
+  label, value, deltaPct, previousValue, icon: Icon, tone, loading, hint,
 }: {
   label: string;
   value: ReactNode;
@@ -872,6 +682,7 @@ function KpiCard({
   icon: typeof Wallet;
   tone: keyof typeof KPI_TONE;
   loading?: boolean;
+  hint?: string;
 }) {
   const t = KPI_TONE[tone];
   const positive = typeof deltaPct === 'number' && deltaPct > 0;
@@ -912,118 +723,195 @@ function KpiCard({
           </span>
         </div>
       )}
+      {!loading && deltaPct === null && hint && (
+        <p className="mt-1.5 text-[11px] text-muted-foreground">{hint}</p>
+      )}
     </div>
   );
 }
 
 // ─────────────────────────────────────────────────────────────────────
-// Action panel — what the seller needs to handle right now
+// À faire maintenant — une seule file, du plus urgent au moins urgent.
+// Les lignes à zéro restent masquées pour que la liste ne soit que du travail.
 // ─────────────────────────────────────────────────────────────────────
 
-function ActionPanel({
-  storeId, pendingOrders, abandonedCount, lowStockCount, lowStockItems, totalActions,
+interface TodoCounts {
+  callbacksOverdue: number;
+  callbacksToday: number;
+  noAnswers24h: number;
+}
+
+function ActionQueue({
+  storeId, toConfirm, toShip, abandonedCount, lowStockCount, lowStockItems, unpaidCheckouts,
 }: {
   storeId: string;
-  pendingOrders: number;
+  toConfirm: number;
+  toShip: number;
   abandonedCount: number;
   lowStockCount: number;
   lowStockItems: ProductLite[];
-  totalActions: number;
+  unpaidCheckouts: number;
 }) {
-  const allClear = totalActions === 0;
+  const [todo, setTodo] = useState<TodoCounts | null>(null);
+  const [todoLoaded, setTodoLoaded] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    setTodoLoaded(false);
+    storesApi.listOrdersTodo(storeId)
+      .then((res) => { if (!cancelled) setTodo(res.data.counts); })
+      .catch(() => { if (!cancelled) setTodo(null); })
+      .finally(() => { if (!cancelled) setTodoLoaded(true); });
+    return () => { cancelled = true; };
+  }, [storeId]);
+
+  const callbacks = (todo?.callbacksToday ?? 0) + (todo?.noAnswers24h ?? 0);
+  const callbackHref = (todo?.callbacksToday ?? 0) > 0
+    ? `/dashboard/orders?storeId=${storeId}&confirmation=callback`
+    : `/dashboard/orders?storeId=${storeId}&confirmation=no_answer`;
+  const stockHint = lowStockItems.map((item) => item.name).join(', ');
+
+  const rows: Array<{
+    key: string;
+    icon: typeof Phone;
+    tone: keyof typeof ACTION_TONE;
+    label: string;
+    count: number;
+    hint: string;
+    href: string;
+    action: string;
+  }> = [
+    {
+      key: 'callbacks',
+      icon: Phone,
+      tone: 'rose',
+      label: 'Rappels du jour',
+      count: callbacks,
+      hint: todo
+        ? `${todo.callbacksOverdue} en retard · ${todo.noAnswers24h} sans réponse`
+        : 'Callbacks et appels sans réponse',
+      href: callbackHref,
+      action: 'Appeler',
+    },
+    {
+      key: 'confirm',
+      icon: PhoneCall,
+      tone: 'amber',
+      label: 'À confirmer',
+      count: toConfirm,
+      hint: 'Commandes jamais appelées',
+      href: `/dashboard/orders?storeId=${storeId}&confirmation=pending`,
+      action: 'Confirmer',
+    },
+    {
+      key: 'ship',
+      icon: Truck,
+      tone: 'indigo',
+      label: 'À expédier',
+      count: toShip,
+      hint: 'Confirmées, pas encore livrées',
+      href: `/dashboard/orders?storeId=${storeId}&confirmation=confirmed&fulfillment=open`,
+      action: 'Expédier',
+    },
+    {
+      key: 'carts',
+      icon: ShoppingBag,
+      tone: 'rose',
+      label: 'Paniers abandonnés',
+      count: abandonedCount,
+      hint: 'Relance par WhatsApp',
+      href: `/dashboard/stores/${storeId}?block=abandoned`,
+      action: 'Relancer',
+    },
+    {
+      key: 'stock',
+      icon: Package,
+      tone: 'violet',
+      label: 'Stock faible',
+      count: lowStockCount,
+      hint: stockHint || 'Produits à réapprovisionner',
+      href: `/dashboard/products?storeId=${storeId}&view=low`,
+      action: 'Voir',
+    },
+    {
+      key: 'unpaid',
+      icon: Banknote,
+      tone: 'amber',
+      label: 'Paiements non terminés',
+      count: unpaidCheckouts,
+      hint: 'Sur la période affichée',
+      href: '/dashboard/analytics',
+      action: 'Voir',
+    },
+  ];
+
+  const open = rows.filter((row) => row.count > 0);
+  const waiting = !todoLoaded && open.length === 0;
 
   return (
     <div className="overflow-hidden rounded-2xl border border-border/60 bg-card">
-      <div className="flex items-center justify-between border-b border-border/60 bg-gradient-to-br from-amber-500/5 to-card px-4 py-3">
-        <div className="flex items-center gap-2">
-          <span className={cn(
-            'grid h-7 w-7 place-items-center rounded-lg text-white shadow-sm',
-            allClear ? 'bg-gradient-to-br from-emerald-500 to-teal-600' : 'bg-gradient-to-br from-amber-500 to-orange-600'
-          )}>
-            {allClear ? <CheckCircle2 className="h-3.5 w-3.5" /> : <AlertTriangle className="h-3.5 w-3.5" />}
-          </span>
-          <div>
-            <h3 className="text-sm font-bold">À traiter</h3>
-            <p className="text-[10px] text-muted-foreground">
-              {allClear ? 'Tout est sous contrôle 🎉' : `${totalActions} action${totalActions > 1 ? 's' : ''} prioritaire${totalActions > 1 ? 's' : ''}`}
-            </p>
-          </div>
+      <div className="flex items-center justify-between border-b border-border/60 px-4 py-3">
+        <div>
+          <h3 className="text-sm font-bold">À faire maintenant</h3>
+          <p className="text-[11px] text-muted-foreground">
+            {waiting
+              ? 'Chargement…'
+              : open.length === 0
+                ? 'Rien en attente'
+                : `${open.length} file${open.length > 1 ? 's' : ''} ouverte${open.length > 1 ? 's' : ''}`}
+          </p>
         </div>
+        {!waiting && open.length === 0 && (
+          <CheckCircle2 className="h-4 w-4 text-emerald-600" />
+        )}
       </div>
-
-      <div className="divide-y divide-border/60">
-        <ActionRow
-          icon={Truck}
-          tone="amber"
-          label="Commandes à expédier"
-          count={pendingOrders}
-          href={`/dashboard/orders?storeId=${storeId}&status=pending`}
-          hint={pendingOrders ? 'Toutes périodes — confirme + envoie chez le coursier' : 'Aucune commande en attente'}
-        />
-        <ActionRow
-          icon={ShoppingBag}
-          tone="rose"
-          label="Paniers abandonnés"
-          count={abandonedCount}
-          href={`/dashboard/stores/${storeId}?block=abandoned`}
-          hint={abandonedCount ? 'Toutes périodes — relance par WhatsApp' : 'Aucun lead à relancer'}
-        />
-        <ActionRow
-          icon={Package}
-          tone="violet"
-          label="Stock faible"
-          count={lowStockCount}
-          href={`/dashboard/products?storeId=${storeId}`}
-          hint={lowStockCount ? `${lowStockItems.map((p) => p.name).join(', ').slice(0, 60)}${lowStockItems.length < lowStockCount ? '…' : ''}` : 'Aucun produit en stock faible'}
-        />
-      </div>
+      {waiting ? (
+        <div className="space-y-2 p-4">
+          {[0, 1, 2].map((i) => (
+            <div key={i} className="h-12 animate-pulse rounded-lg bg-muted" />
+          ))}
+        </div>
+      ) : open.length === 0 ? (
+        <p className="px-4 py-6 text-sm text-muted-foreground">
+          Rappels, confirmations, expéditions et stocks sont à jour.
+        </p>
+      ) : (
+        <ul className="divide-y divide-border/60">
+          {open.map((row) => (
+            <li key={row.key}>
+              <Link href={row.href} className="group flex items-center gap-3 px-4 py-3 transition-colors hover:bg-muted/40">
+                <span className={cn('grid h-9 w-9 shrink-0 place-items-center rounded-lg', ACTION_TONE[row.tone])}>
+                  <row.icon className="h-4 w-4" />
+                </span>
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-semibold">{row.label}</span>
+                    <span className={cn('rounded-full px-2 py-0.5 text-[10px] font-bold', ACTION_TONE[row.tone])}>
+                      {row.count}
+                    </span>
+                  </div>
+                  <p className="mt-0.5 line-clamp-1 text-[11px] text-muted-foreground">{row.hint}</p>
+                </div>
+                <span className="hidden shrink-0 rounded-lg bg-foreground px-2.5 py-1 text-[11px] font-semibold text-background sm:inline">
+                  {row.action}
+                </span>
+                <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground transition-transform group-hover:translate-x-0.5" />
+              </Link>
+            </li>
+          ))}
+        </ul>
+      )}
     </div>
   );
 }
 
-const ACTION_TONE: Record<'amber' | 'rose' | 'violet', string> = {
+const ACTION_TONE: Record<'amber' | 'rose' | 'violet' | 'indigo', string> = {
   amber:  'bg-amber-500/10 text-amber-700',
   rose:   'bg-rose-500/10 text-rose-700',
   violet: 'bg-violet-500/10 text-violet-700',
+  indigo: 'bg-indigo-500/10 text-indigo-700',
 };
 
-function ActionRow({
-  icon: Icon, tone, label, count, href, hint,
-}: {
-  icon: typeof Truck;
-  tone: keyof typeof ACTION_TONE;
-  label: string;
-  count: number;
-  href: string;
-  hint: string;
-}) {
-  const has = count > 0;
-  return (
-    <Link
-      href={href}
-      className={cn(
-        'group flex items-center gap-3 px-4 py-3 transition-colors',
-        has ? 'hover:bg-muted/40' : 'opacity-60 hover:opacity-80'
-      )}
-    >
-      <span className={cn('grid h-9 w-9 shrink-0 place-items-center rounded-lg', ACTION_TONE[tone])}>
-        <Icon className="h-4 w-4" />
-      </span>
-      <div className="min-w-0 flex-1">
-        <div className="flex items-center gap-2">
-          <span className="text-sm font-semibold">{label}</span>
-          {has && (
-            <span className={cn('rounded-full px-2 py-0.5 text-[10px] font-bold', ACTION_TONE[tone])}>
-              {count}
-            </span>
-          )}
-        </div>
-        <p className="mt-0.5 line-clamp-1 text-[11px] text-muted-foreground">{hint}</p>
-      </div>
-      <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground transition-transform group-hover:translate-x-0.5" />
-    </Link>
-  );
-}
 
 // ─────────────────────────────────────────────────────────────────────
 // Inline revenue chart — pure SVG sparkline, no chart lib
@@ -1040,6 +928,7 @@ function RevenueChart({
 }) {
   // Toggle entre Ventes (valeur en devise) et Commandes (nb).
   const [metric, setMetric] = useState<'sales' | 'orders'>('sales');
+  const [chartOpen, setChartOpen] = useState(false);
 
   // On trace `sales` (valeur de TOUTES les commandes), pas `revenue` (payé) :
   // en COD le payé reste ~0 jusqu'à livraison → la courbe paraissait vide.
@@ -1130,15 +1019,22 @@ function RevenueChart({
               Commandes
             </button>
           </div>
-          <Link href="/dashboard/analytics">
+          <button
+            type="button"
+            onClick={() => setChartOpen((open) => !open)}
+            className="rounded-lg border border-border/60 px-2 py-1 text-[10px] font-semibold text-muted-foreground lg:hidden"
+          >
+            {chartOpen ? 'Masquer' : 'Voir la courbe'}
+          </button>
+          <Link href="/dashboard/analytics" className="hidden lg:inline-flex">
             <Button variant="ghost" size="sm" className="gap-1 rounded-lg text-xs">
-              <span className="hidden sm:inline">Analytics</span>
+              Analytics
               <ArrowRight className="h-3 w-3" />
             </Button>
           </Link>
         </div>
       </div>
-      <div className="p-3">
+      <div className={cn('p-3', !chartOpen && 'max-lg:hidden')}>
         {data.length === 0 || (currentTotal === 0 && previousTotal === 0) ? (
           <div className="grid h-[180px] place-items-center text-xs text-muted-foreground">
             Aucune commande sur cette période.
@@ -1252,7 +1148,8 @@ function TopProductsCard({
       ) : (
         <ul className="divide-y divide-border/60">
           {items.slice(0, 5).map((p, i) => (
-            <li key={p.productId} className="flex items-center gap-3 px-4 py-2.5">
+            <li key={p.productId}>
+            <Link href={`/dashboard/products/${p.productId}?storeId=${storeId}`} className="flex items-center gap-3 px-4 py-2.5 transition-colors hover:bg-muted/40">
               <span className="grid h-6 w-6 shrink-0 place-items-center rounded-md bg-gradient-to-br from-amber-500/15 to-orange-500/10 text-[10px] font-bold text-amber-700">
                 {i + 1}
               </span>
@@ -1273,6 +1170,7 @@ function TopProductsCard({
               <div className="text-xs font-bold text-primary tabular-nums">
                 {formatCurrency(p.revenue, currency)}
               </div>
+            </Link>
             </li>
           ))}
         </ul>
@@ -1380,66 +1278,6 @@ function RecentOrdersCard({
           ))}
         </ul>
       )}
-    </div>
-  );
-}
-
-// ─────────────────────────────────────────────────────────────────────
-// Funnel strip — visites → commandes → payées → expédiées
-// ─────────────────────────────────────────────────────────────────────
-
-function FunnelStrip({
-  funnel, pageViews,
-}: {
-  funnel: StoreAnalyticsRich['funnel'];
-  pageViews: number;
-}) {
-  const steps = [
-    { label: 'Visites', value: pageViews, tone: 'from-indigo-500 to-blue-600' },
-    { label: 'Commandes créées', value: funnel.created, tone: 'from-amber-500 to-orange-600' },
-    { label: 'Commandes payées', value: funnel.paid, tone: 'from-emerald-500 to-teal-600' },
-    { label: 'Expédiées', value: funnel.fulfilled, tone: 'from-violet-500 to-fuchsia-600' },
-  ];
-  const max = Math.max(1, ...steps.map((s) => s.value));
-
-  return (
-    <div className="overflow-hidden rounded-2xl border border-border/60 bg-card p-4">
-      <div className="mb-3 flex items-center justify-between">
-        <div>
-          <h3 className="text-sm font-bold">Entonnoir de conversion</h3>
-          <p className="text-[10px] text-muted-foreground">Du visiteur à la commande expédiée</p>
-        </div>
-        <Link href="/dashboard/tracking">
-          <Button variant="ghost" size="sm" className="gap-1 rounded-lg text-xs">
-            Tracking détaillé
-            <ArrowRight className="h-3 w-3" />
-          </Button>
-        </Link>
-      </div>
-      <div className="grid gap-3 sm:grid-cols-4">
-        {steps.map((s, i) => {
-          const pct = (s.value / max) * 100;
-          const conversionFromPrev = i > 0 && steps[i - 1].value > 0
-            ? (s.value / steps[i - 1].value) * 100
-            : null;
-          return (
-            <div key={s.label} className="space-y-2 rounded-xl border border-border/40 bg-muted/20 p-3">
-              <div className="flex items-baseline justify-between gap-2">
-                <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">{s.label}</span>
-                {conversionFromPrev !== null && (
-                  <span className="text-[9px] font-semibold text-muted-foreground">
-                    {conversionFromPrev.toFixed(0)}%
-                  </span>
-                )}
-              </div>
-              <div className="text-lg font-extrabold">{s.value.toLocaleString('fr-FR')}</div>
-              <div className="h-1.5 overflow-hidden rounded-full bg-muted">
-                <div className={cn('h-full bg-gradient-to-r transition-all', s.tone)} style={{ width: `${pct}%` }} />
-              </div>
-            </div>
-          );
-        })}
-      </div>
     </div>
   );
 }
@@ -1611,12 +1449,12 @@ function GoalInput({
 }
 
 // ─────────────────────────────────────────────────────────────────────
-// COD funnel — spécifique dropshipping MENA / Afrique de l'Ouest :
-// commande créée → appel confirmé → livrée. Les 2 taux clés à suivre.
+// Draft banner — the store isn't published, alert the seller loudly
+// so they don't wonder why their dashboard is empty.
 // ─────────────────────────────────────────────────────────────────────
 
-function CodFunnelCard({
-  confirmationRate, deliveryRate, created, confirmed, delivered, fulfilled,
+function PeriodHealthCard({
+  confirmationRate, deliveryRate, created, confirmed, delivered, fulfilled, reasons,
 }: {
   confirmationRate: number;
   deliveryRate: number;
@@ -1624,85 +1462,47 @@ function CodFunnelCard({
   confirmed: number;
   delivered: number;
   fulfilled: number;
+  reasons: Array<{ code: string; count: number }>;
 }) {
-  const confirmationTone = confirmationRate >= 50 ? 'emerald' : confirmationRate >= 30 ? 'amber' : 'rose';
-  const deliveryTone = deliveryRate >= 70 ? 'emerald' : deliveryRate >= 50 ? 'amber' : 'rose';
   const deliveredCount = delivered || fulfilled;
-
+  const top = reasons.slice(0, 3);
   return (
-    <div className="overflow-hidden rounded-2xl border border-border/60 bg-card p-4">
-      <div className="mb-3 flex items-center justify-between">
-        <div>
-          <h3 className="text-sm font-bold">Suivi cash-on-delivery</h3>
-          <p className="text-[10px] text-muted-foreground">
-            Les 2 taux qui décident si tu peux scaler la pub
-          </p>
-        </div>
+    <div className="rounded-2xl border border-border/60 bg-card p-4">
+      <h3 className="text-sm font-bold">Santé de la période</h3>
+      <p className="text-[11px] text-muted-foreground">Confirmation et livraison, sur les dates choisies.</p>
+      <div className="mt-3 space-y-3">
+        <HealthRate label="Confirmation" value={confirmationRate} hint={`${confirmed} / ${created}`} benchmark={50} />
+        <HealthRate label="Livraison" value={deliveryRate} hint={`${deliveredCount} / ${confirmed}`} benchmark={70} />
       </div>
-      <div className="grid gap-3 sm:grid-cols-2">
-        <CodStat
-          icon={PhoneCall}
-          label="Taux de confirmation"
-          value={`${confirmationRate.toFixed(0)}%`}
-          hint={`${confirmed} confirmées / ${created} créées`}
-          tone={confirmationTone}
-          benchmark="≥ 50% = OK"
-        />
-        <CodStat
-          icon={PackageCheck}
-          label="Taux de livraison"
-          value={`${deliveryRate.toFixed(0)}%`}
-          hint={`${deliveredCount} livrées / ${confirmed} confirmées`}
-          tone={deliveryTone}
-          benchmark="≥ 70% = OK"
-        />
-      </div>
+      {top.length > 0 && (
+        <ul className="mt-3 space-y-1.5 border-t border-border/60 pt-3">
+          {top.map((reason) => (
+            <li key={reason.code} className="flex items-center justify-between gap-3 text-xs">
+              <span className="min-w-0 truncate text-muted-foreground">{CANCEL_REASON_LABELS[reason.code] || reason.code}</span>
+              <span className="font-semibold tabular-nums">{reason.count}</span>
+            </li>
+          ))}
+        </ul>
+      )}
     </div>
   );
 }
 
-const COD_TONE: Record<'emerald' | 'amber' | 'rose', { bg: string; text: string; bar: string }> = {
-  emerald: { bg: 'bg-emerald-500/10', text: 'text-emerald-700', bar: 'from-emerald-500 to-teal-600' },
-  amber:   { bg: 'bg-amber-500/10',   text: 'text-amber-700',   bar: 'from-amber-500 to-orange-600' },
-  rose:    { bg: 'bg-rose-500/10',    text: 'text-rose-700',    bar: 'from-rose-500 to-pink-600' },
-};
-
-function CodStat({
-  icon: Icon, label, value, hint, tone, benchmark,
-}: {
-  icon: typeof PhoneCall;
-  label: string;
-  value: string;
-  hint: string;
-  tone: keyof typeof COD_TONE;
-  benchmark: string;
-}) {
-  const t = COD_TONE[tone];
-  const pct = Math.min(100, parseFloat(value));
+function HealthRate({ label, value, hint, benchmark }: { label: string; value: number; hint: string; benchmark: number }) {
+  const tone = value >= benchmark ? 'bg-emerald-500' : value >= benchmark * 0.6 ? 'bg-amber-500' : 'bg-rose-500';
   return (
-    <div className="rounded-xl border border-border/40 bg-muted/20 p-3">
-      <div className="flex items-center gap-1.5">
-        <span className={cn('grid h-6 w-6 place-items-center rounded-md', t.bg, t.text)}>
-          <Icon className="h-3 w-3" />
-        </span>
-        <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">{label}</span>
+    <div>
+      <div className="flex items-baseline justify-between gap-2">
+        <span className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">{label}</span>
+        <span className="text-sm font-bold tabular-nums">{value.toFixed(0)}%</span>
       </div>
-      <div className="mt-1.5 flex items-baseline justify-between gap-2">
-        <span className={cn('text-2xl font-extrabold tracking-tight', t.text)}>{value}</span>
-        <span className={cn('text-[10px] font-semibold', t.text)}>{benchmark}</span>
+      <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-muted">
+        <div className={cn('h-full', tone)} style={{ width: `${Math.min(100, value)}%` }} />
       </div>
-      <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-muted">
-        <div className={cn('h-full bg-gradient-to-r transition-all', t.bar)} style={{ width: `${pct}%` }} />
-      </div>
-      <p className="mt-1.5 text-[10px] text-muted-foreground">{hint}</p>
+      <p className="mt-1 text-[10px] text-muted-foreground">{hint}</p>
     </div>
   );
 }
-
-// ─────────────────────────────────────────────────────────────────────
-// Draft banner — the store isn't published, alert the seller loudly
-// so they don't wonder why their dashboard is empty.
-// ─────────────────────────────────────────────────────────────────────
 
 function DraftBanner({ storeId, storeName }: { storeId: string; storeName: string }) {
   return (
@@ -1725,409 +1525,6 @@ function DraftBanner({ storeId, storeName }: { storeId: string; storeName: strin
             Publier maintenant
           </Button>
         </Link>
-      </div>
-    </div>
-  );
-}
-
-// ─────────────────────────────────────────────────────────────────────
-// Quality strip — 4 stats "santé business" (encaissé + qualité)
-// Data déjà calculée dans analytics.service, on l'expose enfin.
-// ─────────────────────────────────────────────────────────────────────
-
-function QualityStrip({
-  revenue, uniqueCustomers, fulfillmentRate, refundRate, currency,
-}: {
-  revenue: number;
-  uniqueCustomers: number;
-  fulfillmentRate: number;
-  refundRate: number;
-  currency: string;
-}) {
-  return (
-    <section className="grid grid-cols-2 gap-2 sm:gap-3 lg:grid-cols-4">
-      <MiniStat
-        icon={Banknote}
-        label="Revenu encaissé"
-        value={formatCurrency(revenue, currency)}
-        tone="emerald"
-        hint="Commandes payées seulement"
-      />
-      <MiniStat
-        icon={Users}
-        label="Clients uniques"
-        value={uniqueCustomers.toLocaleString('fr-FR')}
-        tone="indigo"
-        hint="Emails distincts"
-      />
-      <MiniStat
-        icon={Truck}
-        label="Taux d'expédition"
-        value={`${fulfillmentRate.toFixed(0)}%`}
-        tone="violet"
-        hint="Payées → expédiées"
-      />
-      <MiniStat
-        icon={XCircle}
-        label="Taux de remboursement"
-        value={`${refundRate.toFixed(1)}%`}
-        tone={refundRate > 5 ? 'rose' : 'muted'}
-        hint="Remboursées / payées"
-      />
-    </section>
-  );
-}
-
-const MINI_TONE: Record<'emerald' | 'indigo' | 'violet' | 'rose' | 'muted', { icon: string; ring: string }> = {
-  emerald: { icon: 'text-emerald-600',  ring: 'ring-emerald-500/20' },
-  indigo:  { icon: 'text-indigo-600',   ring: 'ring-indigo-500/20' },
-  violet:  { icon: 'text-violet-600',   ring: 'ring-violet-500/20' },
-  rose:    { icon: 'text-rose-600',     ring: 'ring-rose-500/20' },
-  muted:   { icon: 'text-muted-foreground', ring: 'ring-border/40' },
-};
-
-function MiniStat({
-  icon: Icon, label, value, tone, hint,
-}: {
-  icon: typeof Truck;
-  label: string;
-  value: string;
-  tone: keyof typeof MINI_TONE;
-  hint?: string;
-}) {
-  const t = MINI_TONE[tone];
-  return (
-    <div className={cn('rounded-xl border border-border/60 bg-card p-3 ring-1', t.ring)}>
-      <div className="flex items-start gap-1.5">
-        <Icon className={cn('mt-0.5 h-3.5 w-3.5 shrink-0', t.icon)} />
-        <span className="min-w-0 text-[11px] font-semibold uppercase leading-tight tracking-wide text-muted-foreground">
-          {label}
-        </span>
-      </div>
-      <AutoFitValue className="mt-1 text-lg font-extrabold tracking-tight sm:text-xl">
-        {value}
-      </AutoFitValue>
-      {hint && (
-        <div className="text-[10px] text-muted-foreground">{hint}</div>
-      )}
-    </div>
-  );
-}
-
-// ─────────────────────────────────────────────────────────────────────
-// Payment breakdown — la répartition des méthodes de paiement,
-// classée par CA. Donne au seller un signal direct sur où pousser.
-// ─────────────────────────────────────────────────────────────────────
-
-/** Convertit une clé provider brute ('wave', 'orange_money', 'cinetpay'…)
- *  en libellé humain FR. Fallback = la clé, avec la 1re lettre en majuscule. */
-function providerLabel(raw: string): string {
-  const key = (raw || 'unknown').toLowerCase();
-  const map: Record<string, string> = {
-    wave: 'Wave',
-    orange_money: 'Orange Money',
-    mtn_momo: 'MTN Mobile Money',
-    moov_money: 'Moov Money',
-    cinetpay: 'CinetPay',
-    paydunya: 'PayDunya',
-    flutterwave: 'Flutterwave',
-    stripe: 'Stripe',
-    cod: 'Paiement à la livraison',
-    manual: 'Virement / manuel',
-    unknown: 'Non identifié',
-  };
-  return map[key] || key.charAt(0).toUpperCase() + key.slice(1);
-}
-
-const PAYMENT_COLORS = ['#ec4899', '#7c3aed', '#f59e0b', '#10b981', '#3b82f6', '#ef4444', '#64748b'];
-
-function PaymentBreakdownCard({
-  items, currency,
-}: {
-  items: StoreAnalyticsRich['paymentBreakdown'];
-  currency: string;
-}) {
-  const totalRev = items.reduce((a, x) => a + x.revenue, 0);
-  const totalOrd = items.reduce((a, x) => a + x.orders, 0);
-  const chartData = items.map((d) => ({ ...d, label: providerLabel(d.provider) }));
-
-  return (
-    <div className="overflow-hidden rounded-2xl border border-border/60 bg-card">
-      <div className="flex items-center justify-between border-b border-border/60 px-4 py-3">
-        <div className="flex items-center gap-2">
-          <CreditCard className="h-4 w-4 text-primary" />
-          <div>
-            <h3 className="text-sm font-bold">Moyens de paiement</h3>
-            <p className="text-[10px] text-muted-foreground">
-              {totalOrd > 0
-                ? `${totalOrd} paiement${totalOrd > 1 ? 's' : ''} · ${formatCurrency(totalRev, currency)}`
-                : 'Aucun paiement sur la période'}
-            </p>
-          </div>
-        </div>
-      </div>
-      {items.length === 0 || totalRev === 0 ? (
-        <div className="p-6 text-center text-xs text-muted-foreground">
-          Aucun paiement encaissé pour l&apos;instant.
-        </div>
-      ) : (
-        <div className="flex flex-col gap-4 p-4 sm:flex-row sm:items-center">
-          <div className="relative mx-auto h-[160px] w-[160px] shrink-0 sm:mx-0">
-            <ResponsiveContainer width="100%" height="100%">
-              <PieChart>
-                <Pie
-                  data={chartData}
-                  dataKey="revenue"
-                  nameKey="label"
-                  cx="50%"
-                  cy="50%"
-                  innerRadius={44}
-                  outerRadius={70}
-                  paddingAngle={2}
-                  stroke="hsl(var(--card))"
-                  strokeWidth={2}
-                >
-                  {chartData.map((_, i) => (
-                    <Cell key={i} fill={PAYMENT_COLORS[i % PAYMENT_COLORS.length]} />
-                  ))}
-                </Pie>
-                <Tooltip
-                  contentStyle={{
-                    background: 'hsl(var(--card))',
-                    border: '1px solid hsl(var(--border))',
-                    borderRadius: 10,
-                    fontSize: 11,
-                  }}
-                  formatter={(value, _n, item) => {
-                    const v = Number(value);
-                    const pct = totalRev > 0 ? ((v / totalRev) * 100).toFixed(1) : '0';
-                    return [`${formatCurrency(v, currency)} (${pct}%)`, item.payload?.label || ''];
-                  }}
-                />
-              </PieChart>
-            </ResponsiveContainer>
-            <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center text-center">
-              <div className="text-[9px] font-semibold uppercase tracking-wider text-muted-foreground">Total</div>
-              <div className="px-2 text-[11px] font-bold sm:text-xs">{formatCurrency(totalRev, currency)}</div>
-            </div>
-          </div>
-          <ul className="min-w-0 flex-1 space-y-1.5">
-            {chartData.map((d, i) => {
-              const pct = totalRev > 0 ? (d.revenue / totalRev) * 100 : 0;
-              return (
-                <li key={d.provider} className="flex items-center gap-2 text-[11px]">
-                  <span
-                    className="h-2.5 w-2.5 shrink-0 rounded-full"
-                    style={{ background: PAYMENT_COLORS[i % PAYMENT_COLORS.length] }}
-                  />
-                  <span className="min-w-0 flex-1 truncate font-medium">{d.label}</span>
-                  <span className="shrink-0 tabular-nums text-muted-foreground">{pct.toFixed(0)}%</span>
-                  <span className="w-20 shrink-0 text-right font-semibold tabular-nums">
-                    {formatCurrency(d.revenue, currency)}
-                  </span>
-                </li>
-              );
-            })}
-          </ul>
-        </div>
-      )}
-    </div>
-  );
-}
-
-// ─────────────────────────────────────────────────────────────────────
-// Traffic sources — d'où viennent les visiteurs (utm_source ou Referer,
-// classé côté serveur à l'ingestion).
-// ─────────────────────────────────────────────────────────────────────
-
-const SOURCE_LABEL_FR: Record<string, string> = {
-  facebook: 'Facebook',
-  instagram: 'Instagram',
-  tiktok: 'TikTok',
-  google: 'Google',
-  youtube: 'YouTube',
-  twitter: 'X / Twitter',
-  snapchat: 'Snapchat',
-  whatsapp: 'WhatsApp',
-  direct: 'Trafic direct',
-  other: 'Autres sites',
-  unknown: 'Non identifié',
-};
-
-// Couleur solide par source — utilisée aussi bien pour le donut Recharts que
-// pour la légende (les pastilles à gauche des labels). Les valeurs suivent
-// les couleurs brand des plateformes pour un repérage instantané.
-const SOURCE_COLOR: Record<string, string> = {
-  facebook:  '#1877f2',
-  instagram: '#e1306c',
-  tiktok:    '#0f172a',
-  google:    '#ea4335',
-  youtube:   '#ff0000',
-  twitter:   '#1d9bf0',
-  snapchat:  '#facc15',
-  whatsapp:  '#25d366',
-  direct:    '#64748b',
-  other:     '#8b5cf6',
-  unknown:   '#94a3b8',
-};
-
-function TrafficSourcesCard({ items }: { items: StoreAnalyticsRich['trafficSources'] }) {
-  const total = items.reduce((a, r) => a + r.visitors, 0);
-  const chartData = items.map((r) => ({
-    ...r,
-    label: SOURCE_LABEL_FR[r.source] || r.source,
-    color: SOURCE_COLOR[r.source] || SOURCE_COLOR.other,
-  }));
-
-  return (
-    <div className="overflow-hidden rounded-2xl border border-border/60 bg-card">
-      <div className="flex items-center justify-between border-b border-border/60 px-4 py-3">
-        <div className="flex items-center gap-2">
-          <Globe2 className="h-4 w-4 text-primary" />
-          <div>
-            <h3 className="text-sm font-bold">Sources de trafic</h3>
-            <p className="text-[10px] text-muted-foreground">
-              {total > 0
-                ? `${total} visiteur${total > 1 ? 's' : ''} classé${total > 1 ? 's' : ''} sur la période`
-                : 'Aucun visiteur classé pour l\'instant'}
-            </p>
-          </div>
-        </div>
-      </div>
-      {items.length === 0 || total === 0 ? (
-        <div className="p-6 text-center text-xs text-muted-foreground">
-          Ajoute <code className="rounded bg-muted px-1 py-0.5 text-[10px]">?utm_source=facebook</code> à tes liens pub
-          pour voir tes visiteurs classés ici.
-        </div>
-      ) : (
-        <div className="flex flex-col gap-4 p-4 sm:flex-row sm:items-center">
-          <div className="relative mx-auto h-[160px] w-[160px] shrink-0 sm:mx-0">
-            <ResponsiveContainer width="100%" height="100%">
-              <PieChart>
-                <Pie
-                  data={chartData}
-                  dataKey="visitors"
-                  nameKey="label"
-                  cx="50%"
-                  cy="50%"
-                  innerRadius={44}
-                  outerRadius={70}
-                  paddingAngle={2}
-                  stroke="hsl(var(--card))"
-                  strokeWidth={2}
-                >
-                  {chartData.map((d) => (
-                    <Cell key={d.source} fill={d.color} />
-                  ))}
-                </Pie>
-                <Tooltip
-                  contentStyle={{
-                    background: 'hsl(var(--card))',
-                    border: '1px solid hsl(var(--border))',
-                    borderRadius: 10,
-                    fontSize: 11,
-                  }}
-                  formatter={(value, _n, item) => {
-                    const v = Number(value);
-                    const pct = total > 0 ? ((v / total) * 100).toFixed(1) : '0';
-                    return [`${v} visiteur${v > 1 ? 's' : ''} (${pct}%)`, item.payload?.label || ''];
-                  }}
-                />
-              </PieChart>
-            </ResponsiveContainer>
-            <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center text-center">
-              <div className="text-[9px] font-semibold uppercase tracking-wider text-muted-foreground">Visiteurs</div>
-              <div className="px-2 text-[11px] font-bold sm:text-xs tabular-nums">{total}</div>
-            </div>
-          </div>
-          <ul className="min-w-0 flex-1 space-y-1.5">
-            {chartData.map((d) => {
-              const pct = total > 0 ? (d.visitors / total) * 100 : 0;
-              return (
-                <li key={d.source} className="flex items-center gap-2 text-[11px]">
-                  <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ background: d.color }} />
-                  <span className="min-w-0 flex-1 truncate font-medium">{d.label}</span>
-                  <span className="shrink-0 tabular-nums text-muted-foreground">{pct.toFixed(0)}%</span>
-                  <span className="w-10 shrink-0 text-right font-semibold tabular-nums">{d.visitors}</span>
-                </li>
-              );
-            })}
-          </ul>
-        </div>
-      )}
-    </div>
-  );
-}
-
-// ─────────────────────────────────────────────────────────────────────
-// Sales by hour — barres verticales 0..23 (UTC). Dit au seller à quelle
-// heure il faut booster la pub Meta / TikTok.
-// ─────────────────────────────────────────────────────────────────────
-
-function SalesByHourCard({
-  items, currency,
-}: {
-  items: StoreAnalyticsRich['hourlySales'];
-  currency: string;
-}) {
-  const totalOrders = items.reduce((a, r) => a + r.orders, 0);
-  const maxOrders = Math.max(1, ...items.map((r) => r.orders));
-  const peak = items.reduce((best, r) => (r.orders > best.orders ? r : best), items[0] || { hour: 0, orders: 0, sales: 0 });
-
-  return (
-    <div className="overflow-hidden rounded-2xl border border-border/60 bg-card">
-      <div className="flex items-center justify-between border-b border-border/60 px-4 py-3">
-        <div className="flex items-center gap-2">
-          <Clock className="h-4 w-4 text-primary" />
-          <div>
-            <h3 className="text-sm font-bold">Ventes par heure</h3>
-            <p className="text-[10px] text-muted-foreground">
-              {totalOrders > 0
-                ? `Pic à ${String(peak.hour).padStart(2, '0')}h — ${peak.orders} commande${peak.orders > 1 ? 's' : ''}`
-                : 'Pas encore de commande sur la période'}
-            </p>
-          </div>
-        </div>
-      </div>
-      <div className="p-4">
-        {totalOrders === 0 ? (
-          <div className="grid h-[120px] place-items-center text-xs text-muted-foreground">
-            Aucune commande à segmenter.
-          </div>
-        ) : (
-          <>
-            <div className="flex h-[120px] items-end gap-[3px]">
-              {items.map((row) => {
-                const h = maxOrders > 0 ? (row.orders / maxOrders) * 100 : 0;
-                const isPeak = row.orders === peak.orders && row.orders > 0;
-                return (
-                  <div
-                    key={row.hour}
-                    className="group relative flex-1"
-                    title={`${String(row.hour).padStart(2, '0')}h — ${row.orders} commande${row.orders > 1 ? 's' : ''} · ${formatCurrency(row.sales, currency)}`}
-                  >
-                    <div
-                      className={cn(
-                        'w-full rounded-t transition-all',
-                        isPeak
-                          ? 'bg-gradient-to-t from-primary to-fuchsia-500'
-                          : 'bg-gradient-to-t from-primary/40 to-primary/70'
-                      )}
-                      style={{ height: `${Math.max(2, h)}%` }}
-                    />
-                  </div>
-                );
-              })}
-            </div>
-            <div className="mt-2 flex justify-between text-[9px] font-semibold text-muted-foreground">
-              <span>0h</span>
-              <span>6h</span>
-              <span>12h</span>
-              <span>18h</span>
-              <span>23h</span>
-            </div>
-          </>
-        )}
       </div>
     </div>
   );

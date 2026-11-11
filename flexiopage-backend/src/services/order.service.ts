@@ -1,4 +1,5 @@
 import crypto from 'crypto';
+import mongoose from 'mongoose';
 import { Order, IOrder } from '../models/Order.model';
 import { Customer } from '../models/Customer.model';
 import { Product } from '../models/Product.model';
@@ -222,6 +223,160 @@ export async function updateOrderFulfillment(
   );
 }
 
+/** Files de travail COD. `all` = liste historique, hors paniers abandonnés. */
+export type OrderQueue =
+  | 'work'
+  | 'to_confirm'
+  | 'callback'
+  | 'callback_due'
+  | 'no_answer'
+  | 'to_ship'
+  | 'dispatch_failed'
+  | 'carrier'
+  | 'delivered'
+  | 'returned'
+  | 'declined'
+  | 'all';
+
+export interface OrderQueueCounts {
+  work: number;
+  toConfirm: number;
+  callback: number;
+  callbackDue: number;
+  noAnswer: number;
+  toShip: number;
+  dispatchFailed: number;
+  carrier: number;
+  delivered: number;
+  returned: number;
+  declined: number;
+  all: number;
+}
+
+const OPEN_PAYMENT = { paymentStatus: { $nin: ['abandoned', 'failed'] } };
+const NOT_CLOSED = { fulfillmentStatus: { $nin: ['fulfilled', 'cancelled'] } };
+const PENDING_CONFIRMATION = {
+  $or: [
+    { confirmationStatus: 'pending' },
+    { confirmationStatus: { $exists: false } },
+    { confirmationStatus: null },
+  ],
+};
+const NOT_AT_CARRIER = {
+  $or: [
+    { 'delivery.externalId': { $exists: false } },
+    { 'delivery.externalId': null },
+    { 'delivery.externalId': '' },
+  ],
+};
+const DISPATCH_FAILED = {
+  $or: [
+    { 'delivery.externalStatus': 'failed' },
+    { 'delivery.error': { $exists: true, $nin: [null, ''] } },
+  ],
+};
+
+function endOfUtcDay(now = new Date()): Date {
+  const d = new Date(now);
+  d.setUTCHours(23, 59, 59, 999);
+  return d;
+}
+
+function queueMatch(queue: OrderQueue, endToday: Date): Record<string, unknown> | null {
+  switch (queue) {
+    case 'all':
+      return null;
+    case 'to_confirm':
+      return { $and: [OPEN_PAYMENT, NOT_CLOSED, PENDING_CONFIRMATION] };
+    case 'callback':
+      return { $and: [OPEN_PAYMENT, NOT_CLOSED, { confirmationStatus: 'callback' }] };
+    case 'callback_due':
+      return { $and: [OPEN_PAYMENT, NOT_CLOSED, { confirmationStatus: 'callback', callbackAt: { $lte: endToday } }] };
+    case 'no_answer':
+      return { $and: [OPEN_PAYMENT, NOT_CLOSED, { confirmationStatus: 'no_answer' }] };
+    case 'work':
+      return {
+        $and: [OPEN_PAYMENT, NOT_CLOSED, {
+          $or: [
+            PENDING_CONFIRMATION,
+            { confirmationStatus: 'no_answer' },
+            { confirmationStatus: 'callback', callbackAt: { $lte: endToday } },
+          ],
+        }],
+      };
+    case 'to_ship':
+      return {
+        $and: [
+          OPEN_PAYMENT,
+          NOT_CLOSED,
+          { confirmationStatus: 'confirmed' },
+          NOT_AT_CARRIER,
+          { $nor: [DISPATCH_FAILED] },
+        ],
+      };
+    case 'dispatch_failed':
+      return {
+        $and: [
+          OPEN_PAYMENT,
+          { fulfillmentStatus: { $ne: 'cancelled' } },
+          { 'delivery.externalStatus': { $nin: ['delivered', 'returned', 'cancelled'] } },
+          DISPATCH_FAILED,
+        ],
+      };
+    case 'carrier':
+      return {
+        $and: [
+          OPEN_PAYMENT,
+          NOT_CLOSED,
+          { 'delivery.externalId': { $exists: true, $nin: [null, ''] } },
+          { 'delivery.externalStatus': { $in: ['pending', 'assigned', 'picked_up', 'in_transit'] } },
+          { $nor: [DISPATCH_FAILED] },
+        ],
+      };
+    case 'delivered':
+      return { $or: [{ 'delivery.externalStatus': 'delivered' }, { fulfillmentStatus: 'fulfilled' }] };
+    case 'returned':
+      return { 'delivery.externalStatus': 'returned' };
+    case 'declined':
+      return {
+        $or: [
+          { confirmationStatus: 'declined' },
+          { fulfillmentStatus: 'cancelled' },
+          { 'delivery.externalStatus': 'cancelled' },
+        ],
+      };
+    default:
+      return null;
+  }
+}
+
+const QUEUE_COUNT_KEYS: Array<[keyof OrderQueueCounts, OrderQueue]> = [
+  ['work', 'work'],
+  ['toConfirm', 'to_confirm'],
+  ['callback', 'callback'],
+  ['callbackDue', 'callback_due'],
+  ['noAnswer', 'no_answer'],
+  ['toShip', 'to_ship'],
+  ['dispatchFailed', 'dispatch_failed'],
+  ['carrier', 'carrier'],
+  ['delivered', 'delivered'],
+  ['returned', 'returned'],
+  ['declined', 'declined'],
+  ['all', 'all'],
+];
+
+export async function countOrderQueues(storeId: string): Promise<OrderQueueCounts> {
+  const endToday = endOfUtcDay();
+  const pairs = await Promise.all(QUEUE_COUNT_KEYS.map(async ([key, queue]) => {
+    const clause = queueMatch(queue, endToday);
+    const filter = clause
+      ? { storeId, ...clause }
+      : { storeId, ...OPEN_PAYMENT };
+    return [key, await Order.countDocuments(filter)] as const;
+  }));
+  return Object.fromEntries(pairs) as unknown as OrderQueueCounts;
+}
+
 export async function getOrdersByStore(
   storeId: string,
   options?: {
@@ -233,30 +388,44 @@ export async function getOrdersByStore(
     status?: 'all' | 'pending' | 'paid' | 'delivered' | 'cancelled';
     /** Filtre statut de confirmation (call-center COD). */
     confirmation?: string;
+    /** `open` = ni livrée ni annulée. Sert la file « à expédier ». */
+    fulfillment?: 'open';
+    /** File de travail COD. Prioritaire sur status / confirmation / fulfillment. */
+    queue?: OrderQueue;
     /** Bornes de date (ISO) sur createdAt. */
     from?: string;
     to?: string;
   }
-): Promise<{ orders: IOrder[]; total: number }> {
+): Promise<{ orders: IOrder[]; total: number; counts: OrderQueueCounts }> {
   // $and pour combiner proprement statut + confirmation + dates + recherche
   // sans collision de plusieurs $or.
   const and: Record<string, unknown>[] = [];
+  const endToday = endOfUtcDay();
+  const queue = options?.queue && options.queue !== 'all' ? options.queue : undefined;
 
-  switch (options?.status) {
-    case 'pending': and.push({ paymentStatus: 'pending' }); break;
-    case 'paid': and.push({ paymentStatus: 'paid' }); break;
-    case 'delivered': and.push({ 'delivery.externalStatus': 'delivered' }); break;
-    case 'cancelled':
-      and.push({ $or: [{ fulfillmentStatus: 'cancelled' }, { 'delivery.externalStatus': 'cancelled' }] });
-      break;
-  }
+  if (queue) {
+    const clause = queueMatch(queue, endToday);
+    if (clause) and.push(clause);
+  } else {
+    switch (options?.status) {
+      case 'pending': and.push({ paymentStatus: 'pending' }); break;
+      case 'paid': and.push({ paymentStatus: 'paid' }); break;
+      case 'delivered': and.push({ 'delivery.externalStatus': 'delivered' }); break;
+      case 'cancelled':
+        and.push({ $or: [{ fulfillmentStatus: 'cancelled' }, { 'delivery.externalStatus': 'cancelled' }] });
+        break;
+    }
 
-  if (options?.confirmation && options.confirmation !== 'all') {
-    if (options.confirmation === 'pending') {
-      // « pending » inclut les commandes sans champ confirmationStatus.
-      and.push({ $or: [{ confirmationStatus: 'pending' }, { confirmationStatus: { $exists: false } }, { confirmationStatus: null }] });
-    } else {
-      and.push({ confirmationStatus: options.confirmation });
+    if (options?.fulfillment === 'open') {
+      and.push({ fulfillmentStatus: { $nin: ['fulfilled', 'cancelled'] } });
+    }
+
+    if (options?.confirmation && options.confirmation !== 'all') {
+      if (options.confirmation === 'pending') {
+        and.push(PENDING_CONFIRMATION);
+      } else {
+        and.push({ confirmationStatus: options.confirmation });
+      }
     }
   }
 
@@ -271,8 +440,8 @@ export async function getOrdersByStore(
   // Default list is the seller's working queue. A checkout the buyer opened
   // and didn't pay (failed gateway or abandoned) is not a command to handle.
   // Search still finds them, so support can look up a specific attempt.
-  if (!q && (!options?.status || options.status === 'all')) {
-    and.push({ paymentStatus: { $nin: ['abandoned', 'failed'] } });
+  if (!q && !queue && (!options?.status || options.status === 'all')) {
+    and.push(OPEN_PAYMENT);
   }
   if (q) {
     const re = new RegExp(q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
@@ -289,17 +458,41 @@ export async function getOrdersByStore(
   }
 
   const filter: Record<string, unknown> = and.length ? { storeId, $and: and } : { storeId };
+  const limit = options?.limit ?? 50;
+  const skip = options?.skip ?? 0;
 
-  const [orders, total] = await Promise.all([
-    Order.find(filter)
-      .sort({ createdAt: -1 })
-      .limit(options?.limit ?? 50)
-      .skip(options?.skip ?? 0)
-      .populate('customerId', 'email name phone')
-      .lean<IOrder[]>(),
+  const listOrders = queue === 'work'
+    ? Order.aggregate<IOrder>([
+        { $match: { ...filter, storeId: new mongoose.Types.ObjectId(storeId) } },
+        { $addFields: {
+          queueRank: {
+            $switch: {
+              branches: [
+                { case: { $eq: ['$confirmationStatus', 'callback'] }, then: 0 },
+                { case: { $eq: ['$confirmationStatus', 'no_answer'] }, then: 1 },
+              ],
+              default: 2,
+            },
+          },
+        } },
+        { $sort: { queueRank: 1, callbackAt: 1, createdAt: 1 } },
+        { $skip: skip },
+        { $limit: limit },
+        { $project: { queueRank: 0 } },
+      ])
+    : Order.find(filter)
+        .sort(queue === 'callback' || queue === 'callback_due' ? { callbackAt: 1, createdAt: 1 } : { createdAt: -1 })
+        .limit(limit)
+        .skip(skip)
+        .populate('customerId', 'email name phone')
+        .lean<IOrder[]>();
+
+  const [orders, total, counts] = await Promise.all([
+    listOrders,
     Order.countDocuments(filter),
+    countOrderQueues(storeId),
   ]);
-  return { orders, total };
+  return { orders, total, counts };
 }
 
 /** Commandes réelles créées après `since` — hors paniers abandonnés auto. */

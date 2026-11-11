@@ -9,10 +9,10 @@
  * sera utilisé par le futur module Importations (Phase 3).
  */
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import {
-  Loader2, Plus, Search, Pencil, Archive, RotateCcw, Building2, Mail, Phone, Globe, X,
+  Loader2, Plus, Search, Pencil, Archive, RotateCcw, Building2, Mail, Phone, Globe, X, MessageCircle,
 } from 'lucide-react';
 import { storesApi, extractApiError } from '@/lib/api';
 import { useStoreStore } from '@/stores/store-store';
@@ -38,10 +38,15 @@ export default function SuppliersPage() {
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(20);
   const [includeArchived, setIncludeArchived] = useState(false);
+  const [link, setLink] = useState<'all' | 'with' | 'without'>('all');
+  const [counts, setCounts] = useState({ all: 0, with: 0, without: 0 });
+  const [unlinkedProducts, setUnlinkedProducts] = useState(0);
   const [editing, setEditing] = useState<Supplier | 'new' | null>(null);
 
+  const loadSeq = useRef(0);
   const load = useCallback(async () => {
     if (!storeId) { setLoading(false); return; }
+    const seq = ++loadSeq.current;
     setLoading(true);
     setError('');
     try {
@@ -50,15 +55,20 @@ export default function SuppliersPage() {
         skip: (page - 1) * pageSize,
         search: search.trim() || undefined,
         includeArchived,
+        link,
       });
+      if (seq !== loadSeq.current) return;
       setList(res.data.suppliers);
       setTotal(res.data.total);
+      setCounts(res.data.counts || { all: res.data.total, with: 0, without: res.data.total });
+      setUnlinkedProducts(res.data.unlinkedProducts || 0);
     } catch (err) {
+      if (seq !== loadSeq.current) return;
       setError(extractApiError(err, 'Chargement impossible.'));
     } finally {
-      setLoading(false);
+      if (seq === loadSeq.current) setLoading(false);
     }
-  }, [storeId, page, pageSize, search, includeArchived]);
+  }, [storeId, page, pageSize, search, includeArchived, link]);
 
   useEffect(() => { void load(); }, [load]);
 
@@ -71,7 +81,7 @@ export default function SuppliersPage() {
       <PageHeader
         icon={Building2}
         title="Fournisseurs"
-        description="Ton carnet d'adresses fournisseurs : grossistes, fabricants, AliExpress, dropshippers. Lié au sourcing produit et aux futures importations."
+        description="Qui réapprovisionne le stock : contact, délai, et produits rattachés."
         actions={
           <Button onClick={() => setEditing('new')} className="gap-1.5 gradient-brand text-white">
             <Plus className="h-4 w-4" /> Ajouter un fournisseur
@@ -80,6 +90,7 @@ export default function SuppliersPage() {
       />
 
       {/* Barre de filtres */}
+      {(counts.all > 0 || search.trim() || link !== 'all' || includeArchived) && (
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
         <div className="relative flex-1">
           <Search className="absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
@@ -90,11 +101,31 @@ export default function SuppliersPage() {
             className="pl-9"
           />
         </div>
+        <div className="flex gap-1.5 overflow-x-auto">
+          {([
+            { id: 'all', label: 'Tous' },
+            { id: 'with', label: 'Avec produits' },
+            { id: 'without', label: 'Sans produit' },
+          ] as const).map((f) => (
+            <Button
+              key={f.id}
+              type="button"
+              size="sm"
+              variant={link === f.id ? 'default' : 'outline'}
+              className="h-9 shrink-0"
+              onClick={() => { setLink(f.id); setPage(1); }}
+            >
+              {f.label}
+              <span className="ms-1.5 tabular-nums opacity-70">{counts[f.id]}</span>
+            </Button>
+          ))}
+        </div>
         <label className="inline-flex shrink-0 cursor-pointer items-center gap-2 rounded-lg border border-border/60 bg-card px-3 py-2 text-xs">
           <input type="checkbox" checked={includeArchived} onChange={(e) => { setIncludeArchived(e.target.checked); setPage(1); }} className="h-3.5 w-3.5" />
           Inclure archivés
         </label>
       </div>
+      )}
 
       {error && (
         <div className="rounded-lg border border-rose-500/30 bg-rose-500/5 px-3 py-2 text-sm text-rose-700">
@@ -105,7 +136,13 @@ export default function SuppliersPage() {
       {loading && list.length === 0 ? (
         <div className="grid h-64 place-items-center"><Loader2 className="h-6 w-6 animate-spin text-muted-foreground" /></div>
       ) : list.length === 0 ? (
-        <EmptyState onCreate={() => setEditing('new')} />
+        search.trim() || link !== 'all' ? (
+          <div className="rounded-2xl border border-dashed border-border/70 bg-card p-10 text-center text-sm text-muted-foreground">
+            Aucun fournisseur dans cette vue.
+          </div>
+        ) : (
+          <EmptyState onCreate={() => setEditing('new')} />
+        )
       ) : (
         <div className="rounded-2xl border border-border/60 bg-card">
           <ul className="divide-y divide-border/40">
@@ -132,12 +169,14 @@ export default function SuppliersPage() {
         />
       )}
 
-      <p className="text-center text-[11px] text-muted-foreground">
-        Phase 1 : carnet de fournisseurs. {' '}
-        <button type="button" onClick={() => router.push(`/dashboard/products?storeId=${encodeURIComponent(storeId)}`)} className="underline hover:text-foreground">
-          Phase 2 : lier les fournisseurs aux produits via Sourcing
-        </button>.
-      </p>
+      {unlinkedProducts > 0 && (
+        <p className="text-center text-[11px] text-muted-foreground">
+          {unlinkedProducts} produit{unlinkedProducts > 1 ? 's' : ''} sans fournisseur.{' '}
+          <button type="button" onClick={() => router.push(`/dashboard/products?storeId=${encodeURIComponent(storeId)}`)} className="underline hover:text-foreground">
+            Voir les produits
+          </button>
+        </p>
+      )}
     </div>
   );
 }
@@ -150,7 +189,7 @@ function EmptyState({ onCreate }: { onCreate: () => void }) {
       </div>
       <h3 className="text-base font-semibold">Aucun fournisseur enregistré</h3>
       <p className="mx-auto mt-1 max-w-md text-sm text-muted-foreground">
-        Ajoute tes grossistes, fabricants ou contacts AliExpress pour pouvoir lier chaque produit à son fournisseur et préparer tes importations.
+        Ajoute le grossiste ou le fabricant à qui tu recommanderas quand le stock baisse. Le téléphone et WhatsApp restent sous la main.
       </p>
       <Button onClick={onCreate} className="mt-4 gap-1.5 gradient-brand text-white">
         <Plus className="h-4 w-4" /> Ajouter mon premier fournisseur
@@ -183,13 +222,34 @@ function SupplierRow({
       <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-center gap-2">
           <span className="truncate text-sm font-semibold">{supplier.name}</span>
+          {(supplier.productCount || 0) > 0 ? (
+            <span className="rounded-md bg-violet-500/10 px-1.5 py-0.5 text-[10px] font-semibold text-violet-700">
+              {supplier.productCount} produit{(supplier.productCount || 0) > 1 ? 's' : ''}
+            </span>
+          ) : (
+            <span className="text-[10px] text-muted-foreground">Aucun produit</span>
+          )}
           {archived && <span className="rounded-full bg-amber-500/10 px-1.5 py-0.5 text-[10px] font-semibold text-amber-700">Archivé</span>}
           {country && <span className="text-[10px] text-muted-foreground">· {country.label}</span>}
         </div>
         <div className="flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-muted-foreground">
           {supplier.contactName && <span>{supplier.contactName}</span>}
           {supplier.email && <span className="inline-flex items-center gap-1"><Mail className="h-3 w-3" /> {supplier.email}</span>}
-          {supplier.phone && <span className="inline-flex items-center gap-1"><Phone className="h-3 w-3" /> {supplier.phone}</span>}
+          {supplier.phone && (
+            <a href={`tel:${supplier.phone}`} className="inline-flex items-center gap-1 hover:text-foreground">
+              <Phone className="h-3 w-3" /> {supplier.phone}
+            </a>
+          )}
+          {supplier.whatsapp && (
+            <a
+              href={`https://wa.me/${supplier.whatsapp.replace(/\D/g, '')}`}
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex items-center gap-1 hover:text-foreground"
+            >
+              <MessageCircle className="h-3 w-3" /> WhatsApp
+            </a>
+          )}
           {supplier.website && <span className="inline-flex items-center gap-1"><Globe className="h-3 w-3" /> {supplier.website.replace(/^https?:\/\//, '').slice(0, 30)}</span>}
           {supplier.defaultLeadTimeDays != null && <span>· {supplier.defaultLeadTimeDays}j de délai</span>}
         </div>

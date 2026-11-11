@@ -62,15 +62,26 @@ export default function TrackingPage() {
   useEffect(() => { void load(); }, [load]);
 
   const t = stats?.totals;
+  const visitBase = t ? (t.pageViews || t.productViews) : 0;
+  const funnelMax = t ? Math.max(t.pageViews, t.productViews, 1) : 1;
+  const sources = (stats?.sources || []).filter((s) => s.views > 0);
+  const devices = stats?.devices || { mobile: 0, desktop: 0, unknown: 0 };
+  const deviceTotal = devices.mobile + devices.desktop + devices.unknown;
+  const currentStore = stores.find((s) => s._id === storeId) || (stores.length === 1 ? stores[0] : undefined);
 
   return (
     <div className="space-y-8">
       <PageHeader
         icon={Activity}
         title="Suivi du trafic"
-        description="Vues, ajouts au panier, paniers abandonnés — pour comprendre où tu perds des clients."
+        description="D'où viennent les visites, et où le formulaire de commande décroche."
         actions={
           <>
+            {stores.length === 1 && currentStore && (
+              <span className="inline-flex shrink-0 items-center whitespace-nowrap rounded-md border border-border/60 bg-card px-2.5 py-1.5 text-xs font-medium">
+                {currentStore.name}
+              </span>
+            )}
             {stores.length > 1 && (
               <select
                 className="h-9 rounded-xl border border-border bg-background px-3 text-sm"
@@ -113,37 +124,82 @@ export default function TrackingPage() {
         <>
           {/* KPI cards */}
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            <Kpi icon={<Eye className="h-5 w-5" />} label="Vues produit" value={t.productViews} accent="from-sky-500 to-blue-600" />
+            <Kpi
+              icon={<Eye className="h-5 w-5" />}
+              label="Vues"
+              value={t.pageViews}
+              sub={`${t.productViews.toLocaleString('fr-FR')} vues produit`}
+              accent="from-sky-500 to-blue-600"
+            />
             <Kpi
               icon={<ShoppingCart className="h-5 w-5" />}
-              label="Ajouts au panier"
+              label="Formulaires commencés"
               value={t.addToCart}
-              sub={`${t.viewToCartRate}% des vues`}
+              sub={`${rate(t.addToCart, visitBase)} % des visites`}
               accent="from-violet-500 to-fuchsia-600"
             />
             <Kpi
               icon={<PackageCheck className="h-5 w-5" />}
               label="Commandes"
               value={t.purchases}
-              sub={`${t.conversionRate}% de conversion`}
+              sub={`${rate(t.purchases, visitBase)} % des visites`}
               accent="from-emerald-500 to-green-600"
             />
             <Kpi
               icon={<CircleSlash className="h-5 w-5" />}
-              label="Paniers abandonnés"
+              label="Formulaires abandonnés"
               value={t.abandonedCarts}
-              sub={`${t.cartToPurchaseRate}% de paniers convertis`}
+              sub="Commencés depuis plus de 24 h, sans commande"
               accent="from-amber-500 to-orange-600"
             />
           </div>
 
           {/* Funnel bar */}
           <div className="rounded-2xl border border-border/60 bg-card p-5">
-            <h2 className="text-sm font-semibold tracking-tight">Entonnoir de conversion</h2>
+            <h2 className="text-sm font-semibold tracking-tight">Du clic à la commande</h2>
+            <p className="mt-0.5 text-xs text-muted-foreground">Une visite, puis le formulaire cash à la livraison, puis la commande.</p>
             <div className="mt-4 space-y-2.5">
-              <FunnelRow label="Vues produit" value={t.productViews} max={t.productViews} color="#0ea5e9" />
-              <FunnelRow label="Ajouts au panier" value={t.addToCart} max={t.productViews} color="#a855f7" />
-              <FunnelRow label="Commandes" value={t.purchases} max={t.productViews} color="#10b981" />
+              <FunnelRow label="Vues des pages" value={t.pageViews} max={funnelMax} color="#0ea5e9" />
+              <FunnelRow label="Vues produit" value={t.productViews} max={funnelMax} color="#38bdf8" />
+              <FunnelRow label="Formulaire commencé" value={t.addToCart} max={funnelMax} color="#a855f7" />
+              <FunnelRow label="Commande" value={t.purchases} max={funnelMax} color="#10b981" />
+            </div>
+          </div>
+
+          <div className="grid gap-4 lg:grid-cols-2">
+            <div className="rounded-2xl border border-border/60 bg-card p-5">
+              <h2 className="text-sm font-semibold tracking-tight">Origine des visites</h2>
+              <p className="mt-0.5 text-xs text-muted-foreground">D'où vient le clic vers la boutique ou la landing.</p>
+              {sources.length === 0 ? (
+                <p className="mt-4 text-sm text-muted-foreground">Aucune visite sur cette période.</p>
+              ) : (
+                <div className="mt-4 space-y-2.5">
+                  {sources.map((s) => (
+                    <FunnelRow
+                      key={s.source}
+                      label={SOURCE_LABEL[s.source] || s.source}
+                      value={s.views}
+                      max={sources[0]?.views || 1}
+                      color="#f97316"
+                    />
+                  ))}
+                </div>
+              )}
+            </div>
+            <div className="rounded-2xl border border-border/60 bg-card p-5">
+              <h2 className="text-sm font-semibold tracking-tight">Appareil</h2>
+              <p className="mt-0.5 text-xs text-muted-foreground">Le cash à la livraison se commande presque toujours sur téléphone.</p>
+              {deviceTotal === 0 ? (
+                <p className="mt-4 text-sm text-muted-foreground">Aucun appareil identifié sur cette période.</p>
+              ) : (
+                <div className="mt-4 space-y-2.5">
+                  <FunnelRow label="Téléphone" value={devices.mobile} max={deviceTotal} color="#f97316" />
+                  <FunnelRow label="Ordinateur" value={devices.desktop} max={deviceTotal} color="#64748b" />
+                  {devices.unknown > 0 && (
+                    <FunnelRow label="Non identifié" value={devices.unknown} max={deviceTotal} color="#cbd5e1" />
+                  )}
+                </div>
+              )}
             </div>
           </div>
 
@@ -164,7 +220,7 @@ export default function TrackingPage() {
                     <tr className="border-b border-border/60 text-left text-xs text-muted-foreground">
                       <th className="p-3 font-medium">Produit</th>
                       <th className="p-3 text-right font-medium">Vues</th>
-                      <th className="p-3 text-right font-medium">Paniers</th>
+                      <th className="p-3 text-right font-medium">Formulaires</th>
                       <th className="p-3 text-right font-medium">Commandes</th>
                       <th className="p-3 text-right font-medium">Conversion</th>
                     </tr>
@@ -197,6 +253,25 @@ export default function TrackingPage() {
   );
 }
 
+function rate(part: number, whole: number): string {
+  if (whole <= 0) return '0';
+  return (Math.round((part / whole) * 1000) / 10).toLocaleString('fr-FR');
+}
+
+const SOURCE_LABEL: Record<string, string> = {
+  facebook: 'Facebook',
+  instagram: 'Instagram',
+  tiktok: 'TikTok',
+  google: 'Google',
+  youtube: 'YouTube',
+  twitter: 'X / Twitter',
+  snapchat: 'Snapchat',
+  whatsapp: 'WhatsApp',
+  direct: 'Trafic direct',
+  other: 'Autres sites',
+  unknown: 'Non identifié',
+};
+
 function Kpi({
   icon,
   label,
@@ -224,7 +299,7 @@ function Kpi({
 }
 
 function FunnelRow({ label, value, max, color }: { label: string; value: number; max: number; color: string }) {
-  const width = max > 0 ? Math.max(2, Math.round((value / max) * 100)) : 0;
+  const width = max > 0 && value > 0 ? Math.max(2, Math.round((value / max) * 100)) : 0;
   return (
     <div>
       <div className="mb-1 flex items-center justify-between text-xs">

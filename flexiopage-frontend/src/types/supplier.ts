@@ -21,6 +21,8 @@ export interface Supplier {
   paymentTerms?: string;
   defaultLeadTimeDays?: number;
   notes?: string;
+  /** Produits du catalogue qui pointent vers ce fournisseur. */
+  productCount?: number;
   archivedAt?: string;
   createdAt?: string;
   updatedAt?: string;

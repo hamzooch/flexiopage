@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { classifyCategory, resolveLandingCategory } from '../image-generation.service';
-import { buildConversionHooks, hookImagePrompt, lockLandingSections, lockSeo } from '../landing-facts';
+import { buildConversionHooks, hookImagePrompt, lockLandingSections, lockSeo, shapeCodSalesPage } from '../landing-facts';
 
 describe('catégorie landing', () => {
   it('reconnaît un caftan comme de la mode', () => {
@@ -51,6 +51,51 @@ describe('faits de la landing', () => {
     expect(seo.seoTitle).toContain('Caftan Brodé Marrakech');
     expect(seo.seoDescription).not.toMatch(/clientes/);
     expect(seo.seoDescription).toMatch(/Paiement à la livraison/);
+  });
+});
+
+describe('page de vente cash à la livraison', () => {
+  it('place le formulaire après la preuve et retire le délai inventé', () => {
+    const sections = shapeCodSalesPage(
+      [
+        { type: 'hero', props: { title: 'Le caftan', ctaText: 'Acheter' } },
+        { type: 'faq', props: { items: [{ question: 'La taille ?', answer: 'Du S au XL.' }] } },
+        {
+          type: 'cod-form',
+          props: {
+            title: 'Je le veux — commander',
+            reassurance: 'Livraison en 48h · Retour 14j',
+            productSlug: 'autre-produit',
+          },
+        },
+        { type: 'footer', props: { brandName: 'Boutique Test' } },
+      ],
+      { productName: 'Caftan Brodé Marrakech', productSlug: 'caftan-brode', productPrice: 45000, currency: 'XOF', country: 'SN', language: 'fr', eta: 'en 48h' },
+    );
+    expect(sections.map((s) => s.type)).toEqual([
+      'hero', 'product', 'steps', 'cod-form', 'faq', 'footer',
+    ]);
+    const form = sections.find((s) => s.type === 'cod-form')!;
+    expect(form.props.title).toBe('Commande · paiement à la livraison');
+    expect(form.props.productSlug).toBe('caftan-brode');
+    expect(form.props.reassurance).toBe('Paiement à la livraison · Livraison en 48h · Aucune avance');
+    expect(form.props.reassurance).not.toMatch(/14/);
+    expect(sections[0].props.ctaText).toBe('Commander · paiement à la livraison');
+    expect(sections[0].props.ctaHref).toBe('#cod-order-form-section');
+    const product = sections.find((s) => s.type === 'product')!;
+    expect(product.props.priceAfter).toBe(45000);
+  });
+
+  it('garde un formulaire déjà sérieux et écrit en arabe si la page est en arabe', () => {
+    const sections = shapeCodSalesPage(
+      [{ type: 'hero', props: { title: 'قفطان', ctaText: 'اطلب الآن' } }],
+      { language: 'ar', country: 'MA' },
+    );
+    const form = sections.find((s) => s.type === 'cod-form')!;
+    expect(form.props.title).toBe('الطلب · الدفع عند الاستلام');
+    expect(form.props.showPostalCode).toBe(true);
+    expect(String(form.props.reassurance)).not.toMatch(/48h|14/);
+    expect(sections[0].props.ctaText).toBe('اطلب الآن');
   });
 });
 

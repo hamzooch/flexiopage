@@ -27,6 +27,8 @@ export interface Collection {
   isPublished: boolean;
   seoTitle?: string;
   seoDescription?: string;
+  /** Nombre réel de produits, y compris pour une collection automatique. */
+  productCount?: number;
   createdAt?: string;
   updatedAt?: string;
 }

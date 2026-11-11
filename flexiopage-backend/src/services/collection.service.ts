@@ -65,13 +65,38 @@ export async function updateCollection(
   );
 }
 
+function productQueryFor(collection: ICollection): FilterQuery<IProduct> {
+  if (collection.type !== 'auto') {
+    const ids = collection.productIds || [];
+    if (!ids.length) return { _id: { $in: [] } };
+    return { _id: { $in: ids }, storeId: collection.storeId };
+  }
+  const rules = collection.rules || {};
+  const q: FilterQuery<IProduct> = { storeId: collection.storeId };
+  if (rules.publishedOnly !== false) q.isPublished = true;
+  if (rules.anyTags && rules.anyTags.length > 0) q.tags = { $in: rules.anyTags };
+  if (typeof rules.minPrice === 'number' || typeof rules.maxPrice === 'number') {
+    const price: Record<string, number> = {};
+    if (typeof rules.minPrice === 'number') price.$gte = rules.minPrice;
+    if (typeof rules.maxPrice === 'number') price.$lte = rules.maxPrice;
+    q.price = price;
+  }
+  return q;
+}
+
+export type CollectionListItem = ICollection & { productCount: number };
+
 export async function listCollections(
   storeId: string,
   options?: { publishedOnly?: boolean }
-): Promise<ICollection[]> {
+): Promise<CollectionListItem[]> {
   const q: FilterQuery<ICollection> = { storeId };
   if (options?.publishedOnly) q.isPublished = true;
-  return Collection.find(q).sort({ sortOrder: 1, createdAt: -1 }).lean<ICollection[]>();
+  const collections = await Collection.find(q).sort({ sortOrder: 1, createdAt: -1 }).lean<ICollection[]>();
+  const counts = await Promise.all(
+    collections.map((c) => Product.countDocuments(productQueryFor(c))),
+  );
+  return collections.map((c, i) => ({ ...c, productCount: counts[i] })) as CollectionListItem[];
 }
 
 export async function getCollectionById(collectionId: string, storeId: string): Promise<ICollection | null> {

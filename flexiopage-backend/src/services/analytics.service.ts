@@ -87,6 +87,16 @@ export interface StoreAnalyticsRich {
      */
     codDeliveryRate: { value: number; previous: number; deltaPct: number | null };
   };
+  /**
+   * File opérationnelle, hors fenêtre de dates : ce que le vendeur doit
+   * encore traiter, quelle que soit la période affichée sur les KPIs.
+   */
+  queue: {
+    /** Jamais appelées, ni livrées, ni annulées. */
+    toConfirm: number;
+    /** Confirmées, pas encore livrées ni annulées. */
+    toShip: number;
+  };
   /** All-time aggregates (no window filter). */
   totals: {
     totalRevenue: number;
@@ -365,6 +375,8 @@ export async function getStoreAnalyticsRich(
     byCountryRaw,
     byCityRaw,
     unpaidCheckouts,
+    toConfirm,
+    toShip,
   ] = await Promise.all([
     // All-time totals (any status).
     Order.aggregate([
@@ -594,6 +606,22 @@ export async function getStoreAnalyticsRich(
       createdAt: { $gte: w.from, $lte: w.to },
       paymentStatus: { $in: ['failed', 'abandoned'] },
     }),
+    Order.countDocuments({
+      storeId: storeObjectId,
+      paymentStatus: { $nin: ['abandoned', 'failed'] },
+      fulfillmentStatus: { $nin: ['cancelled', 'fulfilled'] },
+      $or: [
+        { confirmationStatus: 'pending' },
+        { confirmationStatus: { $exists: false } },
+        { confirmationStatus: null },
+      ],
+    }),
+    Order.countDocuments({
+      storeId: storeObjectId,
+      paymentStatus: { $nin: ['abandoned', 'failed'] },
+      fulfillmentStatus: { $nin: ['cancelled', 'fulfilled'] },
+      confirmationStatus: 'confirmed',
+    }),
   ]);
 
   const t = totals[0] || { orders: 0, revenue: 0, sales: 0, customers: 0, currency: storeCurrency };
@@ -709,6 +737,7 @@ export async function getStoreAnalyticsRich(
       codConfirmationRate: { value: codConfirmationRate, previous: prevCodConfirmationRate, deltaPct: pctDelta(codConfirmationRate, prevCodConfirmationRate) },
       codDeliveryRate: { value: codDeliveryRate, previous: prevCodDeliveryRate, deltaPct: pctDelta(codDeliveryRate, prevCodDeliveryRate) },
     },
+    queue: { toConfirm, toShip },
     totals: { totalRevenue: t.revenue, totalSales: t.sales, totalOrders: t.orders, totalCustomers: t.customers },
     monthlyGoal: await computeMonthlyGoal(storeObjectId, timeZone, storeDoc?.goals?.monthlyRevenue || 0),
     timeseries,

@@ -30,7 +30,7 @@ import {
 import { persistRemoteImage } from './storage.service';
 import { logger } from '../lib/logger';
 import { fetchWithRetry } from '../lib/outbound-fetch';
-import { buildConversionHooks, hookImagePrompt, lockLandingSections, lockSeo } from './landing-facts';
+import { buildConversionHooks, hookImagePrompt, lockLandingSections, lockSeo, shapeCodSalesPage } from './landing-facts';
 
 const FAL_BASE = 'https://fal.run';
 
@@ -684,7 +684,7 @@ const LANDING_ETA: Record<string, string> = {
 
 const CATEGORY_TEMPLATES: Record<CategoryClass, CategoryTemplate> = {
   beauty: {
-    sectionOrder: ['hero', 'features', 'gallery', 'steps', 'testimonials', 'stats', 'cod-form', 'faq', 'cta'],
+    sectionOrder: ['hero', 'product', 'features', 'gallery', 'steps', 'testimonials', 'cod-form', 'faq', 'cta'],
     focus:
       'Transformation visible (avant/après implicite), résultats dans un TIMELINE clair (7j, 14j, 30j), ingrédients transparents, sécurité rassurante. La preuve sociale doit inclure un chiffre de satisfaction ("94% des utilisatrices…"). Le hero attaque un point de douleur physique concret (teint terne, boutons, dents jaunes), pas un désir abstrait.',
     heroAngles: [
@@ -694,7 +694,7 @@ const CATEGORY_TEMPLATES: Record<CategoryClass, CategoryTemplate> = {
     ].join('\n  '),
   },
   fashion: {
-    sectionOrder: ['hero', 'gallery', 'features', 'testimonials', 'brands', 'stats', 'cod-form', 'faq', 'cta'],
+    sectionOrder: ['hero', 'product', 'gallery', 'features', 'testimonials', 'cod-form', 'faq', 'cta'],
     focus:
       'Style + occasion (quand/où tu vas le porter), fit et taille précis (avec guide taille dans FAQ), matière détaillée, versatilité styling. Pas de blabla "premium" — décris la matière, la coupe, la finition. Le hero doit projeter l\'acheteur portant le produit dans SA vie, pas dans un studio parisien fictif.',
     heroAngles: [
@@ -704,7 +704,7 @@ const CATEGORY_TEMPLATES: Record<CategoryClass, CategoryTemplate> = {
     ].join('\n  '),
   },
   electronics: {
-    sectionOrder: ['hero', 'product', 'video', 'features', 'stats', 'gallery', 'testimonials', 'cod-form', 'faq', 'cta'],
+    sectionOrder: ['hero', 'product', 'features', 'gallery', 'testimonials', 'cod-form', 'faq', 'cta'],
     focus:
       'Bénéfice concret AVANT la spec (pas "batterie 5000mAh" mais "2 jours d\'autonomie sans recharger"). Vidéo démo courte, compatibilité listée (marques, systèmes), garantie explicite. La FAQ doit couvrir 5 questions techniques réalistes (autonomie, connectivité, réparation, compatibilité, retour).',
     heroAngles: [
@@ -714,7 +714,7 @@ const CATEGORY_TEMPLATES: Record<CategoryClass, CategoryTemplate> = {
     ].join('\n  '),
   },
   food: {
-    sectionOrder: ['hero', 'features', 'stats', 'gallery', 'steps', 'testimonials', 'cod-form', 'faq', 'cta'],
+    sectionOrder: ['hero', 'product', 'features', 'gallery', 'steps', 'testimonials', 'cod-form', 'faq', 'cta'],
     focus:
       'Bénéfice santé mesurable + ingrédients naturels + traçabilité. Rassure sur la sécurité (certifications, tests, dosage). Le FAQ doit être une réponse HONNÊTE aux objections santé (effets secondaires, contre-indications, quand voir résultats). Ne surpromets JAMAIS ("perdez 10 kg en 7 jours" = interdit).',
     heroAngles: [
@@ -724,7 +724,7 @@ const CATEGORY_TEMPLATES: Record<CategoryClass, CategoryTemplate> = {
     ].join('\n  '),
   },
   luxury: {
-    sectionOrder: ['hero', 'features', 'gallery', 'brands', 'testimonials', 'video', 'cod-form', 'faq', 'cta'],
+    sectionOrder: ['hero', 'product', 'features', 'gallery', 'testimonials', 'cod-form', 'faq', 'cta'],
     focus:
       'Craftsmanship + héritage + histoire, uniquement si la fiche le dit. Pas de "premium", pas de presse inventée, pas d\'atelier ou de date que le vendeur n\'a pas écrits.',
     heroAngles: [
@@ -762,11 +762,10 @@ const DTC_COPY_FORMULAS = `
    Bad  : "Qualité premium" — "Fabriqué avec des matériaux de haute qualité"
    Good : "Ne craque pas au premier hiver" — "Cuir véritable, coutures renforcées — pas de plastique premier prix." (seulement si la fiche dit cuir)
 
-## TESTIMONIALS — Utilise SSS (Star → Story → Solution) dans chaque quote
-   Star     : présente le témoin (nom, âge, ville, situation initiale)
-   Story    : décris SON problème avant (2 phrases spécifiques)
-   Solution : le déclic + le résultat mesurable après X temps
-   Exemple : "Sarah (32 ans, Casablanca) avait honte de sourire depuis 2 ans à cause de ses dents jaunies par le café. Après 3 semaines avec le kit V34, elle poste des selfies sourire ouvert sur Instagram — et 4 amies lui ont demandé la marque."
+## TESTIMONIALS — une phrase concrète, pas une histoire inventée
+   Une phrase sur l'usage réel du produit, un prénom local, une ville.
+   Pas d'âge, pas de chiffre, pas de résultat médical, pas de "X clientes".
+   Exemple : "La broderie est nette, et j'ai payé le livreur seulement après avoir ouvert le colis." — Amina, Dakar
 
 ## CTA — Utilise AIDA (Attention → Interest → Desire → Action)
    title      (Attention) : STOP-scroll — question directe ou fait choquant
@@ -1006,10 +1005,10 @@ Cold traffic — hasn't decided anything. Hook, story, proof, risk
 reversal, urgency, close. OFFER + PROOF + RISK REVERSAL beat product
 details every time. Repeat the core promise across hero → features → cta.
 
-TONE: emotional, benefit-driven, conversational. Short punchy hooks.
-Direct "tu" in French / إنتي in Arabic. Every section pushes toward the
-cod-form. Adress the COD-payment objection ("tu payes seulement quand
-tu l'as en main") in hero + testimonial + faq + cta.
+TONE: clear, concrete, professional. Short sentences. Direct "tu" in
+French. Every button leads to the cod-form. Say that the buyer pays the
+courier in cash, and nothing before. Do not invent a delay, a return
+window, a stock level, or a discount.
 
 STRUCTURE (mandatory order, 8-11 sections). Each section MUST include
 the props listed — omitting a listed prop = invalid output:
@@ -1139,9 +1138,9 @@ Hero (Maroc):
   ctaText: "Commander · paiement à la livraison"
 
 Hero (Sénégal):
-  title: "Le truc que tous tes potes vont vouloir te piquer."
-  subtitle: "Livraison gratuite Dakar + régions sous 72h. Tu testes, ensuite tu payes — pas l'inverse."
-  ctaText: "Je le veux (-30%)"
+  title: "Le caftan brodé, livré chez toi. Tu paies au livreur."
+  subtitle: "Soie brodée, coupe ample. On t'appelle pour confirmer l'adresse avant le passage."
+  ctaText: "Commander · paiement à la livraison"
 
 Features item (générique FR):
   title: "Solide, vraiment solide"
@@ -1185,7 +1184,7 @@ FAQ (Maroc FR):
   // dans le schema générique en respectant ces contraintes.
   const categoryTemplateBlock = getCategoryTemplateBlock(input.category);
 
-  return `You are an elite conversion copywriter who has written 800+ winning COD dropshipping landing pages for the Maghreb and West Africa markets. Your voice is direct, vivid, locally idiomatic, and obsessively specific — never corporate, never generic. You think in scrolls and tap-zones, not in paragraphs. You output ONE valid JSON object only.
+  return `You write the sales page of a real online store that takes orders with cash on delivery. The buyer should trust the shop: clear offer, real price, how the order works, then the order form. Voice: direct and concrete, like a good salesperson. No slang, no fake stock, no invented delay, no invented customer count. You output ONE valid JSON object only.
 
 # Brand
 Store: ${storeName}
@@ -1257,7 +1256,7 @@ function parseLLMJson(content: string): RawAiResult {
 }
 
 const ALLOWED_TYPES = new Set([
-  'hero','features','stats','gallery','product','products','brands','video','pricing','testimonials','steps','cta','faq','footer',
+  'hero','features','stats','gallery','product','products','brands','video','pricing','testimonials','steps','cta','faq','footer','cod-form',
 ]);
 
 /**
@@ -1580,8 +1579,8 @@ function finalize(
   sections: Array<{ type: string; props: Record<string, unknown> }>,
   fallbackProduct?: ProductInput,
   currency?: string,
-  pageKind?: 'landing' | 'product',
   country?: string,
+  language?: string,
 ): TemplateSection[] {
   const productImages = fallbackProduct?.images?.filter((u) => typeof u === 'string' && u.length > 0) || [];
   const firstImage = productImages[0];
@@ -1634,83 +1633,26 @@ function finalize(
     }
   }
 
-  // ── Enforce: every physical-product landing MUST have a cod-form ────
-  // Digital products skip COD entirely (instant download = no delivery).
-  // For everything else we ensure exactly one cod-form is present with
-  // a minimal 3-field shape — nom complet + téléphone + adresse — so the
-  // seller can convert directly from the landing without any extra steps.
   const isDigitalProduct = fallbackProduct?.type === 'digital';
-  if (!isDigitalProduct) {
-    const hasCodForm = sections.some((s) => s.type === 'cod-form');
-    if (!hasCodForm) {
-      // Priorité au slug RÉEL du catalogue (passé par le contrôleur).
-      // En fallback uniquement, on synthétise depuis le nom — mais ça
-      // peut ne PAS matcher le slug en base (e.g. accents : "magnétique"
-      // → "magn-tique" via [^a-z0-9] vs "magnetique" via slugify NFD).
-      // Sans le slug exact le renderer pioche `products[0]` au lieu du
-      // produit ciblé.
-      const productSlug = fallbackProduct?.slug
-        || (fallbackProduct?.name
-          ? fallbackProduct.name.normalize('NFD').replace(/\p{Diacritic}/gu, '')
-              .toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 60)
-          : undefined);
-      // Copy tuned per pageKind — a product-detail page has a buyer who
-      // already understood the product; a landing has a buyer who just met
-      // the offer 15 seconds ago. Different friction levels, different
-      // reassurance.
-      const isProductKind = pageKind === 'product';
-      const eta = country ? LANDING_ETA[country.toUpperCase()] : undefined;
-      const codFormSection = {
-        type: 'cod-form',
-        props: {
-          title: isProductKind
-            ? 'Commande maintenant · paiement à la livraison'
-            : 'Reçois-le chez toi — tu payes à la livraison',
-          subtitle: isProductKind
-            ? `Remplis tes coordonnées, on te rappelle pour confirmer${eta ? ` et on te livre ${eta}` : ' et on livre'}. Zéro avance, zéro carte.`
-            : 'Zéro avance. Zéro carte. Tu payes en main propre au livreur — refuse sans frais si le produit ne te plaît pas.',
-          submitLabel: isProductKind ? 'Confirmer ma commande' : 'Je le veux — commander',
-          reassurance: isProductKind
-            ? 'Paiement uniquement à la réception · Livraison 48h · Retour 14j'
-            : '✅ Paiement cash au livreur · ✅ Livraison en 48h · ✅ Retour possible',
-          productSlug,
-          // Minimal-friction defaults: 3 essential fields only
-          showEmail: false,
-          requireEmail: false,
-          showPostalCode: false,
-          showState: false,
-          showNotes: false,
-          showQuantity: true,
-        } as Record<string, unknown>,
-      };
-      // Prefer to insert just before the FAQ; otherwise before footer; otherwise at end.
-      const faqIdx = sections.findIndex((s) => s.type === 'faq');
-      const footerIdx = sections.findIndex((s) => s.type === 'footer');
-      let insertAt: number;
-      if (faqIdx >= 0) insertAt = faqIdx;
-      else if (footerIdx >= 0) insertAt = footerIdx;
-      else insertAt = sections.length;
-      sections.splice(insertAt, 0, codFormSection);
-      console.log('[landing-gen] auto-injected cod-form section (LLM skipped it)');
-    } else {
-      // The LLM did emit a cod-form — strip the optional clutter fields so
-      // the rendered form stays focused on nom/téléphone/adresse and
-      // mirrors the seller's expectation. ON ÉCRASE aussi productSlug avec
-      // le slug réel du catalogue : le LLM hallucine régulièrement un slug
-      // basé sur le nom qui ne matche pas la base (accents mal gérés), et
-      // sans match exact le renderer pioche le mauvais produit.
-      for (const sec of sections) {
-        if (sec.type === 'cod-form') {
-          const p = sec.props as Record<string, unknown>;
-          if (p.showEmail === undefined) p.showEmail = false;
-          if (p.showNotes === undefined) p.showNotes = false;
-          if (fallbackProduct?.slug) p.productSlug = fallbackProduct.slug;
-        }
-      }
-    }
-  }
+  const eta = country ? LANDING_ETA[country.toUpperCase()] : undefined;
+  const productSlug = fallbackProduct?.slug
+    || (fallbackProduct?.name
+      ? fallbackProduct.name.normalize('NFD').replace(/\p{Diacritic}/gu, '')
+          .toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 60)
+      : undefined);
+  const ordered = isDigitalProduct
+    ? sections
+    : shapeCodSalesPage(sections, {
+        productName: fallbackProduct?.name,
+        productSlug,
+        productPrice: fallbackProduct?.price,
+        currency,
+        country,
+        language,
+        eta,
+      });
 
-  const visible = sections.filter((s) => {
+  const visible = ordered.filter((s) => {
     if (s.type !== 'video') return true;
     const p = s.props;
     return Boolean(p.url || p.posterUrl || p.videoUrl);
@@ -2083,7 +2025,7 @@ async function runFullPipeline(
 
   // STEP 3 — finalize / inject fallbacks
   await tick('assemble', 'running');
-  const finalSections = finalize(factualSections, input.product, input.currency, input.pageKind, input.country);
+  const finalSections = finalize(factualSections, input.product, input.currency, input.country, language);
   const seo = lockSeo(parsed.seoTitle, parsed.seoDescription, input.product?.name);
   console.log(`[landing-gen] done in ${Date.now() - t0}ms — ${finalSections.length} sections, ${imagesGenerated} images`);
   await tick('assemble', 'done');

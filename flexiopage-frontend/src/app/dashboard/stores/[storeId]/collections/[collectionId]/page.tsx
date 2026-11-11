@@ -96,17 +96,19 @@ export default function CollectionEditorPage() {
     }
   }
 
-  if (loading || !store || !collection) {
-    return <p className="text-muted-foreground">Loading...</p>;
-  }
-
   const update = <K extends keyof Collection>(key: K, value: Collection[K]) =>
     setCollection((c) => (c ? { ...c, [key]: value } : c));
 
-  // Resolve which products are currently in the collection — manual reads from
-  // productIds[], auto re-runs the rule filter client-side so the seller sees
-  // matches update as they tweak. Real prod fetch happens server-side later.
-  const matchingProducts = useMemo(() => resolveProducts(collection, allProducts), [collection, allProducts]);
+  // Hooks must stay above the loading return. Manual reads productIds;
+  // auto re-filters the catalog as the seller edits the rules.
+  const matchingProducts = useMemo(
+    () => (collection ? resolveProducts(collection, allProducts) : []),
+    [collection, allProducts],
+  );
+
+  if (loading || !store || !collection) {
+    return <p className="text-muted-foreground">Chargement…</p>;
+  }
 
   return (
     <StoreSubPageShell

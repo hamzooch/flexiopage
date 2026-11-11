@@ -4,11 +4,12 @@ import { useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import {
   BarChart3,
-  DollarSign,
   Download,
+  PackageCheck,
   Percent,
+  PhoneCall,
+  Receipt,
   RefreshCcw,
-  ShoppingCart,
 } from 'lucide-react';
 import { storesApi } from '@/lib/api';
 import { useScopedStoreId } from '@/lib/use-scoped-store';
@@ -22,7 +23,6 @@ import { RevenueAreaChart } from '@/components/charts/RevenueAreaChart';
 import { PaymentDonutChart } from '@/components/charts/PaymentDonutChart';
 import { FunnelChart } from '@/components/charts/FunnelChart';
 import { TopProductsList } from '@/components/charts/TopProductsList';
-import { RecentOrdersPanel } from '@/components/charts/RecentOrdersPanel';
 import type { RangeKey, StoreAnalyticsRich } from '@/types/analytics';
 import { CANCEL_REASON_LABELS } from '@/types/analytics';
 
@@ -116,7 +116,7 @@ export default function DashboardAnalyticsPage() {
         description={
           data
             ? `${selectedStore?.name || 'Boutique'} · ${windowLabel(data)}`
-            : `Performance de ${selectedStore?.name || 'ta boutique'}.`
+            : `Funnel, trafic et zones de ${selectedStore?.name || 'ta boutique'}.`
         }
         actions={
           <>
@@ -189,48 +189,44 @@ export default function DashboardAnalyticsPage() {
         <>
           <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
             <KpiCard
-              label="Ventes"
-              value={formatCurrency(data.kpis.sales.value, currency)}
-              delta={data.kpis.sales.deltaPct}
-              icon={DollarSign}
-              accent="slate"
-              hint="toutes commandes"
-            />
-            <KpiCard
-              label="Encaissé"
-              value={formatCurrency(data.kpis.revenue.value, currency)}
-              delta={data.kpis.revenue.deltaPct}
-              icon={DollarSign}
-              accent="emerald"
-              hint="commandes payées"
-            />
-            <KpiCard
-              label="Commandes payées"
-              value={String(data.kpis.paidOrders.value)}
-              delta={data.kpis.paidOrders.deltaPct}
-              icon={ShoppingCart}
-              accent="slate"
-              hint="sur la période"
-            />
-            <KpiCard
               label="Conversion"
               value={`${data.kpis.conversionRate.value.toFixed(2)}%`}
               delta={data.kpis.conversionRate.deltaPct}
               icon={Percent}
-              accent="slate"
+              accent="pink"
               hint="visites vers commandes"
+            />
+            <KpiCard
+              label="Confirmation"
+              value={`${data.kpis.codConfirmationRate.value.toFixed(0)}%`}
+              delta={data.kpis.codConfirmationRate.deltaPct}
+              icon={PhoneCall}
+              accent="amber"
+              hint="confirmées / créées"
+            />
+            <KpiCard
+              label="Livraison"
+              value={`${data.kpis.codDeliveryRate.value.toFixed(0)}%`}
+              delta={data.kpis.codDeliveryRate.deltaPct}
+              icon={PackageCheck}
+              accent="emerald"
+              hint="livrées / confirmées"
+            />
+            <KpiCard
+              label="Panier moyen"
+              value={formatCurrency(data.kpis.averageOrderValue.value, currency)}
+              delta={data.kpis.averageOrderValue.deltaPct}
+              icon={Receipt}
+              accent="violet"
+              hint="sur la période"
             />
           </div>
 
           <div className="grid grid-cols-2 gap-px overflow-hidden rounded-2xl border border-border/60 bg-border/60 sm:grid-cols-4">
-            <MetricCell label="Panier moyen" value={formatCurrency(data.kpis.averageOrderValue.value, currency)} delta={data.kpis.averageOrderValue.deltaPct} />
+            <MetricCell label="Vues" value={String(data.kpis.pageViews.value)} delta={data.kpis.pageViews.deltaPct} />
             <MetricCell label="Clients" value={String(data.kpis.uniqueCustomers.value)} delta={data.kpis.uniqueCustomers.deltaPct} />
             <MetricCell label="Commandes" value={String(data.kpis.orders.value)} delta={data.kpis.orders.deltaPct} />
-            <MetricCell label="Vues" value={String(data.kpis.pageViews.value)} delta={data.kpis.pageViews.deltaPct} />
-            <MetricCell label="Vues produits" value={String(data.kpis.productViews.value)} delta={data.kpis.productViews.deltaPct} />
-            <MetricCell label="Livraison" value={`${data.kpis.fulfillmentRate.value.toFixed(1)}%`} delta={data.kpis.fulfillmentRate.deltaPct} />
             <MetricCell label="Remboursement" value={`${data.kpis.refundRate.value.toFixed(1)}%`} delta={data.kpis.refundRate.deltaPct} invert />
-            <MetricCell label="En attente" value={String(data.kpis.pendingOrders.value)} />
           </div>
 
           {/* Revenue chart (full width) */}
@@ -249,102 +245,79 @@ export default function DashboardAnalyticsPage() {
             </CardContent>
           </Card>
 
-          {/* Top products + funnel + payment mix */}
-          <div className="grid gap-3 sm:gap-4 lg:grid-cols-3">
-            <Card className="lg:col-span-2">
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm sm:text-base">Funnel cash-on-delivery</CardTitle>
+              <p className="text-xs text-muted-foreground">
+                Créée, contactée, confirmée, expédiée, livrée, payée
+              </p>
+            </CardHeader>
+            <CardContent>
+              <FunnelChart funnel={data.funnel} mode="full" />
+            </CardContent>
+          </Card>
+
+          <AcquisitionSection data={data} currency={currency} />
+
+          <div className="grid gap-3 sm:gap-4 lg:grid-cols-2">
+            <Card>
               <CardHeader className="pb-2">
-                <CardTitle className="text-sm sm:text-base">Top produits</CardTitle>
-                <p className="text-xs text-muted-foreground">Classés par ventes sur la période</p>
+                <CardTitle className="text-sm sm:text-base">Motifs de refus</CardTitle>
+                <p className="text-xs text-muted-foreground">Les causes les plus fréquentes sur la période</p>
               </CardHeader>
               <CardContent>
-                <TopProductsList products={data.topProducts} currency={currency} />
+                <CancelReasonsWidget items={data.cancelReasons || []} />
               </CardContent>
             </Card>
             <Card>
               <CardHeader className="pb-2">
-                <CardTitle className="text-sm sm:text-base">Funnel COD</CardTitle>
-                <p className="text-xs text-muted-foreground">
-                  Créée → contactée → confirmée → dispatchée → livrée → payée
-                </p>
+                <CardTitle className="text-sm sm:text-base">Villes</CardTitle>
+                <p className="text-xs text-muted-foreground">Où partent les commandes, et lesquelles sont livrées</p>
               </CardHeader>
               <CardContent>
-                <FunnelChart funnel={data.funnel} mode="full" />
+                {(data.byCity || []).length === 0 ? (
+                  <p className="text-sm text-muted-foreground">Aucune commande avec une ville sur cette période.</p>
+                ) : (
+                  <ByCityWidget items={data.byCity} currency={currency} />
+                )}
               </CardContent>
             </Card>
           </div>
 
-          {/* Top motifs de refus + Pays */}
-          {(data.cancelReasons?.length > 0 || data.byCountry?.length > 0) && (
-            <div className="grid gap-3 sm:gap-4 lg:grid-cols-2">
-              {data.cancelReasons?.length > 0 && (
-                <Card>
-                  <CardHeader className="pb-2">
-                    <CardTitle className="text-sm sm:text-base">Top motifs de refus</CardTitle>
-                    <p className="text-xs text-muted-foreground">
-                      Où corriger la cause racine — chaque motif suggère une action.
-                    </p>
-                  </CardHeader>
-                  <CardContent>
-                    <CancelReasonsWidget items={data.cancelReasons} />
-                  </CardContent>
-                </Card>
-              )}
-              {data.byCountry?.length > 0 && (
-                <Card>
-                  <CardHeader className="pb-2">
-                    <CardTitle className="text-sm sm:text-base">Performance par pays</CardTitle>
-                    <p className="text-xs text-muted-foreground">
-                      CA + taux de livraison — sur la période.
-                    </p>
-                  </CardHeader>
-                  <CardContent>
-                    <ByCountryWidget items={data.byCountry} currency={currency} />
-                  </CardContent>
-                </Card>
-              )}
-            </div>
-          )}
-
-          {/* Commandes par ville — top 15 + "Autres" + "Non renseignée" */}
-          {data.byCity?.length > 0 && (
-            <Card>
-              <CardHeader className="pb-2">
-                <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <CardTitle className="text-sm sm:text-base">Commandes par ville</CardTitle>
-                    <p className="text-xs text-muted-foreground">
-                      Top 15 villes de tes clients sur la période — % des commandes, CA et taux de livraison.
-                    </p>
-                  </div>
-                </div>
-              </CardHeader>
-              <CardContent>
-                <ByCityWidget items={data.byCity} currency={currency} />
-              </CardContent>
-            </Card>
-          )}
-
-          {/* Payment mix + Recent orders */}
           <div className="grid gap-3 sm:gap-4 lg:grid-cols-2">
             <Card>
               <CardHeader className="pb-2">
-                <CardTitle className="text-sm sm:text-base">Méthodes de paiement</CardTitle>
-                <p className="text-xs text-muted-foreground">Répartition par fournisseur sur la période</p>
+                <CardTitle className="text-sm sm:text-base">Pays</CardTitle>
+                <p className="text-xs text-muted-foreground">Chiffre et livraisons par pays</p>
+              </CardHeader>
+              <CardContent>
+                {(data.byCountry || []).length === 0 ? (
+                  <p className="text-sm text-muted-foreground">Aucune commande sur cette période.</p>
+                ) : (
+                  <ByCountryWidget items={data.byCountry} currency={currency} />
+                )}
+              </CardContent>
+            </Card>
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm sm:text-base">Moyens de paiement</CardTitle>
+                <p className="text-xs text-muted-foreground">Répartition de l&apos;encaissé</p>
               </CardHeader>
               <CardContent>
                 <PaymentDonutChart data={data.paymentBreakdown} currency={currency} />
               </CardContent>
             </Card>
-            <Card>
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm sm:text-base">Commandes récentes</CardTitle>
-                <p className="text-xs text-muted-foreground">Sur la période sélectionnée</p>
-              </CardHeader>
-              <CardContent>
-                <RecentOrdersPanel orders={data.recentOrders} unpaidCheckouts={data.unpaidCheckouts} />
-              </CardContent>
-            </Card>
           </div>
+
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm sm:text-base">Produits</CardTitle>
+              <p className="text-xs text-muted-foreground">Classés par ventes sur la période</p>
+            </CardHeader>
+            <CardContent>
+              <TopProductsList products={data.topProducts} currency={currency} />
+            </CardContent>
+          </Card>
 
           {/* Totals footer — all-time numbers, deliberately understated. */}
           <Card>
@@ -361,6 +334,101 @@ export default function DashboardAnalyticsPage() {
           </Card>
         </>
       )}
+    </div>
+  );
+}
+
+const SOURCE_LABEL: Record<string, string> = {
+  facebook: 'Facebook',
+  instagram: 'Instagram',
+  tiktok: 'TikTok',
+  google: 'Google',
+  youtube: 'YouTube',
+  twitter: 'X / Twitter',
+  snapchat: 'Snapchat',
+  whatsapp: 'WhatsApp',
+  direct: 'Trafic direct',
+  other: 'Autres sites',
+  unknown: 'Non identifié',
+};
+
+function AcquisitionSection({ data, currency }: { data: StoreAnalyticsRich; currency: string }) {
+  const devices = data.devices ?? { mobile: 0, desktop: 0, unknown: 0 };
+  const detected = devices.mobile + devices.desktop;
+  const mobilePct = detected > 0 ? Math.round((devices.mobile / detected) * 100) : 0;
+  const sources = (data.trafficSources || []).filter((row) => row.visitors > 0);
+  const sourceTotal = sources.reduce((sum, row) => sum + row.visitors, 0);
+  const hours = data.hourlySales || [];
+  const maxOrders = Math.max(1, ...hours.map((row) => row.orders));
+  const peak = hours.reduce((best, row) => (row.orders > best.orders ? row : best), { hour: 0, orders: 0, sales: 0 });
+
+  return (
+    <div className="grid gap-3 sm:gap-4 lg:grid-cols-3">
+      <Card>
+        <CardHeader className="pb-2">
+          <CardTitle className="text-sm sm:text-base">Sources de trafic</CardTitle>
+          <p className="text-xs text-muted-foreground">Sessions classées sur la période</p>
+        </CardHeader>
+        <CardContent>
+          {sourceTotal === 0 ? (
+            <p className="text-xs text-muted-foreground">Aucun visiteur classé pour l&apos;instant.</p>
+          ) : (
+            <ul className="space-y-2">
+              {sources.slice(0, 6).map((row) => (
+                <li key={row.source} className="flex items-center justify-between gap-3 text-sm">
+                  <span className="min-w-0 truncate">{SOURCE_LABEL[row.source] || row.source}</span>
+                  <span className="shrink-0 tabular-nums text-muted-foreground">
+                    {row.visitors} · {Math.round((row.visitors / sourceTotal) * 100)}%
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </CardContent>
+      </Card>
+      <Card>
+        <CardHeader className="pb-2">
+          <CardTitle className="text-sm sm:text-base">Appareils</CardTitle>
+          <p className="text-xs text-muted-foreground">Visiteurs mobile et desktop</p>
+        </CardHeader>
+        <CardContent>
+          {detected === 0 ? (
+            <p className="text-xs text-muted-foreground">Pas encore de donnée appareil.</p>
+          ) : (
+            <>
+              <div className="flex items-baseline justify-between text-sm">
+                <span>Mobile <strong className="tabular-nums">{devices.mobile}</strong></span>
+                <span>Desktop <strong className="tabular-nums">{devices.desktop}</strong></span>
+              </div>
+              <div className="mt-3 flex h-2 overflow-hidden rounded-full bg-muted">
+                <div className="bg-emerald-500" style={{ width: `${mobilePct}%` }} />
+                <div className="bg-indigo-500" style={{ width: `${100 - mobilePct}%` }} />
+              </div>
+              <p className="mt-2 text-xs text-muted-foreground">{mobilePct}% des visites viennent du mobile.</p>
+            </>
+          )}
+        </CardContent>
+      </Card>
+      <Card>
+        <CardHeader className="pb-2">
+          <CardTitle className="text-sm sm:text-base">Ventes par heure</CardTitle>
+          <p className="text-xs text-muted-foreground">
+            {peak.orders > 0 ? `Pic à ${peak.hour}h · ${formatCurrency(peak.sales, currency)}` : 'Aucune commande sur la période'}
+          </p>
+        </CardHeader>
+        <CardContent>
+          <div className="flex h-24 items-end gap-px">
+            {hours.map((row) => (
+              <div
+                key={row.hour}
+                title={`${row.hour}h · ${row.orders} commande${row.orders > 1 ? 's' : ''}`}
+                className="min-w-0 flex-1 rounded-sm bg-primary/80"
+                style={{ height: `${Math.max(4, (row.orders / maxOrders) * 100)}%` }}
+              />
+            ))}
+          </div>
+        </CardContent>
+      </Card>
     </div>
   );
 }
@@ -429,8 +497,8 @@ function FooterStat({ label, value }: { label: string; value: string }) {
 function LoadingSkeleton() {
   return (
     <div className="space-y-6">
-      <div className="grid gap-2 grid-cols-2 sm:grid-cols-3 sm:gap-2.5 lg:grid-cols-4 xl:grid-cols-5">
-        {Array.from({ length: 9 }).map((_, i) => (
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+        {Array.from({ length: 4 }).map((_, i) => (
           <div key={i} className="h-[88px] animate-pulse rounded-xl border border-border/60 bg-card" />
         ))}
       </div>

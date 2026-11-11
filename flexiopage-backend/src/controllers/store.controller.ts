@@ -112,7 +112,13 @@ export async function listStores(req: AuthRequest, res: Response): Promise<void>
     return;
   }
   const stores = await storeService.getStoresByOwner(effectiveOwnerId(req.user));
-  res.json({ stores });
+  const hubs = await storeService.getStoreHubSummaries(stores);
+  res.json({
+    stores: stores.map((store) => ({
+      ...store,
+      hub: hubs.get(store._id.toString()) ?? { productCount: 0, openOrders: 0, monthSales: 0 },
+    })),
+  });
 }
 
 export async function getStore(req: AuthRequest, res: Response): Promise<void> {

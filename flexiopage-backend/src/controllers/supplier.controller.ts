@@ -11,6 +11,7 @@
 import { Response } from 'express';
 import { AuthRequest } from '../middleware/auth.middleware';
 import { Supplier } from '../models/Supplier.model';
+import { Product } from '../models/Product.model';
 
 /** GET /api/stores/:storeId/suppliers?includeArchived=true */
 export async function listSuppliers(req: AuthRequest, res: Response): Promise<void> {
@@ -20,6 +21,8 @@ export async function listSuppliers(req: AuthRequest, res: Response): Promise<vo
   const skip = parseInt(req.query.skip as string, 10) || 0;
   const search = String(req.query.search || '').trim();
 
+  const link = req.query.link === 'with' || req.query.link === 'without' ? req.query.link : 'all';
+
   const filter: Record<string, unknown> = { storeId: store._id };
   if (!includeArchived) filter.archivedAt = { $exists: false };
   if (search) {
@@ -27,11 +30,47 @@ export async function listSuppliers(req: AuthRequest, res: Response): Promise<vo
     filter.$or = [{ name: re }, { contactName: re }, { email: re }, { phone: re }];
   }
 
-  const [suppliers, total] = await Promise.all([
-    Supplier.find(filter).sort({ name: 1 }).limit(limit).skip(skip).lean(),
-    Supplier.countDocuments(filter),
+  const [linkedIds, catalogCount, linkedProductCount] = await Promise.all([
+    Product.distinct('suppliers.supplierId', {
+      storeId: store._id,
+      'suppliers.supplierId': { $type: 'objectId' },
+    }),
+    Product.countDocuments({ storeId: store._id }),
+    Product.countDocuments({ storeId: store._id, 'suppliers.supplierId': { $type: 'objectId' } }),
   ]);
-  res.json({ suppliers, total, limit, skip });
+
+  const withFilter = { ...filter, _id: { $in: linkedIds } };
+  const [allCount, withCount] = await Promise.all([
+    Supplier.countDocuments(filter),
+    Supplier.countDocuments(withFilter),
+  ]);
+  const listFilter = link === 'with'
+    ? withFilter
+    : link === 'without'
+      ? { ...filter, _id: { $nin: linkedIds } }
+      : filter;
+  const total = link === 'with' ? withCount : link === 'without' ? allCount - withCount : allCount;
+
+  const suppliers = await Supplier.find(listFilter).sort({ name: 1 }).limit(limit).skip(skip).lean();
+  const pageIds = suppliers.map((s) => s._id);
+  const counts = pageIds.length
+    ? await Product.aggregate<{ _id: typeof pageIds[number]; productCount: number }>([
+      { $match: { storeId: store._id, 'suppliers.supplierId': { $in: pageIds } } },
+      { $unwind: '$suppliers' },
+      { $match: { 'suppliers.supplierId': { $in: pageIds } } },
+      { $group: { _id: '$suppliers.supplierId', productCount: { $sum: 1 } } },
+    ])
+    : [];
+  const countById = new Map(counts.map((c) => [String(c._id), c.productCount]));
+
+  res.json({
+    suppliers: suppliers.map((s) => ({ ...s, productCount: countById.get(String(s._id)) || 0 })),
+    total,
+    limit,
+    skip,
+    counts: { all: allCount, with: withCount, without: allCount - withCount },
+    unlinkedProducts: Math.max(0, catalogCount - linkedProductCount),
+  });
 }
 
 /** GET /api/stores/:storeId/suppliers/:supplierId */

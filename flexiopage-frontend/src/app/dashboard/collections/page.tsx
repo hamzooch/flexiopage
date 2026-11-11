@@ -14,14 +14,14 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { Layers, Plus, Loader2, Search, Trash2, Pencil, Sparkles, Hand } from 'lucide-react';
+import { Layers, Plus, Loader2, Search, Trash2, Pencil, Sparkles, Hand, ExternalLink } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { PageHeader } from '@/components/dashboard/page-header';
 import { useConfirm } from '@/components/ui/confirm-dialog';
 import { storesApi } from '@/lib/api';
 import { useScopedStoreId } from '@/lib/use-scoped-store';
-import { mediaUrl } from '@/lib/utils';
+import { cn, mediaUrl, publicStoreUrl } from '@/lib/utils';
 import type { Collection } from '@/types/collection';
 
 interface StoreType {
@@ -42,6 +42,7 @@ export default function DashboardCollectionsPage() {
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
   const [search, setSearch] = useState('');
+  const [statusFilter, setStatusFilter] = useState<'all' | 'live' | 'draft' | 'empty'>('all');
 
   // Load stores once — mirror `dashboard/products/page.tsx` behavior.
   useEffect(() => {
@@ -74,11 +75,15 @@ export default function DashboardCollectionsPage() {
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
-    if (!q) return collections;
-    return collections.filter(
-      (c) => c.name.toLowerCase().includes(q) || (c.slug || '').toLowerCase().includes(q),
-    );
-  }, [collections, search]);
+    return collections.filter((c) => {
+      const count = c.productCount ?? c.productIds?.length ?? 0;
+      if (statusFilter === 'live' && !c.isPublished) return false;
+      if (statusFilter === 'draft' && c.isPublished) return false;
+      if (statusFilter === 'empty' && count > 0) return false;
+      if (!q) return true;
+      return c.name.toLowerCase().includes(q) || (c.slug || '').toLowerCase().includes(q);
+    });
+  }, [collections, search, statusFilter]);
 
   async function handleCreate() {
     if (!selectedStoreId || creating) return;
@@ -123,7 +128,7 @@ export default function DashboardCollectionsPage() {
       <PageHeader
         icon={Layers}
         title="Collections"
-        description="Regroupe tes produits par thème (manuellement ou par règles auto). Utilisées sur le storefront et pour cibler les campagnes."
+        description="Regroupe tes produits par thème. Une collection automatique se remplit selon ses règles."
         actions={
           stores.length > 1 ? (
             <select
@@ -163,6 +168,27 @@ export default function DashboardCollectionsPage() {
           {creating ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Plus className="h-3.5 w-3.5" />}
           Nouvelle collection
         </Button>
+        {collections.length >= 3 && (
+          <div className="flex w-full gap-1.5 overflow-x-auto">
+            {([
+              { id: 'all', label: 'Toutes' },
+              { id: 'live', label: 'En ligne' },
+              { id: 'draft', label: 'Brouillons' },
+              { id: 'empty', label: 'Vides' },
+            ] as const).map((f) => (
+              <Button
+                key={f.id}
+                type="button"
+                size="sm"
+                variant={statusFilter === f.id ? 'default' : 'outline'}
+                className="h-8 shrink-0"
+                onClick={() => setStatusFilter(f.id)}
+              >
+                {f.label}
+              </Button>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Liste / états */}
@@ -179,14 +205,14 @@ export default function DashboardCollectionsPage() {
       ) : filtered.length === 0 ? (
         <EmptyBlock
           icon={Layers}
-          title={search ? 'Aucun résultat' : 'Aucune collection'}
+          title={search || statusFilter !== 'all' ? 'Aucun résultat' : 'Aucune collection'}
           hint={
-            search
-              ? 'Aucune collection ne correspond à ta recherche.'
+            search || statusFilter !== 'all'
+              ? 'Aucune collection ne correspond à ce filtre.'
               : 'Regroupe tes produits par thème pour les mettre en avant sur ta boutique.'
           }
           cta={
-            !search && selectedStoreId ? (
+            !search && statusFilter === 'all' && selectedStoreId ? (
               <Button
                 onClick={handleCreate}
                 disabled={creating}
@@ -205,6 +231,7 @@ export default function DashboardCollectionsPage() {
               key={c._id}
               collection={c}
               storeId={selectedStoreId}
+              storeSlug={currentStore?.slug}
               onDelete={() => handleDelete(c)}
             />
           ))}
@@ -217,13 +244,18 @@ export default function DashboardCollectionsPage() {
 function CollectionCard({
   collection: c,
   storeId,
+  storeSlug,
   onDelete,
 }: {
   collection: Collection;
   storeId: string;
+  storeSlug?: string;
   onDelete: () => void;
 }) {
-  const productCount = c.productIds?.length ?? 0;
+  const productCount = c.productCount ?? c.productIds?.length ?? 0;
+  const vitrine = c.isPublished && storeSlug && c.slug
+    ? publicStoreUrl({ slug: storeSlug }, `c/${c.slug}`)
+    : null;
   const isAuto = c.type === 'auto';
   const href = `/dashboard/stores/${storeId}/collections/${c._id}`;
   return (
@@ -257,22 +289,34 @@ function CollectionCard({
               </>
             )}
           </div>
-          {!c.isPublished && (
-            <div className="absolute right-2 top-2 inline-flex items-center gap-1 rounded-full bg-amber-500/90 px-2 py-0.5 text-[10px] font-bold text-white backdrop-blur">
-              Brouillon
-            </div>
-          )}
-        </div>
-        <div className="space-y-1 p-3.5">
-          <div className="truncate text-sm font-semibold">{c.name}</div>
-          <div className="text-[11px] text-muted-foreground">
-            {productCount} produit{productCount > 1 ? 's' : ''}
-            {c.slug ? <> · <span className="font-mono">/{c.slug}</span></> : null}
+          <div className={cn(
+            'absolute right-2 top-2 inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-bold text-white backdrop-blur',
+            c.isPublished ? 'bg-emerald-500/90' : 'bg-amber-500/90',
+          )}>
+            {c.isPublished ? 'En ligne' : 'Brouillon'}
           </div>
         </div>
+        <div className="space-y-1 px-3.5 pt-3.5">
+          <div className="truncate pe-16 text-sm font-semibold">{c.name}</div>
+        </div>
       </Link>
+      <div className="flex items-center justify-between gap-2 px-3.5 pb-3.5 pt-1 text-[11px] text-muted-foreground">
+        <span>
+          {productCount === 0 ? 'Aucun produit' : `${productCount} produit${productCount > 1 ? 's' : ''}`}
+        </span>
+        {vitrine && (
+          <a
+            href={vitrine}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1 pe-16 font-semibold text-primary hover:underline"
+          >
+            <ExternalLink className="h-3 w-3" /> Vitrine
+          </a>
+        )}
+      </div>
       {/* Actions — sortent au hover pour rester discrètes */}
-      <div className="absolute bottom-3.5 right-3.5 flex gap-1 opacity-0 transition-opacity group-hover:opacity-100">
+      <div className="absolute bottom-3.5 right-3.5 flex gap-1 opacity-100 transition-opacity lg:opacity-0 lg:group-hover:opacity-100">
         <Link
           href={href}
           className="grid h-7 w-7 place-items-center rounded-md border border-border/60 bg-background/95 text-muted-foreground backdrop-blur transition-colors hover:text-foreground"

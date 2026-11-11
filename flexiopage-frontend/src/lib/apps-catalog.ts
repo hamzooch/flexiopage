@@ -54,6 +54,8 @@ export interface AppDef {
   accent: string;
   /** false = "Bientôt disponible" — carte non cliquable et fiche marquée en attente. */
   available: boolean;
+  /** Ce que l'app change pour une boutique qui encaisse à la livraison. */
+  role?: string;
 }
 
 export const APPS: AppDef[] = [
@@ -70,7 +72,8 @@ export const APPS: AppDef[] = [
   {
     id: 'whatsapp-bot',
     name: 'WhatsApp Bot',
-    description: 'Même assistant IA, sur WhatsApp : répond aux clients et crée les commandes COD automatiquement.',
+    description: 'Répond aux clients sur WhatsApp et crée la commande, payée à la livraison.',
+    role: 'Prendre la commande',
     category: 'Automatisation',
     icon: MessageSquare,
     logo: '/brands/whatsapp.svg',
@@ -80,7 +83,8 @@ export const APPS: AppDef[] = [
   {
     id: 'telegram-bot',
     name: 'Telegram Bot',
-    description: 'Notifications de commandes, messages et alertes directement sur Telegram. Gratuit!',
+    description: 'Une alerte Telegram à chaque nouvelle commande, pour appeler le client tout de suite.',
+    role: 'Tes alertes',
     category: 'Notifications',
     icon: MessageSquare,
     logo: '/brands/telegram.svg',
@@ -89,8 +93,9 @@ export const APPS: AppDef[] = [
   },
   {
     id: 'sales-popup',
-    name: 'Sales Popup',
-    description: 'Preuve sociale : petite notif qui affiche les achats récents à chaque visiteur de ta boutique.',
+    name: 'Pop-up de ventes',
+    description: 'Affiche un achat récent sur la boutique. À réserver aux vraies commandes.',
+    role: 'Preuve sociale',
     category: 'Marketing',
     icon: ShoppingBag,
     logo: '/brands/sales-popup.svg',
@@ -100,7 +105,8 @@ export const APPS: AppDef[] = [
   {
     id: 'whatsapp-notifications',
     name: 'Notifications Client WhatsApp',
-    description: 'Envoie auto un WhatsApp au client à la création, confirmation et dispatch de sa commande. Utilise la session du chatbot.',
+    description: 'Un WhatsApp au client quand la commande est créée, confirmée, puis remise au livreur.',
+    role: 'Prévenir le client',
     category: 'Notifications',
     icon: Bell,
     logo: '/brands/whatsapp.svg',
@@ -110,7 +116,8 @@ export const APPS: AppDef[] = [
   {
     id: 'workflow',
     name: 'Workflow',
-    description: 'Scénarios automatiques. Le premier relance par email une commande digitale dont le paiement n\'est pas terminé.',
+    description: 'Relance par email un paiement en ligne qui n’a pas abouti. Utile pour une boutique digitale.',
+    role: 'Paiement en ligne',
     category: 'Automatisation',
     icon: GitBranch,
     logo: '/brands/workflow.svg',
@@ -120,7 +127,8 @@ export const APPS: AppDef[] = [
   {
     id: 'botstore',
     name: 'Botstore',
-    description: 'Chatbot IA de ta boutique : répond à partir de tes produits et prend la commande du client.',
+    description: 'Répond sur la boutique à partir de tes produits et prend la commande.',
+    role: 'Répondre sur la boutique',
     category: 'Automatisation',
     icon: Bot,
     logo: '/brands/botstore.svg',
@@ -130,7 +138,8 @@ export const APPS: AppDef[] = [
   {
     id: 'google-sheets',
     name: 'Google Sheets',
-    description: 'Pousse chaque commande vers une feuille de calcul Google.',
+    description: 'Chaque commande part dans une feuille Google, pour le suivi et l’appel.',
+    role: 'Exporter les commandes',
     category: 'Productivité',
     icon: FileSpreadsheet,
     logo: '/brands/google-sheets.svg',

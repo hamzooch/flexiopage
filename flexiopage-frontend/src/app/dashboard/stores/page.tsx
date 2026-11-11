@@ -7,21 +7,17 @@
  * UI : héro + KPIs, recherche + filtres, grille de cartes premium.
  */
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import {
   AlertTriangle,
   ArrowRight,
   Check,
-  CheckCircle2,
-  Cloud,
   Copy,
   ExternalLink,
-  Globe,
   Loader2,
-  Package,
-  Pencil,
+  MoreHorizontal,
   Search,
   Store as StoreIcon,
   X,
@@ -33,7 +29,7 @@ import { useStoreStore } from '@/stores/store-store';
 import { useAuthStore } from '@/stores/auth-store';
 import { storesApi } from '@/lib/api';
 import { CreateStoreWizard } from '@/components/dashboard/create-store-wizard';
-import { cn, mediaUrl, publicStoreUrl } from '@/lib/utils';
+import { cn, formatCurrency, mediaUrl, publicStoreUrl } from '@/lib/utils';
 
 interface StoreDoc {
   _id: string;
@@ -46,6 +42,9 @@ interface StoreDoc {
   customDomainVerified?: boolean;
   logo?: string;
   updatedAt?: string;
+  settings?: { currency?: string };
+  integrations?: { delivery?: { enabled?: boolean } };
+  hub?: { productCount: number; openOrders: number; monthSales: number };
 }
 
 type StatusFilter = 'all' | 'live' | 'draft';
@@ -108,7 +107,7 @@ export default function MyStoresPage() {
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
-    return stores.filter((s) => {
+    const list = stores.filter((s) => {
       if (statusFilter === 'live' && !s.isPublished) return false;
       if (statusFilter === 'draft' && s.isPublished) return false;
       if (typeFilter !== 'all' && (s.storeType || 'physical') !== typeFilter) return false;
@@ -119,7 +118,13 @@ export default function MyStoresPage() {
         (s.customDomain || '').toLowerCase().includes(q)
       );
     });
-  }, [stores, query, statusFilter, typeFilter]);
+    list.sort((a, b) => {
+      if (a._id === currentStoreId) return -1;
+      if (b._id === currentStoreId) return 1;
+      return 0;
+    });
+    return list;
+  }, [stores, query, statusFilter, typeFilter, currentStoreId]);
 
   const limitReached = stores.length >= MAX_STORES;
 
@@ -139,7 +144,7 @@ export default function MyStoresPage() {
         description={
           stores.length === 0
             ? 'Crée ta première boutique pour commencer à vendre.'
-            : `${counts.total} sur ${MAX_STORES}. Le tableau de bord suit la boutique marquée Active.`
+            : 'Le tableau de bord suit la boutique que tu ouvres.'
         }
         actions={
           !limitReached ? (
@@ -169,7 +174,21 @@ export default function MyStoresPage() {
         </div>
       )}
 
-      {stores.length > 1 && (
+      {stores.length > 0 && (
+        <div className="flex items-center gap-3">
+          <div className="h-1.5 min-w-0 flex-1 overflow-hidden rounded-full bg-muted" aria-hidden>
+            <div
+              className="h-full rounded-full bg-primary transition-all"
+              style={{ width: `${Math.min(100, (stores.length / Math.max(MAX_STORES, 1)) * 100)}%` }}
+            />
+          </div>
+          <span className="shrink-0 text-xs font-medium tabular-nums text-muted-foreground">
+            {stores.length}/{MAX_STORES} boutiques
+          </span>
+        </div>
+      )}
+
+      {stores.length >= 3 && (
         <div className="flex flex-col gap-3 rounded-2xl border border-border/60 bg-card p-3 lg:flex-row lg:items-center">
           <div className="relative min-w-0 flex-1">
             <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
@@ -309,128 +328,204 @@ function StoreCard({
   onUse: () => void;
 }) {
   const isDigital = store.storeType === 'digital';
-  const TypeIcon = isDigital ? Cloud : Package;
   const publicUrl = publicStoreUrl(store);
-  const hostDisplay = store.customDomain && store.customDomainVerified
-    ? store.customDomain
-    : `/${store.slug}`;
+  const manageHref = `/dashboard/stores/${store.slug || store._id}`;
+  const currency = store.settings?.currency || 'USD';
+  const hub = store.hub;
+  const gaps = store.isPublished ? [] : draftGaps(store, manageHref);
 
   return (
     <article
       className={cn(
-        'flex flex-col gap-4 rounded-2xl border bg-card p-4 sm:flex-row sm:items-center sm:gap-5 sm:p-5',
-        isActive ? 'border-primary/40' : 'border-border/60',
+        'rounded-2xl border bg-card p-4 sm:p-5',
+        isActive ? 'border-primary/40 p-5 shadow-sm sm:p-6' : 'border-border/60',
       )}
     >
-      <div className="flex min-w-0 flex-1 items-start gap-3">
-      {store.logo ? (
-        <div className="grid h-12 w-12 shrink-0 place-items-center overflow-hidden rounded-xl border border-border/60 bg-background">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={mediaUrl(store.logo) || store.logo} alt="" className="h-full w-full object-cover" />
-        </div>
-      ) : (
-        <div className="grid h-12 w-12 shrink-0 place-items-center rounded-xl bg-primary/10 text-primary">
-          <TypeIcon className="h-5 w-5" />
-        </div>
-      )}
-
-      <div className="min-w-0 flex-1">
-        <div className="flex flex-wrap items-center gap-2">
-          <h2 className="truncate text-base font-semibold tracking-tight">{store.name}</h2>
-          <span
-            className={cn(
-              'inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-xs font-medium',
-              store.isPublished
-                ? 'bg-emerald-500/10 text-emerald-700'
-                : 'bg-amber-500/10 text-amber-800',
-            )}
-          >
-            <span
-              className={cn('h-1.5 w-1.5 rounded-full', store.isPublished ? 'bg-emerald-500' : 'bg-amber-500')}
-              aria-hidden
-            />
-            {store.isPublished ? 'En ligne' : 'Brouillon'}
-          </span>
-          {isActive && (
-            <span className="inline-flex items-center gap-1 rounded-full bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary">
-              <CheckCircle2 className="h-3.5 w-3.5" />
-              Active
-            </span>
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-start">
+        <div className="flex min-w-0 flex-1 items-start gap-3">
+          {store.logo ? (
+            <div className="grid h-12 w-12 shrink-0 place-items-center overflow-hidden rounded-xl border border-border/60 bg-background">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={mediaUrl(store.logo) || store.logo} alt="" className="h-full w-full object-cover" />
+            </div>
+          ) : (
+            <div className="grid h-12 w-12 shrink-0 place-items-center rounded-xl bg-primary/10 text-primary">
+              <StoreIcon className="h-5 w-5" />
+            </div>
           )}
-        </div>
-        <p className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-muted-foreground">
-          <span className="truncate">{hostDisplay}</span>
-          <span aria-hidden>·</span>
-          <span>{isDigital ? 'Digital' : 'Physique'}</span>
-          {store.customDomain && (
-            <>
-              <span aria-hidden>·</span>
-              <span className="inline-flex items-center gap-1">
-                <Globe className="h-3.5 w-3.5" />
-                {store.customDomainVerified ? 'Domaine vérifié' : 'Domaine en attente'}
+
+          <div className="min-w-0 flex-1">
+            <div className="flex flex-wrap items-center gap-2">
+              <h2 className="truncate text-base font-semibold tracking-tight">{store.name}</h2>
+              <span
+                className={cn(
+                  'inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-xs font-medium',
+                  store.isPublished
+                    ? 'bg-emerald-500/10 text-emerald-700'
+                    : 'bg-amber-500/10 text-amber-800',
+                )}
+              >
+                <span
+                  className={cn('h-1.5 w-1.5 rounded-full', store.isPublished ? 'bg-emerald-500' : 'bg-amber-500')}
+                  aria-hidden
+                />
+                {store.isPublished ? 'En ligne' : 'Brouillon'}
               </span>
-            </>
+              <span className="text-xs text-muted-foreground">{isDigital ? 'Digital' : 'Physique'}</span>
+              {isActive && (
+                <span className="text-xs font-medium text-muted-foreground">Tableau de bord</span>
+              )}
+            </div>
+            <CopyLink url={publicUrl} />
+          </div>
+        </div>
+
+        <div className="flex shrink-0 items-center gap-2 sm:pt-0.5">
+          {isActive ? (
+            <Button className="h-10 gap-1.5" asChild>
+              <Link href={manageHref}>Gérer</Link>
+            </Button>
+          ) : (
+            <Button onClick={onUse} className="h-10 gap-1.5">
+              <ArrowRight className="h-4 w-4" />
+              Ouvrir
+            </Button>
           )}
-          <StoreIdBadge storeId={store._id} />
-        </p>
-        {store.description ? (
-          <p className="mt-1 line-clamp-2 text-sm text-muted-foreground">{store.description}</p>
-        ) : null}
-      </div>
+          <Link
+            href={publicUrl}
+            target="_blank"
+            rel="noopener"
+            className="inline-flex h-10 items-center gap-1.5 px-2 text-sm font-medium text-muted-foreground hover:text-foreground"
+          >
+            <ExternalLink className="h-4 w-4" />
+            Vitrine
+          </Link>
+          <StoreMenu storeId={store._id} />
+        </div>
       </div>
 
-      <div className="flex shrink-0 flex-wrap gap-2 sm:justify-end">
-        {!isActive && (
-          <Button onClick={onUse} className="h-10 gap-1.5">
-            <ArrowRight className="h-4 w-4" />
-            Utiliser
-          </Button>
-        )}
-        <Button variant="outline" className="h-10 gap-1.5" asChild>
-          <Link href={`/dashboard/stores/${store.slug || store._id}`}>
-            <Pencil className="h-4 w-4" />
-            Modifier
-          </Link>
-        </Button>
-        <Button
-          variant="outline"
-          className={cn(
-            'h-10 gap-1.5',
-            !store.isPublished && 'border-amber-500/40 text-amber-800 hover:bg-amber-500/10',
-          )}
-          asChild
-        >
-          <Link href={publicUrl} target="_blank" rel="noopener">
-            <ExternalLink className="h-4 w-4" />
-            Voir
-          </Link>
-        </Button>
+      <div className={cn('mt-4 grid grid-cols-3 gap-2', isActive && 'sm:gap-3')}>
+        <Stat label="Ventes du mois" value={formatCurrency(hub?.monthSales ?? 0, currency)} emphasize={isActive} />
+        <Stat label="À traiter" value={String(hub?.openOrders ?? 0)} emphasize={isActive} />
+        <Stat label="Produits" value={String(hub?.productCount ?? 0)} emphasize={isActive} />
       </div>
+
+      {gaps.length > 0 && (
+        <ul className="mt-4 space-y-1.5 border-t border-border/60 pt-3">
+          {gaps.map((gap) => (
+            <li key={gap.label}>
+              <Link href={gap.href} className="flex items-center justify-between gap-3 rounded-lg px-2 py-1.5 text-sm hover:bg-muted/60">
+                <span className="font-medium text-amber-800">{gap.label}</span>
+                <span className="text-xs font-semibold text-muted-foreground">Régler</span>
+              </Link>
+            </li>
+          ))}
+        </ul>
+      )}
+      {!store.isPublished && gaps.length === 0 && (
+        <Link
+          href={`${manageHref}?block=identity`}
+          className="mt-4 flex items-center justify-between gap-3 rounded-lg border border-emerald-500/30 bg-emerald-500/5 px-3 py-2 text-sm"
+        >
+          <span className="font-medium text-emerald-800">Prête à publier</span>
+          <span className="text-xs font-semibold text-emerald-800">Mettre en ligne</span>
+        </Link>
+      )}
     </article>
   );
 }
 
-function StoreIdBadge({ storeId }: { storeId: string }) {
+function draftGaps(store: StoreDoc, manageHref: string): Array<{ label: string; href: string }> {
+  const gaps: Array<{ label: string; href: string }> = [];
+  if (!store.logo) gaps.push({ label: 'Logo manquant', href: `${manageHref}?block=branding` });
+  if ((store.hub?.productCount ?? 0) === 0) {
+    gaps.push({ label: 'Aucun produit', href: `/dashboard/products?storeId=${store._id}` });
+  }
+  if ((store.storeType || 'physical') !== 'digital' && !store.integrations?.delivery?.enabled) {
+    gaps.push({ label: 'Livraison non connectée', href: `${manageHref}?block=delivery` });
+  }
+  return gaps;
+}
+
+function Stat({ label, value, emphasize }: { label: string; value: string; emphasize?: boolean }) {
+  return (
+    <div className="rounded-xl bg-muted/40 px-3 py-2">
+      <div className="text-[11px] font-medium text-muted-foreground">{label}</div>
+      <div className={cn('mt-0.5 truncate font-semibold tabular-nums', emphasize ? 'text-base' : 'text-sm')}>{value}</div>
+    </div>
+  );
+}
+
+function CopyLink({ url }: { url: string }) {
   const [copied, setCopied] = useState(false);
+  const display = url.replace(/^https?:\/\//, '');
   return (
     <button
       type="button"
       onClick={async () => {
         try {
-          await navigator.clipboard.writeText(storeId);
+          await navigator.clipboard.writeText(url);
           setCopied(true);
           window.setTimeout(() => setCopied(false), 1600);
         } catch {
-          // clipboard refused — ignore silently
+          // clipboard refused
         }
       }}
-      className="inline-flex h-6 items-center gap-1 rounded-md px-1.5 text-xs text-muted-foreground hover:bg-muted hover:text-foreground"
-      title="Copier l'identifiant"
-      aria-label={copied ? 'Identifiant copié' : "Copier l'identifiant de la boutique"}
+      className="mt-1 inline-flex max-w-full items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground"
+      title="Copier le lien public"
     >
-      {copied ? <Check className="h-3.5 w-3.5 text-emerald-600" /> : <Copy className="h-3.5 w-3.5" />}
-      {copied ? 'Copié' : 'ID'}
+      <span className="truncate">{display}</span>
+      {copied ? <Check className="h-3.5 w-3.5 shrink-0 text-emerald-600" /> : <Copy className="h-3.5 w-3.5 shrink-0" />}
     </button>
+  );
+}
+
+function StoreMenu({ storeId }: { storeId: string }) {
+  const [open, setOpen] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const onDoc = (event: MouseEvent) => {
+      if (!ref.current?.contains(event.target as Node)) setOpen(false);
+    };
+    document.addEventListener('mousedown', onDoc);
+    return () => document.removeEventListener('mousedown', onDoc);
+  }, [open]);
+
+  return (
+    <div className="relative" ref={ref}>
+      <button
+        type="button"
+        onClick={() => setOpen((value) => !value)}
+        className="grid h-10 w-10 place-items-center rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground"
+        aria-label="Plus d'actions"
+        aria-expanded={open}
+      >
+        <MoreHorizontal className="h-4 w-4" />
+      </button>
+      {open && (
+        <div className="absolute right-0 z-20 mt-1 w-44 rounded-xl border border-border/60 bg-card p-1 shadow-lg">
+          <button
+            type="button"
+            className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-sm hover:bg-muted"
+            onClick={async () => {
+              try {
+                await navigator.clipboard.writeText(storeId);
+                setCopied(true);
+                window.setTimeout(() => setOpen(false), 700);
+              } catch {
+                setOpen(false);
+              }
+            }}
+          >
+            {copied ? <Check className="h-3.5 w-3.5 text-emerald-600" /> : <Copy className="h-3.5 w-3.5" />}
+            {copied ? 'Identifiant copié' : "Copier l'identifiant"}
+          </button>
+        </div>
+      )}
+    </div>
   );
 }
 

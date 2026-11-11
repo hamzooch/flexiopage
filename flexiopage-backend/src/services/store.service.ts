@@ -1,10 +1,12 @@
 import { Store, IStore, StoreType } from '../models/Store.model';
 import { LandingPage } from '../models/LandingPage.model';
 import { Product } from '../models/Product.model';
+import { Order } from '../models/Order.model';
 import mongoose from 'mongoose';
 import { slugify } from '../lib/slugify';
 import { examplesForTheme } from '../data/theme-example-products';
 import { timezoneForCountry, resolveStoreTimeZone } from '../utils/store-timezone';
+import { monthlyGoalWindow } from './analytics-range';
 
 /**
  * Standard info pages seeded into every new store. Each becomes a
@@ -359,6 +361,75 @@ export function mergeStoreWithDraft(store: IStore): IStore {
 
 export async function getStoresByOwner(ownerId: string): Promise<IStore[]> {
   return Store.find({ ownerId }).sort({ updatedAt: -1 }).lean<IStore[]>();
+}
+
+export interface StoreHubSummary {
+  productCount: number;
+  /** Commandes encore ouvertes : ni livrées, ni annulées, ni refusées. */
+  openOrders: number;
+  /** Valeur des commandes du mois en cours (fuseau de la boutique). */
+  monthSales: number;
+}
+
+/**
+ * Chiffres légers pour la page « Mes boutiques ». Une poignée de boutiques
+ * par compte, agrégées en quelques requêtes plutôt qu'un analytics complet.
+ */
+export async function getStoreHubSummaries(stores: IStore[]): Promise<Map<string, StoreHubSummary>> {
+  const out = new Map<string, StoreHubSummary>();
+  const ids = stores.map((s) => s._id).filter(Boolean);
+  for (const store of stores) {
+    out.set(store._id.toString(), { productCount: 0, openOrders: 0, monthSales: 0 });
+  }
+  if (!ids.length) return out;
+
+  const now = new Date();
+  const windows = new Map<string, { from: Date; ids: mongoose.Types.ObjectId[] }>();
+  for (const store of stores) {
+    const { from } = monthlyGoalWindow(now, store.settings?.timezone);
+    const key = from.toISOString();
+    const bucket = windows.get(key) ?? { from, ids: [] };
+    bucket.ids.push(store._id);
+    windows.set(key, bucket);
+  }
+
+  const notASale = { $nin: ['abandoned', 'failed'] };
+  const [productRows, orderRows, ...salesGroups] = await Promise.all([
+    Product.aggregate<{ _id: mongoose.Types.ObjectId; count: number }>([
+      { $match: { storeId: { $in: ids } } },
+      { $group: { _id: '$storeId', count: { $sum: 1 } } },
+    ]),
+    Order.aggregate<{ _id: mongoose.Types.ObjectId; count: number }>([
+      {
+        $match: {
+          storeId: { $in: ids },
+          paymentStatus: notASale,
+          fulfillmentStatus: { $nin: ['cancelled', 'fulfilled'] },
+          confirmationStatus: { $ne: 'declined' },
+        },
+      },
+      { $group: { _id: '$storeId', count: { $sum: 1 } } },
+    ]),
+    ...[...windows.values()].map((window) =>
+      Order.aggregate<{ _id: mongoose.Types.ObjectId; sales: number }>([
+        {
+          $match: {
+            storeId: { $in: window.ids },
+            createdAt: { $gte: window.from, $lte: now },
+            paymentStatus: notASale,
+          },
+        },
+        { $group: { _id: '$storeId', sales: { $sum: '$total' } } },
+      ]),
+    ),
+  ]);
+
+  for (const row of productRows) out.get(row._id.toString())!.productCount = row.count;
+  for (const row of orderRows) out.get(row._id.toString())!.openOrders = row.count;
+  for (const group of salesGroups) {
+    for (const row of group) out.get(row._id.toString())!.monthSales = row.sales;
+  }
+  return out;
 }
 
 export async function getStoreById(storeId: string): Promise<IStore | null> {

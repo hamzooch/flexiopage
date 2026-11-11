@@ -124,6 +124,22 @@ export async function updateProduct(
   );
 }
 
+export type ProductListView = 'live' | 'draft' | 'low' | 'out' | 'sku';
+
+const MISSING_SKU = {
+  type: { $ne: 'digital' },
+  $and: [
+    { $or: [{ sku: { $exists: false } }, { sku: null }, { sku: '' }] },
+    {
+      $or: [
+        { variants: { $exists: false } },
+        { variants: { $size: 0 } },
+        { variants: { $elemMatch: { $or: [{ sku: { $exists: false } }, { sku: null }, { sku: '' }] } } },
+      ],
+    },
+  ],
+};
+
 export async function getProductsByStore(
   storeId: string,
   options?: {
@@ -133,16 +149,35 @@ export async function getProductsByStore(
     search?: string;
     testCandidatesOnly?: boolean;
     testStatus?: ProductTestStatus;
+    /** Vue catalogue vendeur : en ligne, brouillon, stock, SKU manquant. */
+    view?: ProductListView;
   }
 ): Promise<{ products: IProduct[]; total: number }> {
-  const q: Record<string, unknown> = { storeId };
-  if (options?.publishedOnly) q.isPublished = true;
-  if (options?.testCandidatesOnly) q.isTestCandidate = true;
-  if (options?.testStatus) q.testStatus = options.testStatus;
+  const and: Record<string, unknown>[] = [{ storeId }];
+  if (options?.publishedOnly || options?.view === 'live') and.push({ isPublished: true });
+  if (options?.view === 'draft') and.push({ isPublished: { $ne: true } });
+  if (options?.view === 'low') {
+    and.push({
+      type: { $ne: 'digital' },
+      trackInventory: { $ne: false },
+      stock: { $gt: 0, $lte: 5 },
+    });
+  }
+  if (options?.view === 'out') {
+    and.push({
+      type: { $ne: 'digital' },
+      trackInventory: { $ne: false },
+      $or: [{ stock: { $lte: 0 } }, { stock: { $exists: false } }, { stock: null }],
+    });
+  }
+  if (options?.view === 'sku') and.push(MISSING_SKU);
+  if (options?.testCandidatesOnly) and.push({ isTestCandidate: true });
+  if (options?.testStatus) and.push({ testStatus: options.testStatus });
   if (options?.search) {
     const re = new RegExp(options.search.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
-    q.$or = [{ name: re }, { slug: re }];
+    and.push({ $or: [{ name: re }, { slug: re }, { sku: re }] });
   }
+  const q: Record<string, unknown> = and.length === 1 ? and[0] : { $and: and };
   const limit = options?.limit ?? 1000; // legacy callers : pas de limite stricte
   const skip = options?.skip ?? 0;
 
@@ -150,12 +185,16 @@ export async function getProductsByStore(
   // élevés) remontent en tête pour guider le vendeur sur quoi tester en premier.
   if (options?.testCandidatesOnly) {
     // Aggregation ne caste pas les strings → ObjectId comme find() : on force.
-    const match: Record<string, unknown> = {
-      ...q,
-      storeId: mongoose.isValidObjectId(storeId)
-        ? new mongoose.Types.ObjectId(storeId)
-        : storeId,
-    };
+    const storeOid = mongoose.isValidObjectId(storeId)
+      ? new mongoose.Types.ObjectId(storeId)
+      : storeId;
+    const match: Record<string, unknown> = Array.isArray(q.$and)
+      ? {
+          $and: (q.$and as Record<string, unknown>[]).map((clause) =>
+            Object.prototype.hasOwnProperty.call(clause, 'storeId') ? { ...clause, storeId: storeOid } : clause,
+          ),
+        }
+      : { ...q, storeId: storeOid };
     const facet = await Product.aggregate<{
       products: IProduct[];
       total: Array<{ n: number }>;

@@ -1,18 +1,26 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent } from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
 import { storesApi } from '@/lib/api';
 import { useScopedStoreId } from '@/lib/use-scoped-store';
-import { FileText, Plus, Eye, ExternalLink, Pencil } from 'lucide-react';
+import { PageHeader } from '@/components/dashboard/page-header';
+import { publicStoreUrl } from '@/lib/utils';
+import { Check, Copy, ExternalLink, Eye, FileText, Loader2, Pencil, Plus, Search } from 'lucide-react';
 
 interface StoreType {
   _id: string;
   name: string;
   slug: string;
+  customDomain?: string | null;
+  customDomainVerified?: boolean;
+}
+
+interface PageSection {
+  type?: string;
 }
 
 interface PageType {
@@ -20,7 +28,13 @@ interface PageType {
   name: string;
   slug: string;
   isPublished?: boolean;
-  sections?: unknown[];
+  sections?: PageSection[];
+}
+
+type PageView = 'all' | 'live' | 'draft' | 'noform';
+
+function hasCodForm(page: PageType) {
+  return (page.sections || []).some((s) => s.type === 'cod-form');
 }
 
 export default function DashboardPagesPage() {
@@ -30,6 +44,9 @@ export default function DashboardPagesPage() {
   const [stores, setStores] = useState<StoreType[]>([]);
   const [pages, setPages] = useState<PageType[]>([]);
   const [loading, setLoading] = useState(true);
+  const [search, setSearch] = useState('');
+  const [view, setView] = useState<PageView>('all');
+  const [copiedId, setCopiedId] = useState<string | null>(null);
 
   useEffect(() => {
     storesApi.list().then((res) => {
@@ -57,25 +74,61 @@ export default function DashboardPagesPage() {
       .finally(() => setLoading(false));
   }, [selectedStoreId]);
 
-  return (
-    <div className="space-y-8">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold">Landing Pages</h1>
-          <p className="text-muted-foreground">Build and manage landing pages.</p>
-        </div>
-        {selectedStoreId && (
-          <Link href={`/dashboard/pages/new?storeId=${selectedStoreId}`}>
-            <Button>
-              <Plus className="mr-2 h-4 w-4" />
-              New page
-            </Button>
-          </Link>
-        )}
-      </div>
+  const currentStore = stores.find((s) => s._id === selectedStoreId);
+  const liveCount = pages.filter((p) => p.isPublished).length;
+  const noFormCount = pages.filter((p) => !hasCodForm(p)).length;
+  const visible = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return pages
+      .filter((p) => {
+        if (view === 'live' && !p.isPublished) return false;
+        if (view === 'draft' && p.isPublished) return false;
+        if (view === 'noform' && hasCodForm(p)) return false;
+        if (!q) return true;
+        return p.name.toLowerCase().includes(q) || p.slug.toLowerCase().includes(q);
+      })
+      .sort((a, b) => Number(!!b.isPublished) - Number(!!a.isPublished) || a.name.localeCompare(b.name, 'fr'));
+  }, [pages, search, view]);
 
-      {stores.length > 0 && (
-        <div className="flex gap-2">
+  async function copyLink(page: PageType) {
+    if (!currentStore || !page.isPublished) return;
+    const url = publicStoreUrl(currentStore, `p/${page.slug}`);
+    try {
+      await navigator.clipboard.writeText(url);
+      setCopiedId(page._id);
+      window.setTimeout(() => setCopiedId((id) => (id === page._id ? null : id)), 1600);
+    } catch {
+      setCopiedId(null);
+    }
+  }
+
+  return (
+    <div className="space-y-6">
+      <PageHeader
+        icon={FileText}
+        title="Landing pages"
+        description="Les pages où tes publicités envoient le client. Le formulaire prend la commande en cash à la livraison."
+        actions={
+          <div className="flex items-center gap-2">
+            {stores.length > 1 ? null : currentStore ? (
+              <span className="inline-flex shrink-0 items-center whitespace-nowrap rounded-md border border-border/60 bg-card px-2.5 py-1.5 text-xs font-medium">
+                {currentStore.name}
+              </span>
+            ) : null}
+            {selectedStoreId && (
+              <Link href={`/dashboard/pages/new?storeId=${selectedStoreId}`}>
+                <Button className="gap-1.5 gradient-brand text-white">
+                  <Plus className="h-4 w-4" />
+                  Nouvelle page
+                </Button>
+              </Link>
+            )}
+          </div>
+        }
+      />
+
+      {stores.length > 1 && (
+        <div className="flex gap-2 overflow-x-auto">
           {stores.map((s) => (
             <Button
               key={s._id}
@@ -90,68 +143,129 @@ export default function DashboardPagesPage() {
       )}
 
       {!selectedStoreId ? (
-        <Card>
-          <CardContent className="py-16 text-center text-muted-foreground">
-            Create a store first to add pages.
-          </CardContent>
-        </Card>
+        <div className="rounded-2xl border border-dashed border-border/70 bg-card p-10 text-center text-sm text-muted-foreground">
+          Crée une boutique d&apos;abord.
+        </div>
       ) : loading ? (
-        <p className="text-muted-foreground">Loading pages...</p>
+        <div className="grid h-40 place-items-center rounded-2xl border border-border/60 bg-card">
+          <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+        </div>
       ) : pages.length === 0 ? (
-        <Card>
-          <CardContent className="flex flex-col items-center justify-center py-16">
-            <FileText className="h-12 w-12 text-muted-foreground" />
-            <p className="mt-4 font-medium">No landing pages</p>
-            <Link href={`/dashboard/pages/new?storeId=${selectedStoreId}`}>
-              <Button className="mt-2">Create page</Button>
-            </Link>
-          </CardContent>
-        </Card>
+        <div className="rounded-2xl border border-dashed border-border/70 bg-card p-10 text-center">
+          <div className="mx-auto mb-3 grid h-14 w-14 place-items-center rounded-2xl bg-muted text-muted-foreground">
+            <FileText className="h-7 w-7" />
+          </div>
+          <p className="font-medium">Aucune landing page</p>
+          <p className="mx-auto mt-1 max-w-md text-sm text-muted-foreground">
+            Une page avec un formulaire, c&apos;est l&apos;adresse que tu colles dans ta publicité.
+          </p>
+          <Link href={`/dashboard/pages/new?storeId=${selectedStoreId}`}>
+            <Button className="mt-4 gap-1.5 gradient-brand text-white">
+              <Plus className="h-4 w-4" /> Créer une page
+            </Button>
+          </Link>
+        </div>
       ) : (
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {pages.map((p) => {
-            const storeSlug = stores.find((s) => s._id === selectedStoreId)?.slug;
-            return (
-              <Card key={p._id}>
-                <CardContent className="p-4">
-                  <div className="flex justify-between">
-                    <p className="font-medium">{p.name}</p>
-                    <span
-                      className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${
-                        p.isPublished ? 'bg-emerald-500/10 text-emerald-700' : 'bg-amber-500/10 text-amber-700'
-                      }`}
-                    >
-                      {p.isPublished ? 'Live' : 'Draft'}
-                    </span>
-                  </div>
-                  <p className="text-sm text-muted-foreground">/{p.slug}</p>
-                  <div className="mt-4 flex flex-wrap gap-2">
-                    <Link href={`/dashboard/pages/${p._id}?storeId=${selectedStoreId}`}>
-                      <Button variant="outline" size="sm" className="gap-1.5">
-                        <Pencil className="h-3.5 w-3.5" />
-                        Edit
-                      </Button>
-                    </Link>
-                    <Link href={`/preview/${p._id}?storeId=${selectedStoreId}`} target="_blank">
-                      <Button variant="outline" size="sm" className="gap-1.5">
-                        <Eye className="h-3.5 w-3.5" />
-                        Preview
-                      </Button>
-                    </Link>
-                    {p.isPublished && storeSlug && (
-                      <Link href={`/${storeSlug}/p/${p.slug}`} target="_blank">
-                        <Button size="sm" className="gap-1.5 gradient-brand text-white">
-                          <ExternalLink className="h-3.5 w-3.5" />
-                          View live
+        <>
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+            <div className="relative min-w-0 flex-1">
+              <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Rechercher une page"
+                className="h-9 pl-8 text-sm"
+              />
+            </div>
+            <div className="flex gap-1.5 overflow-x-auto">
+              {([
+                { id: 'all', label: 'Toutes', count: pages.length },
+                { id: 'live', label: 'En ligne', count: liveCount },
+                { id: 'draft', label: 'Brouillons', count: pages.length - liveCount },
+                { id: 'noform', label: 'Sans formulaire', count: noFormCount },
+              ] as const).map((f) => (
+                <Button
+                  key={f.id}
+                  type="button"
+                  size="sm"
+                  variant={view === f.id ? 'default' : 'outline'}
+                  className="h-9 shrink-0"
+                  onClick={() => setView(f.id)}
+                >
+                  {f.label}
+                  <span className="ms-1.5 tabular-nums opacity-70">{f.count}</span>
+                </Button>
+              ))}
+            </div>
+          </div>
+
+          {visible.length === 0 ? (
+            <div className="rounded-2xl border border-dashed border-border/70 bg-card p-10 text-center text-sm text-muted-foreground">
+              Aucune page dans cette vue.
+            </div>
+          ) : (
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              {visible.map((p) => {
+                const cod = hasCodForm(p);
+                const liveUrl = currentStore && p.isPublished ? publicStoreUrl(currentStore, `p/${p.slug}`) : '';
+                return (
+                  <div key={p._id} className="rounded-2xl border border-border/60 bg-card p-4">
+                    <div className="flex items-start justify-between gap-2">
+                      <p className="min-w-0 truncate font-medium">{p.name}</p>
+                      <span
+                        className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold ${
+                          p.isPublished ? 'bg-emerald-500/10 text-emerald-700' : 'bg-amber-500/10 text-amber-700'
+                        }`}
+                      >
+                        {p.isPublished ? 'En ligne' : 'Brouillon'}
+                      </span>
+                    </div>
+                    <p className="mt-0.5 truncate text-sm text-muted-foreground">/p/{p.slug}</p>
+                    <div className="mt-2">
+                      {cod ? (
+                        <span className="rounded-md bg-emerald-500/10 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-700">
+                          Formulaire
+                        </span>
+                      ) : (
+                        <span className="rounded-md bg-amber-500/10 px-1.5 py-0.5 text-[10px] font-semibold text-amber-700">
+                          Sans formulaire
+                        </span>
+                      )}
+                    </div>
+                    <div className="mt-4 flex flex-wrap gap-2">
+                      <Link href={`/dashboard/pages/${p._id}?storeId=${selectedStoreId}`}>
+                        <Button variant="outline" size="sm" className="gap-1.5">
+                          <Pencil className="h-3.5 w-3.5" />
+                          Modifier
                         </Button>
                       </Link>
-                    )}
+                      <Link href={`/preview/${p._id}?storeId=${selectedStoreId}`} target="_blank">
+                        <Button variant="outline" size="sm" className="gap-1.5">
+                          <Eye className="h-3.5 w-3.5" />
+                          Aperçu
+                        </Button>
+                      </Link>
+                      {liveUrl && (
+                        <>
+                          <a href={liveUrl} target="_blank" rel="noreferrer">
+                            <Button size="sm" className="gap-1.5 gradient-brand text-white">
+                              <ExternalLink className="h-3.5 w-3.5" />
+                              Voir
+                            </Button>
+                          </a>
+                          <Button type="button" variant="outline" size="sm" className="gap-1.5" onClick={() => void copyLink(p)}>
+                            {copiedId === p._id ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+                            {copiedId === p._id ? 'Lien copié' : 'Copier le lien'}
+                          </Button>
+                        </>
+                      )}
+                    </div>
                   </div>
-                </CardContent>
-              </Card>
-            );
-          })}
-        </div>
+                );
+              })}
+            </div>
+          )}
+        </>
       )}
     </div>
   );

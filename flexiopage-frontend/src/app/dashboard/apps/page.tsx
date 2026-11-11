@@ -22,6 +22,17 @@ import { cn } from '@/lib/utils';
 import { PageHeader } from '@/components/dashboard/page-header';
 import { BrandLogo } from '@/components/dashboard/brand-logo';
 import { APPS, type AppDef, type AppId } from '@/lib/apps-catalog';
+
+/** Ordre utile pour une boutique qui encaisse à la livraison. */
+const COD_APP_ORDER: AppId[] = [
+  'telegram-bot',
+  'whatsapp-notifications',
+  'whatsapp-bot',
+  'botstore',
+  'google-sheets',
+  'sales-popup',
+  'workflow',
+];
 import {
   AppWindow,
   Loader2,
@@ -54,6 +65,7 @@ interface StoreDoc {
   _id: string;
   name: string;
   slug: string;
+  storeType?: 'physical' | 'digital';
   integrations?: {
     googleSheets?: { enabled?: boolean; webhookUrl?: string; lastSyncAt?: string; lastError?: string };
   };
@@ -192,8 +204,16 @@ export default function AppsPage() {
     }
   };
 
-  const installedApps = APPS.filter((a) => connected(a.id));
-  const readyApps = APPS.filter((a) => a.available);
+  const physical = (activeStore.storeType || 'physical') !== 'digital';
+  const rank = (id: AppId) => {
+    const i = COD_APP_ORDER.indexOf(id);
+    return i === -1 ? COD_APP_ORDER.length : i;
+  };
+  const installedApps = APPS.filter((a) => connected(a.id)).sort((a, b) => rank(a.id) - rank(b.id));
+  const readyApps = APPS
+    .filter((a) => a.available && !connected(a.id) && !(physical && a.id === 'workflow'))
+    .sort((a, b) => rank(a.id) - rank(b.id));
+  const digitalOnly = physical ? APPS.filter((a) => a.id === 'workflow' && !connected(a.id)) : [];
   const soonApps = APPS.filter((a) => !a.available);
 
   /**
@@ -235,8 +255,8 @@ export default function AppsPage() {
     <div className="space-y-8">
       <PageHeader
         icon={AppWindow}
-        title={`Applications · ${activeStore.name}`}
-        description="Connecte tes outils : Google Sheets, email, notifications, automatisations."
+        title="Applications"
+        description="Ce qui aide à prendre la commande, prévenir le client et t’alerter dès qu’elle arrive."
         actions={stores.length > 1 ? (
           <select
             className="h-9 rounded-xl border border-border bg-background px-3 text-sm"
@@ -247,7 +267,11 @@ export default function AppsPage() {
               <option key={s._id} value={s._id}>{s.name}</option>
             ))}
           </select>
-        ) : undefined}
+        ) : (
+          <span className="inline-flex shrink-0 items-center whitespace-nowrap rounded-md border border-border/60 bg-card px-2.5 py-1.5 text-xs font-medium">
+            {activeStore.name}
+          </span>
+        )}
       />
 
       {/* Mes apps installées — accès rapide en haut de page. Seulement
@@ -262,14 +286,20 @@ export default function AppsPage() {
           </div>
           <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
             {installedApps.map((app) => (
-              <InstalledAppShortcut key={app.id} app={app} onOpen={() => openAppHandler(app.id)} />
+              <InstalledAppShortcut
+                key={app.id}
+                app={app}
+                onOpen={() => openAppHandler(app.id)}
+                onDisconnect={app.id === 'telegram-bot' ? () => void disconnectTelegram() : undefined}
+              />
             ))}
           </div>
         </section>
       )}
 
+      {readyApps.length > 0 && (
       <section>
-        <h2 className="mb-3 text-sm font-semibold">Disponibles</h2>
+        <h2 className="mb-3 text-sm font-semibold">{installedApps.length > 0 ? 'À connecter' : 'Pour tes commandes'}</h2>
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
           {readyApps.map((app) => (
             <AppCard
@@ -283,6 +313,25 @@ export default function AppsPage() {
           ))}
         </div>
       </section>
+      )}
+
+      {digitalOnly.length > 0 && (
+        <section>
+          <h2 className="mb-1 text-sm font-semibold text-muted-foreground">Paiement en ligne</h2>
+          <p className="mb-3 text-xs text-muted-foreground">Cette boutique encaisse à la livraison. Cette application sert à relancer un paiement par carte.</p>
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+            {digitalOnly.map((app) => (
+              <AppCard
+                key={app.id}
+                app={app}
+                connected={false}
+                onOpen={() => openAppHandler(app.id)}
+                onOpenDetail={() => router.push(`/dashboard/apps/browse/${app.id}`)}
+              />
+            ))}
+          </div>
+        </section>
+      )}
 
       {soonApps.length > 0 && (
         <section>
@@ -321,22 +370,25 @@ function AppLogo({ app, className }: { app: AppDef; className: string }) {
   );
 }
 
-function InstalledAppShortcut({ app, onOpen }: { app: AppDef; onOpen: () => void }) {
+function InstalledAppShortcut({ app, onOpen, onDisconnect }: { app: AppDef; onOpen: () => void; onDisconnect?: () => void }) {
   return (
-    <button
-      type="button"
-      onClick={onOpen}
-      className="group flex min-w-0 items-center gap-3 rounded-2xl border border-border/60 bg-card p-3 text-left transition-all hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-md"
-    >
-      <AppLogo app={app} className="h-10 w-10 rounded-xl transition-transform group-hover:scale-110" />
-      <div className="min-w-0 flex-1">
-        <div className="flex items-start gap-1.5">
-          <span className="text-sm font-semibold leading-snug">{app.name}</span>
-          <Check className="mt-0.5 h-3 w-3 shrink-0 text-emerald-600" strokeWidth={3} />
+    <div className="flex min-w-0 items-center gap-3 rounded-2xl border border-border/60 bg-card p-3">
+      <button type="button" onClick={onOpen} className="group flex min-w-0 flex-1 items-center gap-3 text-left">
+        <AppLogo app={app} className="h-10 w-10 rounded-xl transition-transform group-hover:scale-110" />
+        <div className="min-w-0 flex-1">
+          <div className="flex items-start gap-1.5">
+            <span className="text-sm font-semibold leading-snug">{app.name}</span>
+            <Check className="mt-0.5 h-3 w-3 shrink-0 text-emerald-600" strokeWidth={3} />
+          </div>
+          <div className="text-[10px] text-muted-foreground">{app.role || 'Gérer'}</div>
         </div>
-        <div className="text-[10px] text-muted-foreground">Gérer →</div>
-      </div>
-    </button>
+      </button>
+      {onDisconnect && (
+        <Button type="button" size="sm" variant="outline" className="shrink-0" onClick={onDisconnect}>
+          Déconnecter
+        </Button>
+      )}
+    </div>
   );
 }
 
@@ -387,7 +439,7 @@ function AppCard({ app, connected, onOpen, onOpenDetail, onDisconnect }: { app: 
       <div className="relative mt-4">
         <h3 className="text-base font-semibold tracking-tight">{app.name}</h3>
         <p className="mt-0.5 text-[11px] font-medium text-muted-foreground">
-          {app.category}
+          {app.role || app.category}
         </p>
         <p className="mt-2 text-sm text-muted-foreground line-clamp-2">{app.description}</p>
       </div>
@@ -670,7 +722,7 @@ function SalesPopupApp({ store, onSaved }: { store: StoreDoc; onSaved: () => Pro
         <div className="flex items-start gap-4">
           <BrandLogo src="/brands/sales-popup.svg" className="h-12 w-12 rounded-2xl shadow-md" />
           <div className="flex-1">
-            <h1 className="text-2xl font-bold tracking-tight">Sales Popup</h1>
+            <h1 className="text-2xl font-bold tracking-tight">Pop-up de ventes</h1>
             <p className="text-sm text-muted-foreground">
               Affiche une petite notif « <b>Ahmed de Casablanca vient d&apos;acheter …</b> » à chaque visiteur.
               Les vraies commandes sont anonymisées côté serveur ; tu peux aussi saisir des exemples pour les premiers jours.

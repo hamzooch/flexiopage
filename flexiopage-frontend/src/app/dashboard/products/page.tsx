@@ -19,6 +19,11 @@ interface StoreType {
   slug: string;
   storeType?: 'physical' | 'digital';
   settings?: { currency?: string };
+  markets?: Array<{ delivery?: { enabled?: boolean; provider?: string } }>;
+  integrations?: {
+    delivery?: { enabled?: boolean; provider?: string };
+    logistics?: { enabled?: boolean; provider?: string };
+  };
 }
 
 type TestStatus = 'pending' | 'in_progress' | 'tested' | 'test_finished';
@@ -38,6 +43,9 @@ interface ProductType {
   compareAtPrice?: number;
   type: string;
   stock?: number;
+  sku?: string;
+  trackInventory?: boolean;
+  variants?: Array<{ sku?: string }>;
   isPublished?: boolean;
   images?: string[];
   isTestCandidate?: boolean;
@@ -66,6 +74,34 @@ const TEST_STATUS_BADGE: Record<TestStatus, { label: string; cls: string; dot: s
 const TEST_STATUS_ORDER: TestStatus[] = ['pending', 'in_progress', 'tested', 'test_finished'];
 
 type TabValue = 'all' | 'test';
+type CatalogView = 'all' | 'live' | 'draft' | 'low' | 'out' | 'sku';
+
+const SKU_PROVIDERS = new Set(['mogadelivery', 'bestdelivery']);
+
+function storeNeedsSku(store?: StoreType): boolean {
+  if (!store) return false;
+  const market = (store.markets || []).some(
+    (m) => m.delivery?.enabled !== false && !!m.delivery?.provider && SKU_PROVIDERS.has(m.delivery.provider),
+  );
+  if (market) return true;
+  const delivery = store.integrations?.delivery;
+  if (delivery?.enabled && delivery.provider && SKU_PROVIDERS.has(delivery.provider)) return true;
+  const logistics = store.integrations?.logistics;
+  return !!(logistics?.enabled && logistics.provider && SKU_PROVIDERS.has(logistics.provider));
+}
+
+function missingSku(p: ProductType): boolean {
+  if (p.type === 'digital') return false;
+  const base = (p.sku || '').trim();
+  const variants = p.variants || [];
+  if (variants.length > 0) return variants.some((v) => !((v.sku || '').trim() || base));
+  return base.length === 0;
+}
+
+function catalogViewFrom(value: string | null): CatalogView {
+  if (value === 'live' || value === 'draft' || value === 'low' || value === 'out' || value === 'sku') return value;
+  return 'all';
+}
 
 export default function DashboardProductsPage() {
   const searchParams = useSearchParams();
@@ -74,6 +110,7 @@ export default function DashboardProductsPage() {
   const storeIdParam = searchParams.get('storeId');
   const tabParam = (searchParams.get('tab') as TabValue) || 'all';
   const activeTab: TabValue = tabParam === 'test' ? 'test' : 'all';
+  const catalogView = catalogViewFrom(searchParams.get('view'));
 
   const { storeId: selectedStoreId, setStoreId: setSelectedStoreId } = useScopedStoreId(storeIdParam);
   const [stores, setStores] = useState<StoreType[]>([]);
@@ -90,7 +127,7 @@ export default function DashboardProductsPage() {
     const t = setTimeout(() => setDebouncedSearch(search), 350);
     return () => clearTimeout(t);
   }, [search]);
-  useEffect(() => { setPage(1); }, [debouncedSearch, selectedStoreId, activeTab]);
+  useEffect(() => { setPage(1); }, [debouncedSearch, selectedStoreId, activeTab, catalogView]);
 
   useEffect(() => {
     storesApi.list().then((res) => {
@@ -116,6 +153,7 @@ export default function DashboardProductsPage() {
         skip,
         search: debouncedSearch.trim() || undefined,
         testCandidates: activeTab === 'test' ? true : undefined,
+        view: activeTab === 'all' && catalogView !== 'all' ? catalogView : undefined,
       })
       .then((res) => {
         const data = res.data as { products: ProductType[]; total: number };
@@ -127,10 +165,11 @@ export default function DashboardProductsPage() {
         setTotal(0);
       })
       .finally(() => setLoading(false));
-  }, [selectedStoreId, page, pageSize, debouncedSearch, activeTab]);
+  }, [selectedStoreId, page, pageSize, debouncedSearch, activeTab, catalogView]);
 
   const activeStore = stores.find((s) => s._id === selectedStoreId);
   const isDigitalStore = activeStore?.storeType === 'digital';
+  const logisticsOn = !isDigitalStore && storeNeedsSku(activeStore);
   const newProductHref = selectedStoreId
     ? (isDigitalStore
         ? `/dashboard/products/new/digital?storeId=${selectedStoreId}`
@@ -142,6 +181,12 @@ export default function DashboardProductsPage() {
     const nextTab = (next === 'test' ? 'test' : 'all') as TabValue;
     const sp = new URLSearchParams(Array.from(searchParams.entries()));
     if (nextTab === 'all') sp.delete('tab'); else sp.set('tab', 'test');
+    router.replace(`${pathname}?${sp.toString()}`, { scroll: false });
+  }
+
+  function handleViewChange(next: CatalogView) {
+    const sp = new URLSearchParams(Array.from(searchParams.entries()));
+    if (next === 'all') sp.delete('view'); else sp.set('view', next);
     router.replace(`${pathname}?${sp.toString()}`, { scroll: false });
   }
 
@@ -176,16 +221,20 @@ export default function DashboardProductsPage() {
     <div className="space-y-8">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold">Products</h1>
+          <h1 className="text-3xl font-bold">Produits</h1>
           <p className="text-muted-foreground">
-            {isDigitalStore ? 'Tes produits digitaux : téléchargements, cours, licences, abonnements.' : 'Manage your store products.'}
+            {isDigitalStore
+              ? 'Tes produits digitaux : téléchargements, cours, licences, abonnements.'
+              : logisticsOn
+                ? 'Prix, stock et SKU. Le transporteur retrouve chaque article par son SKU.'
+                : 'Prix, stock et mise en ligne de tes produits.'}
           </p>
         </div>
         {selectedStoreId && (
           <Link href={newProductHref}>
             <Button>
               <Plus className="mr-2 h-4 w-4" />
-              {isDigitalStore ? 'Nouveau produit digital' : 'Add product'}
+              {isDigitalStore ? 'Nouveau produit digital' : 'Ajouter un produit'}
             </Button>
           </Link>
         )}
@@ -221,26 +270,55 @@ export default function DashboardProductsPage() {
           </TabsList>
 
           <TabsContent value="all" className="space-y-4">
-            <div className="relative max-w-md">
-              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-              <Input
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                placeholder="Rechercher un produit (nom, SKU…)"
-                className="pl-9"
-              />
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div className="relative max-w-md flex-1">
+                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  placeholder="Nom ou SKU"
+                  className="pl-9"
+                />
+              </div>
+              <div className="flex gap-1.5 overflow-x-auto">
+                {([
+                  { id: 'all', label: 'Tous' },
+                  { id: 'live', label: 'En ligne' },
+                  { id: 'draft', label: 'Brouillons' },
+                  ...(!isDigitalStore ? [
+                    { id: 'low' as const, label: 'Stock faible' },
+                    { id: 'out' as const, label: 'Rupture' },
+                  ] : []),
+                  ...(logisticsOn ? [{ id: 'sku' as const, label: 'SKU manquant' }] : []),
+                ] as Array<{ id: CatalogView; label: string }>).map((v) => (
+                  <Button
+                    key={v.id}
+                    type="button"
+                    size="sm"
+                    variant={catalogView === v.id ? 'default' : 'outline'}
+                    className="shrink-0"
+                    onClick={() => handleViewChange(v.id)}
+                  >
+                    {v.label}
+                  </Button>
+                ))}
+              </div>
             </div>
 
             {loading ? (
-              <p className="text-muted-foreground">Loading products...</p>
+              <p className="text-muted-foreground">Chargement des produits…</p>
             ) : products.length === 0 ? (
               <Card>
                 <CardContent className="flex flex-col items-center justify-center py-16">
                   <Package className="h-12 w-12 text-muted-foreground" />
-                  <p className="mt-4 font-medium">No products</p>
-                  <Link href={newProductHref}>
-                    <Button className="mt-2">{isDigitalStore ? 'Nouveau produit digital' : 'Add product'}</Button>
-                  </Link>
+                  <p className="mt-4 font-medium">
+                    {catalogView === 'all' && !search.trim() ? 'Pas encore de produits' : 'Aucun produit dans cette vue'}
+                  </p>
+                  {catalogView === 'all' && !search.trim() && (
+                    <Link href={newProductHref}>
+                      <Button className="mt-2">{isDigitalStore ? 'Nouveau produit digital' : 'Ajouter un produit'}</Button>
+                    </Link>
+                  )}
                 </CardContent>
               </Card>
             ) : (
@@ -288,7 +366,7 @@ export default function DashboardProductsPage() {
                                 : 'bg-amber-500/90 text-white'
                             )}
                           >
-                            {p.isPublished ? 'Live' : 'Draft'}
+                            {p.isPublished ? 'En ligne' : 'Brouillon'}
                           </span>
                           {p.isTestCandidate && (
                             <span className="absolute left-1.5 bottom-1.5 inline-flex items-center gap-1 rounded-full bg-violet-500/90 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-white shadow-sm backdrop-blur">
@@ -300,14 +378,9 @@ export default function DashboardProductsPage() {
                               <Cloud className="h-2.5 w-2.5" /> Digital
                             </span>
                           )}
-                          {outOfStock && !p.isTestCandidate && (
+                          {outOfStock && !p.isTestCandidate && p.trackInventory !== false && (
                             <span className="absolute bottom-1.5 left-1.5 rounded-full bg-rose-500/90 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-white shadow-sm backdrop-blur">
                               Rupture
-                            </span>
-                          )}
-                          {!outOfStock && lowStock && !p.isTestCandidate && (
-                            <span className="absolute bottom-1.5 left-1.5 rounded-full bg-amber-500/90 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-white shadow-sm backdrop-blur">
-                              {p.stock}
                             </span>
                           )}
                           <span
@@ -333,6 +406,24 @@ export default function DashboardProductsPage() {
                               </span>
                             )}
                           </div>
+                          {!isDigital && (
+                            <div className="flex items-center justify-between gap-1 text-[11px] text-muted-foreground">
+                              <span>
+                                {p.trackInventory === false
+                                  ? 'Stock non suivi'
+                                  : outOfStock
+                                    ? 'Rupture'
+                                    : lowStock
+                                      ? `Stock faible · ${p.stock}`
+                                      : `Stock ${p.stock ?? 0}`}
+                              </span>
+                              {logisticsOn && missingSku(p) ? (
+                                <span className="font-semibold text-rose-600">SKU manquant</span>
+                              ) : p.sku ? (
+                                <span className="truncate font-mono">{p.sku}</span>
+                              ) : null}
+                            </div>
+                          )}
                         </div>
                       </Link>
                     );
@@ -374,7 +465,7 @@ export default function DashboardProductsPage() {
       {!selectedStoreId && (
         <Card>
           <CardContent className="py-16 text-center text-muted-foreground">
-            Create a store first to add products.
+            Crée d&apos;abord une boutique pour ajouter des produits.
           </CardContent>
         </Card>
       )}

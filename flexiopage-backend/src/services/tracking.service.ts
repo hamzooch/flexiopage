@@ -259,6 +259,9 @@ export interface TrackingStats {
     addToCart: number;
     purchases: number;
   }>;
+  /** Origine des vues de pages. `unknown` = événement sans source enregistrée. */
+  sources: Array<{ source: string; views: number }>;
+  devices: { mobile: number; desktop: number; unknown: number };
 }
 
 function pct(part: number, whole: number): number {
@@ -323,6 +326,24 @@ export async function getTrackingStats(
     { $limit: 50 },
   ]);
 
+  const visitMatch = { storeId: oid, createdAt: { $gte: start }, type: 'page_view' as const };
+  const [bySource, byDevice] = await Promise.all([
+    StoreEvent.aggregate<{ _id: string; count: number }>([
+      { $match: visitMatch },
+      { $group: { _id: { $ifNull: ['$source', 'unknown'] }, count: { $sum: 1 } } },
+      { $sort: { count: -1 } },
+    ]),
+    StoreEvent.aggregate<{ _id: string; count: number }>([
+      { $match: visitMatch },
+      { $group: { _id: { $ifNull: ['$device', 'unknown'] }, count: { $sum: 1 } } },
+    ]),
+  ]);
+  const devices = { mobile: 0, desktop: 0, unknown: 0 };
+  for (const row of byDevice) {
+    if (row._id === 'mobile' || row._id === 'desktop') devices[row._id] = row.count;
+    else devices.unknown += row.count;
+  }
+
   const productIds = byProduct.map((p) => p._id);
   const productDocs = productIds.length
     ? await Product.find({ _id: { $in: productIds } }).select('name').lean()
@@ -350,5 +371,7 @@ export async function getTrackingStats(
       conversionRate: pct(counts.purchase, counts.product_view),
     },
     products,
+    sources: bySource.map((row) => ({ source: row._id || 'unknown', views: row.count })),
+    devices,
   };
 }

@@ -38,6 +38,11 @@ export interface StoreAnalyticsRich {
     /** Taux de livraison COD = livrées / confirmées × 100. */
     codDeliveryRate: KpiValue;
   };
+  /** File opérationnelle, hors période : à confirmer et à expédier. */
+  queue?: {
+    toConfirm: number;
+    toShip: number;
+  };
   totals: {
     totalRevenue: number;
     /** Sum of ALL orders' total ever placed (any payment status). */

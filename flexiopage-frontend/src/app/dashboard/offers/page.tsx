@@ -10,7 +10,7 @@
  * Each product is one expandable card with the 3 sections inside.
  */
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import {
   storesApi,
@@ -24,9 +24,9 @@ import { useScopedStoreId } from '@/lib/use-scoped-store';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { cn, mediaUrl } from '@/lib/utils';
+import { cn, formatCurrency, mediaUrl } from '@/lib/utils';
 import {
-  Layers, Loader2, Plus, Trash2, Save, Check,
+  Layers, Loader2, Plus, Trash2, Save, Check, Search,
   ArrowUpRight, Sparkles, ChevronDown, Palette,
   LayoutGrid, List, Rows,
   Star,
@@ -42,9 +42,20 @@ interface ProductLite {
   name: string;
   price: number;
   images?: string[];
+  isPublished?: boolean;
   bundle?: ProductBundle;
   upsells?: RelatedOffer[];
   crossSells?: RelatedOffer[];
+}
+
+type OfferFilter = 'all' | 'with' | 'without';
+
+function offerCounts(p: ProductLite) {
+  const tiers = (p.bundle?.tiers || []).filter((t) => t.quantity >= 2 && t.totalPrice > 0).length;
+  const bundleOn = !!p.bundle?.enabled && tiers > 0;
+  const upsells = p.upsells?.length || 0;
+  const cross = p.crossSells?.length || 0;
+  return { tiers, bundleOn, upsells, cross, active: bundleOn || upsells > 0 || cross > 0 };
 }
 
 export default function OffersPage() {
@@ -53,6 +64,8 @@ export default function OffersPage() {
   const [stores, setStores] = useState<StoreLite[]>([]);
   const [products, setProducts] = useState<ProductLite[]>([]);
   const [loading, setLoading] = useState(true);
+  const [search, setSearch] = useState('');
+  const [offerFilter, setOfferFilter] = useState<OfferFilter>('all');
 
   const setStoreId = (id: string) => setStoreIdScoped(id || null);
 
@@ -71,7 +84,7 @@ export default function OffersPage() {
     if (!storeId) return;
     setLoading(true);
     try {
-      const res = await storesApi.listProducts(storeId);
+      const res = await storesApi.listProducts(storeId, { limit: 200 });
       setProducts((res.data as { products: ProductLite[] }).products || []);
     } catch {
       setProducts([]);
@@ -82,14 +95,28 @@ export default function OffersPage() {
 
   useEffect(() => { void loadProducts(); }, [loadProducts]);
 
-  const currency = stores.find((s) => s._id === storeId)?.settings?.currency || 'USD';
+  const currentStore = stores.find((s) => s._id === storeId);
+  const currency = currentStore?.settings?.currency || 'USD';
+  const withOffer = products.filter((p) => offerCounts(p).active).length;
+  const visible = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return products
+      .filter((p) => {
+        const active = offerCounts(p).active;
+        if (offerFilter === 'with' && !active) return false;
+        if (offerFilter === 'without' && active) return false;
+        if (!q) return true;
+        return p.name.toLowerCase().includes(q);
+      })
+      .sort((a, b) => Number(offerCounts(b).active) - Number(offerCounts(a).active) || a.name.localeCompare(b.name, 'fr'));
+  }, [products, search, offerFilter]);
 
   return (
     <div className="space-y-6">
       <PageHeader
         icon={Layers}
         title="Offres & bundles"
-        description="Bundle quantité, upsell et cross-sell — tout par produit. Le storefront applique immédiatement."
+        description="Les offres qui montent le panier à la commande : bundle, upsell, produits complémentaires."
         actions={stores.length > 1 ? (
           <select
             className="h-9 rounded-xl border border-border bg-background px-3 text-sm"
@@ -100,6 +127,10 @@ export default function OffersPage() {
               <option key={s._id} value={s._id}>{s.name}</option>
             ))}
           </select>
+        ) : currentStore ? (
+          <span className="inline-flex shrink-0 items-center whitespace-nowrap rounded-md border border-border/60 bg-card px-2.5 py-1.5 text-xs font-medium">
+            {currentStore.name}
+          </span>
         ) : undefined}
       />
 
@@ -110,6 +141,39 @@ export default function OffersPage() {
         <HelpChip icon={<Sparkles className="h-4 w-4" />} title="Cross-sell" desc="Produits complémentaires en bas de page." tone="emerald" />
       </div>
 
+      {!loading && products.length > 0 && (
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+          <div className="relative min-w-0 flex-1">
+            <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Rechercher un produit"
+              className="h-9 pl-8 text-sm"
+            />
+          </div>
+          <div className="flex gap-1.5 overflow-x-auto">
+            {([
+              { id: 'all', label: 'Tous', count: products.length },
+              { id: 'with', label: 'Avec offre', count: withOffer },
+              { id: 'without', label: 'Sans offre', count: products.length - withOffer },
+            ] as const).map((f) => (
+              <Button
+                key={f.id}
+                type="button"
+                size="sm"
+                variant={offerFilter === f.id ? 'default' : 'outline'}
+                className="h-9 shrink-0"
+                onClick={() => setOfferFilter(f.id)}
+              >
+                {f.label}
+                <span className="ms-1.5 tabular-nums opacity-70">{f.count}</span>
+              </Button>
+            ))}
+          </div>
+        </div>
+      )}
+
       {loading ? (
         <div className="grid h-40 place-items-center rounded-2xl border border-border/60 bg-card">
           <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
@@ -118,9 +182,13 @@ export default function OffersPage() {
         <div className="rounded-2xl border border-dashed border-border/70 bg-card p-10 text-center text-sm text-muted-foreground">
           Aucun produit dans cette boutique. Crée un produit d&apos;abord.
         </div>
+      ) : visible.length === 0 ? (
+        <div className="rounded-2xl border border-dashed border-border/70 bg-card p-10 text-center text-sm text-muted-foreground">
+          Aucun produit dans cette vue.
+        </div>
       ) : (
         <div className="space-y-2.5">
-          {products.map((p) => (
+          {visible.map((p) => (
             <ProductOfferCard
               key={p._id}
               storeId={storeId || ''}
@@ -199,9 +267,16 @@ function ProductOfferCard({
           ) : null}
         </div>
         <div className="min-w-0 flex-1">
-          <div className="truncate text-sm font-semibold">{product.name}</div>
+          <div className="flex items-center gap-2">
+            <div className="truncate text-sm font-semibold">{product.name}</div>
+            {product.isPublished === false && (
+              <span className="shrink-0 rounded-full bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-semibold text-amber-700">
+                Brouillon
+              </span>
+            )}
+          </div>
           <div className="mt-0.5 flex flex-wrap items-center gap-1.5 text-[11px]">
-            <span className="text-muted-foreground">{product.price} {currency}</span>
+            <span className="text-muted-foreground">{formatCurrency(product.price, currency)}</span>
             {product.bundle?.enabled && tierCount > 0 && (
               <span className="rounded-md bg-indigo-500/10 px-1.5 py-0.5 font-semibold text-indigo-700">
                 Bundle · {tierCount}
@@ -216,6 +291,9 @@ function ProductOfferCard({
               <span className="rounded-md bg-emerald-500/10 px-1.5 py-0.5 font-semibold text-emerald-700">
                 Cross · {crossCount}
               </span>
+            )}
+            {tierCount === 0 && upsellCount === 0 && crossCount === 0 && (
+              <span className="text-muted-foreground">Aucune offre</span>
             )}
           </div>
         </div>
@@ -406,7 +484,7 @@ function BundleEditor({
                 </Button>
               </div>
               <p className="text-[11px] text-muted-foreground">
-                1 pièce = {product.price} {currency} (base). Définis le prix TOTAL par quantité.
+                1 pièce = {formatCurrency(product.price, currency)} (base). Définis le prix TOTAL par quantité.
               </p>
               <div className="space-y-2">
                 {tiers.map((t, i) => {
@@ -1093,7 +1171,7 @@ function RelatedOfferEditor({
                     ) : null}
                   </div>
                   <span className="min-w-0 flex-1 truncate font-medium">{p.name}</span>
-                  <span className="text-[11px] text-muted-foreground">{p.price} {currency}</span>
+                  <span className="text-[11px] text-muted-foreground">{formatCurrency(p.price, currency)}</span>
                 </button>
               ))}
             </div>

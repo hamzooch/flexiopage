@@ -21,7 +21,7 @@ import { Label } from '@/components/ui/label';
 import { useAuthStore } from '@/stores/auth-store';
 import { useWalletStore } from '@/stores/wallet-store';
 import { useStoreStore } from '@/stores/store-store';
-import { usersApi, storesApi, type PayoutAccount } from '@/lib/api';
+import { usersApi, storesApi, describePayoutAccount, type PayoutAccount } from '@/lib/api';
 import { CreateStoreWizard } from '@/components/dashboard/create-store-wizard';
 import {
   User as UserIcon,
@@ -73,6 +73,37 @@ interface StoreDoc {
   description?: string;
   customDomain?: string;
   customDomainVerified?: boolean;
+  settings?: { currency?: string; country?: string };
+}
+
+const REGION_NAMES = typeof Intl !== 'undefined' && typeof Intl.DisplayNames === 'function'
+  ? new Intl.DisplayNames(['fr'], { type: 'region' })
+  : null;
+
+function countryLabel(code: string, fallback: string): string {
+  try {
+    return REGION_NAMES?.of(code) || fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+const DIAL_CODE: Record<string, string> = {
+  SN: '+221', CI: '+225', ML: '+223', BF: '+226', BJ: '+229', TG: '+228',
+  NE: '+227', GN: '+224', GH: '+233', NG: '+234', CM: '+237', GA: '+241',
+  MA: '+212', TN: '+216', DZ: '+213', LY: '+218', EG: '+20', MR: '+222',
+  FR: '+33', BE: '+32', DE: '+49', ES: '+34', IT: '+39', PT: '+351',
+  SA: '+966', AE: '+971', US: '+1', GB: '+44',
+};
+
+function whatsappExample(code?: string): string {
+  const dial = (code && DIAL_CODE[code.toUpperCase()]) || '+221';
+  return `${dial}771234567`;
+}
+
+function moneyName(code?: string): string {
+  if (code === 'XOF' || code === 'XAF') return 'F CFA';
+  return code || '';
 }
 
 function fmtCur(amount: number, currency: string): string {
@@ -281,7 +312,8 @@ export default function ProfilePage() {
     const whatsappChanged = cleanWhatsapp !== (user?.whatsapp || '');
     setWhatsappError('');
     if (whatsappChanged && cleanWhatsapp && !/^\+[1-9]\d{6,14}$/.test(cleanWhatsapp)) {
-      setWhatsappError('Numéro WhatsApp invalide. Format international attendu, ex : +212600000000');
+      const dialCountry = country || stores.find((s) => s._id === currentStoreId)?.settings?.country || 'SN';
+      setWhatsappError(`Numéro WhatsApp invalide. Format international attendu, ex : ${whatsappExample(dialCountry)}`);
       return;
     }
     if (!nameChanged && !avatarChanged && !whatsappChanged) return;
@@ -460,6 +492,9 @@ export default function ProfilePage() {
   }
 
   const activeStore = stores.find((s) => s._id === currentStoreId);
+  const storeMoney = moneyName(activeStore?.settings?.currency);
+  const waExample = whatsappExample(country || activeStore?.settings?.country || 'SN');
+  const payoutLabel = describePayoutAccount(user?.payoutAccount);
 
   const TABS = [
     { id: 'account' as const,     label: 'Compte',       icon: UserIcon },
@@ -501,6 +536,19 @@ export default function ProfilePage() {
             <h1 className="truncate text-3xl font-bold tracking-tight sm:text-4xl">
               {user?.name || 'Vendeur'}
             </h1>
+            <p className="mt-2 max-w-xl text-sm text-muted-foreground">
+              Les espèces encaissées à la livraison se règlent avec le livreur. Le solde ci-dessous, c’est l’argent FlexioPage.
+            </p>
+            {!country && (
+              <p className="mt-1 max-w-xl text-sm text-amber-800">
+                Pays du compte non choisi : le solde s’affiche en {wallet?.currency || 'USD'}.
+                {activeStore && storeMoney ? ` Les prix de ${activeStore.name} restent en ${storeMoney}.` : ''}
+                {' '}
+                <button type="button" onClick={() => setTab('preferences')} className="font-medium underline">
+                  Choisir le pays
+                </button>
+              </p>
+            )}
             <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-muted-foreground">
               <span className="inline-flex items-center gap-1.5">
                 <Mail className="h-3.5 w-3.5" />{user?.email}
@@ -527,7 +575,7 @@ export default function ProfilePage() {
               />
               <HeroStat
                 icon={<Wallet className="h-3.5 w-3.5" />}
-                label="Solde"
+                label="Solde FlexioPage"
                 value={wallet ? fmtCur(wallet.balance, wallet.currency) : '—'}
                 tone="emerald"
                 href="/dashboard/wallet"
@@ -583,7 +631,8 @@ export default function ProfilePage() {
           <div>
             <h2 className="text-2xl font-bold tracking-tight">Mes boutiques</h2>
             <p className="text-sm text-muted-foreground">
-              Crée, sélectionne et change de boutique active depuis ton profil.
+              Change la boutique affichée dans le tableau de bord. Le détail, le lien public et la livraison se règlent dans{' '}
+              <Link href="/dashboard/stores" className="font-medium text-foreground underline">Mes boutiques</Link>.
             </p>
           </div>
         </div>
@@ -684,7 +733,7 @@ export default function ProfilePage() {
                             : 'bg-amber-500/10 text-amber-700'
                         )}
                       >
-                        {store.isPublished ? 'Live' : 'Brouillon'}
+                        {store.isPublished ? 'En ligne' : 'Brouillon'}
                       </span>
                       {isActive && (
                         <span className="inline-flex items-center gap-1 rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-semibold text-primary">
@@ -755,7 +804,13 @@ export default function ProfilePage() {
             <Globe className="h-4 w-4" /> Pays & devise
           </CardTitle>
           <CardDescription>
-            Ton pays détermine la devise par défaut de ton solde principal et de ton solde IA.
+            Le pays du compte fixe la devise du solde FlexioPage. Les prix de la boutique gardent leur propre devise.
+            {!country && (
+              <span className="mt-1 block text-amber-800">
+                Aucun pays choisi : le solde reste en {wallet?.currency || 'USD'}
+                {storeMoney ? `, pendant que la boutique affiche ses prix en ${storeMoney}` : ''}.
+              </span>
+            )}
             {walletHasActivity && (
               <span className="mt-1 inline-flex items-center gap-1.5 text-amber-700">
                 <Lock className="h-3.5 w-3.5" />
@@ -781,9 +836,12 @@ export default function ProfilePage() {
                     if (list.length === 0) return null;
                     return (
                       <optgroup key={g.id} label={g.label}>
-                        {list.map((c) => (
+                        {list
+                          .slice()
+                          .sort((a, b) => countryLabel(a.code, a.label).localeCompare(countryLabel(b.code, b.label), 'fr'))
+                          .map((c) => (
                           <option key={c.code} value={c.code}>
-                            {c.label} ({c.currency})
+                            {countryLabel(c.code, c.label)} ({c.currency === 'XOF' || c.currency === 'XAF' ? 'F CFA' : c.currency})
                           </option>
                         ))}
                       </optgroup>
@@ -801,7 +859,7 @@ export default function ProfilePage() {
                   id="currency"
                   value={currency}
                   onChange={(e) => setCurrency(e.target.value.toUpperCase().slice(0, 3))}
-                  placeholder="Ex: EUR · TND · DZD · USD"
+                  placeholder="XOF, MAD, TND…"
                   maxLength={3}
                   className="mt-1 font-mono uppercase"
                 />
@@ -859,7 +917,7 @@ export default function ProfilePage() {
             <CardTitle className="flex items-center gap-2">
               <UserIcon className="h-4 w-4" /> Informations
             </CardTitle>
-            <CardDescription>Mise à jour de ton nom affiché et de ton adresse email.</CardDescription>
+            <CardDescription>Ton nom, le WhatsApp où l’équipe te joint, et l’email de connexion.</CardDescription>
           </CardHeader>
           <CardContent>
             <form onSubmit={handleSaveName} className="space-y-4">
@@ -882,13 +940,15 @@ export default function ProfilePage() {
                   type="tel"
                   value={whatsapp}
                   onChange={(e) => { setWhatsapp(e.target.value); if (whatsappError) setWhatsappError(''); }}
-                  placeholder="+212600000000"
+                  placeholder={waExample}
                   className="mt-1"
                 />
                 {whatsappError ? (
                   <p className="mt-1 text-[11px] text-destructive">{whatsappError}</p>
                 ) : (
-                  <p className="mt-1 text-[11px] text-muted-foreground">Format international avec indicatif pays.</p>
+                  <p className="mt-1 text-[11px] text-muted-foreground">
+                    Numéro où l’équipe FlexioPage te joint. Le bouton WhatsApp vu par les clients se règle dans la boutique.
+                  </p>
                 )}
               </div>
 
@@ -1052,11 +1112,19 @@ export default function ProfilePage() {
               <Banknote className="h-4 w-4" /> Moyen de versement
             </CardTitle>
             <CardDescription>
-              Choisis où recevoir tes retraits : RedotPay, Mobile Money ou RIB. L’admin envoie l’argent sur ce compte.
+              Où envoyer un retrait du solde FlexioPage. L’argent que le livreur encaisse à la livraison ne passe pas par ici.
             </CardDescription>
           </CardHeader>
           <CardContent>
             <form onSubmit={handleSavePayout} className="space-y-4">
+              <p className={cn(
+                'rounded-lg border px-3 py-2 text-xs',
+                payoutLabel
+                  ? 'border-emerald-500/30 bg-emerald-500/5 text-emerald-800'
+                  : 'border-border/60 bg-muted/30 text-muted-foreground'
+              )}>
+                {payoutLabel ? `Moyen enregistré : ${payoutLabel}` : 'Aucun moyen enregistré.'}
+              </p>
               <div className="grid gap-2 sm:grid-cols-3">
                 {([
                   { id: 'redotpay' as const, label: 'RedotPay', hint: 'Identifiant du compte' },
@@ -1097,7 +1165,7 @@ export default function ProfilePage() {
                     required
                   />
                   <p className="mt-1 text-[11px] text-muted-foreground">
-                    L’admin envoie le montant sur cet identifiant.
+                    Le retrait du solde FlexioPage part sur cet identifiant.
                   </p>
                 </div>
               )}
@@ -1197,7 +1265,7 @@ export default function ProfilePage() {
                     disabled={savingPayout}
                     onClick={() => void handleClearPayout()}
                   >
-                    Retirer
+                    Effacer le moyen
                   </Button>
                 )}
               </div>
@@ -1215,7 +1283,7 @@ export default function ProfilePage() {
             <CardTitle className="flex items-center gap-2">
               <KeyRound className="h-4 w-4" /> Mot de passe
             </CardTitle>
-            <CardDescription>Au moins 8 caractères. On ne le voit jamais — il est haché côté serveur.</CardDescription>
+            <CardDescription>Au moins 8 caractères. Sers-t’en pour te connecter et pour changer l’email.</CardDescription>
           </CardHeader>
           <CardContent>
             <form onSubmit={handleChangePassword} className="space-y-4">
@@ -1358,7 +1426,7 @@ function StoreIdBadge({ storeId }: { storeId: string }) {
       className="group/copy flex w-full items-center gap-2 rounded-lg border border-border/60 bg-muted/30 px-2.5 py-1.5 text-left transition-colors hover:border-primary/40 hover:bg-muted/60"
     >
       <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-        Store ID
+        Identifiant
       </span>
       <code className="flex-1 truncate font-mono text-[11px] text-foreground/90">
         {storeId}

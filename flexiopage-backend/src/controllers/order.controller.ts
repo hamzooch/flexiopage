@@ -1,6 +1,7 @@
 import { Response } from 'express';
 import { AuthRequest } from '../middleware/auth.middleware';
 import * as orderService from '../services/order.service';
+import type { OrderQueue } from '../services/order.service';
 import { dispatchOrder } from '../services/delivery.service';
 import { Order, CONFIRMATION_STATUSES, CANCEL_REASON_CODES, type ConfirmationStatus, type CancelReasonCode } from '../models/Order.model';
 import { Product } from '../models/Product.model';
@@ -8,6 +9,15 @@ import { logActivity } from '../services/activity-log.service';
 import { applyConfirmationStatus } from '../services/order-confirmation.service';
 import { reverseMarketplaceDebitsForRefund } from '../services/seller-earnings.service';
 import { ORDER_EXPORT_MAX, ordersToCsv, ordersToXlsx } from '../services/order-export.service';
+
+const ORDER_QUEUES: OrderQueue[] = [
+  'work', 'to_confirm', 'callback', 'callback_due', 'no_answer', 'to_ship',
+  'dispatch_failed', 'carrier', 'delivered', 'returned', 'declined', 'all',
+];
+
+function parseQueue(value: string | undefined): OrderQueue | undefined {
+  return value && (ORDER_QUEUES as string[]).includes(value) ? value as OrderQueue : undefined;
+}
 
 const PAYMENT_STATUSES = ['pending', 'paid', 'failed', 'refunded', 'manual'] as const;
 const FULFILLMENT_STATUSES = ['unfulfilled', 'partial', 'fulfilled', 'cancelled'] as const;
@@ -128,16 +138,18 @@ export async function listOrders(req: AuthRequest, res: Response): Promise<void>
   const limit = Math.min(parseInt(req.query.limit as string, 10) || 50, 100);
   const skip = parseInt(req.query.skip as string, 10) || 0;
   const str = (k: string) => (typeof req.query[k] === 'string' && req.query[k] ? (req.query[k] as string) : undefined);
-  const { orders, total } = await orderService.getOrdersByStore(store._id.toString(), {
+  const { orders, total, counts } = await orderService.getOrdersByStore(store._id.toString(), {
     limit,
     skip,
     search: str('search'),
     status: str('status') as 'pending' | 'paid' | 'delivered' | 'cancelled' | undefined,
     confirmation: str('confirmation'),
+    fulfillment: str('fulfillment') === 'open' ? 'open' as const : undefined,
+    queue: parseQueue(str('queue')),
     from: str('from'),
     to: str('to'),
   });
-  res.json({ orders, total, limit, skip });
+  res.json({ orders, total, limit, skip, counts });
 }
 
 /** GET /api/stores/:storeId/orders/export?format=xlsx|csv — mêmes filtres que la liste. */
@@ -149,6 +161,8 @@ export async function exportOrders(req: AuthRequest, res: Response): Promise<voi
     search: str('search'),
     status: str('status') as 'pending' | 'paid' | 'delivered' | 'cancelled' | undefined,
     confirmation: str('confirmation'),
+    fulfillment: str('fulfillment') === 'open' ? 'open' as const : undefined,
+    queue: parseQueue(str('queue')),
     from: str('from'),
     to: str('to'),
   };

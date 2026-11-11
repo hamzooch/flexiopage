@@ -61,6 +61,10 @@ interface StoreType {
   _id: string;
   name: string;
   settings?: { currency?: string };
+  integrations?: {
+    delivery?: { enabled?: boolean; provider?: string };
+    logistics?: { enabled?: boolean; provider?: string };
+  };
 }
 
 interface OrderItem {
@@ -125,9 +129,53 @@ interface OrderType {
 }
 
 type ConfirmationStatus = 'pending' | 'confirmed' | 'no_answer' | 'callback' | 'declined';
-type StatusFilter = 'all' | 'pending' | 'paid' | 'delivered' | 'cancelled';
-type ConfirmFilter = 'all' | ConfirmationStatus;
+type OrderQueue =
+  | 'work' | 'to_confirm' | 'callback' | 'callback_due' | 'no_answer'
+  | 'to_ship' | 'dispatch_failed' | 'carrier' | 'delivered' | 'returned' | 'declined' | 'all';
 type DayFilter = 'all' | 'today' | '7d' | '30d';
+
+interface QueueCounts {
+  work: number; toConfirm: number; callback: number; callbackDue: number;
+  noAnswer: number; toShip: number; dispatchFailed: number; carrier: number;
+  delivered: number; returned: number; declined: number; all: number;
+}
+
+const EMPTY_COUNTS: QueueCounts = {
+  work: 0, toConfirm: 0, callback: 0, callbackDue: 0, noAnswer: 0, toShip: 0,
+  dispatchFailed: 0, carrier: 0, delivered: 0, returned: 0, declined: 0, all: 0,
+};
+
+function queueFromSearch(sp: { get(name: string): string | null }): OrderQueue {
+  const known: OrderQueue[] = [
+    'work', 'to_confirm', 'callback', 'callback_due', 'no_answer', 'to_ship',
+    'dispatch_failed', 'carrier', 'delivered', 'returned', 'declined', 'all',
+  ];
+  const q = sp.get('queue');
+  if (q && (known as string[]).includes(q)) return q as OrderQueue;
+  const conf = sp.get('confirmation');
+  const status = sp.get('status');
+  if (conf === 'confirmed' && sp.get('fulfillment') === 'open') return 'to_ship';
+  if (conf === 'pending') return 'to_confirm';
+  if (conf === 'callback') return 'callback';
+  if (conf === 'no_answer') return 'no_answer';
+  if (conf === 'confirmed') return 'to_ship';
+  if (conf === 'declined') return 'declined';
+  if (status === 'delivered') return 'delivered';
+  if (status === 'cancelled') return 'declined';
+  return 'work';
+}
+
+function whatsappHref(phone: string, text: string): string {
+  const digits = phone.replace(/\D/g, '');
+  return `https://wa.me/${digits}?text=${encodeURIComponent(text)}`;
+}
+
+const PROVIDER_LABEL: Record<string, string> = {
+  mogadelivery: 'MogaDelivery',
+  bestdelivery: 'Best Delivery',
+  manual: 'Manuel',
+  other: 'Transporteur',
+};
 
 const CONFIRMATION_BADGE: Record<ConfirmationStatus, { label: string; cls: string; icon: React.ComponentType<{ className?: string }>; dot: string }> = {
   pending:   { label: 'À confirmer',     cls: 'bg-slate-500/10 text-slate-700 ring-slate-500/20',     icon: PhoneCall,     dot: 'bg-slate-400' },
@@ -289,8 +337,8 @@ export default function DashboardOrdersPage() {
   const [search, setSearch] = useState('');
   // Recherche debouncée → envoyée au serveur (évite une requête par frappe).
   const [debouncedSearch, setDebouncedSearch] = useState('');
-  const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
-  const [confirmFilter, setConfirmFilter] = useState<ConfirmFilter>('all');
+  const [queue, setQueue] = useState<OrderQueue>(() => queueFromSearch(searchParams));
+  const [counts, setCounts] = useState<QueueCounts>(EMPTY_COUNTS);
   const [dayFilter, setDayFilter] = useState<DayFilter>('all');
   // Custom range (YYYY-MM-DD). When either is set, takes precedence over dayFilter.
   const [customFrom, setCustomFrom] = useState<string>('');
@@ -374,14 +422,14 @@ export default function DashboardOrdersPage() {
         limit: pageSize,
         skip,
         search: debouncedSearch.trim() || undefined,
-        status: statusFilter !== 'all' ? statusFilter : undefined,
-        confirmation: confirmFilter !== 'all' ? confirmFilter : undefined,
+        queue,
         ...computeRange(),
       })
       .then((res) => {
-        const data = res.data as { orders: OrderType[]; total: number };
+        const data = res.data as { orders: OrderType[]; total: number; counts?: QueueCounts };
         setOrders(data.orders);
         setTotal(data.total ?? 0);
+        if (data.counts) setCounts(data.counts);
         // Hydrate le cache fiabilité pour les phones visibles. Un seul appel
         // batch — pas de N+1. Échec silencieux (l'orders list continue de
         // marcher, juste sans badges).
@@ -399,7 +447,7 @@ export default function DashboardOrdersPage() {
         setTotal(0);
       })
       .finally(() => setLoading(false));
-  }, [selectedStoreId, page, pageSize, debouncedSearch, statusFilter, confirmFilter, computeRange]);
+  }, [selectedStoreId, page, pageSize, debouncedSearch, queue, computeRange]);
 
   useEffect(() => { void refreshOrders(); }, [refreshOrders]);
 
@@ -412,29 +460,8 @@ export default function DashboardOrdersPage() {
   // Tout changement de filtre/recherche/boutique remet à la page 1.
   useEffect(() => {
     setPage(1);
-  }, [debouncedSearch, statusFilter, confirmFilter, dayFilter, customFrom, customTo, selectedStoreId]);
+  }, [debouncedSearch, queue, dayFilter, customFrom, customTo, selectedStoreId]);
 
-  // Fallback à la devise du store courant quand `orders` est vide — sinon
-  // le KPI « Revenu » affichait toujours « TND 0.00 » sur les boutiques en
-  // CFA / MAD / etc. avant la première commande.
-  const storeCurrency = stores.find((s) => s._id === selectedStoreId)?.settings?.currency;
-
-  // ── Stats over the loaded orders ─────────────────────────────────────
-  const stats = useMemo(() => {
-    const total = orders.length;
-    const paid = orders.filter((o) => o.paymentStatus === 'paid').length;
-    const pending = orders.filter((o) => o.paymentStatus === 'pending').length;
-    const delivered = orders.filter((o) => o.delivery?.externalStatus === 'delivered').length;
-    const revenue = orders
-      .filter((o) => o.paymentStatus === 'paid' || o.delivery?.externalStatus === 'delivered')
-      .reduce((sum, o) => sum + o.total, 0);
-    const currency = orders[0]?.currency || storeCurrency || 'USD';
-    return { total, paid, pending, delivered, revenue, currency };
-  }, [orders, storeCurrency]);
-
-  // Le filtrage (recherche, statut, confirmation, dates) est désormais fait
-  // CÔTÉ SERVEUR (cf. refreshOrders) → `orders` est déjà la page filtrée.
-  // On garde l'alias pour ne pas réécrire tout le JSX qui l'utilise.
   const filteredOrders = orders;
 
   // Commandes « à livrer » de la vue courante : confirmées, non annulées, pas
@@ -453,18 +480,7 @@ export default function DashboardOrdersPage() {
     [filteredOrders],
   );
 
-  // Quick KPIs on confirmation buckets — used by the new toolbar row + KPI card.
-  const confirmStats = useMemo(() => ({
-    pending:   orders.filter((o) => !o.confirmationStatus || o.confirmationStatus === 'pending').length,
-    confirmed: orders.filter((o) => o.confirmationStatus === 'confirmed').length,
-    no_answer: orders.filter((o) => o.confirmationStatus === 'no_answer').length,
-    callback:  orders.filter((o) => o.confirmationStatus === 'callback').length,
-    declined:  orders.filter((o) => o.confirmationStatus === 'declined').length,
-  }), [orders]);
-
   const activeFiltersCount =
-    (statusFilter !== 'all' ? 1 : 0) +
-    (confirmFilter !== 'all' ? 1 : 0) +
     (dayFilter !== 'all' || customFrom || customTo ? 1 : 0) +
     (search.trim() ? 1 : 0);
 
@@ -486,8 +502,7 @@ export default function DashboardOrdersPage() {
       const res = await storesApi.exportOrders(selectedStoreId, {
         format,
         search: debouncedSearch.trim() || undefined,
-        status: statusFilter !== 'all' ? statusFilter : undefined,
-        confirmation: confirmFilter !== 'all' ? confirmFilter : undefined,
+        queue,
         ...computeRange(),
       });
       const header = String(res.headers['content-disposition'] || '');
@@ -509,8 +524,6 @@ export default function DashboardOrdersPage() {
   }
 
   function resetFilters() {
-    setStatusFilter('all');
-    setConfirmFilter('all');
     setDayFilter('all');
     setCustomFrom('');
     setCustomTo('');
@@ -518,6 +531,22 @@ export default function DashboardOrdersPage() {
   }
 
   const currentStore = stores.find((s) => s._id === selectedStoreId);
+  const carrierOn = !!(
+    currentStore?.integrations?.delivery?.enabled
+    || (currentStore?.integrations?.logistics?.enabled && currentStore.integrations.logistics.provider === 'mogadelivery')
+  );
+  const queueTabs: Array<{ value: OrderQueue; label: string; count: number }> = [
+    { value: 'work', label: 'À traiter', count: counts.work },
+    { value: 'to_confirm', label: 'À confirmer', count: counts.toConfirm },
+    { value: 'callback', label: 'À rappeler', count: counts.callback },
+    { value: 'to_ship', label: 'À expédier', count: counts.toShip },
+    ...(carrierOn || counts.dispatchFailed > 0 ? [{ value: 'dispatch_failed' as const, label: "Échec d'envoi", count: counts.dispatchFailed }] : []),
+    ...(carrierOn || counts.carrier > 0 ? [{ value: 'carrier' as const, label: 'Chez le transporteur', count: counts.carrier }] : []),
+    { value: 'delivered', label: 'Livrées', count: counts.delivered },
+    { value: 'returned', label: 'Retournées', count: counts.returned },
+    { value: 'declined', label: 'Refusées', count: counts.declined },
+    { value: 'all', label: 'Toutes', count: counts.all },
+  ];
 
   return (
     <div className="min-w-0 space-y-5 sm:space-y-6">
@@ -525,7 +554,7 @@ export default function DashboardOrdersPage() {
       <PageHeader
         icon={ShoppingCart}
         title="Commandes"
-        description="Toutes les commandes reçues — détails client, articles, livraison."
+        description="Les appels à passer, les rappels, et le suivi chez le transporteur."
         actions={
           stores.length > 1 ? (
             <div className="inline-flex items-center gap-1.5 rounded-lg border border-border/70 bg-card px-2 py-1">
@@ -549,36 +578,42 @@ export default function DashboardOrdersPage() {
         }
       />
 
-      {/* ── KPI cards — modern, denser, with trend hint ────────── */}
       <section className="grid grid-cols-2 gap-2 sm:gap-3 xl:grid-cols-4">
         <KpiCard
-          label="Total"
-          value={stats.total}
-          icon={ShoppingCart}
+          label="À confirmer"
+          value={counts.toConfirm}
+          icon={PhoneCall}
           tint="indigo"
-          hint={loading ? '…' : `${filteredOrders.length} affichées`}
+          hint="Pas encore appelées"
+          active={queue === 'to_confirm'}
+          onClick={() => setQueue('to_confirm')}
         />
         <KpiCard
-          label="En attente"
-          value={stats.pending}
-          icon={Hourglass}
+          label="À rappeler"
+          value={counts.callbackDue}
+          icon={PhoneIncoming}
           tint="amber"
-          hint={stats.pending > 0 ? 'Action requise' : 'Tout traité'}
+          hint="Aujourd'hui et en retard"
+          active={queue === 'callback_due'}
+          onClick={() => setQueue('callback_due')}
         />
         <KpiCard
-          label="Payées"
-          value={stats.paid}
-          icon={CheckCircle2}
-          tint="emerald"
-          hint={stats.total > 0 ? `${Math.round((stats.paid / stats.total) * 100)}% du total` : '—'}
-        />
-        <KpiCard
-          label="Revenu"
-          value={formatCurrency(stats.revenue, stats.currency)}
-          icon={Banknote}
+          label="Ne décroche pas"
+          value={counts.noAnswer}
+          icon={PhoneMissed}
           tint="fuchsia"
-          hint="Payées + livrées"
-          hero
+          hint="À retenter"
+          active={queue === 'no_answer'}
+          onClick={() => setQueue('no_answer')}
+        />
+        <KpiCard
+          label="À expédier"
+          value={counts.toShip}
+          icon={Truck}
+          tint="emerald"
+          hint={carrierOn ? 'Pas encore chez le transporteur' : 'Confirmées, à préparer'}
+          active={queue === 'to_ship'}
+          onClick={() => setQueue('to_ship')}
         />
       </section>
 
@@ -586,30 +621,22 @@ export default function DashboardOrdersPage() {
       <div className="min-w-0 space-y-2.5 rounded-2xl border border-border/60 bg-card p-2.5 shadow-sm sm:p-3">
         {/* Onglets de statut (avec compteurs) — remplace l'ancien menu Statut */}
         <div className="flex min-w-0 gap-1 overflow-x-auto">
-          {([
-            { value: 'all',       label: 'Toutes',     count: stats.total },
-            { value: 'pending',   label: 'En attente', count: stats.pending },
-            { value: 'paid',      label: 'Payées',     count: stats.paid },
-            { value: 'delivered', label: 'Livrées',    count: stats.delivered },
-            { value: 'cancelled', label: 'Annulées' },
-          ] as { value: StatusFilter; label: string; count?: number }[]).map((t) => {
-            const active = statusFilter === t.value;
+          {queueTabs.map((t) => {
+            const active = queue === t.value;
             return (
               <button
                 key={t.value}
                 type="button"
-                onClick={() => setStatusFilter(t.value)}
+                onClick={() => setQueue(t.value)}
                 className={cn(
                   'inline-flex h-10 flex-none items-center gap-1.5 rounded-lg px-3 text-sm font-semibold transition-colors',
                   active ? 'bg-primary/10 text-primary' : 'text-muted-foreground hover:bg-muted hover:text-foreground',
                 )}
               >
                 {t.label}
-                {typeof t.count === 'number' && (
-                  <span className={cn('rounded-full px-1.5 text-[10px] font-bold tabular-nums', active ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground')}>
-                    {t.count}
-                  </span>
-                )}
+                <span className={cn('rounded-full px-1.5 text-[10px] font-bold tabular-nums', active ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground')}>
+                  {t.count}
+                </span>
               </button>
             );
           })}
@@ -646,22 +673,6 @@ export default function DashboardOrdersPage() {
             onPreset={(d) => { setDayFilter(d); setCustomFrom(''); setCustomTo(''); }}
             onCustom={(from, to) => { setCustomFrom(from); setCustomTo(to); setDayFilter('all'); }}
             onClear={() => { setDayFilter('all'); setCustomFrom(''); setCustomTo(''); }}
-          />
-
-          {/* Confirmation d'appel (funnel COD) */}
-          <FilterSelect
-            icon={PhoneCall}
-            label="Confirmation"
-            value={confirmFilter}
-            onChange={(v) => setConfirmFilter(v as ConfirmFilter)}
-            options={[
-              { value: 'all', label: 'Tous' },
-              { value: 'pending', label: 'À confirmer', count: confirmStats.pending, dot: 'bg-slate-400' },
-              { value: 'confirmed', label: 'Confirmées', count: confirmStats.confirmed, dot: 'bg-emerald-500' },
-              { value: 'no_answer', label: 'Ne décroche pas', count: confirmStats.no_answer, dot: 'bg-amber-500' },
-              { value: 'callback', label: 'À rappeler', count: confirmStats.callback, dot: 'bg-sky-500' },
-              { value: 'declined', label: 'Refusées', count: confirmStats.declined, dot: 'bg-rose-500' },
-            ]}
           />
 
           <div ref={exportRef} className="relative">
@@ -728,7 +739,7 @@ export default function DashboardOrdersPage() {
       {selectedStoreId && !loading && filteredOrders.length > 0 && (
         <div className="flex flex-col gap-2 px-1 sm:flex-row sm:items-center sm:justify-between">
           <span className="text-xs font-medium text-muted-foreground">
-            <strong className="text-foreground">{filteredOrders.length}</strong> commande{filteredOrders.length > 1 ? 's' : ''} affichée{filteredOrders.length > 1 ? 's' : ''}
+            <strong className="text-foreground">{total}</strong> commande{total > 1 ? 's' : ''}
           </span>
           <div className="flex flex-wrap items-center gap-2 sm:justify-end">
             {deliverableIds.length > 0 && (
@@ -742,7 +753,9 @@ export default function DashboardOrdersPage() {
                 <Printer className="h-3.5 w-3.5" /> Bordereaux à livrer ({deliverableIds.length})
               </a>
             )}
-            <span className="text-[11px] text-muted-foreground">Plus récentes en premier</span>
+            <span className="text-[11px] text-muted-foreground">
+              {queue === 'work' || queue === 'callback' || queue === 'callback_due' ? 'Rappels en retard d’abord' : 'Plus récentes en premier'}
+            </span>
           </div>
         </div>
       )}
@@ -806,93 +819,6 @@ export default function DashboardOrdersPage() {
             />
           </div>
         </>
-      )}
-    </div>
-  );
-}
-
-// ─── Filtre compact type « select » — bouton + menu déroulant ───────────
-// Remplace les longues rangées de chips par un dropdown pro : le libellé du
-// filtre + la valeur active en pastille, un menu avec pastilles couleur +
-// compteurs. Se ferme au clic extérieur.
-function FilterSelect({
-  icon: Icon,
-  label,
-  value,
-  options,
-  onChange,
-}: {
-  icon?: React.ComponentType<{ className?: string }>;
-  label: string;
-  value: string;
-  options: Array<{ value: string; label: string; count?: number; dot?: string }>;
-  onChange: (v: string) => void;
-}) {
-  const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    if (!open) return;
-    const onDoc = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
-    };
-    document.addEventListener('mousedown', onDoc);
-    return () => document.removeEventListener('mousedown', onDoc);
-  }, [open]);
-
-  const current = options.find((o) => o.value === value);
-  const active = value !== 'all';
-
-  return (
-    <div ref={ref} className="relative">
-      <button
-        type="button"
-        onClick={() => setOpen((v) => !v)}
-        aria-haspopup="menu"
-        aria-expanded={open}
-        className={cn(
-          'inline-flex h-10 items-center gap-1.5 rounded-lg border px-3 text-sm transition-colors',
-          active
-            ? 'border-primary/40 bg-primary/5 text-foreground'
-            : 'border-border/60 text-muted-foreground hover:bg-muted/40',
-        )}
-      >
-        {Icon && <Icon className="h-3.5 w-3.5 shrink-0" />}
-        <span className="font-medium">{label}</span>
-        {active && current && (
-          <span className="inline-flex items-center gap-1 rounded-md bg-primary/10 px-1.5 py-0.5 text-[11px] font-semibold text-primary">
-            {current.dot && <span className={cn('h-1.5 w-1.5 rounded-full', current.dot)} />}
-            {current.label}
-          </span>
-        )}
-        <ChevronDown className={cn('h-3.5 w-3.5 shrink-0 transition-transform', open && 'rotate-180')} />
-      </button>
-
-      {open && (
-        <div role="menu" className="absolute right-0 z-30 mt-1 w-56 rounded-xl border border-border/60 bg-card p-1 shadow-lg">
-          {options.map((o) => {
-            const sel = o.value === value;
-            return (
-              <button
-                key={o.value}
-                type="button"
-                role="menuitemradio"
-                aria-checked={sel}
-                onClick={() => { onChange(o.value); setOpen(false); }}
-                className={cn(
-                  'flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-xs font-medium transition-colors',
-                  sel ? 'bg-primary/10 text-primary' : 'text-foreground hover:bg-muted/70',
-                )}
-              >
-                <span className={cn('h-2 w-2 shrink-0 rounded-full', o.dot || 'bg-transparent')} />
-                <span className="flex-1">{o.label}</span>
-                {typeof o.count === 'number' && (
-                  <span className="text-[11px] tabular-nums opacity-60">{o.count}</span>
-                )}
-                {sel && <Check className="h-3.5 w-3.5 shrink-0" />}
-              </button>
-            );
-          })}
-        </div>
       )}
     </div>
   );
@@ -1027,6 +953,8 @@ function KpiCard({
   icon: Icon,
   tint,
   hero,
+  active,
+  onClick,
 }: {
   label: string;
   value: number | string;
@@ -1034,6 +962,8 @@ function KpiCard({
   icon: React.ComponentType<{ className?: string }>;
   tint: 'indigo' | 'amber' | 'emerald' | 'fuchsia';
   hero?: boolean;
+  active?: boolean;
+  onClick?: () => void;
 }) {
   const tintMap: Record<string, { bg: string; text: string; border: string; accent: string }> = {
     indigo:  { bg: 'bg-indigo-500/10',  text: 'text-indigo-700',  border: 'border-indigo-500/20',  accent: 'from-indigo-500 to-violet-500' },
@@ -1043,10 +973,14 @@ function KpiCard({
   };
   const c = tintMap[tint];
   return (
-    <div className={cn(
-      'relative overflow-hidden rounded-2xl border bg-card p-3 sm:p-4',
-      hero ? 'border-primary/30' : 'border-border/60',
-    )}>
+    <button
+      type="button"
+      onClick={onClick}
+      className={cn(
+        'relative w-full overflow-hidden rounded-2xl border bg-card p-3 text-left sm:p-4',
+        active || hero ? 'border-primary/40' : 'border-border/60',
+      )}
+    >
       <div className={cn('absolute end-3 top-3 grid h-8 w-8 place-items-center rounded-lg', c.bg, c.text)}>
         <Icon className="h-4 w-4" />
       </div>
@@ -1057,7 +991,7 @@ function KpiCard({
       {hint && (
         <div className="mt-1.5 text-[11px] leading-tight text-muted-foreground">{hint}</div>
       )}
-    </div>
+    </button>
   );
 }
 
@@ -1290,9 +1224,12 @@ function OrderCard({
     }
   }
 
-  const stage = STAGE[computeStage(o)];
+  const stageKey = computeStage(o);
+  const stage = STAGE[stageKey];
   const firstItemImg = mediaUrl(productImages[o.items[0]?.productId || '']);
-  const pendingConfirm = (!o.confirmationStatus || o.confirmationStatus === 'pending');
+  const phoneStage = stageKey === 'to_confirm' || stageKey === 'no_answer' || stageKey === 'callback';
+  const fromCarrier = (o.statusHistory || []).some((h) => (h.note || '').includes('MogaDelivery'));
+  const providerLabel = o.delivery?.provider ? (PROVIDER_LABEL[o.delivery.provider] || o.delivery.provider) : '';
 
   return (
     <>
@@ -1305,7 +1242,7 @@ function OrderCard({
           'flex w-full max-w-full flex-wrap items-center gap-x-3 gap-y-2.5 p-4',
           'lg:table-row lg:w-auto lg:max-w-none lg:border-s-0 lg:border-b lg:border-border/60 lg:p-0',
           expanded ? 'bg-primary/5' : 'hover:bg-muted/30',
-          pendingConfirm && !expanded && 'border-b-0',
+          (phoneStage || stageKey === 'dispatch_failed') && !expanded && 'border-b-0',
         )}
       >
         <td className="relative order-1 min-w-0 flex-1 p-0 lg:table-cell lg:px-4 lg:py-3">
@@ -1315,6 +1252,11 @@ function OrderCard({
             <Calendar className="h-3 w-3" />
             {formatDate(o.createdAt)}
           </div>
+          {o.confirmationStatus === 'callback' && o.callbackAt && (
+            <div className="mt-0.5 text-[11px] font-medium text-sky-700 lg:ps-1">
+              Rappel {formatDate(o.callbackAt)}
+            </div>
+          )}
         </td>
 
         {/* Client — avatar + nom + téléphone cliquable + badge fiabilité */}
@@ -1364,12 +1306,13 @@ function OrderCard({
                   <Phone className="h-2.5 w-2.5" />
                   {o.customerPhone}
                 </a>
-              ) : o.shippingAddress?.city ? (
-                <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
+              ) : null}
+              {o.shippingAddress?.city && (
+                <div className="inline-flex items-center gap-1 text-xs text-muted-foreground">
                   <MapPin className="h-2.5 w-2.5" />
                   {o.shippingAddress.city}
-                </span>
-              ) : null}
+                </div>
+              )}
             </div>
           </div>
         </td>
@@ -1441,6 +1384,28 @@ function OrderCard({
             <stage.icon className="h-3.5 w-3.5" />
             {stage.label}
           </span>
+          {(providerLabel || o.delivery?.trackingUrl || fromCarrier) && (
+            <div className="mt-1 space-y-0.5 text-[10px] text-muted-foreground">
+              {providerLabel && (
+                <div>
+                  {providerLabel}
+                  {o.delivery?.externalId ? ` · ${o.delivery.externalId}` : ''}
+                </div>
+              )}
+              {fromCarrier && <div>Confirmation du transporteur</div>}
+              {o.delivery?.trackingUrl && (
+                <a
+                  href={o.delivery.trackingUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  onClick={(e) => e.stopPropagation()}
+                  className="inline-flex items-center gap-1 font-semibold text-primary hover:underline"
+                >
+                  <ExternalLink className="h-2.5 w-2.5" /> Suivre
+                </a>
+              )}
+            </div>
+          )}
         </td>
 
         <td className="order-7 ms-auto w-auto p-0 lg:table-cell lg:w-16 lg:px-2 lg:py-3">
@@ -1459,10 +1424,37 @@ function OrderCard({
       {/* Quick-confirm — row auxiliaire visible seulement pour les commandes
           en attente de confirmation, non dépliées. Colspan = 7 pour couvrir
           toute la largeur. Économise 50 clics/jour à l'agent de confirmation. */}
-      {pendingConfirm && !expanded && (
+      {phoneStage && !expanded && (
         <tr className="flex w-full max-w-full border-b border-border/60 lg:table-row lg:w-auto lg:max-w-none lg:border-0">
           <td colSpan={7} className="block w-full min-w-0 bg-amber-500/[0.07] p-0 lg:table-cell">
             <QuickConfirmBar order={o} storeId={storeId} onChanged={onChanged} />
+          </td>
+        </tr>
+      )}
+
+      {stageKey === 'dispatch_failed' && !expanded && (
+        <tr className="flex w-full max-w-full border-b border-border/60 lg:table-row lg:w-auto lg:max-w-none lg:border-0">
+          <td colSpan={7} className="block w-full min-w-0 bg-red-500/[0.06] p-0 lg:table-cell">
+            <div className="flex flex-wrap items-center gap-2 px-4 py-2.5 sm:px-5">
+              <span className="inline-flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-red-700">
+                <AlertTriangle className="h-3.5 w-3.5" />
+                {providerLabel || 'Transporteur'} n&apos;a pas reçu le colis
+              </span>
+              <button
+                type="button"
+                onClick={(e) => { e.stopPropagation(); void handleDispatch(); }}
+                disabled={dispatching}
+                className="inline-flex h-10 items-center gap-1.5 rounded-lg border border-red-500/30 bg-card px-3 text-xs font-semibold text-red-700 transition-colors hover:bg-red-500/10 disabled:opacity-60"
+              >
+                {dispatching ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Truck className="h-3.5 w-3.5" />}
+                Renvoyer
+              </button>
+              {dispatchMessage && (
+                <span className={cn('text-[11px] font-medium', dispatchMessage.kind === 'success' ? 'text-emerald-700' : 'text-red-700')}>
+                  {dispatchMessage.text}
+                </span>
+              )}
+            </div>
           </td>
         </tr>
       )}
@@ -2223,59 +2215,129 @@ function QuickConfirmBar({
   storeId: string;
   onChanged: () => void | Promise<void>;
 }) {
-  const [busy, setBusy] = useState<ConfirmationStatus | null>(null);
+  const [busy, setBusy] = useState<ConfirmationStatus | 'decline' | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [showReasons, setShowReasons] = useState(false);
 
-  async function apply(status: ConfirmationStatus) {
-    setBusy(status);
+  async function apply(status: ConfirmationStatus, extra?: { note?: string; callbackAt?: string; cancelReasonCode?: string }) {
+    setBusy(status === 'declined' ? 'decline' : status);
     setError(null);
     try {
-      await storesApi.setOrderConfirmation(storeId, order._id, { confirmationStatus: status });
+      await storesApi.setOrderConfirmation(storeId, order._id, {
+        confirmationStatus: status,
+        note: extra?.note,
+        callbackAt: extra?.callbackAt,
+        cancelReasonCode: extra?.cancelReasonCode,
+      });
+      setShowReasons(false);
       await onChanged();
     } catch (err) {
       const ax = err as { response?: { data?: { error?: string; message?: string } } };
-      setError(ax?.response?.data?.error || 'Action impossible.');
+      setError(ax?.response?.data?.message || ax?.response?.data?.error || 'Action impossible.');
     } finally {
       setBusy(null);
     }
   }
 
+  function scheduleCallback() {
+    const d = new Date();
+    d.setMinutes(d.getMinutes() + 120);
+    d.setMinutes(Math.ceil(d.getMinutes() / 30) * 30, 0, 0);
+    void apply('callback', { callbackAt: d.toISOString() });
+  }
+
+  const waText = `Bonjour, c'est au sujet de la commande ${order.orderNumber} (${formatCurrency(order.total, order.currency)}). Merci de confirmer la livraison.`;
+
   return (
     <div className="bg-transparent px-4 py-2.5 sm:px-5">
-      <div className="flex flex-wrap items-center gap-2">
-        <span className="inline-flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-sky-700">
-          <PhoneCall className="h-3.5 w-3.5" />
-          Confirmer l&apos;appel
-        </span>
-        <button
-          type="button"
-          onClick={() => apply('confirmed')}
-          disabled={busy !== null}
-          className="inline-flex h-10 items-center gap-1.5 rounded-lg border border-emerald-500/30 bg-card px-3 text-xs font-semibold text-emerald-700 transition-colors hover:bg-emerald-500/10 disabled:opacity-60"
-        >
-          {busy === 'confirmed' ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
-          Confirmé
-        </button>
-        <button
-          type="button"
-          onClick={() => apply('no_answer')}
-          disabled={busy !== null}
-          className="inline-flex h-10 items-center gap-1.5 rounded-lg border border-amber-500/30 bg-card px-3 text-xs font-semibold text-amber-700 transition-colors hover:bg-amber-500/10 disabled:opacity-60"
-        >
-          {busy === 'no_answer' ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <PhoneMissed className="h-3.5 w-3.5" />}
-          Pas de réponse
-        </button>
-        {order.customerPhone && (
-          <a
-            href={`tel:${order.customerPhone}`}
-            onClick={(e) => e.stopPropagation()}
-            className="ms-auto inline-flex h-10 items-center gap-1.5 rounded-lg bg-primary/10 px-3 text-xs font-semibold text-primary hover:bg-primary/20"
+      {showReasons ? (
+        <div className="space-y-2">
+          <div className="text-[11px] font-semibold uppercase tracking-wider text-rose-700">Pourquoi refuser ?</div>
+          <div className="flex flex-wrap gap-1.5">
+            {Object.entries(CANCEL_REASON_LABELS).map(([code, label]) => (
+              <button
+                key={code}
+                type="button"
+                disabled={busy !== null}
+                onClick={() => apply('declined', { note: label, cancelReasonCode: code })}
+                className="inline-flex h-9 items-center rounded-lg border border-rose-500/30 bg-card px-2.5 text-[11px] font-semibold text-rose-700 hover:bg-rose-500/10 disabled:opacity-60"
+              >
+                {label}
+              </button>
+            ))}
+            <button
+              type="button"
+              onClick={() => setShowReasons(false)}
+              className="inline-flex h-9 items-center rounded-lg px-2.5 text-[11px] font-medium text-muted-foreground hover:bg-muted"
+            >
+              Annuler
+            </button>
+          </div>
+        </div>
+      ) : (
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="inline-flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-sky-700">
+            <PhoneCall className="h-3.5 w-3.5" />
+            Confirmer l&apos;appel
+          </span>
+          <button
+            type="button"
+            onClick={() => apply('confirmed')}
+            disabled={busy !== null}
+            className="inline-flex h-10 items-center gap-1.5 rounded-lg border border-emerald-500/30 bg-card px-3 text-xs font-semibold text-emerald-700 transition-colors hover:bg-emerald-500/10 disabled:opacity-60"
           >
-            <Phone className="h-3.5 w-3.5" />
-            Appeler
-          </a>
-        )}
-      </div>
+            {busy === 'confirmed' ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
+            Confirmé
+          </button>
+          <button
+            type="button"
+            onClick={() => apply('no_answer')}
+            disabled={busy !== null}
+            className="inline-flex h-10 items-center gap-1.5 rounded-lg border border-amber-500/30 bg-card px-3 text-xs font-semibold text-amber-700 transition-colors hover:bg-amber-500/10 disabled:opacity-60"
+          >
+            {busy === 'no_answer' ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <PhoneMissed className="h-3.5 w-3.5" />}
+            Pas de réponse
+          </button>
+          <button
+            type="button"
+            onClick={scheduleCallback}
+            disabled={busy !== null}
+            className="inline-flex h-10 items-center gap-1.5 rounded-lg border border-sky-500/30 bg-card px-3 text-xs font-semibold text-sky-700 transition-colors hover:bg-sky-500/10 disabled:opacity-60"
+          >
+            {busy === 'callback' ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <PhoneIncoming className="h-3.5 w-3.5" />}
+            Rappel
+          </button>
+          <button
+            type="button"
+            onClick={() => setShowReasons(true)}
+            disabled={busy !== null}
+            className="inline-flex h-10 items-center gap-1.5 rounded-lg border border-rose-500/30 bg-card px-3 text-xs font-semibold text-rose-700 transition-colors hover:bg-rose-500/10 disabled:opacity-60"
+          >
+            Refus
+          </button>
+          {order.customerPhone && (
+            <a
+              href={`tel:${order.customerPhone}`}
+              onClick={(e) => e.stopPropagation()}
+              className="ms-auto inline-flex h-10 items-center gap-1.5 rounded-lg bg-primary/10 px-3 text-xs font-semibold text-primary hover:bg-primary/20"
+            >
+              <Phone className="h-3.5 w-3.5" />
+              Appeler
+            </a>
+          )}
+          {order.customerPhone && (
+            <a
+              href={whatsappHref(order.customerPhone, waText)}
+              target="_blank"
+              rel="noopener noreferrer"
+              onClick={(e) => e.stopPropagation()}
+              className="inline-flex h-10 items-center gap-1.5 rounded-lg border border-emerald-500/30 bg-card px-3 text-xs font-semibold text-emerald-700 hover:bg-emerald-500/10"
+            >
+              WhatsApp
+            </a>
+          )}
+        </div>
+      )}
       {error && (
         <p className="mt-1.5 text-[11px] font-medium text-rose-700">{error}</p>
       )}

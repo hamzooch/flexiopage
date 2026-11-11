@@ -329,8 +329,13 @@ export async function listProducts(req: AuthRequest, res: Response): Promise<voi
   const limit = Math.min(parseInt(req.query.limit as string, 10) || 50, 200);
   const skip = parseInt(req.query.skip as string, 10) || 0;
   const search = String(req.query.search || '').trim() || undefined;
+  const rawView = String(req.query.view || '').trim();
+  const allowedViews = ['live', 'draft', 'low', 'out', 'sku'] as const;
+  const view = (allowedViews as readonly string[]).includes(rawView)
+    ? (rawView as (typeof allowedViews)[number])
+    : undefined;
   const { products, total } = await productService.getProductsByStore(store._id.toString(), {
-    publishedOnly, limit, skip, search, testCandidatesOnly, testStatus,
+    publishedOnly, limit, skip, search, testCandidatesOnly, testStatus, view,
   });
   res.json({ products, total, limit, skip });
 }
