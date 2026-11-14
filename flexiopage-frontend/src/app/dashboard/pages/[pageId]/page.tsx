@@ -222,14 +222,17 @@ export default function EditLandingPagePage() {
                 <Label htmlFor="slug" className="text-xs">Slug URL</Label>
                 <Input id="slug" value={slug} onChange={(e) => setSlug(e.target.value)} placeholder="ex. home" />
               </div>
-              <label className="flex items-center gap-2 pt-1">
+              <label className="flex items-start gap-2 pt-1">
                 <input
                   type="checkbox"
                   checked={isPublished}
                   onChange={(e) => setIsPublished(e.target.checked)}
-                  className="h-4 w-4 rounded border-input"
+                  className="mt-0.5 h-4 w-4 rounded border-input"
                 />
-                <span className="text-xs font-medium">Publiée</span>
+                <span>
+                  <span className="block text-xs font-medium">Publiée</span>
+                  <span className="block text-[11px] text-muted-foreground">Laisse décoché pour modifier avant de la montrer aux clients.</span>
+                </span>
               </label>
             </section>
 

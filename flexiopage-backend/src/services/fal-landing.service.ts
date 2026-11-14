@@ -30,7 +30,7 @@ import {
 import { persistRemoteImage } from './storage.service';
 import { logger } from '../lib/logger';
 import { fetchWithRetry } from '../lib/outbound-fetch';
-import { buildConversionHooks, hookImagePrompt, lockLandingSections, lockSeo, shapeCodSalesPage } from './landing-facts';
+import { lockLandingSections, lockSeo, shapeCodSalesPage } from './landing-facts';
 
 const FAL_BASE = 'https://fal.run';
 
@@ -56,14 +56,13 @@ const RTL_LANGS = new Set(['ar', 'fa', 'he', 'ur']);
  * product — exactly what dropshipping landing pages do.
  */
 const DIALECT_MAP: Record<string, string> = {
-  TN: `Tunisian Derja (تونسي). MUST sound like a Tunisian on Facebook, NOT MSA / Fusha.
-Examples of expected vocabulary:
-  - "بَرشة" (beaucoup), "ياسر" (énormément), "نَجم" (peux), "نحب" (j'aime / je veux)
-  - "تَوّا" (maintenant), "مَالا" (alors), "أهَكّا" (c'est ça), "زادة" (aussi)
-  - "إنتي / إنتا" (tu f./m.), "أحنا" (nous)
-French loanwords integrated naturally: "famille", "qualité", "promotion", "livraison", "stock", "garantie".
-Mix typical: "إكتشف الـ produit الجديد متاعنا، بَرشة عائلات تونسية thqou فيه".
-NEVER use Fusha conjugations like "اشترِ" — say "اشري" / "إكتشف".`,
+  TN: `Tunisian Derja only (تونسي). The whole page is Tunisian, not Fusha and not Moroccan or Algerian.
+Write the way someone in Tunis writes a Facebook comment. Short sentences. Arabic script.
+Use: توّا، برشة، ياسر، نحب، متاع، باش، كيفاش، علاش، فمّا، ما فماش، تنجم، زادة، مالا، إنتي / إنتا، أحنا، حتى شيء، كان.
+French words stay as Tunisians say them: كوموند، كولي، كاش، كاليتي، برومو.
+Do NOT use: دابا، بزاف، غادي، ديال، دروك، واش، راه، كاين، اشترِ، احصل، نحن نقدم، الآن، منتجنا الفاخر.
+Good: "كوموندي توّا. تخلّص للكولي كاش كي توصلك الكولية، حتى شيء قبل."
+Bad: "اكتشف منتجنا الجديد بأعلى جودة والتوصيل المجاني."`,
 
   MA: `Moroccan Darija (دارجة). MUST sound like a Moroccan on Facebook, NOT MSA.
 Examples:
@@ -73,17 +72,13 @@ French/Spanish loanwords: "qualité", "livraison", "promotion", "ofertas".
 Example: "هاد المنتج راه ديال الجودة، الأسعار خاصها تكون في متناولك".
 Avoid Fusha — write the way Moroccans actually message each other.`,
 
-  DZ: `Algerian Darija (دزيري) — also called "Derja". MUST sound exactly like an Algerian friend on Facebook / WhatsApp. NEVER use Modern Standard Arabic (Fusha / فصحى).
-Mandatory dialect markers:
-  - "بزاف" (beaucoup), "ياسر" (énormément), "راني" (je suis en train de), "راكي / راك" (tu es)
-  - "كاش" (du/de la), "ندير" (faire), "نحوس" (chercher), "هاكا" (comme ça)
-  - "وقتاه" (quand), "علاش" (pourquoi), "كيفاش" (comment), "ديالك" (à toi)
-  - "نتا / نتي" (tu m./f.), "حنا" (nous)
-Heavy French loanwords are NORMAL and EXPECTED: "qualité", "livraison gratuite", "promo", "garantie", "service", "stock", "famille", "maison", "cadeau".
-Mix freely: "هاد ال produit راه original، توصلك lvr في 48 ساعة، promo limitée!"
-Local cues: Alger, Oran, Constantine, Ramadan, école, dimanche.
-ANTI-EXAMPLE (do NOT do this): "اكتشف منتجنا الجديد بأعلى جودة" — too Fusha.
-GOOD EXAMPLE: "إكتشف الـ produit الجديد متاعنا، rapport qualité-prix رهيب، بزاف ناس عجبهم".`,
+  DZ: `Algerian Darja only (دارجة جزائرية). The whole page is Algerian, not Fusha and not Moroccan or Tunisian.
+Write the way someone in Algiers or Oran writes on Messenger. Short sentences. Arabic script.
+Use: دروك، بزاف، راني، راك / راكي، واش، علاه، كيفاش، تاع، نتا / نتي، حنا، والو، غير، صح، مليح، كاين.
+French words stay as Algerians say them: كوموند، كولي، كاش، كاليتي، برومو.
+Do NOT use: دابا، ديال، غادي، متاع، توّا، برشة، اشترِ، احصل، نحن نقدم، الآن، التوصيل المجاني.
+Good: "كوموندي دروك. تخلّص للكولي كاش كي يوصلك الكولي، والو قبل."
+Bad: "اكتشف منتجنا الجديد بأعلى جودة والتوصيل المجاني."`,
 
   EG: `Egyptian Arabic (مصري) — Cairo dialect. Casual, expressive, direct. NEVER MSA.
 Markers: "أوي" (très), "كده" (comme ça), "ايه" (quoi), "إنت / إنتي", "إحنا", "بقى" (alors), "خالص" (du tout).
@@ -191,12 +186,69 @@ function deriveDirection(language: string): 'ltr' | 'rtl' {
  * the same dialect tables.
  */
 export function getDialect(country?: string, language?: string): string {
-  if (!country) {
-    if (language === 'ar') return 'Modern Standard Arabic (فصحى) — neutral pan-Arab tone.';
+  const lang = (language || '').trim().toLowerCase();
+  const code = (country || '').trim().toUpperCase();
+  if (lang.startsWith('fr')) {
+    if (code === 'TN') return 'French as spoken in Tunisia. The whole page stays in French, "tu", direct. Do not switch to Arabic.';
+    if (code === 'DZ') return 'French as spoken in Algeria. The whole page stays in French, "tu", direct. Do not switch to Arabic.';
+    if (code === 'MA') return 'French as spoken in Morocco. The whole page stays in French, "tu", direct. Do not switch to Arabic.';
     return '';
   }
-  const code = country.toUpperCase();
-  return DIALECT_MAP[code] || (isArabCountry(code) ? 'Modern Standard Arabic (فصحى).' : '');
+  if (lang.startsWith('en') || lang.startsWith('es') || lang.startsWith('de') || lang.startsWith('pt') || lang.startsWith('it')) {
+    if (lang.startsWith('it')) return DIALECT_MAP.IT || '';
+    if (lang.startsWith('es')) return DIALECT_MAP.ES || '';
+    return '';
+  }
+  if (lang === 'ar-tn') return DIALECT_MAP.TN;
+  if (lang === 'ar-dz') return DIALECT_MAP.DZ;
+  if (lang === 'ar-ma') return DIALECT_MAP.MA;
+  if (lang.startsWith('ar') || (!lang && isArabCountry(code))) {
+    return DIALECT_MAP[code] || 'Spoken Arabic of the buyer’s country, the way people write on WhatsApp. Not formal Fusha. Not a mix of Moroccan, Tunisian and Algerian.';
+  }
+  return !lang && DIALECT_MAP[code] ? DIALECT_MAP[code] : '';
+}
+
+function dialectFewShot(language?: string, country?: string): string {
+  const lang = (language || '').toLowerCase();
+  if (!lang.startsWith('ar')) return '';
+  const code = (country || '').toUpperCase();
+  const voice =
+    lang === 'ar-tn' ? 'tn' :
+    lang === 'ar-dz' ? 'dz' :
+    lang === 'ar-ma' ? 'ma' :
+    code === 'TN' ? 'tn' :
+    code === 'DZ' ? 'dz' :
+    code === 'MA' ? 'ma' : 'ar';
+  const examples: Record<string, string> = {
+    tn: `
+# Exemple à imiter — tounsi uniquement
+title: "كوموندي توّا، وخلّص كي توصلك"
+subtitle: "تبعث الإسم والتيليفون. نعيّطوا لك. تخلّص للكولي كاش، حتى شيء قبل."
+ctaText: "كوموندي · الخلاص عند الإستلام"
+quote: "حليت الكولية قبل ما نخلّص. الكاليتي باهية." — أميرة، تونس
+ما تستعملش: دابا، بزاف، ديال، دروك، واش، اشترِ، نحن نقدم، التوصيل المجاني.`,
+    dz: `
+# Exemple à imiter — darja djazairia uniquement
+title: "كوموندي دروك، وخلّص كي يوصلك"
+subtitle: "دير السمية والتيليفون. نعيّطوا لك. تخلّص للكولي كاش، والو قبل."
+ctaText: "كوموندي · الخلاص عند الإستلام"
+quote: "حليت الكولي قبل ما نخلّص. الكاليتي مليحة." — أمينة، الجزائر
+ما تستعملش: دابا، ديال، غادي، متاع، توّا، برشة، اشترِ، نحن نقدم، التوصيل المجاني.`,
+    ma: `
+# Exemple à imiter — darija maghribiya uniquement
+title: "كوموندي دابا، وخلّص ملي يوصلك"
+subtitle: "كتب السميه والتيليفون. غادي نعيّطوا ليك. تخلّص للكولي كاش، والو قبل."
+ctaText: "كوموندي · الخلاص عند الإستلام"
+quote: "حليت الكوليس قبل ما نخلّص. الكاليتي مزيانة." — فاطمة، الدار البيضاء
+ما تستعملش: توّا، برشة، متاع، دروك، اشترِ، نحن نقدم، التوصيل المجاني.`,
+    ar: `
+# Exemple à imiter — العربية المحكية للبلد المختار، مش الفصحى
+title: "اطلبه، وادفع عند الاستلام"
+subtitle: "اكتب اسمك ورقمك. نتصل فيك. تدفع للمندوب كاش، ولا شيء قبل."
+ctaText: "اطلب · الدفع عند الاستلام"
+ما تكتبش: اشترِ الآن، احصل على، نحن نقدم، منتجنا الفاخر، التوصيل المجاني.`,
+  };
+  return examples[voice] || '';
 }
 
 /**
@@ -214,7 +266,10 @@ export function isArabCountryCode(code?: string): boolean {
 }
 
 const LANGUAGE_LABEL: Record<string, string> = {
-  ar: 'Arabic (العربية)',
+  ar: 'spoken Arabic of the selected country',
+  'ar-tn': 'Tunisian Derja (تونسي)',
+  'ar-dz': 'Algerian Darja (دارجة جزائرية)',
+  'ar-ma': 'Moroccan Darija (دارجة مغربية)',
   fr: 'French (français)',
   en: 'English',
   es: 'Spanish (español)',
@@ -684,53 +739,50 @@ const LANDING_ETA: Record<string, string> = {
 
 const CATEGORY_TEMPLATES: Record<CategoryClass, CategoryTemplate> = {
   beauty: {
-    sectionOrder: ['hero', 'product', 'features', 'gallery', 'steps', 'testimonials', 'cod-form', 'faq', 'cta'],
+    sectionOrder: ['hero', 'features', 'product', 'gallery', 'steps', 'testimonials', 'cod-form', 'faq', 'cta', 'footer'],
     focus:
-      'Transformation visible (avant/après implicite), résultats dans un TIMELINE clair (7j, 14j, 30j), ingrédients transparents, sécurité rassurante. La preuve sociale doit inclure un chiffre de satisfaction ("94% des utilisatrices…"). Le hero attaque un point de douleur physique concret (teint terne, boutons, dents jaunes), pas un désir abstrait.',
+      'Nomme le problème visible (peau, cheveux, dents) seulement si la fiche le dit. Explique comment on l\'utilise. Jamais de délai de résultat, de pourcentage, ni de nombre de clientes inventés.',
     heroAngles: [
-      'Star-Problem-Solution : "Ton [zone] mérite mieux que [problème actuel]. Le [produit] transforme ça en [résultat] en [délai]."',
-      'Result-first : "Une peau visiblement plus lumineuse en 7 jours. Sans irritation, sans effet rebond."',
-      'Before-After tease : "Ce que 12 000 femmes marocaines ont changé dans leur routine — et pourquoi ça marche vraiment."',
+      'Problème concret : "Ton [zone] mérite mieux que [habitude actuelle]." seulement si la fiche décrit cette zone.',
+      'Usage : "Tu l\'appliques le soir. Tu paies le livreur quand tu as le flacon en main."',
+      'Texture : décris la sensation écrite dans la fiche, puis le paiement à la livraison.',
     ].join('\n  '),
   },
   fashion: {
-    sectionOrder: ['hero', 'product', 'gallery', 'features', 'testimonials', 'cod-form', 'faq', 'cta'],
+    sectionOrder: ['hero', 'features', 'product', 'gallery', 'steps', 'testimonials', 'cod-form', 'faq', 'cta', 'footer'],
     focus:
-      'Style + occasion (quand/où tu vas le porter), fit et taille précis (avec guide taille dans FAQ), matière détaillée, versatilité styling. Pas de blabla "premium" — décris la matière, la coupe, la finition. Le hero doit projeter l\'acheteur portant le produit dans SA vie, pas dans un studio parisien fictif.',
+      'Occasion, coupe et matière, uniquement avec les mots de la fiche. Le guide taille va dans la FAQ seulement si les tailles sont dans la fiche. Pas de "premium". Le hero montre le vêtement porté dans une vie locale, pas un studio inventé.',
     heroAngles: [
-      'Occasion-first : "L\'ensemble que tu vas porter du bureau au dîner sans changer."',
-      'Style-story : "Coupe italienne, cuir tanné à la main, prix qui reste correct."',
-      'Confidence-hook : "Les compliments commencent avant même que tu ouvres la bouche."',
+      'Occasion : "Tu le portes du bureau au dîner." seulement si la fiche le permet.',
+      'Matière : cite la matière écrite dans la fiche, puis le prix réel.',
+      'Commande : "Tu l\'ouvres avant de payer le livreur."',
     ].join('\n  '),
   },
   electronics: {
-    sectionOrder: ['hero', 'product', 'features', 'gallery', 'testimonials', 'cod-form', 'faq', 'cta'],
+    sectionOrder: ['hero', 'features', 'product', 'gallery', 'steps', 'testimonials', 'cod-form', 'faq', 'cta', 'footer'],
     focus:
-      'Bénéfice concret AVANT la spec (pas "batterie 5000mAh" mais "2 jours d\'autonomie sans recharger"). Vidéo démo courte, compatibilité listée (marques, systèmes), garantie explicite. La FAQ doit couvrir 5 questions techniques réalistes (autonomie, connectivité, réparation, compatibilité, retour).',
+      'Le bénéfice avant la spec, et seulement les specs présentes dans la fiche. La FAQ répond à la compatibilité et à l\'usage si la fiche les donne. Sinon, dis que l\'appel de confirmation précise le point. Pas de garantie inventée.',
     heroAngles: [
-      'Benefit-over-spec : "2 jours d\'autonomie. Chargement 15 min. Tiens dans une poche."',
-      'Problem-solve : "Fatigué que ton chargeur casse tous les 3 mois ? Celui-ci est garanti 2 ans."',
-      'Use-case direct : "Le compagnon de voyage qui règle 90% des galères de câble."',
+      'Usage : une phrase sur ce que l\'objet fait, tirée de la fiche.',
+      'Commande : "Tu le testes quand le livreur arrive. Tu paies seulement s\'il te convient."',
     ].join('\n  '),
   },
   food: {
-    sectionOrder: ['hero', 'product', 'features', 'gallery', 'steps', 'testimonials', 'cod-form', 'faq', 'cta'],
+    sectionOrder: ['hero', 'features', 'product', 'gallery', 'steps', 'testimonials', 'cod-form', 'faq', 'cta', 'footer'],
     focus:
-      'Bénéfice santé mesurable + ingrédients naturels + traçabilité. Rassure sur la sécurité (certifications, tests, dosage). Le FAQ doit être une réponse HONNÊTE aux objections santé (effets secondaires, contre-indications, quand voir résultats). Ne surpromets JAMAIS ("perdez 10 kg en 7 jours" = interdit).',
+      'Ingrédients et usage tels qu\'écrits dans la fiche. Aucune promesse de poids, d\'énergie en X jours, ou de certification absente de la fiche.',
     heroAngles: [
-      'Benefit + timeframe : "Plus d\'énergie dès la 2e semaine. Sans sucre ajouté, sans caféine."',
-      'Ingredient-first : "3 super-aliments marocains. 1 sachet par jour. Résultat visible en 21 jours."',
-      'Anti-pattern hook : "Les compléments qui promettent tout ne tiennent rien. Voilà ce qu\'on peut vraiment prouver."',
+      'Ingrédient : cite un ingrédient réel de la fiche, puis comment on le prend.',
+      'Commande : "Tu paies le livreur en cash, rien avant."',
     ].join('\n  '),
   },
   luxury: {
-    sectionOrder: ['hero', 'product', 'features', 'gallery', 'testimonials', 'cod-form', 'faq', 'cta'],
+    sectionOrder: ['hero', 'features', 'product', 'gallery', 'steps', 'testimonials', 'cod-form', 'faq', 'cta', 'footer'],
     focus:
-      'Craftsmanship + héritage + histoire, uniquement si la fiche le dit. Pas de "premium", pas de presse inventée, pas d\'atelier ou de date que le vendeur n\'a pas écrits.',
+      'Savoir-faire et histoire uniquement si la fiche le dit. Pas de "premium", pas de presse inventée, pas d\'atelier ou de date que le vendeur n\'a pas écrits.',
     heroAngles: [
-      'Heritage-story : "Cousu main à Fès depuis 1960. Chaque pièce prend 3 jours à un artisan."',
-      'Rarity-hook : "Édition de 200 exemplaires. Numérotés. Livrés avec le certificat de l\'artisan."',
-      'Ritual : "Pour ceux qui savent que le luxe n\'est pas un logo, c\'est un détail."',
+      'Matière : cite la matière et le geste seulement s\'ils sont dans la fiche.',
+      'Commande : "Tu le vois avant de payer le livreur."',
     ].join('\n  '),
   },
   generic: {
@@ -775,11 +827,11 @@ const DTC_COPY_FORMULAS = `
 
 ## FAQ — Adresse les VRAIES objections COD, pas des questions marketing bidon
    Les 5 questions doivent couvrir dans cet ordre :
-   1. Prix + comment payer (COD, retard, refus)
-   2. Livraison (délai, ville de livraison, ce qui se passe si absent)
-   3. Qualité + garantie (si ça casse, si ça ne convient pas)
-   4. Retour + remboursement (procédure concrète, pas de blabla)
-   5. Une objection spécifique à la CATÉGORIE (allergie pour beauty, taille pour fashion, compatibilité pour tech…)
+   1. Comment payer (cash au livreur, rien avant)
+   2. Ce qui se passe si l'acheteur est absent (on appelle avant)
+   3. Et si le produit ne convient pas (il regarde le colis avant de payer)
+   4. Où on livre (villes du transporteur, l'appel confirme)
+   5. Une question propre au produit (taille, matière, usage) répondue UNIQUEMENT avec la fiche. Si la fiche ne le dit pas, la réponse est : l'appel de confirmation le précise. Pas de délai, pas de retour, pas de garantie inventés.
 
 # ❌ INTERDIT dans TOUT le copy :
    - Mots vides : "premium", "exception", "univers", "expérience", "engagement", "excellence", "innovation"
@@ -798,14 +850,17 @@ const DTC_COPY_FORMULAS = `
  * Récupère le template landing pour une catégorie donnée. Retourne un objet
  * vide pour 'generic' → le LLM garde sa liberté par défaut.
  */
-function getCategoryTemplateBlock(category?: string): string {
+function getCategoryTemplateBlock(category?: string, pageKind?: string): string {
   const cls = classifyCategory(category);
   const tpl = CATEGORY_TEMPLATES[cls];
   if (cls === 'generic' || !tpl.sectionOrder.length) return '';
+  const order = pageKind === 'product'
+    ? ['hero', 'product', 'gallery', 'features', 'steps', 'testimonials', 'cod-form', 'faq', 'cta', 'footer']
+    : tpl.sectionOrder;
   return `
 # 📐 TEMPLATE STRUCTURE — CATÉGORIE DÉTECTÉE : ${cls.toUpperCase()}
-Ordre de sections recommandé (à respecter — c'est le funnel qui convertit pour cette catégorie) :
-  ${tpl.sectionOrder.join(' → ')}
+Ordre de sections (obligatoire) :
+  ${order.join(' → ')}
 
 Focus copywriting spécifique à la catégorie :
 ${tpl.focus}
@@ -818,6 +873,39 @@ Angles hero éprouvés (mime l'un des 3, ne copie pas les mots — adapte au pro
 // ─────────────────────────────────────────────────────────────────────
 // PROMPT v2 — dialect-precise + image prompt slots
 // ─────────────────────────────────────────────────────────────────────
+function salesPageContract(pageKind: 'landing' | 'product', hasDiscount: boolean, discountPct: number): string {
+  const productPage = pageKind === 'product';
+  const order = productPage
+    ? 'hero → product → gallery → features → steps → testimonials → cod-form → faq → cta → footer'
+    : 'hero → features → product → gallery → steps → testimonials → cod-form → faq → cta → footer';
+  return `
+# PAGE: ${productPage ? 'PRODUCT PAGE' : 'LANDING PAGE'}
+Write EXACTLY these 10 sections, in this order, and no others:
+${order}
+
+${productPage
+  ? 'The buyer is already looking at this product. Put the catalog name and the real price in the hero and in the product block before the longer benefits. Photos come before the story.'
+  : 'The buyer comes from an ad and does not know the product yet. Open on the outcome, then the benefits, then the offer and the real price, then the photos, then how cash on delivery works.'}
+
+The order line above is mandatory. The numbers below only say what each block contains.
+
+Every button scrolls to "#cod-order-form-section". The buyer pays the courier in cash and nothing before. Do not invent a delay, a return window, a stock count, a review score, or a discount.
+
+1. hero — title (6–11 words), subtitle (one fact from the product data + cash on delivery), ctaText, ctaHref, trustLine, layout "split"${hasDiscount ? `, badge "−${discountPct}%"` : ''}. Omit imageUrl. Write an English imagePrompt of this exact product.
+2. features — 4 to 6 items. Each item: icon, title = the result, description = the fact from the product data that supports it. No "premium".
+3. product — name is the catalog name exactly, tagline, priceAfter, currency, 4 highlights taken from the description, ctaText, ctaHref, trustBadges. ${hasDiscount ? `Include priceBefore and discountPct ${discountPct}.` : 'Do not invent priceBefore.'} No rating. No reviewCount. Omit imageUrl. Write an English imagePrompt.
+4. gallery — title plus 4 English imagePrompts. Four different scenes of the same product. Do not paste catalog URLs.
+5. steps — exactly 3: the buyer places the order, the shop confirms by phone, the buyer pays the courier in cash. No invented delay.
+6. testimonials — exactly 3. One sentence each, a local first name and a city. No score, no customer count, no medical result.
+7. cod-form — exactly one. Title about cash on delivery. reassurance = pay on delivery only.
+8. faq — exactly 5, in the order of the FAQ framework above.
+9. cta — title, subtitle, buttonText, buttonHref, urgency = pay only when the parcel is in hand.${hasDiscount ? ` Mention −${discountPct}%.` : ''}
+10. footer — brandName, tagline, paymentMethods ["cod"].
+
+Do not emit stats, brands, pricing, a product grid, or a video.
+`;
+}
+
 function buildPrompt(input: FalGenerateInput, language: string, direction: 'ltr' | 'rtl'): string {
   const {
     storeName,
@@ -876,7 +964,7 @@ function buildPrompt(input: FalGenerateInput, language: string, direction: 'ltr'
   const productImagesProvided = (product?.images?.length || 0) > 0;
 
   const sectionsSchema = `
-Return between 9 and 14 sections in this preferred order: hero, features, steps, stats, gallery, product, brands, testimonials, video, pricing, cod-form, faq, cta, footer.
+The PAGE block above is the contract: exactly those 10 sections, in that order. Use the prop shapes below. Do not add stats, brands, pricing, a product grid, or a video.
 
 For sections that need images, output an "imagePrompt" field — a short ENGLISH description (under 35 words) of ONE scene. NEVER write Arabic text inside imagePrompt — image models do that poorly. Describe the scene visually only.
 
@@ -992,69 +1080,7 @@ Per-section schema:
   // sequence + copy register + per-section prop shape. Without this
   // per-kind blueprint the LLM produces two visually identical pages
   // and sellers can't tell why they'd pick one over the other.
-  const productPageNote = pageKind === 'product'
-    ? `
-# PAGE INTENT OVERRIDE
-This is NOT a standard product page. No spec sheet, no size chart, no gallery of the raw catalog photos.
-Write the conversion landing below. Leave imagePrompt, imagePrompts, hero.imageUrl and gallery.images empty: the server paints hook ads FROM the product photo.
-`
-    : '';
-  const productPageRules = `
-# 📖 PAGE INTENT: LANDING PAGE (single-offer conversion funnel)
-Cold traffic — hasn't decided anything. Hook, story, proof, risk
-reversal, urgency, close. OFFER + PROOF + RISK REVERSAL beat product
-details every time. Repeat the core promise across hero → features → cta.
-
-TONE: clear, concrete, professional. Short sentences. Direct "tu" in
-French. Every button leads to the cod-form. Say that the buyer pays the
-courier in cash, and nothing before. Do not invent a delay, a return
-window, a stock level, or a discount.
-
-STRUCTURE (mandatory order, 8-11 sections). Each section MUST include
-the props listed — omitting a listed prop = invalid output:
-
-1. hero (full-width, big BENEFIT headline about THIS product)
-   props: { title (buyer OUTCOME for the exact product, e.g. "Protège ton laptop en plein marché"), subtitle (promise grounded in the product description + COD reassurance), ctaText ("Commander · paiement à la livraison"), ctaHref: "#cod-order-form-section"${hasDiscount ? `, ctaBadge ("−${discountPct}%")` : ''}, trustLine ("Paiement à la livraison") }
-   Omit imageUrl and imagePrompt. The server builds a hook ad from the product photo.
-
-2. features (4-6 emotional benefits — each solves a real buyer pain)
-   Each item: { icon (Shield/Truck/Zap/Heart/Award/Gift/Clock/Star), title (result), description (BAB — Before/After/Bridge). Only materials and uses present in the product data. }
-
-3. steps (3-4 steps of how it works OR how to order)
-   Each: { number, title (verb + outcome), description (1-2 sentences) }
-
-4. gallery
-   props: { title }
-   Omit images and imagePrompts. The server builds four hook ads from the product photo. Do not paste the catalog photos.
-
-5. testimonials (3 emotional quotes — SSS pattern: Star/Story/Solution)
-   Each: { quote (mentions a pain solved, NO buyer count, NO score), author (native name), role ("Cliente — Casablanca"), avatarPrompt }
-
-6. video (poster only — leave url empty)
-   props: { title ("Voir en action"), url (empty), posterPrompt }
-
-7. cod-form (auto-injected — you MAY still emit one; server keeps only one)
-   props: { title ("Commande maintenant — paiement à la livraison"), reassurance ("Zéro avance. Tu payes en main propre au livreur."), productSlug }
-
-8. faq (5 objection-crushing questions — see DTC_COPY_FORMULAS FAQ block)
-    Each: { question, answer (concrete, addresses the buyer's fear). Do not invent a delivery delay or a return window that was not provided. }
-
-9. cta (FINAL push — COD reassurance, no fake stock count)
-    props: { title (bénéfice + paiement à la livraison), subtitle (levée d'objection COD), buttonText ("Commander maintenant"), buttonHref: "#cod-order-form-section", urgency ("Tu payes seulement quand tu l'as en main")${hasDiscount ? `, discountBadge ("−${discountPct}%")` : ''} }
-
-10. footer
-    props: { brandName, tagline, links, paymentMethods: ["cod", "wave", "orangeMoney"] }
-
-DO NOT USE on a landing: "stats", "brands", "pricing" table, and do not
-rename the product. A "product" detail block is optional; if you emit one,
-its name MUST be the catalog name exactly.
-
-⚠️ MANDATORY: hero.ctaHref AND cta.buttonHref MUST both be
-"#cod-order-form-section" (they scroll the buyer to the form).
-Do NOT paste catalog photos or "__PRODUCT_IMAGE_N__" into hero.imageUrl or gallery.images.
-The server generates hook ads from the product photo. Never invent a filename.
-`;
-
+  const salesPageRules = salesPageContract(pageKind, hasDiscount, discountPct);
   const imageBlock = imageCaption
     ? `\n# 🛑 PRODUCT IDENTITY — ABSOLUTE SOURCE OF TRUTH 🛑
 A vision model has DESCRIBED the actual product photo. This description is THE product. You MUST write copy about THIS exact object, nothing else.
@@ -1073,58 +1099,11 @@ ${imageCaption}
 6. Image prompts must show THIS object: same type, same color, same number of pieces as the vision description. Never write a different color or a different outfit.`
     : '';
 
-  // ──────── Arabic few-shots (only injected when targeting Arab market) ────────
-  // Real ad-creative copy patterns. The LLM is told to MIMIC the structure and
-  // tone, NOT copy the words. This is the single biggest quality lever for
-  // dialect-correct, conversion-focused Arabic copy.
-  const arabFewShots = isArabicDialect ? `
-# 📝 Few-shot: voici comment écrit un bon copywriter dropshipping arabe (style à imiter, PAS à copier)
-
-Hero (Algérie, Darija):
-  title: "اللي كاينة في الديار توصلكم في 48 ساعة"
-  subtitle: "اكتشف الـ produit اللي عجب بزاف ناس في الجزائر — qualité ممتازة و livraison gratuite حتى الباب."
-  ctaText: "اطلب دروك (paiement à la livraison)"
-
-Hero (Tunisie, Derja):
-  title: "العرض اللي ينتظرو الكل، توا متاعك."
-  subtitle: "بَرشة عائلات تونسية تستعمل الـ produit هذا. توصلك ل dar في 48 ساعة، قابل للtester قبل ما تخلص."
-  ctaText: "اطلب توا · livraison gratuite"
-
-Features item (Maroc, Darija):
-  title: "جودة كتعمر"
-  description: "Matériaux ديال الجودة، خدامة ل سنين. هاد الـ produit راه فيه garantie سنة كاملة."
-
-Testimonial (Saoudi, Khaliji):
-  quote: "صراحة فاجأني المنتج، الجودة ممتازة وأنا أمي اشتري له صديقاتي بعد ما شفته."
-  author: "نورة الشمري"
-  role: "ربة بيت — الرياض"
-
-CTA section (Égypte, Masri):
-  title: "اطلبه دلوقتي قبل ما يخلص!"
-  subtitle: "الدفع عند الاستلام. تشوف المنتج قبل ما تخلّص."
-  buttonText: "اطلب دلوقتي"
-  urgency: "عرض محدود · ينتهي قريب"
-
-FAQ (Algérie, Darija):
-  question: "كيفاش ندفع؟"
-  answer: "تقدر تدفع cash à la livraison ملي يوصلك الكولي للديار، ولا par carte بان كاش transaction sécurisée."
-
-# 🚫 ANTI-PATTERNS — ne JAMAIS écrire comme ça (trop Fusha / trop générique):
-  ❌ "اشترِ الآن منتجنا الفاخر بأعلى جودة"  (verbe-initial classique, "الآن", "الفاخر")
-  ❌ "احصل على أفضل المنتجات"               (forme impérative MSA "احصل على")
-  ❌ "نحن نقدم لكم أرقى الخدمات"            (formel, vide, pas de spécifique)
-  ❌ "اكتشف عالم الجمال مع منتجاتنا"        (cliché publicitaire, aucune sensation)
-
-# ✅ PRINCIPES de copy (à appliquer dans CHAQUE section):
-  - PARLE comme sur Facebook/WhatsApp, pas comme un journal de presse
-  - 2ème personne directe ("إنتي", "نتا", "إنت") — JAMAIS de "نحن نقدم"
-  - SPÉCIFIQUE: le prix donné, la matière écrite dans la fiche, un bénéfice concret. Pas de nombre de clients.
-  - SENSORIEL: décris la sensation/usage, pas l'abstraction
-  - URGENCE = الدفع عند الاستلام. PAS un stock inventé ("آخر X قطعة").
-  - Mots français intégrés QUAND la dialect_map le permet (Maghreb surtout)
-  - Questions rhétoriques OK pour le hero/cta — donne du rythme conversationnel
+  const arabFewShots = isArabicDialect ? dialectFewShot(language, country) + `
+# Règle d'écriture
+كل العنوان، الأزرار، الأسئلة والأجوبة بنفس اللهجة المختارة. جملة قصيرة. ما تخلطش لهجتين.
+ما تكتبش الفصحى: اشترِ، احصل على، نحن نقدم، الآن، الفاخر.
 ` : '';
-
   // ──────── French few-shots (FR Maghreb + Afrique francophone) ────────
   // Same purpose as the arab block: kill the corporate-marketing default
   // voice and force a direct, WhatsApp-grade tone that actually converts
@@ -1182,7 +1161,7 @@ FAQ (Maroc FR):
   // que le LLM voie d'abord LA STRUCTURE optimale (template catégorie) et
   // LES FORMULES qui convertissent (PAS / BAB / SSS / AIDA), puis compose
   // dans le schema générique en respectant ces contraintes.
-  const categoryTemplateBlock = getCategoryTemplateBlock(input.category);
+  const categoryTemplateBlock = getCategoryTemplateBlock(input.category, pageKind);
 
   return `You write the sales page of a real online store that takes orders with cash on delivery. The buyer should trust the shop: clear offer, real price, how the order works, then the order form. Voice: direct and concrete, like a good salesperson. No slang, no fake stock, no invented delay, no invented customer count. You output ONE valid JSON object only.
 
@@ -1194,7 +1173,8 @@ Tone: ${tone}
 ${audienceLines}
 
 # Page kind
-${pageKind}${productPageNote}${productPageRules}
+${pageKind}
+${salesPageRules}
 
 # Product
 ${productBlock}
@@ -1219,16 +1199,16 @@ ${sectionsSchema}
 
 # Hard rules
 - Strict JSON. No trailing commas. No code fences.
-- ALL human-readable copy in ${langLabel}${dialect ? ` (dialect: ${dialect.split(/[.\n]/)[0]})` : ''}.${arabHint}
+- ALL human-readable copy in ${langLabel}. Titles, buttons, FAQ, testimonials and the order form use that language only.${arabHint}
 ${isArabicDialect ? `- DIALECT IS NON-NEGOTIABLE. Re-read the dialect block above before writing each section. After drafting, scan your output for any Fusha forms (e.g. "اشترِ", "احصل على", "الذي", verb-initial sentences with classical conjugation) and REWRITE them in ${country?.toUpperCase() || 'the target'} dialect with the markers listed.\n- French loanwords are encouraged where the dialect block lists them — DO NOT translate them to Arabic equivalents.` : ''}
 ${isFrenchCopy ? `- VOICE IS NON-NEGOTIABLE. Re-read the French few-shot above before EACH section. After drafting, scan for forbidden corporate jargon ("premium", "exception", "univers", "engagement", "découvrez notre gamme", "expérience inégalée", "nous vous proposons") and REWRITE in the direct tu-form WhatsApp-tone shown in the examples.\n- Use "tu" (B2C), never "vous". Address the COD payment objection head-on. Never invent a customer count, a rating, a stock level, a press mention, or a price.` : ''}
 - ALL "imagePrompt" / "imagePrompts" fields stay in ENGLISH (image model needs English).
-- 9 to 13 sections. Start with "hero", end with "footer". Always include "cta" near the end.
+- Exactly 10 sections, in the PAGE order: hero, then the blocks listed there, ending with footer. Include features, product, gallery, steps, testimonials, cod-form, faq and cta.
 - NEVER invent a filename or URL. The ONLY allowed values for "imageUrl", "posterUrl", "avatarUrl", "images", "gallery" are: an http(s):// URL we already gave you, OR the literal placeholder "__PRODUCT_IMAGE_N__". For every other case, OMIT the field entirely and use "imagePrompt" / "imagePrompts" instead.
 ${hasDiscount ? `- Mention savings (-${discountPct}%) and strikethrough ${fmt(priceBefore)} → ${fmt(priceAfter)} in hero AND cta.` : ''}
 - Specificity > generic. Every benefit concrete. No filler ("amazing", "the best") without proof.
 - Testimonial author names native to ${country || 'the target country'}.
-- For Arab markets, default trust badges & FAQ should address: cash on delivery (الدفع عند الاستلام), free shipping (شحن مجاني), 7-day returns, original product authenticity.`;
+- Trust badges and the FAQ may promise cash on delivery only. Do not promise free shipping, a return window, or a certificate unless that exact promise is written in the product data.`;
 }
 
 // ─────────────────────────────────────────────────────────────────────
@@ -1332,9 +1312,10 @@ interface ImageSlot {
  */
 function collectImageSlots(
   sections: Array<{ type: string; props: Record<string, unknown> }>,
-  productImage?: string
+  productImages: string[] = [],
 ): ImageSlot[] {
   const slots: ImageSlot[] = [];
+  const refAt = (index: number) => (productImages.length > 0 ? productImages[index % productImages.length] : undefined);
 
   for (const sec of sections) {
     const p = sec.props;
@@ -1366,11 +1347,12 @@ function collectImageSlots(
         sec.type === 'product' ? 'product' : 'generic';
       // Video posters showcase the product in use — they MUST use the product
       // reference, otherwise the model invents a generic look-alike.
-      const useRef = !!productImage && (kind === 'hook' || (!isBanner && (kind === 'hero' || kind === 'product' || kind === 'generic' || kind === 'video')));
+      const useRef = productImages.length > 0 && (kind === 'hook' || (!isBanner && (kind === 'hero' || kind === 'product' || kind === 'generic' || kind === 'video')));
+      const refIndex = sec.type === 'product' && productImages.length > 1 ? 1 : 0;
       slots.push({
         prompt,
         kind,
-        referenceImage: useRef ? productImage : undefined,
+        referenceImage: useRef ? refAt(refIndex) : undefined,
         apply: (url) => {
           if (sec.type === 'video') p.posterUrl = url;
           else p.imageUrl = url;
@@ -1388,7 +1370,7 @@ function collectImageSlots(
         slots.push({
           prompt,
           kind: hooks ? 'hook' : 'gallery',
-          referenceImage: productImage,
+          referenceImage: refAt(idx),
           apply: (url) => { urls[idx] = url; },
         });
       });
@@ -1433,7 +1415,7 @@ const HOUSE_STYLE =
   'soft directional natural light from one side, refined neutral color grade with a single warm accent tone, ' +
   'subtle organic film grain, crisp focus on the subject, shallow depth of field, generous intentional negative space, ' +
   'clean modern 2026 brand campaign look, high dynamic range, ultra detailed, sharp, 4k, ' +
-  'no text, no typography, no logos, no watermark, no UI elements, no borders';
+  'no text, no typography, no watermark, no UI elements, no borders';
 
 /** Portrait style for testimonial avatars — real people, not products. */
 const PORTRAIT_STYLE =
@@ -1506,25 +1488,11 @@ async function buildImageGenInput(
   // as we have a reference image, regardless of the model name — the new
   // routing layer will pick the right img2img endpoint.
   const hasReference = !!(referenceImages && referenceImages.length > 0);
-  if (hasReference && isHook) {
+  if (hasReference) {
     finalPrompt =
-      'The reference photo is the product. Keep it recognizable (same color, shape, material, pieces). ' +
-      'Change the crop and the background, and add the typography. Do not swap in a different product. ' +
+      'The reference photo is the real product. Keep that exact product: same color, same shape, same material, same pieces. ' +
+      'Do not replace it with a similar product. Remove watermarks, price stickers and seller logos that are not printed on the product. ' +
       finalPrompt;
-  } else if (hasReference) {
-    const fidelityHead =
-      'CRITICAL IDENTITY LOCK — READ FIRST: The product in the reference image is FIXED and IMMUTABLE. ' +
-      'You MUST preserve, pixel by pixel, every visible detail of that exact product: its silhouette, ' +
-      'dimensions, color palette, surface materials, hardware (buttons, ports, vents, switches, brushes, ' +
-      'nozzles, attachments), branding marks, logos, labels, textures, and physical proportions. ' +
-      'You are NOT redesigning a similar-looking product, NOT inventing a new color variant, NOT generating ' +
-      'an inspired-by version — you are PLACING THIS EXACT PRODUCT, unchanged, into a new scene like a ' +
-      'high-end photo composite. Treat the reference as sacred ground truth. ' +
-      'NEW SCENE around the SAME unchanged product: ';
-    const fidelityTail =
-      ' — Final reminder: the product MUST look identical to the reference. Same silhouette, same colors, ' +
-      'same materials, same hardware, same proportions. No variations of any kind on the product itself.';
-    finalPrompt = fidelityHead + finalPrompt + fidelityTail;
   }
 
   // Negative prompts only apply to FLUX-class models. Banners want text in
@@ -1581,6 +1549,8 @@ function finalize(
   currency?: string,
   country?: string,
   language?: string,
+  pageKind?: 'landing' | 'product',
+  storeName?: string,
 ): TemplateSection[] {
   const productImages = fallbackProduct?.images?.filter((u) => typeof u === 'string' && u.length > 0) || [];
   const firstImage = productImages[0];
@@ -1646,10 +1616,14 @@ function finalize(
         productName: fallbackProduct?.name,
         productSlug,
         productPrice: fallbackProduct?.price,
+        productDescription: fallbackProduct?.description,
+        productImages,
+        storeName,
         currency,
         country,
         language,
         eta,
+        pageKind,
       });
 
   const visible = ordered.filter((s) => {
@@ -1764,7 +1738,6 @@ function synthesizeMissingPrompts(
   sections: Array<{ type: string; props: Record<string, unknown> }>,
   product: ProductInput | undefined,
   country: string | undefined,
-  pricing?: { priceBefore?: number; priceAfter?: number; currency?: string },
 ): void {
   const productName = product?.name || 'product';
   const productDesc = product?.description ? product.description.slice(0, 120) : '';
@@ -1816,33 +1789,31 @@ function synthesizeMissingPrompts(
     }
   }
 
-  if (hasRef) paintHookCreatives(sections, country, {
-    priceBefore: pricing?.priceBefore,
-    priceAfter: pricing?.priceAfter ?? product?.price,
-    currency: pricing?.currency,
-  });
+  if (hasRef) stageProductShoot(sections, country);
 }
 
 /**
- * Remplace les photos catalogue par des pubs générées DEPUIS la photo produit.
- * Chaque image garde le produit et porte une accroche courte (prix réel, remise réelle, COD).
+ * Prépare une série de photos du VRAI produit : une scène par bloc,
+ * sans texte peint sur l'image. Le modèle part de la photo fournie
+ * (catalogue ou lien) et ne change que le décor.
  */
-function paintHookCreatives(
+function stageProductShoot(
   sections: Array<{ type: string; props: Record<string, unknown> }>,
   country: string | undefined,
-  pricing: { priceBefore?: number; priceAfter?: number; currency?: string },
 ): void {
   const culture = getPhotoCulture(country);
-  const hooks = buildConversionHooks(pricing);
-  const heroPrompt = hookImagePrompt(hooks.hero, culture);
-  const framePrompts = hooks.frames.map((frame) => hookImagePrompt(frame, culture));
+  const heroPrompt = `the product large in the frame, used naturally in a real ${culture} home, warm side daylight, quiet background`;
+  const productPrompt = 'the product alone, clean studio photograph on a soft warm backdrop, gentle contact shadow, sharp detail';
+  const framePrompts = [
+    'a close view of the product material and construction, soft light, nothing else in the frame',
+    `the product in everyday use in ${culture}, natural and unposed`,
+    'the product in a simple still life with two plain props, warm daylight from the side',
+    'a three-quarter view of the product with empty space on one side, soft background',
+  ];
 
   if (!sections.some((s) => s.type === 'gallery')) {
     const heroIdx = sections.findIndex((s) => s.type === 'hero');
-    const gallery = {
-      type: 'gallery',
-      props: { title: 'Avant de commander', imagePrompts: framePrompts, creativeMode: 'hooks' } as Record<string, unknown>,
-    };
+    const gallery = { type: 'gallery', props: { imagePrompts: framePrompts } as Record<string, unknown> };
     if (heroIdx >= 0) sections.splice(heroIdx + 1, 0, gallery);
     else sections.unshift(gallery);
   }
@@ -1852,26 +1823,20 @@ function paintHookCreatives(
     if (!p) continue;
     if (sec.type === 'hero') {
       delete p.imageUrl;
+      delete p.creativeMode;
       p.imagePrompt = heroPrompt;
-      p.creativeMode = 'hooks';
       if (!p.layout) p.layout = 'split';
     }
     if (sec.type === 'gallery') {
       delete p.images;
+      delete p.creativeMode;
       p.imagePrompts = framePrompts;
-      p.creativeMode = 'hooks';
-      p.title = 'Avant de commander';
     }
     if (sec.type === 'product') {
       delete p.imageUrl;
       delete p.gallery;
-      p.imagePrompt = framePrompts[1] || heroPrompt;
-      p.creativeMode = 'hooks';
-    }
-    if (sec.type === 'video') {
-      delete p.posterUrl;
-      p.imagePrompt = framePrompts[0] || heroPrompt;
-      p.creativeMode = 'hooks';
+      delete p.creativeMode;
+      p.imagePrompt = productPrompt;
     }
   }
 }
@@ -1965,11 +1930,7 @@ async function runFullPipeline(
   // Inject the user's real product images FIRST (priority over AI generation),
   // then synthesize prompts only for slots that are still empty.
   injectProductImagesFirst(factualSections, productImages);
-  synthesizeMissingPrompts(factualSections, input.product, input.country, {
-    priceBefore: input.priceBefore,
-    priceAfter: input.priceAfter ?? input.product?.price,
-    currency: input.currency,
-  });
+  synthesizeMissingPrompts(factualSections, input.product, input.country);
   injectPromoBannerIfDiscount(factualSections, input);
 
   // STEP 2 — image generation (parallel) — gated by env
@@ -1978,7 +1939,7 @@ async function runFullPipeline(
   let imagesGenerated = 0;
   if (imagesEnabled) {
     const productImageRef = productImages[0];
-    const slots = collectImageSlots(factualSections, productImageRef);
+    const slots = collectImageSlots(factualSections, productImages);
     const refCount = slots.filter((s) => s.referenceImage).length;
     console.log(`[landing-gen] image slots collected: ${slots.length} (${refCount} with product reference for img2img)`);
     if (slots.length > 0) {
@@ -2025,7 +1986,7 @@ async function runFullPipeline(
 
   // STEP 3 — finalize / inject fallbacks
   await tick('assemble', 'running');
-  const finalSections = finalize(factualSections, input.product, input.currency, input.country, language);
+  const finalSections = finalize(factualSections, input.product, input.currency, input.country, language, input.pageKind, input.storeName);
   const seo = lockSeo(parsed.seoTitle, parsed.seoDescription, input.product?.name);
   console.log(`[landing-gen] done in ${Date.now() - t0}ms — ${finalSections.length} sections, ${imagesGenerated} images`);
   await tick('assemble', 'done');

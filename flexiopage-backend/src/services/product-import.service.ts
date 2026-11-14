@@ -189,14 +189,31 @@ export function extractAmazonFallback($: cheerio.CheerioAPI): Partial {
   };
 }
 
-/** Garde des URLs d'image http(s) uniques. */
+/**
+ * Les fiches AliExpress, Alibaba et Amazon exposent souvent la miniature
+ * (`_220x220`, `._AC_SX300_`). On demande le fichier d'origine pour que
+ * la génération parte d'une photo nette, pas d'un timbre.
+ */
+export function upgradeProductImageUrl(url: string): string {
+  let u = url.trim();
+  if (u.startsWith('//')) u = `https:${u}`;
+  u = u.replace(/(\.(?:jpe?g|png|webp))_\d+x\d+[a-z0-9]*\.(?:jpe?g|png|webp)(?:_\.webp)?$/i, '$1');
+  u = u.replace(/\._[A-Z0-9_,]+_\.(jpe?g|png|webp)$/i, '.$1');
+  return u;
+}
+
+function looksLikeProductPhoto(url: string): boolean {
+  return !/(sprite|favicon|logo|icon|badge|pixel|1x1|placeholder|blank\.gif)/i.test(url);
+}
+
+/** Garde des URLs d'image http(s) uniques, en version la plus grande. */
 function dedupeImages(urls: string[]): string[] {
   const seen = new Set<string>();
   const out: string[] = [];
   for (const u of urls) {
     if (typeof u !== 'string') continue;
-    const clean = u.trim();
-    if (!/^https?:\/\//i.test(clean)) continue;
+    const clean = upgradeProductImageUrl(u);
+    if (!/^https?:\/\//i.test(clean) || !looksLikeProductPhoto(clean)) continue;
     if (seen.has(clean)) continue;
     seen.add(clean);
     out.push(clean);

@@ -9,7 +9,6 @@ import { generatePoster, type PosterTheme, type PosterFormat } from '../services
 import { generateLandingImage } from '../services/landing-image.service';
 import { extractProductFromUrl, ImportError } from '../services/product-import.service';
 import { persistRemoteImage } from '../services/storage.service';
-import { cleanScrapedImages } from '../services/image-generation.service';
 import { Product } from '../models/Product.model';
 import { AiGeneration } from '../models/AiGeneration.model';
 import * as jobService from '../services/generation-job.service';
@@ -520,7 +519,9 @@ export async function generateFromUrlAsync(req: AuthRequest, res: Response): Pro
 
   const storeId = (store._id as { toString(): string }).toString();
 
-  // ── 2. Rapatrie les images dans notre stockage (best-effort) ─────────
+  // ── 2. Rapatrie les photos dans notre stockage (best-effort) ─────────
+  // On garde la photo réelle du lien. Le détourage effaçait le vêtement
+  // porté et le décor, donc la génération n'avait plus le vrai produit.
   const persistedImages: string[] = [];
   for (const raw of scraped.images.slice(0, MAX_URL_IMPORT_IMAGES)) {
     try {
@@ -529,35 +530,7 @@ export async function generateFromUrlAsync(req: AuthRequest, res: Response): Pro
       logger.warn({ err: (err as Error).message, url: raw }, '[url-to-landing] image non rapatriée — ignorée');
     }
   }
-
-  // ── 2b. Nettoyage IA des images scrapées ─────────────────────────────
-  // Les images Alibaba/AliExpress arrivent avec fond chargé + watermarks +
-  // résolution moyenne. On passe chaque image dans fal-ai/rembg (retire le
-  // fond) + clarity-upscaler (×2 + denoise, atténue les watermarks). Best-
-  // effort — si un cleanup échoue, on garde l'image originale.
-  // Désactivable via PRODUCT_IMAGE_CLEANUP_ENABLED=false.
-  let cleanedImages = persistedImages;
-  if (persistedImages.length > 0) {
-    try {
-      cleanedImages = await cleanScrapedImages(persistedImages);
-      // Re-persist les URLs nettoyées (elles pointent vers fal.media, 24h TTL)
-      // dans notre stockage. Si la re-persistance échoue, on garde l'URL fal.
-      cleanedImages = await Promise.all(
-        cleanedImages.map(async (u, i) => {
-          if (u === persistedImages[i]) return u; // pas de changement → skip
-          try {
-            return await persistRemoteImage(u, `products/${storeId}`);
-          } catch {
-            return u;
-          }
-        }),
-      );
-      const changed = cleanedImages.filter((u, i) => u !== persistedImages[i]).length;
-      logger.info({ total: persistedImages.length, cleaned: changed }, '[url-to-landing] images nettoyées');
-    } catch (err) {
-      logger.warn({ err: (err as Error).message }, '[url-to-landing] cleanup a échoué — on garde les originaux');
-    }
-  }
+  const cleanedImages = persistedImages;
 
   // ── 3. Crée le produit dans le catalogue ────────────────────────────
   // On le laisse non publié : le seller peut le publier depuis l'éditeur

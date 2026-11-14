@@ -161,6 +161,67 @@ export function SectionEditor({ section, index, onUpdate, onRemove }: SectionEdi
     );
   }
 
+  if (section.type === 'steps') {
+    const items = (p.items as Array<{ title?: string; description?: string }>) || [];
+    return (
+      <div className="rounded-lg border bg-muted/20 p-4 space-y-4">
+        <div className="flex items-center justify-between">
+          <span className="font-medium">Comment ça marche</span>
+          <Button type="button" variant="ghost" size="sm" onClick={onRemove}>
+            <Trash2 className="h-4 w-4" />
+          </Button>
+        </div>
+        <div>
+          <Label className="text-xs">Section title</Label>
+          <Input value={(p.title as string) || ''} onChange={(e) => set('title', e.target.value)} className="mt-1" />
+        </div>
+        <div>
+          <Label className="text-xs">Subtitle</Label>
+          <Input value={(p.subtitle as string) || ''} onChange={(e) => set('subtitle', e.target.value)} className="mt-1" />
+        </div>
+        <div>
+          <Label className="text-xs">Étapes</Label>
+          {items.map((item, i) => (
+            <div key={i} className="mt-2 flex gap-2 rounded border p-2">
+              <Input
+                value={item.title || ''}
+                onChange={(e) => {
+                  const next = [...items];
+                  next[i] = { ...next[i], title: e.target.value };
+                  set('items', next);
+                }}
+                placeholder="Titre"
+                className="flex-1"
+              />
+              <Input
+                value={item.description || ''}
+                onChange={(e) => {
+                  const next = [...items];
+                  next[i] = { ...next[i], description: e.target.value };
+                  set('items', next);
+                }}
+                placeholder="Description"
+                className="flex-1"
+              />
+              <Button type="button" variant="ghost" size="icon" onClick={() => set('items', items.filter((_, j) => j !== i))}>
+                <Trash2 className="h-4 w-4" />
+              </Button>
+            </div>
+          ))}
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="mt-2"
+            onClick={() => set('items', [...items, { title: '', description: '' }])}
+          >
+            <Plus className="mr-1 h-4 w-4" /> Ajouter une étape
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
   if (section.type === 'testimonials') {
     const items = (p.items as Array<{ quote?: string; author?: string }>) || [];
     return (

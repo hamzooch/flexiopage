@@ -434,6 +434,21 @@ const EXT_BY_MIME: Record<string, string> = {
   'image/gif': '.gif',
 };
 
+/** Les CDN AliExpress / Amazon refusent un fetch sans navigateur. */
+function imageDownloadHeaders(url: string): Record<string, string> {
+  const headers: Record<string, string> = {
+    'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+    Accept: 'image/avif,image/webp,image/apng,image/*,*/*;q=0.8',
+  };
+  try {
+    const host = new URL(url).hostname;
+    if (/aliexpress|alicdn/i.test(host)) headers.Referer = 'https://www.aliexpress.com/';
+    else if (/alibaba/i.test(host)) headers.Referer = 'https://www.alibaba.com/';
+    else if (/amazon/i.test(host)) headers.Referer = 'https://www.amazon.com/';
+  } catch { /* URL relative : pas d'en-tête supplémentaire */ }
+  return headers;
+}
+
 /**
  * Download a remote image (e.g. from fal.media which expires in ~24h) and
  * re-host it in our own storage so the URL stays alive forever.
@@ -453,7 +468,7 @@ export async function persistRemoteImage(
   const apiBase = (process.env.API_PUBLIC_URL || '').replace(/\/$/, '');
   if (apiBase && remoteUrl.startsWith(apiBase)) return remoteUrl;
 
-  const res = await fetchWithRetry(remoteUrl);
+  const res = await fetchWithRetry(remoteUrl, { headers: imageDownloadHeaders(remoteUrl) });
   if (!res.ok) {
     throw new Error(`persistRemoteImage: failed to fetch ${remoteUrl} (${res.status})`);
   }

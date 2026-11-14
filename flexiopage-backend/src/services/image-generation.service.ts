@@ -234,10 +234,12 @@ function buildBody(endpoint: string, input: ImageGenInput): Record<string, unkno
 
   // Nano Banana Edit: image-to-image
   if (/nano-banana\/edit/.test(endpoint)) {
+    const a = NANO_ASPECT[aspect];
     return {
       prompt: input.prompt,
       image_urls: refs,
       num_images: 1,
+      aspect_ratio: a.ratio,
       output_format: 'jpeg',
     };
   }

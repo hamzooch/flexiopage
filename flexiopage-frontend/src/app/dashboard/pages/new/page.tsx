@@ -308,6 +308,7 @@ export default function NewLandingPagePage() {
             setName('landing');
             setSlug('landing');
           }
+          setEditPanelOpen(true);
           setStep('editor');
           setJobId(null);
         } else if (j.status === 'failed') {
@@ -427,6 +428,7 @@ export default function NewLandingPagePage() {
     const t = templates.find((x) => x.id === previewTemplateId);
     if (t) setName(t.name.replace(/\s+/g, '-').toLowerCase());
     setSlug('');
+    setEditPanelOpen(true);
     setStep('editor');
   }
 
@@ -757,6 +759,7 @@ export default function NewLandingPagePage() {
             glow="shadow-emerald-500/30"
             onClick={() => {
               setSections(withDefaultCodForm([]));
+              setEditPanelOpen(true);
               setStep('editor');
             }}
           />
@@ -1454,11 +1457,15 @@ export default function NewLandingPagePage() {
               className="h-9 gap-1.5 rounded-lg gradient-brand text-white shadow-md shadow-primary/25 hover:opacity-95"
             >
               {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
-              {saving ? 'Création...' : 'Créer'}
+              {saving ? 'Enregistrement...' : 'Enregistrer le brouillon'}
             </Button>
           </form>
         </div>
       </header>
+
+      <div className="shrink-0 border-b border-amber-500/30 bg-amber-500/10 px-4 py-2 text-xs text-amber-950 sm:px-6">
+        Brouillon modifiable. Change le titre, le prix, les photos et chaque bloc avant d’enregistrer. La page reste hors ligne tant que tu ne la publies pas.
+      </div>
 
       {/* AI vision banner */}
       {imageCaption && (
@@ -1785,6 +1792,9 @@ const CURRENCIES: { code: string; label: string; symbol: string; group: 'arab' |
 const LANGUAGES: { code: string; label: string }[] = [
   { code: 'en', label: 'English' },
   { code: 'fr', label: 'Français' },
+  { code: 'ar-TN', label: 'تونسي' },
+  { code: 'ar-DZ', label: 'دارجة جزائرية' },
+  { code: 'ar-MA', label: 'دارجة مغربية' },
   { code: 'ar', label: 'العربية' },
   { code: 'es', label: 'Español' },
   { code: 'de', label: 'Deutsch' },
@@ -1972,8 +1982,9 @@ function ContextForm(props: {
                 setCurrency(match.currency);
                 // For Arab countries, default the language to Arabic — only if the
                 // user hasn't manually picked one yet.
-                if (match.arab && !languageTouched && language !== 'ar') {
-                  setLanguage('ar');
+                if (match.arab && !languageTouched) {
+                  const spoken = match.code === 'TN' ? 'ar-TN' : match.code === 'DZ' ? 'ar-DZ' : match.code === 'MA' ? 'ar-MA' : 'ar';
+                  setLanguage(spoken);
                 }
               }
             }}
@@ -2014,9 +2025,13 @@ function ContextForm(props: {
 
       {isArab && (
         <div className="rounded-xl border border-fuchsia-500/30 bg-fuchsia-500/5 px-3 py-2 text-xs text-fuchsia-700">
-          {language === 'ar'
-            ? 'Arabic auto-selected for this market. The page will be generated in Arabic with RTL layout.'
-            : 'Arab market detected. Switch the language to Arabic for native copy and RTL layout.'}
+          {language.toLowerCase() === 'ar-tn'
+            ? 'La page s’écrit en tunisien, pas en arabe scolaire.'
+            : language.toLowerCase() === 'ar-dz'
+            ? 'La page s’écrit en darja algérienne, pas en arabe scolaire.'
+            : language.toLowerCase().startsWith('ar')
+            ? 'La page s’écrit dans la langue parlée du pays, pas en arabe scolaire.'
+            : 'Pays arabe. Choisis tunisien, algérien ou arabe pour le texte.'}
         </div>
       )}
 

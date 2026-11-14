@@ -5,7 +5,22 @@ import {
   detectSource,
   extractFromJsonLd,
   extractFromOpenGraph,
+  upgradeProductImageUrl,
 } from '../product-import.service';
+
+describe('photos produit depuis un lien', () => {
+  it('demande la photo AliExpress et Amazon en grand, pas la miniature', () => {
+    expect(upgradeProductImageUrl('https://ae01.alicdn.com/kf/Habc.jpg_220x220.jpg')).toBe(
+      'https://ae01.alicdn.com/kf/Habc.jpg',
+    );
+    expect(upgradeProductImageUrl('https://m.media-amazon.com/images/I/71abc._AC_SX300_.jpg')).toBe(
+      'https://m.media-amazon.com/images/I/71abc.jpg',
+    );
+    expect(upgradeProductImageUrl('//ae01.alicdn.com/kf/Habc.jpg_50x50.jpg')).toBe(
+      'https://ae01.alicdn.com/kf/Habc.jpg',
+    );
+  });
+});
 
 describe('detectSource', () => {
   it('reconnaît les marketplaces supportées', () => {

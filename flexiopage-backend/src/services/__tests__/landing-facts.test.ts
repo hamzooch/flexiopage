@@ -73,7 +73,7 @@ describe('page de vente cash à la livraison', () => {
       { productName: 'Caftan Brodé Marrakech', productSlug: 'caftan-brode', productPrice: 45000, currency: 'XOF', country: 'SN', language: 'fr', eta: 'en 48h' },
     );
     expect(sections.map((s) => s.type)).toEqual([
-      'hero', 'product', 'steps', 'cod-form', 'faq', 'footer',
+      'hero', 'features', 'product', 'steps', 'cod-form', 'faq', 'cta', 'footer',
     ]);
     const form = sections.find((s) => s.type === 'cod-form')!;
     expect(form.props.title).toBe('Commande · paiement à la livraison');
@@ -96,6 +96,36 @@ describe('page de vente cash à la livraison', () => {
     expect(form.props.showPostalCode).toBe(true);
     expect(String(form.props.reassurance)).not.toMatch(/48h|14/);
     expect(sections[0].props.ctaText).toBe('اطلب الآن');
+    expect(sections.map((s) => s.type)).toEqual([
+      'hero', 'features', 'steps', 'cod-form', 'faq', 'cta', 'footer',
+    ]);
+  });
+
+  it('écrit le formulaire en tunisien ou en algérien selon le pays', () => {
+    const tn = shapeCodSalesPage(
+      [{ type: 'hero', props: { title: 'قفطان', ctaText: 'كوموندي توّا' } }],
+      { language: 'ar', country: 'TN' },
+    );
+    const dz = shapeCodSalesPage(
+      [{ type: 'hero', props: { title: 'قفطان', ctaText: 'كوموندي دروك' } }],
+      { language: 'ar-dz', country: 'DZ' },
+    );
+    expect(String(tn.find((s) => s.type === 'cod-form')?.props.title)).toContain('الكوموند');
+    expect(String(tn.find((s) => s.type === 'cod-form')?.props.subtitle)).toContain('حتى شيء');
+    expect(String(tn.find((s) => s.type === 'steps')?.props.subtitle)).not.toMatch(/دابا|دروك/);
+    expect(String(dz.find((s) => s.type === 'steps')?.props.subtitle)).toContain('دروك');
+    expect(String(dz.find((s) => s.type === 'faq')?.props.title)).not.toMatch(/توّا|برشة|ديال/);
+  });
+
+  it('met le prix avant les bénéfices sur une page produit', () => {
+    const sections = shapeCodSalesPage(
+      [{ type: 'hero', props: { title: 'Le caftan', ctaText: 'Commander · paiement à la livraison' } }],
+      { productName: 'Caftan', productPrice: 100, pageKind: 'product', language: 'fr', productImages: ['https://cdn.example/a.jpg'] },
+    );
+    expect(sections.map((s) => s.type)).toEqual([
+      'hero', 'product', 'gallery', 'features', 'steps', 'cod-form', 'faq', 'cta', 'footer',
+    ]);
+    expect(sections.find((s) => s.type === 'gallery')?.props.images).toEqual(['https://cdn.example/a.jpg']);
   });
 });
 
