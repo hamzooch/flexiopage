@@ -316,7 +316,6 @@ export function shapeCodSalesPage(
   },
 ): LandingSection[] {
   const copy = SALES_COPY[salesVoice(opts.language, opts.country)];
-  const country = (opts.country || '').toUpperCase();
   const list: LandingSection[] = sections.map((s) => ({ ...s, props: { ...(s.props || {}) } }));
 
   for (const sec of list) {
@@ -351,12 +350,14 @@ export function shapeCodSalesPage(
       if (typeof p.subtitle !== 'string' || !p.subtitle.trim()) p.subtitle = copy.formSubtitle;
       if (weakCta(p.submitLabel)) p.submitLabel = copy.submit;
       p.reassurance = honestReassurance(p.reassurance, copy.reassurance(opts.eta), opts.eta);
-      p.showEmail = false;
-      p.requireEmail = false;
-      p.showNotes = false;
-      p.showQuantity = true;
-      if (country === 'MA' || country === 'TN') p.showPostalCode = true;
-      if (country === 'DZ') p.showState = true;
+      delete p.showEmail;
+      delete p.requireEmail;
+      delete p.showPostalCode;
+      delete p.showState;
+      delete p.showNotes;
+      delete p.showQuantity;
+      delete p.showCity;
+      delete p.showAddressLine2;
     }
   }
 
@@ -420,12 +421,6 @@ export function shapeCodSalesPage(
         submitLabel: copy.submit,
         reassurance: copy.reassurance(opts.eta),
         ...(opts.productSlug ? { productSlug: opts.productSlug } : {}),
-        showEmail: false,
-        requireEmail: false,
-        showPostalCode: country === 'MA' || country === 'TN',
-        showState: country === 'DZ',
-        showNotes: false,
-        showQuantity: true,
       },
     });
   }
@@ -587,4 +582,220 @@ function hookPrice(amount: number, currency?: string): string {
   if (c === 'EUR') return `${n} EUR`;
   if (c === 'USD') return `${n} USD`;
   return c ? `${n} ${c}` : n;
+}
+
+export type CampaignAspect = 'square' | 'portrait';
+
+/** Texte posé sur la photo après génération, pour qu'il soit exact. */
+export interface CampaignCaption {
+  headline: string;
+  kicker?: string;
+  /** Prix avant remise, barré. Présent seulement si la remise est réelle. */
+  strike?: string;
+  badge?: string;
+}
+
+export interface CampaignShot {
+  scene: string;
+  aspect: CampaignAspect;
+  caption?: CampaignCaption;
+}
+
+export interface ProductCampaign {
+  hero: CampaignShot;
+  product: CampaignShot;
+  gallery: CampaignShot[];
+}
+
+type ProductStage = 'wrist' | 'jewelry' | 'apparel' | 'beauty' | 'bag' | 'tech' | 'food' | 'object' | 'digital';
+type HookGroup = 'wrist' | 'jewelry' | 'apparel' | 'beauty' | 'object';
+
+const HOOK_LINE: Record<HookGroup, Record<'fr' | 'en' | 'ar' | 'tn' | 'dz' | 'ma', string>> = {
+  wrist: {
+    fr: 'Au poignet, ça se voit',
+    en: 'On the wrist, it shows',
+    tn: 'على يدك، تبان برشة',
+    dz: 'على يدك، تبان بزاف',
+    ma: 'على يدك، كيبان',
+    ar: 'على اليد، تبان',
+  },
+  jewelry: {
+    fr: 'Le détail qu’on remarque',
+    en: 'The detail people notice',
+    tn: 'التفصيل اللي يبان برشة',
+    dz: 'التفصيل اللي يبان بزاف',
+    ma: 'التفصيل اللي كيبان',
+    ar: 'التفصيل اللي يبين',
+  },
+  apparel: {
+    fr: 'Sur toi, ça change tout',
+    en: 'On you, it changes everything',
+    tn: 'عليك، تبان برشة',
+    dz: 'عليك، تبان بزاف',
+    ma: 'عليك، كيبان',
+    ar: 'عليك، تبان',
+  },
+  beauty: {
+    fr: 'Le geste du matin',
+    en: 'The morning gesture',
+    tn: 'من الصباح، تبان برشة',
+    dz: 'من الصباح، تبان بزاف',
+    ma: 'من الصباح، كيبان',
+    ar: 'من الصباح، تبان',
+  },
+  object: {
+    fr: 'Tu le veux en le voyant',
+    en: 'You want it on sight',
+    tn: 'تحبّو من أوّل نظرة',
+    dz: 'تحبّه من أوّل نظرة',
+    ma: 'تبغيه من أول نظرة',
+    ar: 'تبيه من أول نظرة',
+  },
+};
+
+const OFFER_KICKER: Record<'fr' | 'en' | 'ar' | 'tn' | 'dz' | 'ma', string> = {
+  fr: 'L’OFFRE',
+  en: 'THE OFFER',
+  tn: 'العرض',
+  dz: 'العرض',
+  ma: 'العرض',
+  ar: 'العرض',
+};
+
+function productStage(blob: string, productType?: string): ProductStage {
+  if (productType === 'digital') return 'digital';
+  const t = blob.toLowerCase();
+  if (/montre|watch|wristwatch|smartwatch|ساعة|ساعه/.test(t)) return 'wrist';
+  if (/bracelet|collier|necklace|bague|\bring\b|boucle|earring|bijou|jewelry|jewellery|خاتم|سلسلة/.test(t)) return 'jewelry';
+  if (/parfum|perfume|cr[eè]me|serum|s[eé]rum|maquillage|makeup|lipstick|skincare|soin/.test(t)) return 'beauty';
+  if (/sac\b|handbag|tote|pochette|cartable/.test(t)) return 'bag';
+  if (/robe|dress|caftan|kaftan|hijab|abaya|chemise|shirt|pantalon|jean|chaussure|sneaker|shoe|lunette|glasses|manteau|veste|hoodie/.test(t)) return 'apparel';
+  if (/phone|smartphone|casque|earbud|écouteur|laptop|enceinte|gadget|chargeur/.test(t)) return 'tech';
+  if (/caf[eé]|\bth[eé]\b|chocolat|miel|huile|g[âa]teau|snack/.test(t)) return 'food';
+  return 'object';
+}
+
+function hookGroup(stage: ProductStage): HookGroup {
+  if (stage === 'wrist' || stage === 'jewelry' || stage === 'apparel' || stage === 'beauty') return stage;
+  return 'object';
+}
+
+function wornScene(stage: ProductStage, culture: string): string {
+  const place = culture.trim() || 'a modern home';
+  switch (stage) {
+    case 'wrist':
+      return `A woman in her late twenties wearing this exact watch on her wrist, the watch large and tack-sharp closest to the camera, linen outfit, sunlit interior in ${place}, contemporary fashion campaign, calm expression, shallow depth of field`;
+    case 'jewelry':
+      return `A woman wearing this exact jewelry piece, the piece large and sharp, modern evening light in ${place}, editorial beauty campaign, quiet background`;
+    case 'apparel':
+      return `A woman wearing this exact garment, the full piece visible and sharp, sunlit apartment in ${place}, natural pose, 2026 fashion editorial`;
+    case 'beauty':
+      return `A woman holding this exact product near her face, the product tack-sharp, soft morning light, modern beauty campaign in ${place}`;
+    case 'bag':
+      return `A woman carrying this exact bag, the bag large and sharp, modern outfit, daylight in ${place}, contemporary fashion campaign`;
+    case 'tech':
+      return `A person using this exact product in a modern apartment in ${place}, the product sharp and fully visible, warm side light, contemporary lifestyle photo`;
+    case 'food':
+      return `This exact product served in a modern kitchen in ${place}, appetizing, natural side light, editorial food photo`;
+    case 'digital':
+      return `This exact product as a premium mockup on a walnut desk, soft daylight, modern room in ${place}, sharp, quiet background`;
+    default:
+      return `A person naturally using this exact product in a bright modern home in ${place}, the product large and sharp, contemporary lifestyle campaign`;
+  }
+}
+
+function stagedScene(stage: ProductStage): string {
+  switch (stage) {
+    case 'wrist':
+    case 'jewelry':
+      return 'This exact product resting inside an open luxury jewelry coffer lined with dark velvet, the lid open behind it, warm spotlight, pale marble, editorial still life';
+    case 'apparel':
+      return 'This exact garment draped on a stone bench, soft daylight, one linen prop, quiet luxury still life';
+    case 'beauty':
+      return 'This exact product on a wet stone tray, a single drop of water, soft window light, quiet beauty still life';
+    case 'bag':
+      return 'This exact bag set on a stone bench, soft daylight, one quiet prop, fashion still life';
+    case 'tech':
+      return 'This exact product on a walnut desk, unboxed, soft daylight, two quiet props, modern tech editorial';
+    case 'food':
+      return 'This exact product plated on ceramic with a linen napkin, side daylight, modern food still life';
+    case 'digital':
+      return 'This exact product large on a dark stone surface, soft side light, quiet premium still life';
+    default:
+      return 'This exact product in a simple still life on linen and stone, warm side light, two plain props';
+  }
+}
+
+/**
+ * Série photo d'une page produit : porté, mis en scène, accroche, offre.
+ * Les mots et les prix ne sont pas confiés au modèle d'image.
+ * Une remise n'apparaît que si le prix barré est vraiment plus haut.
+ */
+export function planProductCampaign(opts: {
+  productName?: string;
+  productDescription?: string;
+  tags?: string;
+  category?: string;
+  productType?: 'physical' | 'digital';
+  language?: string;
+  country?: string;
+  culture: string;
+  priceBefore?: number;
+  priceAfter?: number;
+  currency?: string;
+}): ProductCampaign {
+  const voice = salesVoice(opts.language, opts.country);
+  const blob = [opts.productName, opts.tags, opts.category, opts.productDescription?.slice(0, 180)]
+    .filter((part) => typeof part === 'string' && part.trim())
+    .join(' ');
+  const stage = productStage(blob, opts.productType);
+  const group = hookGroup(stage);
+  const discount =
+    typeof opts.priceBefore === 'number' &&
+    typeof opts.priceAfter === 'number' &&
+    opts.priceBefore > opts.priceAfter
+      ? Math.round(((opts.priceBefore - opts.priceAfter) / opts.priceBefore) * 100)
+      : 0;
+  const hasDiscount = discount >= 5;
+  const priceText = typeof opts.priceAfter === 'number' ? hookPrice(opts.priceAfter, opts.currency) : '';
+
+  const hook: CampaignShot = {
+    aspect: 'square',
+    scene: `This exact product large and sharp, modern campaign light, a calm darker area across the lower third, ${opts.culture}. Not a white catalog background`,
+    caption: { headline: HOOK_LINE[group][voice] },
+  };
+
+  let offer: CampaignShot;
+  if (hasDiscount && priceText) {
+    offer = {
+      aspect: 'square',
+      scene: `This exact product large in the upper part of the frame, premium ad lighting, a calm darker area across the lower third, ${opts.culture}`,
+      caption: {
+        kicker: OFFER_KICKER[voice],
+        headline: priceText,
+        strike: hookPrice(opts.priceBefore as number, opts.currency),
+        badge: `-${discount}%`,
+      },
+    };
+  } else if (priceText) {
+    offer = {
+      aspect: 'square',
+      scene: `This exact product large in the upper part of the frame, premium ad lighting, a calm darker area across the lower third, ${opts.culture}`,
+      caption: {
+        kicker: opts.productType === 'digital' ? OFFER_KICKER[voice] : SALES_COPY[voice].trust,
+        headline: priceText,
+      },
+    };
+  } else {
+    offer = {
+      aspect: 'square',
+      scene: 'A close view of this exact product material and construction, soft light, nothing else in the frame',
+    };
+  }
+
+  return {
+    hero: { aspect: 'portrait', scene: wornScene(stage, opts.culture) },
+    product: { aspect: 'square', scene: stagedScene(stage) },
+    gallery: [hook, offer],
+  };
 }

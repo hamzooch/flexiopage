@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { classifyCategory, resolveLandingCategory } from '../image-generation.service';
-import { buildConversionHooks, hookImagePrompt, lockLandingSections, lockSeo, shapeCodSalesPage } from '../landing-facts';
+import { buildConversionHooks, hookImagePrompt, lockLandingSections, lockSeo, planProductCampaign, shapeCodSalesPage } from '../landing-facts';
 
 describe('catégorie landing', () => {
   it('reconnaît un caftan comme de la mode', () => {
@@ -93,7 +93,7 @@ describe('page de vente cash à la livraison', () => {
     );
     const form = sections.find((s) => s.type === 'cod-form')!;
     expect(form.props.title).toBe('الطلب · الدفع عند الاستلام');
-    expect(form.props.showPostalCode).toBe(true);
+    expect(form.props.showPostalCode).toBeUndefined();
     expect(String(form.props.reassurance)).not.toMatch(/48h|14/);
     expect(sections[0].props.ctaText).toBe('اطلب الآن');
     expect(sections.map((s) => s.type)).toEqual([
@@ -147,5 +147,70 @@ describe('accroches image', () => {
     const hooks = buildConversionHooks({ priceAfter: 12000, currency: 'XOF' });
     expect(hooks.hero.text).toBe('PAYE A LA LIVRAISON');
     expect([hooks.hero.text, ...hooks.frames.map((f) => f.text)].join(' ')).not.toMatch(/%/);
+  });
+});
+
+describe('campagne photo produit', () => {
+  it('met une montre au poignet, dans un écrin, avec l’accroche et les deux prix', () => {
+    const plan = planProductCampaign({
+      productName: 'Montre acier doré',
+      language: 'fr',
+      country: 'TN',
+      culture: 'a Tunis apartment',
+      priceBefore: 160,
+      priceAfter: 120,
+      currency: 'TND',
+    });
+    expect(plan.hero.scene).toMatch(/woman/i);
+    expect(plan.hero.scene).toMatch(/watch|wrist/i);
+    expect(plan.hero.aspect).toBe('portrait');
+    expect(plan.product.scene).toMatch(/coffer/i);
+    expect(plan.gallery[0].caption?.headline).toMatch(/poignet/i);
+    expect(plan.gallery[1].caption?.headline).toMatch(/120/);
+    expect(plan.gallery[1].caption?.strike).toMatch(/160/);
+    expect(plan.gallery[1].caption?.badge).toBe('-25%');
+    expect(JSON.stringify(plan)).not.toMatch(/gratuit|72h|14 jours/i);
+  });
+
+  it('écrit l’accroche en tunisien, sans mots algériens', () => {
+    const plan = planProductCampaign({
+      productName: 'Montre',
+      language: 'ar-TN',
+      country: 'TN',
+      culture: 'Tunis',
+      priceAfter: 90,
+      currency: 'TND',
+    });
+    const hook = plan.gallery[0].caption?.headline || '';
+    expect(hook).toContain('برشة');
+    expect(hook).not.toMatch(/دروك|بزاف|دابا|ديال/);
+    expect(plan.gallery[1].caption?.strike).toBeUndefined();
+    expect(plan.gallery[1].caption?.badge).toBeUndefined();
+  });
+
+  it('écrit l’accroche en algérien, sans mots tunisiens', () => {
+    const plan = planProductCampaign({
+      productName: 'Montre',
+      language: 'ar-DZ',
+      country: 'DZ',
+      culture: 'Alger',
+    });
+    const hook = plan.gallery[0].caption?.headline || '';
+    expect(hook).toContain('بزاف');
+    expect(hook).not.toMatch(/برشة|توّا|ديال|دابا/);
+  });
+
+  it('ne fait pas porter un produit numérique', () => {
+    const plan = planProductCampaign({
+      productName: 'Formation dropshipping',
+      productType: 'digital',
+      language: 'fr',
+      culture: 'a desk',
+      priceAfter: 49,
+      currency: 'EUR',
+    });
+    expect(plan.hero.scene).not.toMatch(/woman wearing/i);
+    expect(plan.gallery[1].caption?.headline).toMatch(/49/);
+    expect(plan.gallery[1].caption?.kicker).toBe('L’OFFRE');
   });
 });

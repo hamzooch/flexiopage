@@ -2,8 +2,10 @@
 
 /**
  * Studio IA — unified creator combining:
- *   • Tab "Affiche"  → single poster image (PNG/JPG export) — TryAd-like
- *   • Tab "Landing"  → full 9:16 landing-page mockup (single AI image)
+ *   • Tab "Page"    → page de vente brouillon, formulaire boutique, éditable
+ *   • Tab "Affiche"  → single poster image (PNG/JPG export)
+ *   • Tab "Visuel"   → full 9:16 ad mockup (single AI image)
+ *   • Tab "Vidéo"    → product video / UGC
  *
  * Shared selectors at the top (store / product / language / Arab country)
  * stay the same when switching tabs — pick the audience once, generate
@@ -16,7 +18,7 @@ import * as htmlToImage from 'html-to-image';
 import {
   Loader2, Sparkles, Download, ArrowLeft, Image as ImageIcon, AlertTriangle,
   LayoutTemplate, ExternalLink, Wand2, Video as VideoIcon, Play, Upload, Link2, Package, Mic,
-  CheckCircle2,
+  CheckCircle2, ShoppingBag,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -43,9 +45,9 @@ import { PageHeader } from '@/components/dashboard/page-header';
 import { cn } from '@/lib/utils';
 
 interface StoreLite { _id: string; name: string; slug: string; settings?: { country?: string; language?: string; currency?: string } }
-interface ProductLite { _id: string; name: string; price: number; compareAtPrice?: number; images?: string[] }
+interface ProductLite { _id: string; name: string; price: number; compareAtPrice?: number; images?: string[]; slug?: string }
 
-type StudioTab = 'poster' | 'landing' | 'video';
+type StudioTab = 'page' | 'poster' | 'landing' | 'video';
 
 // ─────────────────────────────────────────────────────────────────────
 // Static options
@@ -103,16 +105,16 @@ const ARAB_COUNTRIES: { code: string; label: string; flag: string; dialect: stri
  */
 const VIDEO_PROMPT_EXAMPLES: { label: string; prompt: string }[] = [
   {
-    label: '360° studio luxe',
-    prompt: 'Slow 360° rotation of the product on a black marble table, soft warm studio lighting, luxury premium mood, product stays sharp and centered.',
+    label: 'Produit utilisé',
+    prompt: 'The reference image is the real product. Keep that exact product, same color and shape. A person uses it naturally in soft daylight, slow camera, product stays recognizable. No text, no price, no logo.',
   },
   {
-    label: 'Lifestyle chaud',
-    prompt: 'Cinematic dolly-in on the product placed in a bright modern kitchen, morning sunlight, warm cozy mood, subtle bokeh in background.',
+    label: 'Sur la table',
+    prompt: 'The reference image is the real product. Keep that exact product on a wooden table, soft daylight, slow dolly-in, clean background. No text, no price, no logo.',
   },
   {
-    label: 'Ads TikTok punchy',
-    prompt: 'Fast punchy reveal of the product, product zooms in from black background, dynamic light flash, energetic mood, ideal for a TikTok ad hook.',
+    label: 'Accroche courte',
+    prompt: 'The reference image is the real product. Keep that exact product. Smooth reveal, product stays sharp and centered, warm daylight, realistic. No text, no price, no logo.',
   },
 ];
 
@@ -135,7 +137,10 @@ export default function StudioPage() {
   const initialStoreId = searchParams.get('storeId') || '';
   const rawTab = searchParams.get('tab');
   const initialTab: StudioTab =
-    rawTab === 'landing' ? 'landing' : rawTab === 'video' ? 'video' : 'poster';
+    rawTab === 'landing' ? 'landing'
+    : rawTab === 'video' ? 'video'
+    : rawTab === 'poster' ? 'poster'
+    : 'page';
   // Deep-link depuis le hub Studio : ?source=ugc bascule directement la
   // vidéo en mode UGC (avatar parlant). Utile pour la carte "UGC PRO" du hub.
   const initialVideoSource =
@@ -163,6 +168,13 @@ export default function StudioPage() {
   const [landingError, setLandingError] = useState('');
   const [landing, setLanding] = useState<LandingImageResult | null>(null);
   const [landingDownloading, setLandingDownloading] = useState(false);
+
+  // ── Page de vente (brouillon éditable) ───────────────────────────
+  const [pageGenerating, setPageGenerating] = useState(false);
+  const [pageError, setPageError] = useState('');
+  const [pageJob, setPageJob] = useState<GenerationJob | null>(null);
+  const [pageDraft, setPageDraft] = useState<{ id: string; name: string } | null>(null);
+  const pageRun = useRef(0);
 
   // ── Video-specific state ─────────────────────────────────────────
   const [videoGenerating, setVideoGenerating] = useState(false);
@@ -292,6 +304,7 @@ export default function StudioPage() {
     [storeId],
   );
   useEffect(() => { reloadRecent(); }, [reloadRecent]);
+  useEffect(() => () => { pageRun.current += 1; }, []);
 
   // ── Derived ──────────────────────────────────────────────────────
   const isArabic = language === 'ar';
@@ -300,7 +313,7 @@ export default function StudioPage() {
     const store = stores.find((s) => s._id === storeId);
     return store?.settings?.country || undefined;
   }, [isArabic, arabCountry, stores, storeId]);
-  const generating = posterGenerating || landingGenerating || videoGenerating;
+  const generating = posterGenerating || landingGenerating || videoGenerating || pageGenerating;
   const ready = storeId && productId && !generating;
 
   // ── Actions ──────────────────────────────────────────────────────
@@ -342,6 +355,81 @@ export default function StudioPage() {
     if (status === 429) return 'Trop de générations en peu de temps. Attends 30s et réessaie.';
     if (backendMsg) return backendMsg;
     return 'Génération échouée. Réessaie — si le problème persiste, contacte le support.';
+  }
+
+  async function handleGenerateSalesPage() {
+    setPageError('');
+    setPageDraft(null);
+    setPageJob(null);
+    if (!storeId || !productId) {
+      setPageError('Sélectionne une boutique et un produit.');
+      return;
+    }
+    const run = ++pageRun.current;
+    const product = products.find((p) => p._id === productId);
+    const store = stores.find((s) => s._id === storeId);
+    setPageGenerating(true);
+    try {
+      const res = await storesApi.generateFromProductAsync(storeId, {
+        productId,
+        tone: 'friendly',
+        language,
+        ...(country ? { country } : {}),
+        ...(store?.settings?.currency ? { currency: store.settings.currency } : {}),
+        pageKind: 'product',
+      });
+      const jobId = res.data.jobId;
+      const started = Date.now();
+      while (pageRun.current === run && Date.now() - started < 8 * 60 * 1000) {
+        const jr = await jobsApi.get(jobId);
+        if (pageRun.current !== run) return;
+        const j = jr.data.job;
+        setPageJob(j);
+        if (j.status === 'succeeded' && j.result?.sections) {
+          const slug = product?.slug
+            || (product?.name || 'page').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '')
+            || 'page';
+          const lang = j.result.language || language;
+          const sections = (Array.isArray(j.result.sections) ? j.result.sections : []).map((sec, i) => {
+            const row = (sec && typeof sec === 'object') ? sec as { id?: string; type?: string; order?: number; props?: Record<string, unknown> } : {};
+            return {
+              id: row.id || `sec-${i}`,
+              type: row.type,
+              order: typeof row.order === 'number' ? row.order : i,
+              props: row.props || {},
+            };
+          });
+          const created = await storesApi.createPage(storeId, {
+            name: product?.name || 'Page de vente',
+            slug,
+            sections,
+            seoTitle: j.result.seoTitle,
+            seoDescription: j.result.seoDescription,
+            language: lang,
+            country: j.result.country || country,
+            currency: j.result.currency || store?.settings?.currency,
+            direction: lang.split('-')[0] === 'ar' ? 'rtl' : 'ltr',
+          });
+          const page = created.data.page as { _id?: string };
+          if (!page?._id) throw new Error('La page a été créée sans identifiant.');
+          setPageDraft({ id: String(page._id), name: product?.name || 'Page de vente' });
+          refreshWallet();
+          return;
+        }
+        if (j.status === 'failed') {
+          setPageError(j.error || 'La génération a échoué. Réessaie.');
+          return;
+        }
+        await new Promise((r) => setTimeout(r, 2500));
+      }
+      if (pageRun.current === run) {
+        setPageError('La génération prend trop de temps. Réessaie dans un instant.');
+      }
+    } catch (err) {
+      if (pageRun.current === run) setPageError(humanErrorMessage(err));
+    } finally {
+      if (pageRun.current === run) setPageGenerating(false);
+    }
   }
 
   async function handleGeneratePoster() {
@@ -705,7 +793,7 @@ export default function StudioPage() {
       <PageHeader
         icon={Wand2}
         title="Studio IA"
-        description="Génère affiches et landing pages depuis ton produit. Choisis l'audience une fois, switch entre les formats."
+        description="La page de vente part du produit, reste un brouillon, et utilise le formulaire de ta boutique."
         actions={wallet ? (
           <div className="flex flex-wrap items-center gap-2 text-[11px]">
             <div className="rounded-lg border border-fuchsia-500/30 bg-gradient-to-r from-fuchsia-500/10 to-pink-500/10 px-3 py-1.5">
@@ -715,9 +803,11 @@ export default function StudioPage() {
                 génération va lui coûter. Fallback wallet.aiCosts.landing si
                 le backend n'a pas encore un tarif dédié pour poster/video. */}
             <div className="flex items-center gap-1.5 rounded-lg border border-border/60 bg-muted/30 px-2.5 py-1.5 text-muted-foreground">
+              <span className="font-medium text-foreground/80">Page</span> {wallet.aiCosts.product_page ?? wallet.aiCosts.landing}
+              <span className="mx-1 opacity-40">·</span>
               <span className="font-medium text-foreground/80">Affiche</span> {wallet.aiCosts.poster ?? wallet.aiCosts.landing}
               <span className="mx-1 opacity-40">·</span>
-              <span className="font-medium text-foreground/80">Landing</span> {wallet.aiCosts.landing}
+              <span className="font-medium text-foreground/80">Visuel</span> {wallet.aiCosts.landing}
               <span className="mx-1 opacity-40">·</span>
               <span className="font-medium text-foreground/80">Vidéo</span> {wallet.aiCosts.video ?? wallet.aiCosts.landing}
             </div>
@@ -833,6 +923,13 @@ export default function StudioPage() {
       {/* ── TABS ───────────────────────────────────────────────── */}
       <div className="flex items-center gap-1 rounded-xl border border-border/60 bg-card p-1 shadow-sm">
         <TabButton
+          active={tab === 'page'}
+          icon={<ShoppingBag className="h-4 w-4" />}
+          label="Page"
+          sublabel="Prend la commande"
+          onClick={() => setTab('page')}
+        />
+        <TabButton
           active={tab === 'poster'}
           icon={<ImageIcon className="h-4 w-4" />}
           label="Affiche"
@@ -842,8 +939,8 @@ export default function StudioPage() {
         <TabButton
           active={tab === 'landing'}
           icon={<LayoutTemplate className="h-4 w-4" />}
-          label="Landing"
-          sublabel="Page complète 9:16"
+          label="Visuel"
+          sublabel="Image pub 9:16"
           onClick={() => setTab('landing')}
         />
         <TabButton
@@ -856,7 +953,21 @@ export default function StudioPage() {
       </div>
 
       {/* ── TAB CONTENT ───────────────────────────────────────── */}
-      {tab === 'poster' ? (
+      {tab === 'page' ? (
+        <SalesPageTab
+          ready={!!ready}
+          generating={pageGenerating}
+          error={pageError}
+          job={pageJob}
+          draft={pageDraft}
+          storeId={storeId}
+          productImage={products.find((p) => p._id === productId)?.images?.[0]}
+          onGenerate={handleGenerateSalesPage}
+          onOpenPoster={() => setTab('poster')}
+          onOpenVideo={() => setTab('video')}
+          cost={wallet?.aiCosts.product_page ?? wallet?.aiCosts.landing}
+        />
+      ) : tab === 'poster' ? (
         <PosterTab
           ready={!!ready}
           generating={posterGenerating}
@@ -882,6 +993,7 @@ export default function StudioPage() {
           onGenerate={handleGenerateLanding}
           onDownload={handleDownloadLanding}
           cost={wallet?.aiCosts.landing}
+          onCreatePage={() => setTab('page')}
         />
       ) : (
         <VideoTab
@@ -934,15 +1046,17 @@ export default function StudioPage() {
       {/* ── RÉCENTES (par tab) ─────────────────────────────────────
           Historique 30j des générations réussies — permet de revoir /
           retélécharger sans reperdre les tokens ni le contexte. */}
+      {tab !== 'page' && (
       <RecentGenerationsPanel
         kind={tab}
-        items={tab === 'poster' ? recentPoster : tab === 'landing' ? recentLanding : recentVideo}
+        items={tab === 'poster' ? recentPoster : tab === 'landing' ? recentLanding : tab === 'video' ? recentVideo : []}
         onLoad={(item) => {
           if (item.kind === 'poster') setPoster(item.result as unknown as PosterContent);
           else if (item.kind === 'landing') setLanding(item.result as unknown as LandingImageResult);
           else if (item.kind === 'video') setVideo(item.result as unknown as VideoResult);
         }}
       />
+      )}
 
       {/* Bottom sheet mobile — s'affiche seulement < md, contient un rendu
           simplifié du dernier résultat + un bouton "Télécharger". Ferme la
@@ -1016,7 +1130,7 @@ export default function StudioPage() {
           le drawer avec les 5 dernières générations du tab courant. Résout
           le pb "l'historique est en bas du DOM = mort" en le rendant
           accessible à 1 clic sans scroller. */}
-      {(recentPoster.length + recentLanding.length + recentVideo.length) > 0 && (
+      {tab !== 'page' && (recentPoster.length + recentLanding.length + recentVideo.length) > 0 && (
         <button
           type="button"
           onClick={() => setHistoryDrawerOpen(true)}
@@ -1026,7 +1140,7 @@ export default function StudioPage() {
           <History className="h-4 w-4" />
           <span className="hidden sm:inline">Historique</span>
           <span className="grid h-5 min-w-5 place-items-center rounded-full bg-fuchsia-500 px-1.5 text-[10px] font-bold text-white">
-            {tab === 'poster' ? recentPoster.length : tab === 'landing' ? recentLanding.length : recentVideo.length}
+            {tab === 'poster' ? recentPoster.length : tab === 'landing' ? recentLanding.length : tab === 'video' ? recentVideo.length : 0}
           </span>
         </button>
       )}
@@ -1035,7 +1149,7 @@ export default function StudioPage() {
         open={historyDrawerOpen}
         onClose={() => setHistoryDrawerOpen(false)}
         kind={tab}
-        items={tab === 'poster' ? recentPoster : tab === 'landing' ? recentLanding : recentVideo}
+        items={tab === 'poster' ? recentPoster : tab === 'landing' ? recentLanding : tab === 'video' ? recentVideo : []}
         onLoad={(item) => {
           if (item.kind === 'poster') setPoster(item.result as unknown as PosterContent);
           else if (item.kind === 'landing') setLanding(item.result as unknown as LandingImageResult);
@@ -1082,6 +1196,108 @@ function TabButton({
         </span>
       </div>
     </button>
+  );
+}
+
+// ── PAGE DE VENTE ────────────────────────────────────────────────────
+
+function SalesPageTab({
+  ready, generating, error, job, draft, storeId, productImage,
+  onGenerate, onOpenPoster, onOpenVideo, cost,
+}: {
+  ready: boolean;
+  generating: boolean;
+  error: string;
+  job: GenerationJob | null;
+  draft: { id: string; name: string } | null;
+  storeId: string;
+  productImage?: string;
+  onGenerate: () => void;
+  onOpenPoster: () => void;
+  onOpenVideo: () => void;
+  cost?: number;
+}) {
+  return (
+    <Card className="overflow-hidden">
+      <div className="border-b border-border/50 bg-gradient-to-r from-muted/20 to-muted/5 px-4 py-2.5">
+        <div className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+          2. Page qui prend la commande
+        </div>
+      </div>
+      <CardContent className="space-y-4 pt-4">
+        <div className="rounded-xl border border-orange-500/20 bg-gradient-to-br from-orange-500/5 to-transparent p-3 text-xs text-foreground/80">
+          <strong>Un brouillon, pas une image.</strong> La page reprend le produit réel,
+          le prix de ta fiche, et le formulaire que tu as réglé dans la boutique.
+          Tu la corriges avant de la publier.
+        </div>
+        <ul className="grid gap-1.5 text-xs text-muted-foreground sm:grid-cols-2">
+          <li>Visuel porté et visuel posé</li>
+          <li>Accroche et offre, au prix réel</li>
+          <li>Même champs que ta boutique</li>
+          <li>Reste hors ligne tant que tu ne publies pas</li>
+        </ul>
+
+        {error && (
+          <div className="flex items-start gap-2 rounded-lg border border-destructive/30 bg-destructive/5 p-2.5 text-xs text-destructive">
+            <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+            {error}
+          </div>
+        )}
+
+        {!draft && (
+          <Button onClick={onGenerate} disabled={!ready} className="w-full gap-2 gradient-brand h-11 text-sm">
+            {generating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
+            {generating ? 'Génération de la page…' : 'Générer la page de vente'}
+          </Button>
+        )}
+        {cost != null && !generating && !draft && (
+          <div className="text-center text-[10px] text-muted-foreground">
+            Coût : {cost} token{cost === 1 ? '' : 's'}
+          </div>
+        )}
+
+        {generating && (
+          <GenerationTimeline
+            job={job}
+            sourceImage={productImage ? (mediaUrl(productImage) || null) : null}
+            hint="Environ 1 à 2 minutes. La page s'enregistre en brouillon."
+            stepLabels={{
+              analyze: 'Lecture du produit',
+              copy: 'Texte dans la langue de la boutique',
+              images: 'Visuels du produit réel',
+              assemble: 'Page et formulaire',
+            }}
+          />
+        )}
+
+        {draft && (
+          <div className="space-y-3 rounded-xl border border-emerald-500/30 bg-emerald-500/5 p-4">
+            <div className="flex items-start gap-2 text-sm">
+              <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600" />
+              <div>
+                <div className="font-semibold">{draft.name}</div>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Brouillon enregistré. Le formulaire reprend les champs de ta boutique.
+                </p>
+              </div>
+            </div>
+            <Button asChild className="w-full gap-2">
+              <Link href={`/dashboard/pages/${draft.id}?storeId=${storeId}`}>
+                Modifier la page
+              </Link>
+            </Button>
+            <div className="grid grid-cols-2 gap-2">
+              <Button type="button" variant="outline" className="h-9 text-xs" onClick={onOpenPoster}>
+                Story du même produit
+              </Button>
+              <Button type="button" variant="outline" className="h-9 text-xs" onClick={onOpenVideo}>
+                Vidéo du même produit
+              </Button>
+            </div>
+          </div>
+        )}
+      </CardContent>
+    </Card>
   );
 }
 
@@ -1253,11 +1469,12 @@ interface LandingTabProps {
   downloading: boolean;
   onGenerate: () => void;
   onDownload: () => void;
+  onCreatePage: () => void;
   cost?: number;
 }
 
 function LandingTab(props: LandingTabProps) {
-  const { ready, generating, error, landing, downloading, onGenerate, onDownload, cost } = props;
+  const { ready, generating, error, landing, downloading, onGenerate, onDownload, onCreatePage, cost } = props;
 
   return (
     <div className="grid gap-4 lg:grid-cols-[1fr_420px]">
@@ -1275,12 +1492,16 @@ function LandingTab(props: LandingTabProps) {
                 <LayoutTemplate className="h-4 w-4" />
               </div>
               <div className="text-xs text-foreground/80">
-                <strong>Une seule image 9:16</strong> qui contient toute la landing
-                (hero, bénéfices, témoignages, CTA) — design éditorial DTC, prête
-                pour pub Meta / TikTok ou hero de page produit.
+                <strong>Une image 9:16 pour une pub</strong>, pas la page qui encaisse.
+                Pour prendre la commande, génère la page de vente : elle reste
+                modifiable et utilise le formulaire de ta boutique.
               </div>
             </div>
           </div>
+
+          <Button type="button" variant="outline" onClick={onCreatePage} className="w-full h-9 text-xs">
+            Créer la page qui prend la commande
+          </Button>
 
           {error && (
             <div className="flex items-start gap-2 rounded-lg border border-destructive/30 bg-destructive/5 p-2.5 text-xs text-destructive">
@@ -1848,7 +2069,7 @@ function VideoTab(props: VideoTabProps) {
               id="video-prompt"
               value={customPrompt}
               onChange={(e) => onCustomPromptChange(e.target.value)}
-              placeholder="Ex : Rotation lente à 360° sur une table en marbre, lumière chaude studio, ambiance luxe. Le produit reste net et centré, léger zoom en fin de plan."
+              placeholder="Ex : le produit réel, utilisé en lumière du jour, caméra lente. Même couleur, même forme. Pas de texte, pas de prix."
               rows={5}
               maxLength={300}
               className="w-full resize-y rounded-md border border-input bg-background px-3 py-2 text-xs leading-relaxed focus:border-primary/50 focus:outline-none focus:ring-4 focus:ring-primary/10"
@@ -2175,7 +2396,7 @@ function HistoryDrawer({
   items: AiGenerationItem[];
   onLoad: (item: AiGenerationItem) => void;
 }) {
-  const label = kind === 'poster' ? 'affiches' : kind === 'landing' ? 'landings' : 'vidéos';
+  const label = kind === 'poster' ? 'affiches' : kind === 'landing' ? 'visuels' : kind === 'video' ? 'vidéos' : 'pages';
   return (
     <DialogPrimitive.Root open={open} onOpenChange={(o) => !o && onClose()}>
       <DialogPrimitive.Portal>
@@ -2539,7 +2760,7 @@ function RecentGenerationsPanel({
   onLoad: (item: AiGenerationItem) => void;
 }) {
   if (items.length === 0) return null;
-  const label = kind === 'poster' ? 'affiches' : kind === 'landing' ? 'landings' : 'vidéos';
+  const label = kind === 'poster' ? 'affiches' : kind === 'landing' ? 'visuels' : kind === 'video' ? 'vidéos' : 'pages';
   return (
     <Card className="overflow-hidden">
       <div className="flex items-center justify-between border-b border-border/50 bg-gradient-to-r from-muted/20 to-muted/5 px-4 py-2.5">

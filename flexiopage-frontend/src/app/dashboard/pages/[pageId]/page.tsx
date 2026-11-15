@@ -48,6 +48,23 @@ export default function EditLandingPagePage() {
   const [error, setError] = useState('');
   const [previewDevice, setPreviewDevice] = useState<'desktop' | 'mobile'>('desktop');
   const [storeCodForm, setStoreCodForm] = useState<CodFormConfig | undefined>();
+  const [storeSlug, setStoreSlug] = useState('');
+  const [storeCurrency, setStoreCurrency] = useState<string | undefined>();
+  const [storeCountry, setStoreCountry] = useState<string | undefined>();
+  const [themeId, setThemeId] = useState<string | undefined>();
+  const [products, setProducts] = useState<Array<{
+    _id: string;
+    name: string;
+    price?: number;
+    slug?: string;
+    images?: string[];
+    stock?: number;
+    trackInventory?: boolean;
+    allowBackorder?: boolean;
+    type?: 'physical' | 'digital';
+    variants?: Array<{ name: string; sku?: string; price?: number; stock?: number; options?: Record<string, string> }>;
+    bundle?: { enabled: boolean; title?: string; tiers: Array<{ quantity: number; totalPrice: number; label?: string }> };
+  }>>([]);
 
   useEffect(() => {
     if (!storeId || !pageId) return;
@@ -70,10 +87,25 @@ export default function EditLandingPagePage() {
     storesApi
       .get(storeId)
       .then((res) => {
-        const s = (res.data as { store?: { settings?: { codForm?: CodFormConfig } } }).store;
+        const s = (res.data as { store?: {
+          slug?: string;
+          theme?: { templateId?: string };
+          settings?: { codForm?: CodFormConfig; currency?: string; country?: string };
+        } }).store;
         setStoreCodForm(s?.settings?.codForm);
+        setStoreSlug(s?.slug || '');
+        setStoreCurrency(s?.settings?.currency);
+        setStoreCountry(s?.settings?.country);
+        setThemeId(s?.theme?.templateId);
       })
       .catch(() => {});
+    storesApi
+      .listProducts(storeId)
+      .then((res) => {
+        const list = (res.data as { products?: typeof products }).products;
+        setProducts(Array.isArray(list) ? list : []);
+      })
+      .catch(() => setProducts([]));
   }, [storeId, pageId]);
 
   function addSection(type: string) {
@@ -331,6 +363,11 @@ export default function EditLandingPagePage() {
                     direction={directionOf(language)}
                     language={language}
                     codForm={storeCodForm}
+                    products={products}
+                    storeSlug={storeSlug || undefined}
+                    currency={storeCurrency}
+                    country={storeCountry}
+                    themeId={themeId}
                   />
                 </DevicePreviewFrame>
               </div>

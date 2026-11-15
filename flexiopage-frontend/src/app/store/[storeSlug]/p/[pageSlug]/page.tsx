@@ -65,6 +65,9 @@ interface ProductLite {
   trackInventory?: boolean;
   allowBackorder?: boolean;
   sku?: string;
+  type?: 'physical' | 'digital';
+  variants?: Array<{ name: string; sku?: string; price?: number; stock?: number; options?: Record<string, string> }>;
+  bundle?: { enabled: boolean; title?: string; tiers: Array<{ quantity: number; totalPrice: number; label?: string }> };
 }
 
 const API = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';

@@ -2772,8 +2772,8 @@ function CodFormEditor({ block, store, setStore, markDirty }: EditorCtx) {
     { id: 'bounce',  label: 'Bounce' },
   ];
 
-  const currentShape = cf.buttonShape || 'rounded';
-  const currentAnim = cf.buttonAnimation || 'none';
+  const currentShape = cf.buttonShape || 'pill';
+  const currentAnim = cf.buttonAnimated ? (cf.buttonAnimation || 'pulse') : 'none';
 
   return (
     <div className="flex flex-1 flex-col">
@@ -2815,7 +2815,7 @@ function CodFormEditor({ block, store, setStore, markDirty }: EditorCtx) {
           <Toggle compact label="Email" checked={cf.showEmail !== false} onChange={(v) => patchCf({ ...cf, showEmail: v })} />
           <Toggle compact label="Email obligatoire" checked={!!cf.requireEmail} onChange={(v) => patchCf({ ...cf, requireEmail: v })} />
           <Toggle compact label="Adresse — ligne 2" checked={!!cf.showAddressLine2} onChange={(v) => patchCf({ ...cf, showAddressLine2: v })} />
-          <Toggle compact label="Ville" checked={cf.showCity !== false} onChange={(v) => patchCf({ ...cf, showCity: v })} />
+          <Toggle compact label="Ville" checked={!!cf.showCity} onChange={(v) => patchCf({ ...cf, showCity: v })} />
           <Toggle compact label="Code postal" checked={!!cf.showPostalCode} onChange={(v) => patchCf({ ...cf, showPostalCode: v })} />
           <Toggle compact label="État / région / wilaya" checked={!!cf.showState} onChange={(v) => patchCf({ ...cf, showState: v })} />
           <Toggle compact label="Notes pour le livreur" checked={cf.showNotes !== false} onChange={(v) => patchCf({ ...cf, showNotes: v })} />

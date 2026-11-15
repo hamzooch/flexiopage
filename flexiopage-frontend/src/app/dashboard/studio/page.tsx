@@ -18,7 +18,7 @@ import Image from 'next/image';
 import { useRouter } from 'next/navigation';
 import {
   Sparkles, Wand2, LayoutTemplate, Video as VideoIcon, Mic2,
-  ArrowRight, Loader2, Wallet, Plus, ImageIcon, Play, Flame,
+  ArrowRight, Loader2, Wallet, Plus, ImageIcon, Play, Flame, ShoppingBag,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { storesApi, type AiGenerationItem } from '@/lib/api';
@@ -29,7 +29,7 @@ interface StoreLite { _id: string; name: string; slug: string }
 type RecentKind = 'all' | 'poster' | 'landing' | 'video';
 
 interface ToolCard {
-  key: 'poster' | 'landing' | 'video' | 'ugc';
+  key: 'page' | 'poster' | 'landing' | 'video' | 'ugc';
   href: string;
   label: string;
   tagline: string;
@@ -38,10 +38,24 @@ interface ToolCard {
   icon: typeof Sparkles;
   accent: 'amber' | 'sky' | 'violet' | 'orange';
   featured?: boolean;
-  costKey: 'poster' | 'landing' | 'video' | 'video_ugc_talking';
+  badge?: string;
+  costKey: 'poster' | 'landing' | 'video' | 'video_ugc_talking' | 'product_page';
 }
 
 const TOOLS: ToolCard[] = [
+  {
+    key: 'page',
+    href: '/dashboard/studio/creator?tab=page',
+    label: 'Page de vente',
+    tagline: 'Page brouillon qui prend la commande',
+    bullets: ['Visuels du vrai produit', 'Offre au prix réel', 'Formulaire de ta boutique'],
+    duration: '~2 min',
+    icon: ShoppingBag,
+    accent: 'orange',
+    featured: true,
+    badge: 'Pour vendre',
+    costKey: 'product_page',
+  },
   {
     key: 'poster',
     href: '/dashboard/studio/creator?tab=poster',
@@ -56,8 +70,8 @@ const TOOLS: ToolCard[] = [
   {
     key: 'landing',
     href: '/dashboard/studio/creator?tab=landing',
-    label: 'Landing',
-    tagline: 'Page de vente 9:16 en une image',
+    label: 'Visuel pub',
+    tagline: 'Une image 9:16 pour Meta ou TikTok',
     bullets: ['Hero + bénéfices', 'Témoignages', 'CTA visible'],
     duration: '~45 sec',
     icon: Wand2,
@@ -84,7 +98,6 @@ const TOOLS: ToolCard[] = [
     duration: '~2 min',
     icon: Mic2,
     accent: 'orange',
-    featured: true,
     costKey: 'video_ugc_talking',
   },
 ];
@@ -169,7 +182,7 @@ export default function StudioHubPage() {
               Studio IA
             </h1>
             <p className="mt-2 text-white/60 text-sm md:text-base max-w-xl">
-              Crée visuels, vidéos et voix off pour tes produits en moins d&apos;une minute. Choisis un outil pour commencer.
+              La page de vente part de ton produit, reste modifiable, et encaisse avec le formulaire de ta boutique.
             </p>
           </div>
 
@@ -278,7 +291,7 @@ function ToolTile({ tool, cost, onClick }: { tool: ToolCard; cost: number | null
 
       {tool.featured && (
         <div className="absolute top-4 right-4 inline-flex items-center gap-1 rounded-full bg-orange-500/20 border border-orange-400/40 px-2 py-0.5 text-[10px] font-semibold text-orange-200 uppercase tracking-wider">
-          <Flame className="h-3 w-3" /> Premium
+          <Flame className="h-3 w-3" /> {tool.badge || 'Premium'}
         </div>
       )}
 
@@ -318,7 +331,7 @@ function FilterChips({ value, onChange }: { value: RecentKind; onChange: (v: Rec
   const items: Array<{ key: RecentKind; label: string }> = [
     { key: 'all',     label: 'Tout' },
     { key: 'poster',  label: 'Affiche' },
-    { key: 'landing', label: 'Landing' },
+    { key: 'landing', label: 'Visuel' },
     { key: 'video',   label: 'Vidéo' },
   ];
   return (

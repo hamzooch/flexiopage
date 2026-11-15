@@ -27,10 +27,11 @@ import {
   type ImageGenInput,
   type CategoryClass,
 } from './image-generation.service';
-import { persistRemoteImage } from './storage.service';
+import { persistRemoteImage, uploadFile } from './storage.service';
 import { logger } from '../lib/logger';
 import { fetchWithRetry } from '../lib/outbound-fetch';
-import { lockLandingSections, lockSeo, shapeCodSalesPage } from './landing-facts';
+import { lockLandingSections, lockSeo, planProductCampaign, shapeCodSalesPage, type CampaignCaption } from './landing-facts';
+import { paintCampaignCaption } from './campaign-caption';
 
 const FAL_BASE = 'https://fal.run';
 
@@ -1284,6 +1285,23 @@ function resolveProductPlaceholders(value: unknown, images: string[], parentKey?
   return value;
 }
 
+function readAspect(value: unknown): ImageSlot['aspect'] | undefined {
+  if (value === 'square' || value === 'portrait' || value === 'landscape' || value === 'wide' || value === 'tall') return value;
+  return undefined;
+}
+
+function readCaption(value: unknown): CampaignCaption | undefined {
+  if (!value || typeof value !== 'object') return undefined;
+  const raw = value as { headline?: unknown; kicker?: unknown; strike?: unknown; badge?: unknown };
+  if (typeof raw.headline !== 'string' || !raw.headline.trim()) return undefined;
+  return {
+    headline: raw.headline.trim(),
+    kicker: typeof raw.kicker === 'string' && raw.kicker.trim() ? raw.kicker.trim() : undefined,
+    strike: typeof raw.strike === 'string' && raw.strike.trim() ? raw.strike.trim() : undefined,
+    badge: typeof raw.badge === 'string' && raw.badge.trim() ? raw.badge.trim() : undefined,
+  };
+}
+
 interface ImageSlot {
   /** Setter that injects the URL once the image is generated. */
   apply: (url: string) => void;
@@ -1297,6 +1315,12 @@ interface ImageSlot {
    * actually feature the user's product, not random images.
    */
   referenceImage?: string;
+  /** Remplace le format par défaut du kind. Le hero porté est en portrait. */
+  aspect?: 'square' | 'portrait' | 'landscape' | 'wide' | 'tall';
+  /** Photo de campagne : le style n'interdit pas le texte déjà imprimé sur le produit. */
+  style?: 'campaign';
+  /** Accroche ou prix dessinés après la génération, jamais par le modèle. */
+  caption?: CampaignCaption;
 }
 
 /**
@@ -1352,6 +1376,8 @@ function collectImageSlots(
       slots.push({
         prompt,
         kind,
+        aspect: readAspect(p.imageAspect),
+        style: p.campaignStyle === 'campaign' ? 'campaign' : undefined,
         referenceImage: useRef ? refAt(refIndex) : undefined,
         apply: (url) => {
           if (sec.type === 'video') p.posterUrl = url;
@@ -1366,11 +1392,14 @@ function collectImageSlots(
       const urls: (string | null)[] = new Array(prompts.length).fill(null);
       p.images = urls; // placeholder slot, finalized after generation
       const hooks = p.creativeMode === 'hooks';
+      const overlays = Array.isArray(p.captionOverlays) ? p.captionOverlays : [];
       prompts.forEach((prompt, idx) => {
         slots.push({
           prompt,
           kind: hooks ? 'hook' : 'gallery',
+          style: p.campaignStyle === 'campaign' && !hooks ? 'campaign' : undefined,
           referenceImage: refAt(idx),
+          caption: readCaption(overlays[idx]),
           apply: (url) => { urls[idx] = url; },
         });
       });
@@ -1417,6 +1446,12 @@ const HOUSE_STYLE =
   'clean modern 2026 brand campaign look, high dynamic range, ultra detailed, sharp, 4k, ' +
   'no text, no typography, no watermark, no UI elements, no borders';
 
+/** Même lumière que la maison, sans effacer le cadran ou la marque imprimée sur le produit. */
+const CAMPAIGN_STYLE =
+  ', premium editorial ecommerce photography, 50mm lens, soft side light, modern 2026 campaign, ' +
+  'sharp product, shallow depth of field, no added words, no price sticker, no watermark. ' +
+  'Lettering already printed on the product stays';
+
 /** Portrait style for testimonial avatars — real people, not products. */
 const PORTRAIT_STYLE =
   ', natural candid headshot, soft window light, warm neutral out-of-focus background, ' +
@@ -1453,20 +1488,21 @@ async function buildImageGenInput(
   slot: ImageSlot,
   ctx?: { productCategory?: string; productExists?: boolean },
 ): Promise<ImageGenInput> {
-  const aspect = ASPECT_FOR_KIND[slot.kind];
+  const aspect = slot.aspect || ASPECT_FOR_KIND[slot.kind];
 
   // Banner prompts ASK for legible text in the image — leave them untouched.
   // Every other slot gets the shared house style so the whole page is one
   // coherent shoot; avatars get the people-specific portrait style instead.
   const isBanner = slot.kind === 'banner';
   const isHook = slot.kind === 'hook';
+  const isCampaign = slot.style === 'campaign';
   const isAvatar = slot.kind === 'avatar';
   const cleanScene = slot.prompt.trim().replace(/[.,;\s]+$/, '');
   // Les accroches portent du texte. Le style maison ajoute « no text » et
   // empêcherait l'offre d'apparaître sur l'image.
   let finalPrompt = isBanner || isHook
     ? slot.prompt
-    : cleanScene + (isAvatar ? PORTRAIT_STYLE : HOUSE_STYLE);
+    : cleanScene + (isCampaign ? CAMPAIGN_STYLE : isAvatar ? PORTRAIT_STYLE : HOUSE_STYLE);
 
   // If reference image is a relative /uploads/... path, fal.ai cannot fetch
   // localhost — convert it to a base64 data URL so fal receives the bytes.
@@ -1491,7 +1527,7 @@ async function buildImageGenInput(
   if (hasReference) {
     finalPrompt =
       'The reference photo is the real product. Keep that exact product: same color, same shape, same material, same pieces. ' +
-      'Do not replace it with a similar product. Remove watermarks, price stickers and seller logos that are not printed on the product. ' +
+      'Do not replace it with a similar product. ' +
       finalPrompt;
   }
 
@@ -1501,9 +1537,11 @@ async function buildImageGenInput(
   const baseNeg = 'text, watermark, logo, deformed, blurry, lowres, ugly, extra fingers, distorted face';
   const negativePrompt = isBanner || isHook
     ? 'misspelled text, extra words, watermark, different product, blurry, lowres, distorted, deformed'
-    : hasReference
-      ? `${baseNeg}, different product, alternative product, redesigned product, similar but different, wrong color variant, wrong branding, generic look-alike`
-      : baseNeg;
+    : isCampaign
+      ? 'added caption, price sticker, watermark, different product, redesigned product, wrong color, extra fingers, distorted face, blurry, lowres'
+      : hasReference
+        ? `${baseNeg}, different product, alternative product, redesigned product, similar but different, wrong color variant, wrong branding, generic look-alike`
+        : baseNeg;
 
   return {
     prompt: finalPrompt,
@@ -1561,6 +1599,9 @@ function finalize(
     delete p.imagePrompt;
     delete p.imagePrompts;
     delete p.creativeMode;
+    delete p.imageAspect;
+    delete p.campaignStyle;
+    delete p.captionOverlays;
     if (sec.type === 'testimonials' && Array.isArray(p.items)) {
       (p.items as Array<Record<string, unknown>>).forEach((it) => { delete it.imagePrompt; });
     }
@@ -1738,6 +1779,13 @@ function synthesizeMissingPrompts(
   sections: Array<{ type: string; props: Record<string, unknown> }>,
   product: ProductInput | undefined,
   country: string | undefined,
+  offer?: {
+    language?: string;
+    category?: string;
+    priceBefore?: number;
+    priceAfter?: number;
+    currency?: string;
+  },
 ): void {
   const productName = product?.name || 'product';
   const productDesc = product?.description ? product.description.slice(0, 120) : '';
@@ -1789,31 +1837,43 @@ function synthesizeMissingPrompts(
     }
   }
 
-  if (hasRef) stageProductShoot(sections, country);
+  if (hasRef) stageProductShoot(sections, product, country, offer);
 }
 
 /**
- * Prépare une série de photos du VRAI produit : une scène par bloc,
- * sans texte peint sur l'image. Le modèle part de la photo fournie
- * (catalogue ou lien) et ne change que le décor.
+ * Quatre photos du vrai produit : porté, mis en scène, accroche, offre.
+ * Le modèle ne peint pas les mots. L'accroche et les prix sont ajoutés après,
+ * dans la langue de la page, et seulement avec les montants réels.
  */
 function stageProductShoot(
   sections: Array<{ type: string; props: Record<string, unknown> }>,
+  product: ProductInput | undefined,
   country: string | undefined,
+  offer?: {
+    language?: string;
+    category?: string;
+    priceBefore?: number;
+    priceAfter?: number;
+    currency?: string;
+  },
 ): void {
-  const culture = getPhotoCulture(country);
-  const heroPrompt = `the product large in the frame, used naturally in a real ${culture} home, warm side daylight, quiet background`;
-  const productPrompt = 'the product alone, clean studio photograph on a soft warm backdrop, gentle contact shadow, sharp detail';
-  const framePrompts = [
-    'a close view of the product material and construction, soft light, nothing else in the frame',
-    `the product in everyday use in ${culture}, natural and unposed`,
-    'the product in a simple still life with two plain props, warm daylight from the side',
-    'a three-quarter view of the product with empty space on one side, soft background',
-  ];
+  const campaign = planProductCampaign({
+    productName: product?.name,
+    productDescription: product?.description,
+    tags: product?.tags?.join(' '),
+    category: offer?.category,
+    productType: product?.type,
+    language: offer?.language,
+    country,
+    culture: getPhotoCulture(country),
+    priceBefore: offer?.priceBefore,
+    priceAfter: offer?.priceAfter ?? product?.price,
+    currency: offer?.currency,
+  });
 
   if (!sections.some((s) => s.type === 'gallery')) {
     const heroIdx = sections.findIndex((s) => s.type === 'hero');
-    const gallery = { type: 'gallery', props: { imagePrompts: framePrompts } as Record<string, unknown> };
+    const gallery = { type: 'gallery', props: {} as Record<string, unknown> };
     if (heroIdx >= 0) sections.splice(heroIdx + 1, 0, gallery);
     else sections.unshift(gallery);
   }
@@ -1824,19 +1884,25 @@ function stageProductShoot(
     if (sec.type === 'hero') {
       delete p.imageUrl;
       delete p.creativeMode;
-      p.imagePrompt = heroPrompt;
+      p.campaignStyle = 'campaign';
+      p.imageAspect = campaign.hero.aspect;
+      p.imagePrompt = campaign.hero.scene;
       if (!p.layout) p.layout = 'split';
     }
     if (sec.type === 'gallery') {
       delete p.images;
       delete p.creativeMode;
-      p.imagePrompts = framePrompts;
+      p.campaignStyle = 'campaign';
+      p.imagePrompts = campaign.gallery.map((shot) => shot.scene);
+      p.captionOverlays = campaign.gallery.map((shot) => shot.caption ?? null);
     }
     if (sec.type === 'product') {
       delete p.imageUrl;
       delete p.gallery;
       delete p.creativeMode;
-      p.imagePrompt = productPrompt;
+      p.campaignStyle = 'campaign';
+      p.imageAspect = campaign.product.aspect;
+      p.imagePrompt = campaign.product.scene;
     }
   }
 }
@@ -1930,8 +1996,15 @@ async function runFullPipeline(
   // Inject the user's real product images FIRST (priority over AI generation),
   // then synthesize prompts only for slots that are still empty.
   injectProductImagesFirst(factualSections, productImages);
-  synthesizeMissingPrompts(factualSections, input.product, input.country);
-  injectPromoBannerIfDiscount(factualSections, input);
+  synthesizeMissingPrompts(factualSections, input.product, input.country, {
+    language: input.language,
+    category: input.category,
+    priceBefore: input.priceBefore ?? input.product?.compareAtPrice,
+    priceAfter: input.priceAfter ?? input.product?.price,
+    currency: input.currency,
+  });
+  // Avec une photo produit, le prix barré est peint sur l'image offre.
+  if (productImages.length === 0) injectPromoBannerIfDiscount(factualSections, input);
 
   // STEP 2 — image generation (parallel) — gated by env
   await tick('images', 'running');
@@ -1958,8 +2031,20 @@ async function runFullPipeline(
       const persistedUrls = await Promise.all(
         results.map(async (res, i) => {
           if (!res?.url) return null;
+          const folder = `ai-landing/${slots[i].kind}`;
           try {
-            const folder = `ai-landing/${slots[i].kind}`;
+            if (slots[i].caption) {
+              try {
+                const fetched = await fetchWithRetry(res.url);
+                if (!fetched.ok) throw new Error(`caption fetch ${fetched.status}`);
+                const raw = Buffer.from(await fetched.arrayBuffer());
+                const painted = await paintCampaignCaption(raw, slots[i].caption!);
+                const uploaded = await uploadFile(painted, 'campaign.jpg', folder, 'image/jpeg');
+                return uploaded.url;
+              } catch (paintErr) {
+                console.warn(`[landing-gen] caption paint failed for slot #${i}, photo kept:`, (paintErr as Error).message);
+              }
+            }
             return await persistRemoteImage(res.url, folder);
           } catch (err) {
             console.warn(`[landing-gen] persist failed for slot #${i} (${slots[i].kind}):`, (err as Error).message);

@@ -93,11 +93,11 @@ Store: "${input.storeName}"
 ${input.product.category ? `Category: ${input.product.category}` : ''}
 ${desc ? `Details: ${desc}` : ''}
 
-Write ONE English prompt (max 40 words) describing a premium ${durationSec}-second product video: camera angle,
-subtle motion (rotation, dolly, product highlight), lighting, mood. NO text overlay. NO people
-holding the product. Focus on the product hero shot. Output the prompt text only, no quotes,
-no preamble.`;
-  const fallback = `Cinematic product hero shot of ${input.product.name}, slow rotation, soft studio lighting, premium mood, ${durationSec} seconds`;
+Write ONE English prompt (max 45 words) for a ${durationSec}-second image-to-video.
+The reference photo is the real product: same color, same shape, same material. Do not replace it.
+Show it in use when it can be worn or held, otherwise on a simple daylight table.
+No text, no price, no logo, no watermark. Output the prompt text only, no quotes, no preamble.`;
+  const fallback = `The reference photo is the real ${input.product.name}. Keep that exact product and show it in use in soft daylight, slow camera, no text, no price, ${durationSec} seconds`;
   // Le prompt LLM est un « nice to have » : si any-llm échoue (422 modèle
   // retiré, quota, indispo), on part sur le prompt générique plutôt que de
   // faire échouer toute la génération (déjà facturée au vendeur).

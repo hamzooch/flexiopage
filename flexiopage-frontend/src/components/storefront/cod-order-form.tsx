@@ -164,17 +164,16 @@ export function CodOrderForm({
   const priceTint = ensureContrast(priceColor || theme.primary, ink.bg, 3);
   const router = useRouter();
 
-  // Defaults are intentionally minimal: only full name, phone (+ country code)
-  // and address show out of the box. Every other field is opt-in from the
-  // seller's COD-form settings.
-  const showEmail = config?.showEmail ?? false;
+  // Ville, code postal et wilaya restent cachés tant que le vendeur
+  // ne les a pas activés. Email, notes et quantité restent visibles.
+  const showEmail = config?.showEmail !== false;
   const requireEmail = config?.requireEmail ?? false;
   const showAddressLine2 = config?.showAddressLine2 ?? false;
   const showCity = config?.showCity ?? false;
   const showPostal = config?.showPostalCode ?? false;
   const showState = config?.showState ?? false;
-  const showNotes = config?.showNotes ?? false;
-  const showQuantity = config?.showQuantity ?? true;
+  const showNotes = config?.showNotes !== false;
+  const showQuantity = config?.showQuantity !== false;
   const headline = config?.headline || 'Commander · Paiement à la livraison';
   const submitLabel = config?.submitLabel || 'Commander';
   const reassurance = config?.reassurance;
@@ -1015,7 +1014,7 @@ export function CodOrderForm({
           shape === 'pill'    ? '999px'
           : shape === 'rounded' ? '12px'
           : '0';
-        const animEnabled = config?.buttonAnimated !== false;
+        const animEnabled = config?.buttonAnimated === true;
         const animKind = animEnabled ? (config?.buttonAnimation || 'pulse') : 'none';
         const animClass =
           animKind === 'pulse'   ? 'cod-submit-pulse'
