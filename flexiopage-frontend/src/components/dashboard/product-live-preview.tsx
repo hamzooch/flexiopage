@@ -66,6 +66,8 @@ interface Props {
   /** Stock count (for the "X en stock" line). */
   stock?: number;
   trackInventory?: boolean;
+  /** When false, the remaining quantity is hidden. Rupture still shows if tracking blocks orders. */
+  showStock?: boolean;
   // ── Sections "conversion" (compactes pour l'aperçu) ──
   features?: Array<{ icon: string; title: string; subtitle?: string }>;
   specs?: Array<{ key: string; value: string }>;
@@ -229,9 +231,14 @@ export function ProductLivePreview(props: Props) {
                 )}
               </div>
 
-              {props.trackInventory && typeof props.stock === 'number' && (
-                <div className="text-[9px]" style={{ color: props.stock > 0 ? '#047857' : '#dc2626' }}>
-                  {props.stock > 0 ? `✓ ${props.stock} en stock` : 'Rupture de stock'}
+              {props.showStock !== false && typeof props.stock === 'number' && props.stock > 0 && (
+                <div className="text-[9px]" style={{ color: '#047857' }}>
+                  ✓ {props.stock} en stock
+                </div>
+              )}
+              {props.trackInventory && typeof props.stock === 'number' && props.stock <= 0 && (
+                <div className="text-[9px]" style={{ color: '#dc2626' }}>
+                  Rupture de stock
                 </div>
               )}
 
@@ -241,14 +248,20 @@ export function ProductLivePreview(props: Props) {
                 <div className="h-1.5 w-2/3 rounded bg-muted" />
               </div>
 
-              <button
-                type="button"
-                className="mt-1 inline-flex h-7 w-full items-center justify-center gap-1.5 rounded-md text-[10px] font-bold text-white"
-                style={{ backgroundColor: accent }}
-              >
-                <ShoppingBag className="h-3 w-3" />
-                {props.codSubmitLabel} · {fmt(props.price)}
-              </button>
+              {(() => {
+                const soldOut = !!props.trackInventory && typeof props.stock === 'number' && props.stock <= 0;
+                return (
+                  <button
+                    type="button"
+                    className="mt-1 inline-flex h-7 w-full items-center justify-center gap-1.5 rounded-md text-[10px] font-bold text-white disabled:opacity-50"
+                    style={{ backgroundColor: soldOut ? '#94a3b8' : accent }}
+                    disabled={soldOut}
+                  >
+                    <ShoppingBag className="h-3 w-3" />
+                    {soldOut ? 'Rupture de stock' : `${props.codSubmitLabel} · ${fmt(props.price)}`}
+                  </button>
+                );
+              })()}
             </div>
           </div>
 

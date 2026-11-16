@@ -110,6 +110,7 @@ interface ProductDoc {
   digitalAssets?: Array<{ id: string; name: string; kind: string; size?: number }>;
   /** Stock côté physique (digital n'utilise pas ce champ). */
   stock?: number;
+  trackInventory?: boolean;
   /** createdAt utilisé pour le tri 'recent' — peut manquer sur les anciens docs. */
   createdAt?: string;
 }
@@ -161,7 +162,12 @@ function applyGridSettings(
 
   if (sf.productsGridHideOutOfStock) {
     // Digital products n'ont pas de stock → on les garde toujours visibles.
-    out = out.filter((p) => p.type === 'digital' || typeof p.stock !== 'number' || p.stock > 0);
+    out = out.filter((p) =>
+      p.type === 'digital'
+      || p.trackInventory === false
+      || typeof p.stock !== 'number'
+      || p.stock > 0
+    );
   }
 
   switch (sf.productsGridSort) {

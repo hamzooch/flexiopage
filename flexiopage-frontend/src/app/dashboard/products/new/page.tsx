@@ -76,6 +76,7 @@ export default function NewProductPage() {
   const [barcode, setBarcode] = useState('');
   const [stock, setStock] = useState('0');
   const [trackInventory, setTrackInventory] = useState(true);
+  const [showStock, setShowStock] = useState(true);
   const [allowBackorder, setAllowBackorder] = useState(false);
   const [weight, setWeight] = useState('');
   const [weightUnit, setWeightUnit] = useState('kg');
@@ -318,6 +319,7 @@ export default function NewProductPage() {
         barcode: barcode.trim() || undefined,
         stock: parseInt(stock, 10) || 0,
         trackInventory,
+        showStock,
         allowBackorder,
         weight: weight ? parseFloat(weight) : undefined,
         weightUnit: weightUnit || 'kg',
@@ -599,7 +601,7 @@ export default function NewProductPage() {
               <CardDescription>Quantité disponible, suivi et dimensions.</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
-              <div className="grid gap-4 sm:grid-cols-3">
+              <div className="grid gap-4 sm:grid-cols-2">
                 <div className="space-y-1.5">
                   <Label htmlFor="stock">Quantité en stock</Label>
                   <Input
@@ -612,6 +614,19 @@ export default function NewProductPage() {
                   />
                   <p className="text-[11px] text-muted-foreground">Nombre d&apos;unités disponibles à la vente.</p>
                 </div>
+                <label htmlFor="showStock" className="flex items-start gap-2 pt-7 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    id="showStock"
+                    checked={showStock}
+                    onChange={(e) => setShowStock(e.target.checked)}
+                    className="mt-0.5 h-4 w-4 rounded border-input"
+                  />
+                  <span>
+                    <span className="text-sm font-medium">Afficher le stock</span>
+                    <span className="block text-[11px] text-muted-foreground">Les clients voient la quantité restante.</span>
+                  </span>
+                </label>
                 <label htmlFor="trackInventory" className="flex items-start gap-2 pt-7 cursor-pointer">
                   <input
                     type="checkbox"
@@ -622,7 +637,7 @@ export default function NewProductPage() {
                   />
                   <span>
                     <span className="text-sm font-medium">Suivre le stock</span>
-                    <span className="block text-[11px] text-muted-foreground">Décrémente automatiquement à chaque commande.</span>
+                    <span className="block text-[11px] text-muted-foreground">Chaque commande retire une unité. Décoche pour laisser Commander actif même à 0.</span>
                   </span>
                 </label>
                 <label htmlFor="allowBackorder" className="flex items-start gap-2 pt-7 cursor-pointer">

@@ -31,6 +31,8 @@ interface Props {
   currency: string;
   trackInventory: boolean;
   allowBackorder: boolean;
+  /** When false, the "X en stock" line is hidden. Out-of-stock swatches still lock when tracking. */
+  showStock?: boolean;
   theme: ThemeTokens;
   radius: string;
 }
@@ -82,7 +84,7 @@ function groupVariants(variants: Variant[]): Map<string, Array<{ v: Variant; idx
 
 export function VariantSwatches({
   variants, activeIdx, onSelect, productPrice, currency,
-  trackInventory, allowBackorder, theme, radius,
+  trackInventory, allowBackorder, showStock = true, theme, radius,
 }: Props) {
   const groups = groupVariants(variants);
   const active = variants[Math.min(activeIdx, variants.length - 1)];
@@ -177,9 +179,14 @@ export function VariantSwatches({
         );
       })}
 
-      {active && (
-        <p className="text-[11px]" style={{ color: (active.stock ?? 0) > 0 ? '#047857' : '#dc2626' }}>
-          {(active.stock ?? 0) > 0 ? `✓ ${active.stock} en stock` : 'Rupture de stock'}
+      {active && showStock && (active.stock ?? 0) > 0 && (
+        <p className="text-[11px]" style={{ color: '#047857' }}>
+          ✓ {active.stock} en stock
+        </p>
+      )}
+      {active && trackInventory && !allowBackorder && (active.stock ?? 0) <= 0 && (
+        <p className="text-[11px]" style={{ color: '#dc2626' }}>
+          Rupture de stock
         </p>
       )}
     </div>

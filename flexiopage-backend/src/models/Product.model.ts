@@ -139,6 +139,12 @@ export interface IProduct extends Document {
   trackInventory: boolean;
   allowBackorder: boolean;
   /**
+   * When true (default), the storefront shows the remaining quantity.
+   * Tracking and display are independent: a seller can hide the number
+   * and still block orders at 0, or show it without blocking.
+   */
+  showStock: boolean;
+  /**
    * Prix + stock par pays activé sur la boutique. Optionnel — si vide ou
    * absent, le storefront/checkout retombent sur `price`/`compareAtPrice`/
    * `stock` racine. Voir IProductPricing.
@@ -462,6 +468,7 @@ const ProductSchema = new Schema<IProduct>(
     stock: { type: Number, default: 0 },
     trackInventory: { type: Boolean, default: true },
     allowBackorder: { type: Boolean, default: false },
+    showStock: { type: Boolean, default: true },
     pricing: [
       {
         _id: false,

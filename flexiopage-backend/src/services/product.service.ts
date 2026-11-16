@@ -62,6 +62,7 @@ export interface CreateProductInput {
   stock?: number;
   trackInventory?: boolean;
   allowBackorder?: boolean;
+  showStock?: boolean;
   variants?: IProductVariant[];
   images?: string[];
   digitalFileUrl?: string;
@@ -107,6 +108,7 @@ export async function createProduct(input: CreateProductInput): Promise<IProduct
     stock: input.stock ?? 0,
     trackInventory: input.trackInventory ?? true,
     allowBackorder: input.allowBackorder ?? false,
+    showStock: input.showStock !== false,
     variants: input.variants ?? [],
     images: input.images ?? [],
   });

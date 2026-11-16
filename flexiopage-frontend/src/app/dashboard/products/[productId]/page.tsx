@@ -94,6 +94,8 @@ export default function EditProductPage() {
   const [compareAtPrice, setCompareAtPrice] = useState('');
   const [type, setType] = useState<'physical' | 'digital'>('physical');
   const [stock, setStock] = useState('0');
+  const [trackInventory, setTrackInventory] = useState(true);
+  const [showStock, setShowStock] = useState(true);
   const [sku, setSku] = useState('');
   const [barcode, setBarcode] = useState('');
   const [isPublished, setIsPublished] = useState(false);
@@ -175,6 +177,8 @@ export default function EditProductPage() {
         setCompareAtPrice(p.compareAtPrice ? String(p.compareAtPrice) : '');
         setType((p.type as 'physical' | 'digital') || 'physical');
         setStock(String(p.stock ?? '0'));
+        setTrackInventory(p.trackInventory !== false);
+        setShowStock(p.showStock !== false);
         setSku((p.sku as string) || '');
         setBarcode((p.barcode as string) || '');
         setIsPublished(!!p.isPublished);
@@ -273,6 +277,8 @@ export default function EditProductPage() {
         compareAtPrice: parseFloat(compareAtPrice) || undefined,
         type,
         stock: parseInt(stock, 10) || 0,
+        trackInventory: type === 'physical' ? trackInventory : false,
+        showStock,
         sku: sku.trim() || undefined,
         barcode: barcode.trim() || undefined,
         isPublished,
@@ -364,11 +370,11 @@ export default function EditProductPage() {
   // On exclut les états transitoires (loading, status) et on inclut tout ce
   // que `handleSave` envoie effectivement au backend.
   const snapshot = useMemo(() => JSON.stringify({
-    name, slug, description, price, compareAtPrice, type, stock, sku, barcode,
+    name, slug, description, price, compareAtPrice, type, stock, trackInventory, showStock, sku, barcode,
     isPublished, tags, variants, images, seoTitle, seoDescription, pageSettings,
     profit, codForm: codFormDirty ? codForm : null,
   }), [
-    name, slug, description, price, compareAtPrice, type, stock, sku, barcode,
+    name, slug, description, price, compareAtPrice, type, stock, trackInventory, showStock, sku, barcode,
     isPublished, tags, variants, images, seoTitle, seoDescription, pageSettings,
     profit, codForm, codFormDirty,
   ]);
@@ -777,6 +783,22 @@ export default function EditProductPage() {
                       className="font-mono text-xs"
                     />
                   </div>
+                </div>
+              )}
+              {type === 'physical' && (
+                <div className="grid gap-2 sm:grid-cols-2">
+                  <FieldToggle
+                    label="Afficher le nombre en stock"
+                    sublabel="Les clients voient la quantité restante sur la fiche produit."
+                    checked={showStock}
+                    onChange={setShowStock}
+                  />
+                  <FieldToggle
+                    label="Suivre le stock"
+                    sublabel="Chaque commande retire une unité. Si cette option est coupée, le bouton Commander reste actif à 0 et les clients peuvent commander."
+                    checked={trackInventory}
+                    onChange={setTrackInventory}
+                  />
                 </div>
               )}
             </CardContent>
@@ -1269,7 +1291,8 @@ export default function EditProductPage() {
             accentColor={pageSettings.accentColor}
             codSubmitLabel={storeCodSubmit}
             stock={parseInt(stock, 10) || 0}
-            trackInventory={type === 'physical'}
+            trackInventory={type === 'physical' && trackInventory}
+            showStock={showStock}
             features={pageSettings.features}
             specs={pageSettings.specs}
             faq={pageSettings.faq}

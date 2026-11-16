@@ -46,6 +46,7 @@ interface ProductDoc {
   stock: number;
   trackInventory: boolean;
   allowBackorder: boolean;
+  showStock?: boolean;
   sku?: string;
 }
 
@@ -169,16 +170,22 @@ export default function CodCheckoutPage() {
     [country]
   );
 
+  const blocksOrders = !!product && product.trackInventory && !product.allowBackorder;
   const stockLeft = product
-    ? product.trackInventory && !product.allowBackorder
+    ? blocksOrders
       ? product.stock
       : 999
     : 0;
   const maxQty = Math.max(1, Math.min(stockLeft, 10));
+  const soldOut = blocksOrders && (product?.stock ?? 0) <= 0;
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError('');
+    if (soldOut) {
+      setError('Rupture de stock.');
+      return;
+    }
     if (!name.trim() || !phone.trim() || !email.trim()) {
       setError('Nom, téléphone et email obligatoires.');
       return;
@@ -388,12 +395,14 @@ export default function CodCheckoutPage() {
                   <>
                     <button
                       type="submit"
-                      disabled={submitting}
-                      className={`relative inline-flex xs:h-12 h-14 w-full items-center justify-center gap-2 overflow-hidden px-7 xs:text-sm text-base font-bold transition-all hover:scale-[1.01] disabled:opacity-60 ${animClass}`}
-                      style={{ background: btnBg, color: btnFg, borderRadius: btnRadius }}
+                      disabled={submitting || soldOut}
+                      className={`relative inline-flex xs:h-12 h-14 w-full items-center justify-center gap-2 overflow-hidden px-7 xs:text-sm text-base font-bold transition-all hover:scale-[1.01] disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:scale-100 ${animClass}`}
+                      style={{ background: soldOut ? '#94a3b8' : btnBg, color: btnFg, borderRadius: btnRadius }}
                     >
                       {submitting ? (
                         <Loader2 className="h-5 w-5 animate-spin" />
+                      ) : soldOut ? (
+                        'Rupture de stock'
                       ) : (
                         <>
                           <Wallet className="h-5 w-5" />
@@ -480,7 +489,7 @@ export default function CodCheckoutPage() {
                             className="h-7 w-7 text-sm disabled:opacity-30"
                           >+</button>
                         </div>
-                        {product.trackInventory && !product.allowBackorder && (
+                        {product.showStock !== false && product.stock > 0 && (
                           <span className="text-[10px] opacity-60">{product.stock} en stock</span>
                         )}
                       </div>

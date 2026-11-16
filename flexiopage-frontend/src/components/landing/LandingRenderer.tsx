@@ -46,6 +46,7 @@ interface Props {
     stock?: number;
     trackInventory?: boolean;
     allowBackorder?: boolean;
+    showStock?: boolean;
     sku?: string;
     type?: 'physical' | 'digital';
     variants?: CodVariant[];
@@ -1412,6 +1413,7 @@ function CodFormSection({
           productStock={product.stock ?? 0}
           trackInventory={!!product.trackInventory}
           allowBackorder={!!product.allowBackorder}
+          showStock={product.showStock !== false}
           currency={currency || 'XOF'}
           defaultCountry={country}
           storeType={product.type === 'digital' ? 'digital' : 'physical'}

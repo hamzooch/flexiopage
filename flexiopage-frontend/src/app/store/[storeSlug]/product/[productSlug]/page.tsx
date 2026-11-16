@@ -64,6 +64,7 @@ interface ProductDoc {
   stock?: number;
   trackInventory?: boolean;
   allowBackorder?: boolean;
+  showStock?: boolean;
   digitalKind?: 'download' | 'course' | 'license' | 'membership' | 'service';
   digitalAssets?: DigitalAsset[];
   accessType?: 'lifetime' | 'limited';
@@ -494,6 +495,7 @@ export default async function PublicProductPage({ params }: Props) {
                       productStock={product.stock ?? 0}
                       trackInventory={!!product.trackInventory}
                       allowBackorder={!!product.allowBackorder}
+                      showStock={product.showStock !== false}
                       currency={currency}
                       defaultCountry={store?.settings?.country}
                       storeType={isDigital ? 'digital' : 'physical'}
@@ -510,11 +512,14 @@ export default async function PublicProductPage({ params }: Props) {
               )}
 
               {/* Stock indicator (physical only) */}
-              {!isDigital && product.trackInventory && !product.allowBackorder && (
-                <p className="text-xs" style={{ color: (product.stock || 0) > 0 ? '#047857' : '#dc2626' }}>
-                  {(product.stock || 0) > 0
-                    ? `✓ ${product.stock} en stock — livraison dans 24h`
-                    : 'Rupture de stock'}
+              {!isDigital && product.showStock !== false && (product.stock || 0) > 0 && (
+                <p className="text-xs" style={{ color: '#047857' }}>
+                  ✓ {product.stock} en stock — livraison dans 24h
+                </p>
+              )}
+              {!isDigital && product.trackInventory && !product.allowBackorder && (product.stock || 0) <= 0 && (
+                <p className="text-xs" style={{ color: '#dc2626' }}>
+                  Rupture de stock
                 </p>
               )}
 

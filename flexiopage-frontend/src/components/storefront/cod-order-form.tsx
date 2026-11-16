@@ -77,6 +77,8 @@ interface Props {
   productStock: number;
   trackInventory: boolean;
   allowBackorder: boolean;
+  /** When false, variant rows hide the remaining quantity. */
+  showStock?: boolean;
   currency: string;
   defaultCountry?: string;
   /** 'physical' offers online + COD; 'digital' offers online only. Defaults to physical. */
@@ -147,6 +149,7 @@ export function CodOrderForm({
   productStock,
   trackInventory,
   allowBackorder,
+  showStock = true,
   currency,
   defaultCountry,
   storeType = 'physical',
@@ -306,7 +309,9 @@ export function CodOrderForm({
     [country]
   );
 
-  const stockLeft = trackInventory && !allowBackorder ? effectiveStock : 999;
+  const blocksOrders = trackInventory && !allowBackorder;
+  const stockLeft = blocksOrders ? effectiveStock : 999;
+  const soldOut = blocksOrders && effectiveStock <= 0;
   const maxQty = Math.max(1, Math.min(stockLeft, 10));
 
   // Bundle: when enabled with valid tiers, the customer picks a quantity
@@ -474,6 +479,10 @@ export function CodOrderForm({
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError('');
+    if (trackInventory && !allowBackorder && effectiveStock <= 0) {
+      setError('Rupture de stock.');
+      return;
+    }
     if (!name.trim() || !phone.trim()) {
       setError('Nom et téléphone obligatoires.');
       return;
@@ -714,6 +723,7 @@ export function CodOrderForm({
             currency={currency}
             trackInventory={trackInventory}
             allowBackorder={allowBackorder}
+            showStock={showStock}
             theme={theme}
             radius={radius}
           />
@@ -1026,12 +1036,14 @@ export function CodOrderForm({
           <>
             <button
               type="submit"
-              disabled={submitting}
-              className={`relative inline-flex h-13 w-full items-center justify-center gap-2 overflow-hidden px-7 py-4 text-base font-bold transition-all hover:scale-[1.01] disabled:opacity-60 ${animClass}`}
-              style={{ background: btnBg, color: btnFg, borderRadius: btnRadius }}
+              disabled={submitting || soldOut}
+              className={`relative inline-flex h-13 w-full items-center justify-center gap-2 overflow-hidden px-7 py-4 text-base font-bold transition-all hover:scale-[1.01] disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:scale-100 ${animClass}`}
+              style={{ background: soldOut ? '#94a3b8' : btnBg, color: btnFg, borderRadius: btnRadius }}
             >
               {submitting ? (
                 <Loader2 className="h-5 w-5 animate-spin" />
+              ) : soldOut ? (
+                'Rupture de stock'
               ) : (
                 <>
                   <Wallet className="h-5 w-5" />

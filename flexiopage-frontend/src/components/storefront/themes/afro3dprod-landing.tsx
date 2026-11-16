@@ -53,6 +53,7 @@ interface ProductShape {
   compareAtPrice?: number;
   images?: string[];
   stock?: number;
+  trackInventory?: boolean;
   type?: 'physical' | 'digital';
 }
 
@@ -294,7 +295,10 @@ function ProductCard({
   const cover = product.images?.[0];
   const coverUrl = cover ? mediaUrl(cover) : undefined;
   const hasDiscount = !!(product.compareAtPrice && product.compareAtPrice > product.price);
-  const outOfStock = product.type !== 'digital' && typeof product.stock === 'number' && product.stock <= 0;
+  const outOfStock = product.type !== 'digital'
+    && product.trackInventory !== false
+    && typeof product.stock === 'number'
+    && product.stock <= 0;
 
   return (
     <motion.div
