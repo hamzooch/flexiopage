@@ -77,6 +77,7 @@ const DICTIONARY = {
   'sidebar.aiLanding': { fr: 'Studio IA', en: 'AI Studio', ar: 'استوديو AI' },
   'sidebar.aiPoster': { fr: 'Studio IA', en: 'AI Studio', ar: 'استوديو AI' },
   'sidebar.tracking': { fr: 'Suivi', en: 'Tracking', ar: 'التتبع' },
+  'sidebar.abTesting': { fr: 'Tests A/B', en: 'A/B tests', ar: 'اختبارات A/B' },
   'sidebar.customers': { fr: 'Clients', en: 'Customers', ar: 'العملاء' },
   'sidebar.profitCalculator': {
     fr: 'Calculatrice profit',

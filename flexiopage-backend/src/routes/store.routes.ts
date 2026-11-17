@@ -57,6 +57,7 @@ router.post('/:storeId/products/import', productController.importCreateProduct);
 router.get('/:storeId/products/:productId', productController.getProduct);
 router.patch('/:storeId/products/:productId', productController.updateProduct);
 router.delete('/:storeId/products/:productId', productController.deleteProduct);
+router.get('/:storeId/products/:productId/ab-stats', storeController.getProductAbStatsController);
 
 // Marketplace — acquisition d'un produit du catalogue admin dans cette
 // boutique. Aucun débit wallet ici : la dette wholesale est prélevée à la

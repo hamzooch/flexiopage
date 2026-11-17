@@ -1888,6 +1888,37 @@ export const storesApi = {
     api.patch<{ product: unknown }>(`/stores/${storeId}/products/${productId}`, data),
   deleteProduct: (storeId: string, productId: string) =>
     api.delete(`/stores/${storeId}/products/${productId}`),
+  /**
+   * Funnel A/B d'un produit : contrôle + chaque pageVariant avec views, ATC,
+   * purchases, CVR, uplift et p-value du z-test vs contrôle.
+   */
+  getProductAbStats: (
+    storeId: string,
+    productId: string,
+    range: '7d' | '30d' | '90d' = '30d',
+  ) =>
+    api.get<{
+      productId: string;
+      range: '7d' | '30d' | '90d';
+      productName: string;
+      hasActiveVariants: boolean;
+      variants: Array<{
+        variantId: string;
+        name: string;
+        isControl: boolean;
+        enabled: boolean;
+        weight: number;
+        views: number;
+        addToCart: number;
+        purchases: number;
+        revenue: number;
+        cvr: number;
+        cartRate: number;
+        uplift?: number;
+        pValue?: number;
+        winner?: boolean;
+      }>;
+    }>(`/stores/${storeId}/products/${productId}/ab-stats`, { params: { range } }),
   // Pages
   /**
    * List a store's pages. `kind=landing` hides the auto-seeded info pages

@@ -57,6 +57,8 @@ function resolveSource(): string | undefined {
 export function trackStoreEvent(input: {
   storeId?: string;
   productId?: string;
+  /** Variant A/B servi sur la page produit — 'control' ou l'_id hex d'un pageVariant. */
+  variantId?: string;
   type: StoreEventType;
 }): void {
   if (typeof window === 'undefined' || !input.storeId) return;
@@ -65,6 +67,7 @@ export function trackStoreEvent(input: {
   const body = JSON.stringify({
     storeId: input.storeId,
     productId: input.productId,
+    variantId: input.variantId,
     type: input.type,
     sessionId,
     source: resolveSource(),

@@ -71,6 +71,12 @@ interface Props {
   /** Store + product ids — used for anonymous funnel tracking. */
   storeId?: string;
   productId?: string;
+  /**
+   * Variant A/B de la page produit servi au visiteur. Propagé à l'event
+   * `add_to_cart` et au body du POST /checkout/cod pour que la conversion
+   * remonte au bon bras du test côté dashboard.
+   */
+  abVariantId?: string;
   productSlug: string;
   productName: string;
   productPrice: number;
@@ -143,6 +149,7 @@ export function CodOrderForm({
   storeSlug,
   storeId,
   productId,
+  abVariantId,
   productSlug,
   productName,
   productPrice,
@@ -258,7 +265,7 @@ export function CodOrderForm({
   function handleFirstEngagement() {
     if (cartTracked.current) return;
     cartTracked.current = true;
-    trackStoreEvent({ storeId, productId, type: 'add_to_cart' });
+    trackStoreEvent({ storeId, productId, variantId: abVariantId, type: 'add_to_cart' });
     fireMarketingEvent({
       event: 'AddToCart',
       contentIds: productId ? [productId] : undefined,
@@ -560,6 +567,7 @@ export function CodOrderForm({
         body: JSON.stringify({
           storeSlug,
           sessionId: getSessionId(),
+          abVariantId,
           items: [
             { productSlug, quantity, variantId: activeVariant?.name },
             // Bump offers — each ticked upsell ships as its own line item

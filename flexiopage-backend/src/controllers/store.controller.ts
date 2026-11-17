@@ -4,7 +4,8 @@ import { AuthRequest } from '../middleware/auth.middleware';
 import * as storeService from '../services/store.service';
 import { getStoreAnalytics, getStoreAnalyticsRich, type RangeKey } from '../services/analytics.service';
 import { calendarDaysInclusive, isYmd } from '../utils/store-timezone';
-import { getTrackingStats, getLiveVisitors, getLiveGlobe, type TrackingRange } from '../services/tracking.service';
+import { getTrackingStats, getLiveVisitors, getLiveGlobe, getProductAbStats, type TrackingRange } from '../services/tracking.service';
+import mongoose from 'mongoose';
 import { verifyAndSaveDomain, getDomainTarget, checkDomain, normalizeDomain, isValidDomain } from '../services/domain.service';
 import { testSheetsWebhook } from '../services/sheets.service';
 import { effectiveOwnerId, isTeamMember } from '../lib/owner';
@@ -277,6 +278,29 @@ export async function getLiveGlobeController(req: AuthRequest, res: Response): P
   const visitorsWindowMin = Number.isFinite(vRaw) && vRaw >= 1 && vRaw <= 60 ? Math.round(vRaw) : 5;
   const ordersWindowMin = Number.isFinite(oRaw) && oRaw >= 5 && oRaw <= 240 ? Math.round(oRaw) : 30;
   const payload = await getLiveGlobe(store._id.toString(), { visitorsWindowMin, ordersWindowMin });
+  res.json(payload);
+}
+
+/**
+ * GET /api/stores/:storeId/products/:productId/ab-stats?range=7d|30d|90d
+ * Funnel A/B du produit : contrôle + chaque pageVariant avec compteurs,
+ * uplift vs contrôle et z-test. 404 si le produit n'appartient pas au store.
+ */
+export async function getProductAbStatsController(req: AuthRequest, res: Response): Promise<void> {
+  const store = req.store!;
+  const productId = String(req.params.productId || '');
+  if (!mongoose.Types.ObjectId.isValid(productId)) {
+    res.status(400).json({ error: 'Invalid productId' });
+    return;
+  }
+  const allowed: TrackingRange[] = ['7d', '30d', '90d'];
+  const raw = String(req.query.range || '30d');
+  const range = (allowed as string[]).includes(raw) ? (raw as TrackingRange) : '30d';
+  const payload = await getProductAbStats(store._id.toString(), productId, range);
+  if (!payload) {
+    res.status(404).json({ error: 'Product not found' });
+    return;
+  }
   res.json(payload);
 }
 

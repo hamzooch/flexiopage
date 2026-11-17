@@ -16,6 +16,12 @@ function rangeStart(range: TrackingRange): Date {
 export interface RecordEventInput {
   storeId: string;
   productId?: string;
+  /**
+   * Variant A/B servi au visiteur. `'control'` = page sans override.
+   * On accepte tout string court pour rester neutre sur la représentation
+   * (le frontend envoie soit 'control' soit un _id hex du sous-document).
+   */
+  variantId?: string;
   type: StoreEventType;
   sessionId: string;
   value?: number;
@@ -221,6 +227,7 @@ export async function recordEvent(input: RecordEventInput): Promise<void> {
     await StoreEvent.create({
       storeId: input.storeId,
       productId: input.productId || undefined,
+      variantId: input.variantId ? String(input.variantId).slice(0, 32) : undefined,
       type: input.type,
       sessionId: String(input.sessionId).slice(0, 64),
       device: input.device,
@@ -373,5 +380,213 @@ export async function getTrackingStats(
     products,
     sources: bySource.map((row) => ({ source: row._id || 'unknown', views: row.count })),
     devices,
+  };
+}
+
+// ── A/B stats par produit ─────────────────────────────────────────────
+
+/**
+ * Approximation de la fonction d'erreur (Abramowitz & Stegun 7.1.26).
+ * Précision ~1.5e-7, largement suffisante pour un p-value de dashboard.
+ */
+function erf(x: number): number {
+  const sign = x < 0 ? -1 : 1;
+  const absX = Math.abs(x);
+  const a1 = 0.254829592;
+  const a2 = -0.284496736;
+  const a3 = 1.421413741;
+  const a4 = -1.453152027;
+  const a5 = 1.061405429;
+  const p = 0.3275911;
+  const t = 1 / (1 + p * absX);
+  const y = 1 - (((((a5 * t + a4) * t + a3) * t + a2) * t + a1) * t) * Math.exp(-absX * absX);
+  return sign * y;
+}
+
+function normalCdf(z: number): number {
+  return 0.5 * (1 + erf(z / Math.SQRT2));
+}
+
+/**
+ * Test Z pour deux proportions (variant vs contrôle). Renvoie le p-value
+ * bilatéral. On bascule à `null` quand la taille d'échantillon rend le test
+ * ininterprétable (une des deux séries vide / variances nulles).
+ */
+function twoProportionZTestPValue(
+  x1: number, n1: number,
+  x2: number, n2: number,
+): number | null {
+  if (n1 <= 0 || n2 <= 0) return null;
+  const p1 = x1 / n1;
+  const p2 = x2 / n2;
+  const pPool = (x1 + x2) / (n1 + n2);
+  const denom = pPool * (1 - pPool) * (1 / n1 + 1 / n2);
+  if (denom <= 0) return null;
+  const se = Math.sqrt(denom);
+  if (se === 0) return null;
+  const z = (p2 - p1) / se;
+  if (!Number.isFinite(z)) return null;
+  return 2 * (1 - normalCdf(Math.abs(z)));
+}
+
+export interface AbVariantStats {
+  variantId: string;
+  name: string;
+  isControl: boolean;
+  enabled: boolean;
+  weight: number;
+  views: number;
+  addToCart: number;
+  purchases: number;
+  revenue: number;
+  /** Pourcentage de vues qui ont converti en commande (purchases/views). */
+  cvr: number;
+  /** Pourcentage de vues qui ont lancé le formulaire COD (addToCart/views). */
+  cartRate: number;
+  /** Écart vs contrôle en points de %. Absent pour le contrôle. */
+  uplift?: number;
+  /** p-value bilatéral du z-test de conversion vs contrôle. Absent pour le contrôle. */
+  pValue?: number;
+  /** true quand variant bat le contrôle avec p<0.05 et uplift>0. */
+  winner?: boolean;
+}
+
+export interface ProductAbStats {
+  productId: string;
+  range: TrackingRange;
+  /** Nom du produit "contrôle" (= name du Product). */
+  productName: string;
+  /** true dès que le produit a au moins un pageVariant enabled & weight>0. */
+  hasActiveVariants: boolean;
+  variants: AbVariantStats[];
+}
+
+/**
+ * Funnel A/B d'un produit : agrège views / add-to-cart / purchases par variant
+ * (contrôle inclus) sur la fenêtre `range`, avec un z-test vs contrôle. Le
+ * contrôle est bâti à partir des events sans `variantId` OU avec `variantId
+ * === 'control'` (compat produits sans variant + split actif qui a servi le
+ * contrôle à une fraction des visiteurs).
+ */
+export async function getProductAbStats(
+  storeId: string,
+  productId: string,
+  range: TrackingRange,
+): Promise<ProductAbStats | null> {
+  const productOid = new mongoose.Types.ObjectId(productId);
+  const storeOid = new mongoose.Types.ObjectId(storeId);
+
+  const product = await Product.findOne({ _id: productOid, storeId: storeOid })
+    .select('name pageVariants')
+    .lean();
+  if (!product) return null;
+
+  const start = rangeStart(range);
+  const rows = await StoreEvent.aggregate<{
+    _id: { variantId: string; type: StoreEventType };
+    count: number;
+    revenue: number;
+  }>([
+    {
+      $match: {
+        storeId: storeOid,
+        productId: productOid,
+        createdAt: { $gte: start },
+      },
+    },
+    {
+      $group: {
+        _id: {
+          variantId: { $ifNull: ['$variantId', 'control'] },
+          type: '$type',
+        },
+        count: { $sum: 1 },
+        revenue: {
+          $sum: {
+            $cond: [{ $eq: ['$type', 'purchase'] }, { $ifNull: ['$value', 0] }, 0],
+          },
+        },
+      },
+    },
+  ]);
+
+  type Counters = { views: number; addToCart: number; purchases: number; revenue: number };
+  const byVariant = new Map<string, Counters>();
+  const touch = (vid: string): Counters => {
+    const cur = byVariant.get(vid) || { views: 0, addToCart: 0, purchases: 0, revenue: 0 };
+    byVariant.set(vid, cur);
+    return cur;
+  };
+  for (const row of rows) {
+    const vid = row._id.variantId || 'control';
+    const c = touch(vid);
+    if (row._id.type === 'product_view') c.views += row.count;
+    else if (row._id.type === 'add_to_cart') c.addToCart += row.count;
+    else if (row._id.type === 'purchase') {
+      c.purchases += row.count;
+      c.revenue += row.revenue || 0;
+    }
+  }
+
+  // Build output rows: control first, then each pageVariant (even if 0 events
+  // yet — the seller still needs to see them in the table).
+  const controlCounters = touch('control');
+  const control: AbVariantStats = {
+    variantId: 'control',
+    name: 'Contrôle',
+    isControl: true,
+    enabled: true,
+    weight: 1,
+    views: controlCounters.views,
+    addToCart: controlCounters.addToCart,
+    purchases: controlCounters.purchases,
+    revenue: controlCounters.revenue,
+    cvr: pct(controlCounters.purchases, controlCounters.views),
+    cartRate: pct(controlCounters.addToCart, controlCounters.views),
+  };
+
+  const variantRows: AbVariantStats[] = [control];
+  const pageVariants = Array.isArray(product.pageVariants) ? product.pageVariants : [];
+  for (const v of pageVariants) {
+    const vid = String((v as { _id?: unknown })._id || '');
+    if (!vid) continue;
+    const c = byVariant.get(vid) || { views: 0, addToCart: 0, purchases: 0, revenue: 0 };
+    const row: AbVariantStats = {
+      variantId: vid,
+      name: v.name || 'Variant',
+      isControl: false,
+      enabled: v.enabled !== false,
+      weight: typeof v.weight === 'number' ? v.weight : 1,
+      views: c.views,
+      addToCart: c.addToCart,
+      purchases: c.purchases,
+      revenue: c.revenue,
+      cvr: pct(c.purchases, c.views),
+      cartRate: pct(c.addToCart, c.views),
+    };
+    // Uplift + z-test vs contrôle. Les deux viennent du même échantillon de
+    // visiteurs (storefront splittée) — hypothèse d'indépendance raisonnable.
+    const p = twoProportionZTestPValue(
+      control.purchases, control.views,
+      row.purchases, row.views,
+    );
+    if (p !== null) {
+      row.pValue = Math.round(p * 1000) / 1000;
+      row.uplift = Math.round((row.cvr - control.cvr) * 10) / 10;
+      row.winner = row.uplift > 0 && p < 0.05;
+    }
+    variantRows.push(row);
+  }
+
+  const hasActiveVariants = pageVariants.some(
+    (v) => v.enabled !== false && (typeof v.weight !== 'number' || v.weight > 0),
+  );
+
+  return {
+    productId,
+    range,
+    productName: product.name,
+    hasActiveVariants,
+    variants: variantRows,
   };
 }

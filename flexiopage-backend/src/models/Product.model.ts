@@ -198,6 +198,12 @@ export interface IProduct extends Document {
   /** Cross-sell suggestions — surfaced as "related products" on the product page. */
   crossSells?: IRelatedOffer[];
   /**
+   * Variants A/B de la page produit. Quand le tableau est non vide et qu'au
+   * moins un variant est `enabled` avec `weight > 0`, la storefront répartit
+   * les visiteurs entre le contrôle (produit tel quel) et les variants listés.
+   */
+  pageVariants?: IProductPageVariant[];
+  /**
    * Marque ce produit comme candidat au pipeline de test (onglet "Produit test").
    * Quand `true`, le produit apparaît dans le tableau de suivi des tests avec son
    * statut, son wow effect et ses infos fournisseur.
@@ -376,6 +382,40 @@ export interface IProductBundle {
   tiers: IProductBundleTier[];
   /** Visual customization for the bundle block. */
   style?: IProductBundleStyle;
+}
+
+/**
+ * Variant A/B d'une page produit. Le produit de base est le "contrôle" ;
+ * chaque variant ici écrase une poignée de champs quand il est servi au
+ * visiteur. Le split est fait côté frontend à partir du cookie `flexio_split`
+ * (ou du param URL `?v=<id>`), et chaque event de funnel porte le `variantId`
+ * du variant servi pour qu'on puisse comparer les conversions.
+ */
+export interface IProductPageVariantOverrides {
+  /** Remplace product.name sur la page produit (et seulement là). */
+  name?: string;
+  price?: number;
+  compareAtPrice?: number;
+  description?: string;
+  images?: string[];
+  /**
+   * Sous-ensemble libre de pageSettings. On stocke en Mixed pour ne pas
+   * dupliquer tout le sous-schéma — l'éditeur côté dashboard contraint ce
+   * qui peut y être posé.
+   */
+  pageSettings?: Partial<IProductPageSettings>;
+}
+
+export interface IProductPageVariant {
+  _id?: mongoose.Types.ObjectId;
+  /** Libellé interne de l'éditeur (ex: "Prix barré haut", "Hero vidéo"). */
+  name: string;
+  /** Pondération du split (≥ 0). Défaut 1. Un variant à 0 est exclu du tirage. */
+  weight: number;
+  /** Désactivé = le variant n'est plus servi mais reste en DB pour l'historique. */
+  enabled: boolean;
+  /** Champs qui écrasent le produit de base quand ce variant est servi. */
+  overrides: IProductPageVariantOverrides;
 }
 
 /**
@@ -609,6 +649,18 @@ const ProductSchema = new Schema<IProduct>(
         label: { type: String, trim: true },
         discountPct: { type: Number, min: 1, max: 99 },
         order: { type: Number, default: 0 },
+      },
+    ],
+    // ── Variants A/B de la page produit ─────────────────────────────
+    // overrides est volontairement en Mixed : chaque champ y est optionnel
+    // et on ne veut pas dupliquer le sous-schéma pageSettings. L'éditeur
+    // dashboard contraint ce qui peut être posé ici.
+    pageVariants: [
+      {
+        name: { type: String, required: true, trim: true, maxlength: 80 },
+        weight: { type: Number, default: 1, min: 0, max: 100 },
+        enabled: { type: Boolean, default: true },
+        overrides: { type: Schema.Types.Mixed, default: {} },
       },
     ],
     isTestCandidate: { type: Boolean, default: false },

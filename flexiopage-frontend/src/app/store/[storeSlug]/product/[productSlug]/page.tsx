@@ -38,9 +38,16 @@ import type { ThemeTokens as ThemeTokensType } from '@/data/store-themes';
 import {
   Sparkles, Shield, Leaf, Zap, Heart, Award, Gift, Truck, Clock, Check, Star, Recycle,
 } from 'lucide-react';
+import {
+  pickPageVariant,
+  applyVariantOverrides,
+  CONTROL_VARIANT_ID,
+  type PageVariantInput,
+} from '@/lib/ab-variant';
 
 interface Props {
   params: Promise<{ storeSlug: string; productSlug: string }>;
+  searchParams: Promise<{ v?: string | string[] }>;
 }
 
 interface DigitalAsset {
@@ -100,6 +107,8 @@ interface ProductDoc {
   };
   bundle?: ProductBundle;
   variants?: CodVariant[];
+  /** Variants A/B de la page produit — sélection pondérée côté SSR. */
+  pageVariants?: PageVariantInput[];
 }
 
 interface StoreDoc {
@@ -172,8 +181,10 @@ function assetIcon(kind: DigitalAsset['kind']): string {
   }
 }
 
-export default async function PublicProductPage({ params }: Props) {
+export default async function PublicProductPage({ params, searchParams }: Props) {
   const { storeSlug, productSlug } = await params;
+  const sp = await searchParams;
+  const urlVariantRaw = Array.isArray(sp.v) ? sp.v[0] : sp.v;
   const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
   let product: ProductDoc | null = null;
   let store: StoreDoc | null = null;
@@ -234,6 +245,22 @@ export default async function PublicProductPage({ params }: Props) {
     );
   }
 
+  // ── Sélection A/B : ?v=<id> prioritaire, sinon tirage pondéré déterministe
+  //    à partir du cookie `flexio_split` posé par le middleware. Toutes les
+  //    propriétés produit lues plus bas (name/price/images/pageSettings…)
+  //    passent par la version "effective" une fois l'override appliqué.
+  const splitCookie = cookieStore.get('flexio_split')?.value || null;
+  const picked = pickPageVariant(product.pageVariants, {
+    urlVariantId: urlVariantRaw || null,
+    splitCookie,
+  });
+  // On ré-affecte `product` à sa version overridée pour que la suite du render
+  // (gallery, pricing, pageSettings, etc.) lise automatiquement les champs du
+  // variant.
+  const effectiveProduct: ProductDoc = applyVariantOverrides(product, picked.overrides);
+  product = effectiveProduct;
+  const activeVariantId = picked.variantId || CONTROL_VARIANT_ID;
+
   const theme = resolveTheme(store);
   const direction = store?.settings?.direction || 'ltr';
   const language = store?.settings?.language;
@@ -285,7 +312,12 @@ export default async function PublicProductPage({ params }: Props) {
       {fontsUrl && <link rel="stylesheet" href={fontsUrl} />}
       <MarketingPixels config={store?.integrations?.marketing} />
       <StoreTracker storeId={store?._id} type="page_view" />
-      <StoreTracker storeId={store?._id} productId={product._id} type="product_view" />
+      <StoreTracker
+        storeId={store?._id}
+        productId={product._id}
+        variantId={activeVariantId}
+        type="product_view"
+      />
       <TrackEvent
         payload={{
           event: 'ViewContent',
@@ -489,6 +521,7 @@ export default async function PublicProductPage({ params }: Props) {
                       storeSlug={storeSlug}
                       storeId={store?._id}
                       productId={product._id}
+                      abVariantId={activeVariantId}
                       productSlug={product.slug}
                       productName={product.name}
                       productPrice={product.price}

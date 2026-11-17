@@ -2,7 +2,8 @@ import { Response } from 'express';
 import validator from 'validator';
 import { AuthRequest } from '../middleware/auth.middleware';
 import * as productService from '../services/product.service';
-import type { IDigitalAsset, ICourseModule, DigitalKind } from '../models/Product.model';
+import type { IDigitalAsset, ICourseModule, DigitalKind, IProductPageVariant, IProductPageVariantOverrides } from '../models/Product.model';
+import mongoose from 'mongoose';
 import { generateProductDescription as runProductDescription } from '../services/product-ai.service';
 import { chargeAiGeneration, getOrCreateWallet, aiCostInCurrency } from '../services/wallet.service';
 import { extractProductFromUrl, ImportError } from '../services/product-import.service';
@@ -12,6 +13,56 @@ import { notifyRevalidate } from '../lib/revalidate';
 import { validateLogisticsSku } from '../lib/logistics';
 
 const MAX_IMPORT_IMAGES = 8;
+
+/**
+ * Nettoie et normalise le tableau `pageVariants` reçu du dashboard :
+ *  - clamp `weight` dans [0, 100], défaut 1
+ *  - force `enabled` en bool, défaut true
+ *  - limite `name` à 80 chars, dé-escape (sanitizeMiddleware)
+ *  - garde uniquement les champs connus d'`overrides` + dé-escape leurs textes
+ *  - force la présence d'un `_id` ObjectId sur chaque entrée (nouvelle ou
+ *    existante) pour que le frontend puisse corréler variantId ↔ stats
+ * Les entrées invalides (sans name) sont silencieusement droppées.
+ */
+function sanitizePageVariants(raw: unknown): IProductPageVariant[] {
+  if (!Array.isArray(raw)) return [];
+  const out: IProductPageVariant[] = [];
+  for (const item of raw) {
+    if (!item || typeof item !== 'object') continue;
+    const o = item as Record<string, unknown>;
+    const nameRaw = typeof o.name === 'string' ? validator.unescape(o.name).trim() : '';
+    if (!nameRaw) continue;
+    const name = nameRaw.slice(0, 80);
+    const weightRaw = Number(o.weight);
+    const weight = Number.isFinite(weightRaw) ? Math.max(0, Math.min(100, weightRaw)) : 1;
+    const enabled = o.enabled === undefined ? true : !!o.enabled;
+    const ovRaw = (o.overrides && typeof o.overrides === 'object') ? (o.overrides as Record<string, unknown>) : {};
+    const overrides: IProductPageVariantOverrides = {};
+    if (typeof ovRaw.name === 'string') overrides.name = validator.unescape(ovRaw.name).trim().slice(0, 200);
+    if (typeof ovRaw.description === 'string') overrides.description = validator.unescape(ovRaw.description);
+    if (typeof ovRaw.price === 'number' && ovRaw.price >= 0) overrides.price = ovRaw.price;
+    if (typeof ovRaw.compareAtPrice === 'number' && ovRaw.compareAtPrice >= 0) overrides.compareAtPrice = ovRaw.compareAtPrice;
+    if (Array.isArray(ovRaw.images)) {
+      overrides.images = ovRaw.images
+        .filter((u): u is string => typeof u === 'string')
+        .map((u) => validator.unescape(u))
+        .slice(0, 12);
+    }
+    if (ovRaw.pageSettings && typeof ovRaw.pageSettings === 'object') {
+      // pageSettings est stocké en Mixed côté schema — on fait confiance au
+      // shape du dashboard. On dé-escape juste les textes au premier niveau
+      // pour cohérence avec le reste du produit.
+      overrides.pageSettings = ovRaw.pageSettings as IProductPageVariantOverrides['pageSettings'];
+    }
+    const idRaw = (o as { _id?: unknown })._id;
+    const idStr = typeof idRaw === 'string' ? idRaw : (idRaw && typeof idRaw === 'object' && 'toString' in idRaw ? String(idRaw) : '');
+    const _id = /^[0-9a-fA-F]{24}$/.test(idStr)
+      ? new mongoose.Types.ObjectId(idStr)
+      : new mongoose.Types.ObjectId();
+    out.push({ _id, name, weight, enabled, overrides });
+  }
+  return out;
+}
 
 /** Keep only same-shape upsell / cross-sell rows. Unknown ids are dropped. */
 function sanitizeRelatedOffers(raw: unknown): productService.RelatedOfferInput[] {
@@ -414,6 +465,7 @@ export async function updateProduct(req: AuthRequest, res: Response): Promise<vo
     bundle: body.bundle,
     upsells: body.upsells !== undefined ? sanitizeRelatedOffers(body.upsells) : undefined,
     crossSells: body.crossSells !== undefined ? sanitizeRelatedOffers(body.crossSells) : undefined,
+    pageVariants: body.pageVariants !== undefined ? sanitizePageVariants(body.pageVariants) : undefined,
     suppliers: body.suppliers,
     isTestCandidate: body.isTestCandidate,
     testStatus: body.testStatus,

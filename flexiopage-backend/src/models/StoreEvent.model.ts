@@ -36,6 +36,14 @@ export type StoreEventSource =
 export interface IStoreEvent extends Document {
   storeId: mongoose.Types.ObjectId;
   productId?: mongoose.Types.ObjectId;
+  /**
+   * Variant A/B de la page produit qui était servi au visiteur, s'il y en a.
+   * `'control'` = produit tel quel (aucun variant appliqué). Pour les variants
+   * posés en DB on stocke le _id hex. Absent sur les events antérieurs à cette
+   * feature. Stocké comme string (et non ObjectId) pour garder la sentinelle
+   * `'control'` sans conversion supplémentaire côté backend.
+   */
+  variantId?: string;
   type: StoreEventType;
   /** Anonymous visitor session id (correlates add_to_cart -> purchase). */
   sessionId: string;
@@ -67,6 +75,7 @@ const StoreEventSchema = new Schema<IStoreEvent>(
   {
     storeId: { type: Schema.Types.ObjectId, ref: 'Store', required: true },
     productId: { type: Schema.Types.ObjectId, ref: 'Product' },
+    variantId: { type: String, trim: true, maxlength: 32 },
     type: { type: String, enum: ['page_view', 'product_view', 'add_to_cart', 'purchase'], required: true },
     sessionId: { type: String, required: true, index: true },
     device: { type: String, enum: ['mobile', 'desktop'] },
@@ -85,6 +94,9 @@ const StoreEventSchema = new Schema<IStoreEvent>(
 
 StoreEventSchema.index({ storeId: 1, createdAt: -1 });
 StoreEventSchema.index({ storeId: 1, type: 1, createdAt: -1 });
+// Aggrégations A/B par produit : on groupe par (productId, variantId) sur une
+// fenêtre temporelle. Index composé pour éviter de scanner toute la collection.
+StoreEventSchema.index({ storeId: 1, productId: 1, variantId: 1, createdAt: -1 });
 // Auto-prune after 180 days.
 StoreEventSchema.index({ createdAt: 1 }, { expireAfterSeconds: 180 * 24 * 60 * 60 });
 

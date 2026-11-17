@@ -129,6 +129,33 @@ async function customDomainStoreSlug(host: string): Promise<string | null> {
   }
 }
 
+/**
+ * Cookie de split A/B. 32-bit random posé à la 1re visite storefront. La page
+ * produit en fait `cookie % totalWeight` pour piocher un variant pondéré, ce
+ * qui garantit la stabilité (même visiteur → même variant) sans que le
+ * middleware ait besoin de connaître les variants d'un produit donné.
+ * httpOnly=false parce que la page server-component le lit via `cookies()` et
+ * le forward aussi au backend dans le fetch SSR (mêmes règles qu'un cookie de
+ * tracking classique). 180 jours = cohérent avec la rétention StoreEvent.
+ */
+const SPLIT_COOKIE = 'flexio_split';
+const SPLIT_COOKIE_MAX_AGE = 180 * 24 * 60 * 60;
+
+function attachSplitCookie(response: NextResponse, request: NextRequest): NextResponse {
+  if (request.cookies.has(SPLIT_COOKIE)) return response;
+  // Entier 0..999999 — assez de granularité pour pondérer jusqu'à ~100 variants
+  // sans collision visible. Math.random suffit : on ne s'en sert pas comme id
+  // cryptographique, juste comme graine de tirage.
+  const seed = Math.floor(Math.random() * 1_000_000).toString();
+  response.cookies.set(SPLIT_COOKIE, seed, {
+    maxAge: SPLIT_COOKIE_MAX_AGE,
+    path: '/',
+    sameSite: 'lax',
+    httpOnly: false,
+  });
+  return response;
+}
+
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
   const rawHost = request.headers.get('host');
@@ -166,7 +193,7 @@ export async function middleware(request: NextRequest) {
     }
     const url = request.nextUrl.clone();
     url.pathname = `/store/${subSlug}${cleanPath === '/' ? '' : cleanPath}`;
-    return NextResponse.rewrite(url);
+    return attachSplitCookie(NextResponse.rewrite(url), request);
   }
 
   // ── 2. Custom-domain storefront ───────────────────────────────────
@@ -186,7 +213,7 @@ export async function middleware(request: NextRequest) {
       }
       const url = request.nextUrl.clone();
       url.pathname = `/store/${slug}${cleanPath === '/' ? '' : cleanPath}`;
-      return NextResponse.rewrite(url);
+      return attachSplitCookie(NextResponse.rewrite(url), request);
     }
     // Unknown custom host → fall through to the app (will likely 404),
     // which is the right signal that DNS lands here but no store claims it.
@@ -203,7 +230,7 @@ export async function middleware(request: NextRequest) {
 
   const url = request.nextUrl.clone();
   url.pathname = `/store${pathname}`;
-  return NextResponse.rewrite(url);
+  return attachSplitCookie(NextResponse.rewrite(url), request);
 }
 
 export const config = {

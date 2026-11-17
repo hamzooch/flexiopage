@@ -5,6 +5,7 @@ import {
   IProductPageSettings,
   IProductBundle,
   IProductSupplier,
+  IProductPageVariant,
   IDigitalAsset,
   ICourseModule,
   DigitalKind,
@@ -84,6 +85,7 @@ export interface CreateProductInput {
   bundle?: IProductBundle;
   upsells?: RelatedOfferInput[];
   crossSells?: RelatedOfferInput[];
+  pageVariants?: IProductPageVariant[];
   suppliers?: IProductSupplier[];
   isTestCandidate?: boolean;
   testStatus?: ProductTestStatus;

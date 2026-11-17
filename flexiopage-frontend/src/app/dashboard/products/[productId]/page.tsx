@@ -56,6 +56,12 @@ import {
   TrustBadgeCard,
   TrustBadgesPreviewStrip,
 } from '@/components/dashboard/trust-badge-card';
+import {
+  ProductAbVariantsEditor,
+  type PageVariantDraft,
+} from '@/components/dashboard/product-ab-variants-editor';
+import { ProductAbStatsPanel } from '@/components/dashboard/product-ab-stats-panel';
+import { FlaskConical } from 'lucide-react';
 
 interface PageSettings {
   showGallery: boolean;
@@ -75,7 +81,7 @@ interface PageSettings {
   comparison?: ProductComparison;
 }
 
-type EditTab = 'essentiel' | 'conversion' | 'seo';
+type EditTab = 'essentiel' | 'conversion' | 'ab-test' | 'seo';
 
 type SaveStatus = 'idle' | 'saving' | 'saved' | 'error';
 
@@ -115,6 +121,7 @@ export default function EditProductPage() {
     showTrustBadges: true,
     showRatingStrip: false,
   });
+  const [pageVariants, setPageVariants] = useState<PageVariantDraft[]>([]);
   const [profit, setProfit] = useState<ProfitInputs>(EMPTY_PROFIT_INPUTS);
 
   // ── Store metadata (for currency, slug, COD submit label fallback) ─
@@ -142,9 +149,15 @@ export default function EditProductPage() {
   const [error, setError] = useState('');
   const [deleting, setDeleting] = useState(false);
   const confirm = useConfirm();
-  // Navigation interne — 3 tabs pour clarifier l'éditeur et déstresser
-  // le scroll. Le contenu des cards existantes est juste regroupé.
-  const [tab, setTab] = useState<EditTab>('essentiel');
+  // Navigation interne — 4 tabs pour clarifier l'éditeur et déstresser
+  // le scroll. Le contenu des cards existantes est juste regroupé. Le tab
+  // initial peut être forcé via `?tab=` pour les deep-links (ex: l'overview
+  // A/B qui pointe sur le bon onglet directement).
+  const initialTab: EditTab = (() => {
+    const raw = searchParams.get('tab');
+    return raw === 'conversion' || raw === 'ab-test' || raw === 'seo' ? raw : 'essentiel';
+  })();
+  const [tab, setTab] = useState<EditTab>(initialTab);
   // Dirty tracking : snapshot JSON de l'état au load/save. Le bouton sticky
   // n'apparaît que quand l'état diverge — `beforeunload` empêche la perte
   // de travail si le vendeur ferme l'onglet sans sauver.
@@ -185,6 +198,19 @@ export default function EditProductPage() {
         setTags(Array.isArray(p.tags) ? (p.tags as string[]) : []);
         setVariants(Array.isArray(p.variants) ? (p.variants as ProductVariant[]) : []);
         setImages(Array.isArray(p.images) ? (p.images as string[]) : []);
+        // Variants A/B — chaque entrée garde son _id Mongo pour qu'on puisse
+        // la retrouver dans les stats + les events de funnel.
+        setPageVariants(
+          Array.isArray(p.pageVariants)
+            ? (p.pageVariants as Array<Record<string, unknown>>).map((v) => ({
+                _id: typeof v._id === 'string' ? v._id : String(v._id || ''),
+                name: typeof v.name === 'string' ? v.name : '',
+                enabled: v.enabled !== false,
+                weight: typeof v.weight === 'number' ? v.weight : 1,
+                overrides: (v.overrides as PageVariantDraft['overrides']) || {},
+              }))
+            : [],
+        );
         setSeoTitle((p.seoTitle as string) || '');
         setSeoDescription((p.seoDescription as string) || '');
         const ps = (p.pageSettings as Record<string, unknown>) || {};
@@ -308,6 +334,13 @@ export default function EditProductPage() {
           video: pageSettings.video,
           comparison: pageSettings.comparison,
         },
+        pageVariants: pageVariants.map((v) => ({
+          _id: v._id && !v._id.startsWith('tmp-') ? v._id : undefined,
+          name: v.name,
+          enabled: v.enabled,
+          weight: v.weight,
+          overrides: v.overrides || {},
+        })),
       }));
       if (codFormDirty) {
         // Merger codForm dans les settings complets — le backend $set replace
@@ -552,6 +585,7 @@ export default function EditProductPage() {
               {([
                 { id: 'essentiel',  label: 'Essentiel',     icon: Package,    hint: 'Nom, médias, prix, variantes',     miss: missCount.essentiel },
                 { id: 'conversion', label: 'Page de vente', icon: Sparkles,   hint: 'Sections qui convertissent',        miss: missCount.conversion },
+                { id: 'ab-test',    label: 'Test A/B',      icon: FlaskConical, hint: 'Teste plusieurs versions de la page', miss: 0 },
                 { id: 'seo',        label: 'SEO & marge',   icon: SearchIcon, hint: 'Référencement + profit',             miss: 0 },
               ] as const).map((t) => {
                 const TabIcon = t.icon;
@@ -1180,6 +1214,18 @@ export default function EditProductPage() {
               />
             </CardContent>
           </Card>
+          </>)}
+
+          {tab === 'ab-test' && storeId && (<>
+            <ProductAbVariantsEditor
+              value={pageVariants}
+              onChange={setPageVariants}
+              storeId={storeId}
+              storeSlug={storeSlug}
+              productSlug={slug}
+              currency={currency}
+            />
+            <ProductAbStatsPanel storeId={storeId} productId={productId} />
           </>)}
 
           {tab === 'seo' && (<>

@@ -36,6 +36,7 @@ import {
   Wand2,
   Building2,
   Banknote,
+  FlaskConical,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { BrandLogo as AppBrandLogo } from '@/components/dashboard/brand-logo';
@@ -73,6 +74,7 @@ const TEAM_ALLOWED: Record<TeamRole, string[]> = {
     '/dashboard',
     '/dashboard/analytics',
     '/dashboard/products',
+    '/dashboard/ab-tests',
     '/dashboard/offers',
     '/dashboard/pages',
     '/dashboard/pages/landing-image',
@@ -101,13 +103,14 @@ const SECTIONS: { titleKey: TKey; items: NavItem[] }[] = [
         href: '/dashboard/products',
         labelKey: 'sidebar.products',
         icon: Package,
-        // Collections / Marketplace / Offres sont conceptuellement des
-        // extensions du catalogue produit — on les groupe dessous pour
+        // Collections / Marketplace / Offres / Tests A/B sont conceptuellement
+        // des extensions du catalogue produit — on les groupe dessous pour
         // désencombrer le rail principal.
         children: [
           { href: '/dashboard/collections', labelKey: 'sidebar.collections', icon: Layers },
           { href: '/dashboard/marketplace',  labelKey: 'sidebar.marketplace', icon: Store },
           { href: '/dashboard/offers',       labelKey: 'sidebar.offers',      icon: Layers },
+          { href: '/dashboard/ab-tests',     labelKey: 'sidebar.abTesting',   icon: FlaskConical },
         ],
       },
       { href: '/dashboard/suppliers', labelKey: 'sidebar.suppliers', icon: Building2 },

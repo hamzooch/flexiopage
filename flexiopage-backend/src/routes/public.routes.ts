@@ -168,6 +168,8 @@ router.post('/track', (req: Request, res: Response): void => {
   const body = req.body as {
     storeId?: string;
     productId?: string;
+    /** Variant A/B servi sur la page produit. 'control' | <_id hex du pageVariant>. */
+    variantId?: string;
     type?: string;
     sessionId?: string;
     /** Hint client — soit `utm_source` de l'URL, soit un raccourci "facebook"
@@ -188,6 +190,7 @@ router.post('/track', (req: Request, res: Response): void => {
     void recordEvent({
       storeId: body.storeId!,
       productId: body.productId && mongoose.Types.ObjectId.isValid(body.productId) ? body.productId : undefined,
+      variantId: typeof body.variantId === 'string' ? body.variantId : undefined,
       type,
       sessionId: body.sessionId,
       // Classé côté serveur depuis l'UA du beacon — pas de PII stockée, juste
@@ -1313,6 +1316,12 @@ router.post('/checkout/cod', async (req: Request, res: Response): Promise<void> 
     notes?: string;
     /** Anonymous funnel session id — correlates the purchase to add_to_cart. */
     sessionId?: string;
+    /**
+     * Variant A/B servi au visiteur sur la page produit. Remonté au purchase
+     * event pour attribuer la conversion au bon bras du test. 'control' quand
+     * aucun variant n'a été appliqué.
+     */
+    abVariantId?: string;
     /** Optional promo code the buyer typed into the COD form. */
     couponCode?: string;
   };
@@ -1585,6 +1594,10 @@ router.post('/checkout/cod', async (req: Request, res: Response): Promise<void> 
     void recordEvent({
       storeId: store._id.toString(),
       productId: resolved[0]?.productId,
+      // Attribution A/B — même "control" est posé pour qu'une page sans
+      // variant active s'additionne proprement au bras contrôle quand un
+      // test est lancé plus tard.
+      variantId: typeof body.abVariantId === 'string' ? body.abVariantId : undefined,
       type: 'purchase',
       sessionId: body.sessionId,
       value: subtotal,
