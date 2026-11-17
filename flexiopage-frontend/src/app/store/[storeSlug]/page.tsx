@@ -25,6 +25,8 @@ import { StorefrontSlider, type SliderConfig } from '@/components/storefront/Sli
 import { StoreNavbar, type NavbarConfig } from '@/components/storefront/StoreNavbar';
 import type { PublicMarket } from '@/components/storefront/market-switcher';
 import { cookies } from 'next/headers';
+import { storefrontGeoHeaders } from '@/lib/storefront-geo';
+import { GeoBlockedScreen } from '@/components/storefront/geo-blocked';
 import { StoreFooter, type FooterConfig } from '@/components/storefront/StoreFooter';
 import { StorefrontTestimonials, type TestimonialsConfig } from '@/components/storefront/Testimonials';
 import { StorefrontVideo, type VideoConfig } from '@/components/storefront/Video';
@@ -231,11 +233,12 @@ interface DraftStoreInfo {
 
 export default async function PublicStorePage({ params }: Props) {
   const { storeSlug } = await params;
-  const apiBase = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
+  const apiBase = process.env.INTERNAL_API_URL || process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
   let store: StoreDoc | null = null;
   let products: ProductDoc[] = [];
   let market: ResolvedMarketHint | null = null;
   let draftStore: DraftStoreInfo | null = null;
+  let geoBlock: { name?: string; logo?: string; visitorCountry?: string | null; allowedCountries?: string[] } | null = null;
 
   // Forward the cookie pays + cf-ipcountry au backend pour qu'il résolve le
   // bon market. Sans ça, le SSR perd la préférence buyer (cookie posé client).
@@ -250,6 +253,7 @@ export default async function PublicStorePage({ params }: Props) {
   // previewDraft dans la réponse. Aucune influence si le cookie n'existe pas.
   const previewToken = cookieStore.get('preview_auth')?.value;
   const previewQuery = previewToken ? '?preview=1' : '';
+  const geoHeaders = await storefrontGeoHeaders();
   const previewAuthHeader: HeadersInit = previewToken
     ? { Authorization: `Bearer ${previewToken}` }
     : {};
@@ -261,11 +265,16 @@ export default async function PublicStorePage({ params }: Props) {
         headers: {
           ...(fwdCookie ? { Cookie: fwdCookie } : {}),
           ...previewAuthHeader,
+          ...geoHeaders,
         },
       }),
       fetch(`${apiBase}/api/public/stores/${storeSlug}/products`, {
         cache: 'no-store',
-        headers: fwdCookie ? { Cookie: fwdCookie } : undefined,
+        headers: {
+          ...(fwdCookie ? { Cookie: fwdCookie } : {}),
+          ...previewAuthHeader,
+          ...geoHeaders,
+        },
       }),
     ]);
     if (storeRes.ok) {
@@ -273,11 +282,21 @@ export default async function PublicStorePage({ params }: Props) {
         store?: StoreDoc | DraftStoreInfo;
         market?: ResolvedMarketHint;
         unpublished?: boolean;
+        geoBlocked?: boolean;
+        visitorCountry?: string | null;
+        allowedCountries?: string[];
       };
       if (d.unpublished && d.store) {
         // Backend a explicitement signalé une boutique en brouillon — on
         // n'a reçu qu'un payload minimal sûr (pas de settings, pas de theme).
         draftStore = d.store as DraftStoreInfo;
+      } else if (d.geoBlocked) {
+        geoBlock = {
+          name: d.store?.name,
+          logo: (d.store as { logo?: string } | undefined)?.logo,
+          visitorCountry: d.visitorCountry,
+          allowedCountries: d.allowedCountries,
+        };
       } else {
         store = (d.store as StoreDoc) ?? null;
         market = d.market ?? null;
@@ -296,6 +315,17 @@ export default async function PublicStorePage({ params }: Props) {
 
   if (draftStore) {
     return <UnpublishedStoreView store={draftStore} />;
+  }
+
+  if (geoBlock) {
+    return (
+      <GeoBlockedScreen
+        name={geoBlock.name}
+        logo={geoBlock.logo}
+        visitorCountry={geoBlock.visitorCountry}
+        allowedCountries={geoBlock.allowedCountries}
+      />
+    );
   }
 
   if (!store) {

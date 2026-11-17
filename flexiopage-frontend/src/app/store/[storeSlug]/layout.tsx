@@ -21,6 +21,8 @@ import { BotstoreWidget, type BotstoreConfig } from '@/components/storefront/bot
 import { NewsletterPopup, type NewsletterConfig } from '@/components/storefront/newsletter-popup';
 import { SalesPopup, type SalesPopupConfig } from '@/components/storefront/sales-popup';
 import { LocaleBootstrap } from '@/components/storefront/locale-bootstrap';
+import { GeoBlockedScreen } from '@/components/storefront/geo-blocked';
+import { storefrontGeoHeaders } from '@/lib/storefront-geo';
 import {
   googleFontsHref,
   resolveStoreTheme,
@@ -66,35 +68,55 @@ interface StoreLite {
   };
 }
 
-async function fetchStore(storeSlug: string): Promise<StoreLite | null> {
-  const apiBase = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
+interface StoreFetch {
+  store: StoreLite | null;
+  geoBlocked: boolean;
+  visitorCountry?: string | null;
+  allowedCountries?: string[];
+}
+
+async function fetchStore(storeSlug: string): Promise<StoreFetch> {
+  const apiBase = process.env.INTERNAL_API_URL || process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
   // Preview mode : le dashboard, en ouvrant l'iframe d'aperçu, dépose un
   // cookie `preview_auth=<jwt>` sur le même origin. On l'expédie en
   // Authorization Bearer + ?preview=1 au backend qui fusionne alors
-  // previewDraft par-dessus le live. Sans cookie → fetch normal (ISR
-  // 60 s). Avec cookie → no-store pour ne PAS empoisonner le cache
-  // partagé avec la version draft.
+  // previewDraft par-dessus le live. Sans cookie → fetch normal.
+  // Le pays edge est transmis pour que le verrou pays s'applique aussi
+  // quand Next appelle l'API sur le réseau interne.
   const previewToken = (await cookies()).get('preview_auth')?.value;
+  const geo = await storefrontGeoHeaders();
+  const gc = encodeURIComponent(geo['x-vercel-ip-country'] || 'XX');
   const url = previewToken
     ? `${apiBase}/api/public/store-by-slug/${storeSlug}?preview=1`
-    : `${apiBase}/api/public/store-by-slug/${storeSlug}`;
+    : `${apiBase}/api/public/store-by-slug/${storeSlug}?gc=${gc}`;
+  const empty: StoreFetch = { store: null, geoBlocked: false };
   try {
     const res = await fetch(url, {
       ...(previewToken
-        ? { cache: 'no-store', headers: { Authorization: `Bearer ${previewToken}` } }
-        : { next: { revalidate: 60, tags: [`store:${storeSlug}`] } }),
+        ? { cache: 'no-store' as const, headers: { Authorization: `Bearer ${previewToken}`, ...geo } }
+        : { next: { revalidate: 60, tags: [`store:${storeSlug}`] }, headers: geo }),
     });
-    if (!res.ok) return null;
-    const { store } = (await res.json()) as { store?: StoreLite };
-    return store || null;
+    if (!res.ok) return empty;
+    const data = (await res.json()) as {
+      store?: StoreLite;
+      geoBlocked?: boolean;
+      visitorCountry?: string | null;
+      allowedCountries?: string[];
+    };
+    return {
+      store: data.store || null,
+      geoBlocked: data.geoBlocked === true,
+      visitorCountry: data.visitorCountry,
+      allowedCountries: data.allowedCountries,
+    };
   } catch {
-    return null;
+    return empty;
   }
 }
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { storeSlug } = await params;
-  const store = await fetchStore(storeSlug);
+  const store = (await fetchStore(storeSlug)).store;
   // Seller's favicon (or logo as a fallback). When neither is set we ship
   // a blank icon so the root layout's FlexioPage favicon doesn't leak in.
   const sellerIcon = mediaUrl(store?.favicon || store?.logo);
@@ -180,7 +202,18 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 
 export default async function StoreLayout({ children, params }: Props) {
   const { storeSlug } = await params;
-  const store = await fetchStore(storeSlug);
+  const loaded = await fetchStore(storeSlug);
+  if (loaded.geoBlocked) {
+    return (
+      <GeoBlockedScreen
+        name={loaded.store?.name}
+        logo={loaded.store?.logo}
+        visitorCountry={loaded.visitorCountry}
+        allowedCountries={loaded.allowedCountries}
+      />
+    );
+  }
+  const store = loaded.store;
   // Botstore vs bouton WhatsApp : mutuellement exclusifs à l'affichage pour
   // éviter deux bulles flottantes qui se chevauchent. Quand le Botstore est
   // actif, il porte lui-même le CTA WhatsApp (fallback dans la conversation).

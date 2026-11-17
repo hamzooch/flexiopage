@@ -24,6 +24,8 @@ import { StoreTracker } from '@/components/storefront/StoreTracker';
 import { StoreNavbar, type NavbarConfig } from '@/components/storefront/StoreNavbar';
 import type { PublicMarket } from '@/components/storefront/market-switcher';
 import { cookies } from 'next/headers';
+import { storefrontGeoHeaders } from '@/lib/storefront-geo';
+import { GeoBlockedScreen } from '@/components/storefront/geo-blocked';
 import { StorefrontTestimonials } from '@/components/storefront/Testimonials';
 import { MobileStickyCta } from '@/components/storefront/mobile-sticky-cta';
 import { CrossSells, type CrossSellItem } from '@/components/storefront/cross-sells';
@@ -185,12 +187,13 @@ export default async function PublicProductPage({ params, searchParams }: Props)
   const { storeSlug, productSlug } = await params;
   const sp = await searchParams;
   const urlVariantRaw = Array.isArray(sp.v) ? sp.v[0] : sp.v;
-  const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
+  const apiUrl = process.env.INTERNAL_API_URL || process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
   let product: ProductDoc | null = null;
   let store: StoreDoc | null = null;
   let crossSells: CrossSellItem[] = [];
   let upsells: BumpOffer[] = [];
   let market: ResolvedMarketHint | null = null;
+  let geoBlock: { name?: string; logo?: string; visitorCountry?: string | null; allowedCountries?: string[] } | null = null;
 
   // Forward le cookie pour que le backend résolve le market par buyer.
   // ISR désactivée : la réponse dépend du cookie + de CF-IPCountry.
@@ -199,19 +202,46 @@ export default async function PublicProductPage({ params, searchParams }: Props)
     .getAll()
     .map((c) => `${c.name}=${c.value}`)
     .join('; ');
+  const previewToken = cookieStore.get('preview_auth')?.value;
+  const geoHeaders = await storefrontGeoHeaders();
+  const sharedHeaders: HeadersInit = {
+    ...(fwdCookie ? { Cookie: fwdCookie } : {}),
+    ...(previewToken ? { Authorization: `Bearer ${previewToken}` } : {}),
+    ...geoHeaders,
+  };
 
   try {
     const [pRes, sRes] = await Promise.all([
       fetch(`${apiUrl}/api/public/stores/${storeSlug}/products/${productSlug}`, {
         cache: 'no-store',
-        headers: fwdCookie ? { Cookie: fwdCookie } : undefined,
+        headers: sharedHeaders,
       }),
-      fetch(`${apiUrl}/api/public/store-by-slug/${storeSlug}`, {
+      fetch(`${apiUrl}/api/public/store-by-slug/${storeSlug}${previewToken ? '?preview=1' : ''}`, {
         cache: 'no-store',
-        headers: fwdCookie ? { Cookie: fwdCookie } : undefined,
+        headers: sharedHeaders,
       }),
     ]);
-    if (pRes.ok) {
+    if (sRes.ok) {
+      const body = (await sRes.json()) as {
+        store?: StoreDoc;
+        market?: ResolvedMarketHint;
+        geoBlocked?: boolean;
+        visitorCountry?: string | null;
+        allowedCountries?: string[];
+      };
+      if (body.geoBlocked) {
+        geoBlock = {
+          name: body.store?.name,
+          logo: body.store?.logo,
+          visitorCountry: body.visitorCountry,
+          allowedCountries: body.allowedCountries,
+        };
+      } else {
+        store = body.store ?? null;
+        if (!market && body.market) market = body.market;
+      }
+    }
+    if (pRes.ok && !geoBlock) {
       const body = (await pRes.json()) as {
         product?: ProductDoc;
         crossSells?: CrossSellItem[];
@@ -223,13 +253,19 @@ export default async function PublicProductPage({ params, searchParams }: Props)
       upsells = Array.isArray(body.upsells) ? body.upsells : [];
       market = body.market ?? null;
     }
-    if (sRes.ok) {
-      const body = (await sRes.json()) as { store?: StoreDoc; market?: ResolvedMarketHint };
-      store = body.store ?? null;
-      if (!market && body.market) market = body.market;
-    }
   } catch {
     // fallback
+  }
+
+  if (geoBlock) {
+    return (
+      <GeoBlockedScreen
+        name={geoBlock.name}
+        logo={geoBlock.logo}
+        visitorCountry={geoBlock.visitorCountry}
+        allowedCountries={geoBlock.allowedCountries}
+      />
+    );
   }
 
   if (!product) {
@@ -256,7 +292,8 @@ export default async function PublicProductPage({ params, searchParams }: Props)
   });
   // On ré-affecte `product` à sa version overridée pour que la suite du render
   // (gallery, pricing, pageSettings, etc.) lise automatiquement les champs du
-  // variant.
+  // variant. Le non-null assertion est safe : le guard `!product` ci-dessus
+  // vient d'être exécuté, mais `let` perd la narrowing après assignement.
   const effectiveProduct: ProductDoc = applyVariantOverrides(product, picked.overrides);
   product = effectiveProduct;
   const activeVariantId = picked.variantId || CONTROL_VARIANT_ID;

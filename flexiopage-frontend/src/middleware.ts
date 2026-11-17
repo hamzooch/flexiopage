@@ -47,6 +47,7 @@ const RESERVED_TOP_LEVEL = new Set([
   'privacy-policy',
   'data-deletion',
   'support',         // page publique de contact + formulaire support@flexiopage.com
+  'geo-blocked', // écran « boutique fermée dans ce pays » — pas une boutique
   // Next.js + framework
   '_next',
   'api',
@@ -115,6 +116,62 @@ function isAppOrLocalHost(host: string): boolean {
 /** Resolve a custom domain to its store slug via the public backend route.
  * Cached for 60s via Next's fetch cache so we don't hit the API on every
  * request. Returns null on miss or error (fail-open: render app shell). */
+function edgeCountry(request: NextRequest): string | null {
+  const raw = (
+    request.headers.get('x-vercel-ip-country')
+    || request.headers.get('cf-ipcountry')
+    || ''
+  ).trim().toUpperCase();
+  if (!/^[A-Z]{2}$/.test(raw) || raw === 'XX' || raw === 'T1') return null;
+  return raw;
+}
+
+/**
+ * Seller country lock. The allow-list comes from the API; the visitor
+ * country is the edge header (Vercel / Cloudflare), which the browser
+ * cannot forge. Unknown country stays open so local dev keeps working.
+ * The shop owner preview cookie is checked by the API and skips the lock.
+ */
+async function blockedStoreResponse(request: NextRequest, slug: string): Promise<NextResponse | null> {
+  if (!slug || !/^[a-z0-9-]{2,80}$/i.test(slug)) return null;
+  const country = edgeCountry(request);
+  if (!country) return null;
+  const token = request.cookies.get('preview_auth')?.value;
+  try {
+    const headers: Record<string, string> = { accept: 'application/json' };
+    if (token) headers.authorization = `Bearer ${token}`;
+    const res = await fetch(
+      `${INTERNAL_API_URL}/api/public/store-access/${encodeURIComponent(slug)}`,
+      { cache: 'no-store', headers },
+    );
+    if (!res.ok) return null;
+    const data = (await res.json()) as {
+      enabled?: boolean;
+      countries?: string[];
+      bypass?: boolean;
+      name?: string;
+      logo?: string;
+    };
+    if (!data.enabled || data.bypass) return null;
+    const allowed = (data.countries || []).map((code) => code.toUpperCase());
+    if (allowed.includes(country)) return null;
+
+    const url = request.nextUrl.clone();
+    url.pathname = '/geo-blocked';
+    url.search = '';
+    const requestHeaders = new Headers(request.headers);
+    requestHeaders.set('x-flexio-geo-block', encodeURIComponent(JSON.stringify({
+      name: data.name || '',
+      logo: data.logo || '',
+      visitorCountry: country,
+      allowedCountries: allowed,
+    })));
+    return NextResponse.rewrite(url, { request: { headers: requestHeaders } });
+  } catch {
+    return null;
+  }
+}
+
 async function customDomainStoreSlug(host: string): Promise<string | null> {
   try {
     const res = await fetch(
@@ -180,6 +237,8 @@ export async function middleware(request: NextRequest) {
     // so they resolve to the app-level page instead of being rewritten
     // into a non-existent /store/<slug>/thanks/... path.
     if (GLOBAL_BUYER_PATHS.has(firstSegOfPath)) return NextResponse.next();
+    const blocked = await blockedStoreResponse(request, subSlug);
+    if (blocked) return blocked;
     // Storefront link helpers (storeUrl, StoreNavbar, StoreFooter, etc.)
     // emit relative paths like `/<slug>/product/foo` which work fine on
     // the legacy path-based access (flexiopage.com/<slug>/...). On the
@@ -204,6 +263,8 @@ export async function middleware(request: NextRequest) {
     if (GLOBAL_BUYER_PATHS.has(firstSegOfPath)) return NextResponse.next();
     const slug = await customDomainStoreSlug(host);
     if (slug) {
+      const blocked = await blockedStoreResponse(request, slug);
+      if (blocked) return blocked;
       // Same dedup as the subdomain case — a custom domain like
       // mystore.com that hosts the same storefront could still receive
       // a /<slug>/... link from an emitter helper. Strip the duplicate.
@@ -224,9 +285,23 @@ export async function middleware(request: NextRequest) {
 
   const firstSeg = pathname.split('/')[1] || '';
 
+  // Legacy /store/<slug>/... is already the internal path, so the reserved
+  // list lets it through. The country lock still has to run on it.
+  if (firstSeg === 'store') {
+    const storeSlug = pathname.split('/')[2] || '';
+    if (storeSlug) {
+      const blocked = await blockedStoreResponse(request, storeSlug);
+      if (blocked) return blocked;
+    }
+    return attachSplitCookie(NextResponse.next(), request);
+  }
+
   if (RESERVED_TOP_LEVEL.has(firstSeg)) return NextResponse.next();
   if (firstSeg.startsWith('_')) return NextResponse.next();
   if (firstSeg.includes('.')) return NextResponse.next();
+
+  const blocked = await blockedStoreResponse(request, firstSeg);
+  if (blocked) return blocked;
 
   const url = request.nextUrl.clone();
   url.pathname = `/store${pathname}`;

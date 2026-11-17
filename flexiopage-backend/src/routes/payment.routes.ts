@@ -15,6 +15,7 @@
  *     gateway and only then finalizes the order.
  */
 import { Router, Request, Response } from 'express';
+import { rejectIfGeoBlocked } from '../lib/geo-access';
 import * as storeService from '../services/store.service';
 import * as productService from '../services/product.service';
 import * as orderService from '../services/order.service';
@@ -105,6 +106,7 @@ router.post('/initiate', async (req: Request, res: Response): Promise<void> => {
     res.status(404).json({ error: 'Store not found' });
     return;
   }
+  if (rejectIfGeoBlocked(req, res, store)) return;
   const storeType = (store.storeType === 'digital' ? 'digital' : 'physical') as StoreType;
 
   // Matrix guard — reject spoofed client choices before touching a gateway.

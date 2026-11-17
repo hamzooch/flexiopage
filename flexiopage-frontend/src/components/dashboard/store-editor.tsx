@@ -338,6 +338,11 @@ export interface StoreType {
     timezone?: string;
     language?: string;
     country?: string;
+    /** IP country allow-list. Only visitors in these countries can open the shop. */
+    geoAccess?: {
+      enabled?: boolean;
+      countries?: string[];
+    };
     direction?: 'ltr' | 'rtl';
     seoTitle?: string;
     seoDescription?: string;

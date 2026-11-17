@@ -172,7 +172,7 @@ interface BlockDef {
 }
 
 const BLOCKS: BlockDef[] = [
-  { id: 'identity',  label: 'Identité',     icon: SettingsIcon, group: 'identity', mode: 'inline', hint: 'Nom, description, en ligne ou non.' },
+  { id: 'identity',  label: 'Identité',     icon: SettingsIcon, group: 'identity', mode: 'inline', hint: 'Nom, pays cible et accès par pays.' },
   { id: 'theme',     label: 'Thème',        icon: Palette,      group: 'identity', mode: 'inline', hint: 'Couleurs et look de la vitrine.' },
   { id: 'branding',  label: 'Logo',         icon: ImageIcon,    group: 'identity', mode: 'inline', hint: 'Logo et icône du navigateur.' },
   { id: 'cod',       label: 'Paiement à la livraison', icon: Wallet, group: 'conversion', mode: 'inline', hint: 'Champs que le client remplit.', physicalOnly: true },
@@ -1035,6 +1035,96 @@ function EditorHeader({ title, hint }: { title: string; hint: string }) {
 // Inline editors — un par bloc simple
 // ─────────────────────────────────────────────────────────────────────
 
+function GeoAccessEditor({
+  enabled,
+  countries,
+  fallbackCountry,
+  onChange,
+}: {
+  enabled: boolean;
+  countries: string[];
+  fallbackCountry: string;
+  onChange: (next: { enabled: boolean; countries: string[] }) => void;
+}) {
+  const selected = countries.map((code) => code.toUpperCase());
+  const choices = SETTINGS_COUNTRIES.filter((country) => country.code);
+
+  function setEnabled(on: boolean) {
+    const seeded = selected.length > 0
+      ? selected
+      : (fallbackCountry ? [fallbackCountry.toUpperCase()] : []);
+    onChange({ enabled: on, countries: seeded });
+  }
+
+  function toggleCountry(code: string) {
+    const next = selected.includes(code)
+      ? selected.filter((item) => item !== code)
+      : [...selected, code];
+    onChange({ enabled, countries: next });
+  }
+
+  return (
+    <div className="rounded-xl border border-border p-4">
+      <label className="flex cursor-pointer items-start justify-between gap-4">
+        <div className="flex items-start gap-3">
+          <div className="grid h-10 w-10 shrink-0 place-items-center rounded-lg bg-neutral-900 text-white">
+            <ShieldAlert className="h-5 w-5" />
+          </div>
+          <div>
+            <div className="text-sm font-semibold">Limiter l’accès par pays</div>
+            <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+              Seuls les visiteurs dont l’adresse IP est dans les pays cochés peuvent ouvrir la boutique et commander.
+              Ton aperçu dans l’éditeur reste ouvert.
+            </p>
+          </div>
+        </div>
+        <div className="relative mt-1 shrink-0">
+          <input
+            type="checkbox"
+            checked={enabled}
+            onChange={(e) => setEnabled(e.target.checked)}
+            className="peer sr-only"
+            aria-label="Limiter l’accès aux pays ciblés"
+          />
+          <div className={`h-7 w-12 rounded-full transition-colors ${enabled ? 'bg-neutral-900' : 'bg-neutral-300'}`} />
+          <div className={`pointer-events-none absolute top-1 h-5 w-5 rounded-full bg-white shadow-md transition-all ${enabled ? 'left-6' : 'left-1'}`} />
+        </div>
+      </label>
+
+      {enabled && (
+        <div className="mt-4 border-t border-border pt-4">
+          <p className="text-xs font-medium">Pays autorisés</p>
+          <p className="mt-1 text-[11px] text-muted-foreground">
+            Le pays est lu depuis l’adresse IP (Cloudflare, Vercel, ou la base locale).
+            Un réseau local ou un VPN sans pays détecté n’est pas bloqué.
+          </p>
+          {selected.length === 0 && (
+            <p className="mt-2 text-xs font-medium text-amber-700">
+              Choisis au moins un pays, sinon la boutique reste ouverte à tout le monde.
+            </p>
+          )}
+          <div className="mt-3 max-h-48 space-y-1 overflow-y-auto rounded-lg border border-border p-2">
+            {choices.map((country) => {
+              const checked = selected.includes(country.code);
+              return (
+                <label key={country.code} className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-muted">
+                  <input
+                    type="checkbox"
+                    checked={checked}
+                    onChange={() => toggleCountry(country.code)}
+                  />
+                  <span>{country.label}</span>
+                  <span className="text-[11px] text-muted-foreground">{country.code}</span>
+                </label>
+              );
+            })}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function IdentityEditor({ block, store, setStore, markDirty }: EditorCtx) {
   const country = store.settings?.country || '';
   const language = store.settings?.language || '';
@@ -1166,6 +1256,13 @@ function IdentityEditor({ block, store, setStore, markDirty }: EditorCtx) {
             </optgroup>
           </select>
         </Field>
+
+        <GeoAccessEditor
+          enabled={store.settings?.geoAccess?.enabled === true}
+          countries={store.settings?.geoAccess?.countries || []}
+          fallbackCountry={country}
+          onChange={(geoAccess) => patchSettings({ geoAccess })}
+        />
 
         <Field label="Langue" hint="Détermine le sens de lecture (LTR/RTL).">
           <select

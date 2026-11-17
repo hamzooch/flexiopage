@@ -67,6 +67,17 @@ export interface IStore extends Document {
     language?: string;
     /** Target country (ISO 3166-1 alpha-2, e.g. 'TN', 'DZ', 'SA'). */
     country?: string;
+    /**
+     * When enabled, the public storefront and checkout only accept visitors
+     * whose IP country is in `countries`. An empty list falls back to the
+     * target country plus enabled markets. Unknown geo (localhost, private
+     * network) stays open. The seller's own preview is never blocked.
+     */
+    geoAccess?: {
+      enabled?: boolean;
+      /** ISO 3166-1 alpha-2 allow-list. Empty = derive from country + markets. */
+      countries?: string[];
+    };
     /** Text direction derived from language ('rtl' for ar/he/fa/ur). */
     direction?: 'ltr' | 'rtl';
     seoTitle?: string;
@@ -748,6 +759,10 @@ const StoreSchema = new Schema<IStore>(
       maintenanceMode: { type: Boolean, default: false },
       language: { type: String, trim: true, lowercase: true },
       country: { type: String, trim: true, uppercase: true },
+      geoAccess: {
+        enabled: { type: Boolean, default: false },
+        countries: [{ type: String, trim: true, uppercase: true }],
+      },
       direction: { type: String, enum: ['ltr', 'rtl'], default: 'ltr' },
       seoTitle: { type: String },
       seoDescription: { type: String },

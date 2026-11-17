@@ -30,6 +30,7 @@ import { notifyOrderCreated } from '../services/notification.service';
 import { pushOrderToSheets } from '../services/sheets.service';
 import { resolveBundlePricing } from '../lib/bundle';
 import { resolveMarketForRequest, resolveProductPricing } from '../lib/market';
+import { evaluateStoreGeoAccess, rejectIfGeoBlocked, targetCountries } from '../lib/geo-access';
 import { recordEvent, deviceFromUserAgent, classifySource } from '../services/tracking.service';
 import { botstoreChat, type BotstoreMessage } from '../services/botstore.service';
 import mongoose from 'mongoose';
@@ -43,12 +44,28 @@ import { JWT_SECRET } from '../lib/jwtSecret';
  * fusionné par-dessus le live, ce qui exige une vérification stricte
  * d'appartenance. Renvoie false sur token absent/invalide ou owner mismatch.
  */
+function tokenOwnsStore(token: string | undefined, ownerId: unknown): boolean {
+  if (!token) return false;
+  try {
+    const decoded = jwt.verify(token, JWT_SECRET) as { userId?: string };
+    return !!decoded.userId && String(decoded.userId) === String(ownerId);
+  } catch {
+    return false;
+  }
+}
+
 function isPreviewOwner(req: Request, ownerId: unknown): boolean {
   const raw = req.headers.authorization?.replace('Bearer ', '');
-  if (!raw) return false;
+  return tokenOwnsStore(raw, ownerId);
+}
+
+/** Owner preview: Authorization bearer, or the `preview_auth` cookie the editor sets. */
+function isStoreOwnerRequest(req: Request, ownerId: unknown): boolean {
+  if (isPreviewOwner(req, ownerId)) return true;
+  const cookieToken = req.cookies?.preview_auth;
+  if (typeof cookieToken !== 'string' || !cookieToken) return false;
   try {
-    const decoded = jwt.verify(raw, JWT_SECRET) as { userId?: string };
-    return !!decoded.userId && String(decoded.userId) === String(ownerId);
+    return tokenOwnsStore(decodeURIComponent(cookieToken), ownerId);
   } catch {
     return false;
   }
@@ -99,6 +116,38 @@ function applyMarketPricing<P extends PricingApplicable>(
 }
 
 const router = Router();
+
+/**
+ * Country lock for every route that carries `:storeSlug` (catalog, checkout
+ * helpers, landing pages). The dedicated `/access` policy route is skipped
+ * so the storefront middleware can read the allow-list. Direct calls are
+ * judged on the real client IP; the seller preview is never blocked.
+ */
+router.param('storeSlug', (req, res, next, slug) => {
+  void (async () => {
+    try {
+      if (req.path.endsWith('/access')) {
+        next();
+        return;
+      }
+      const store = await Store.findOne({ slug: String(slug).toLowerCase() })
+        .select('ownerId settings.geoAccess settings.country markets.country markets.enabled')
+        .lean();
+      if (!store) {
+        next();
+        return;
+      }
+      if (isStoreOwnerRequest(req, store.ownerId)) {
+        next();
+        return;
+      }
+      if (rejectIfGeoBlocked(req, res, store)) return;
+      next();
+    } catch (err) {
+      next(err);
+    }
+  })();
+});
 
 /** Strip server-only secrets from the integrations object before exposing it. */
 function publicSafeStore<T extends { integrations?: unknown; markets?: unknown }>(store: T): T {
@@ -305,6 +354,23 @@ router.get('/store-by-slug/:slug', async (req: Request, res: Response): Promise<
     res.json({ unpublished: true, store: draftStorePayload(store) });
     return;
   }
+  if (!isStoreOwnerRequest(req, store.ownerId)) {
+    const decision = evaluateStoreGeoAccess(req, store);
+    if (decision.blocked) {
+      res.json({
+        geoBlocked: true,
+        visitorCountry: decision.visitorCountry,
+        allowedCountries: decision.allowedCountries,
+        store: {
+          _id: String(store._id),
+          name: store.name,
+          slug: store.slug,
+          logo: store.logo,
+        },
+      });
+      return;
+    }
+  }
   const market = resolveMarketForRequest(req, store);
   res.json({
     store: publicSafeStore(store),
@@ -322,6 +388,23 @@ router.get('/store-by-subdomain/:subdomain', async (req: Request, res: Response)
   if (!store.isPublished) {
     res.json({ unpublished: true, store: draftStorePayload(store) });
     return;
+  }
+  if (!isStoreOwnerRequest(req, store.ownerId)) {
+    const decision = evaluateStoreGeoAccess(req, store);
+    if (decision.blocked) {
+      res.json({
+        geoBlocked: true,
+        visitorCountry: decision.visitorCountry,
+        allowedCountries: decision.allowedCountries,
+        store: {
+          _id: String(store._id),
+          name: store.name,
+          slug: store.slug,
+          logo: store.logo,
+        },
+      });
+      return;
+    }
   }
   const market = resolveMarketForRequest(req, store);
   res.json({
@@ -410,6 +493,28 @@ router.post('/botstore/:storeSlug/chat', async (req: Request, res: Response): Pr
     // ; ce catch attrape uniquement les erreurs de config (clé API manquante).
     res.status(503).json({ error: (err as Error).message });
   }
+});
+
+/**
+ * Allow-list consumed by the storefront middleware. The country comparison
+ * happens on the edge (the header there is set by Vercel/Cloudflare, not by
+ * the browser). `bypass` is true only for the shop owner preview.
+ */
+router.get('/store-access/:slug', async (req: Request, res: Response): Promise<void> => {
+  const store = await storeService.getStoreBySlug(req.params.slug);
+  if (!store || !store.isPublished) {
+    res.json({ enabled: false, countries: [], bypass: false });
+    return;
+  }
+  const countries = targetCountries(store);
+  const enabled = store.settings?.geoAccess?.enabled === true && countries.length > 0;
+  res.json({
+    enabled,
+    countries,
+    bypass: isStoreOwnerRequest(req, store.ownerId),
+    name: store.name,
+    logo: store.logo || '',
+  });
 });
 
 /** Public products for a store (published only) */
@@ -1191,6 +1296,7 @@ router.post('/checkout/init', async (req: Request, res: Response): Promise<void>
     res.status(404).json({ error: 'Cette boutique est introuvable.', code: 'store_not_found' });
     return;
   }
+  if (!isStoreOwnerRequest(req, store.ownerId) && rejectIfGeoBlocked(req, res, store)) return;
   // Online payment is available to BOTH digital and physical stores.
   // (Digital = online only; physical = online OR COD via /checkout/cod.)
   // Prefer POST /api/payment/initiate for the country/method-routed flow;
@@ -1348,6 +1454,7 @@ router.post('/checkout/cod', async (req: Request, res: Response): Promise<void> 
     res.status(404).json({ error: 'Store not found' });
     return;
   }
+  if (!isStoreOwnerRequest(req, store.ownerId) && rejectIfGeoBlocked(req, res, store)) return;
   if (store.storeType !== 'physical') {
     res.status(400).json({
       error: 'Cash on delivery is only for physical stores. Use /api/public/checkout/init.',
